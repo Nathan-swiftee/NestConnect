@@ -248,7 +248,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             <div key={m.id} className={"msg " + (m.direction === "out" ? "out" : "in")}>
               {m.direction === "in" && m.authorName && <div className="sender">{m.authorName}</div>}
               <div className="bubble">
-                <span className="txt">{m.body}</span>
+                <span className="txt">
+                  {m.body}
+                  <span className="stampspace" aria-hidden="true" />
+                </span>
                 <span className="stamp">
                   {relativeTime(m.createdAt)}
                   {m.direction === "out" && (

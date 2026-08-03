@@ -52,7 +52,7 @@
 *{box-sizing:border-box}
 html,body,#root{height:100%}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
-  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow:hidden}
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow:hidden;overscroll-behavior:none}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 input,textarea{font:inherit}
 ::selection{background:var(--brand-ring)}
@@ -126,6 +126,9 @@ input,textarea{font:inherit}
 .chip.active{background:var(--text);color:var(--surface)}
 .chip:hover:not(.active){color:var(--text)}
 .convs{overflow-y:auto;flex:1;min-height:0}
+/* keep scroll inside these panes — no chaining/rubber-band that drags the
+   thread header or list header out of place on touch devices */
+.convs,.msgs,.side__scroll,.panel__scroll,.cmdk__list,.modal__body{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .empty{padding:40px 20px;text-align:center;color:var(--text-faint);font-size:13px}
 .conv{width:100%;display:grid;grid-template-columns:44px 1fr;gap:11px;padding:12px 15px;text-align:left;border-bottom:1px solid var(--border);position:relative}
 .conv:hover{background:var(--surface)}
@@ -185,9 +188,13 @@ input,textarea{font:inherit}
   background-size:22px 22px}
 .daysep{align-self:center;font-size:11px;font-weight:650;color:var(--text-muted);background:var(--surface);border:1px solid var(--border);padding:4px 12px;border-radius:999px;margin:6px 0;box-shadow:var(--shadow)}
 .msg{max-width:76%;display:flex;flex-direction:column;gap:2px;animation:msgIn .18s ease-out}
-.msg .bubble{position:relative;display:inline-flex;flex-direction:column;max-width:100%;padding:7px 11px 6px 12px;border-radius:14px;font-size:14px;line-height:1.4;box-shadow:0 1px 1.5px rgba(13,21,18,.1)}
+.msg .bubble{position:relative;display:block;width:fit-content;max-width:100%;padding:6px 11px 7px 12px;border-radius:14px;font-size:14px;line-height:1.4;box-shadow:0 1px 1.5px rgba(13,21,18,.1)}
 .msg .bubble .txt{white-space:pre-wrap;word-break:break-word}
-.msg .bubble .stamp{align-self:flex-end;display:inline-flex;align-items:center;gap:3px;margin-top:2px;font-size:10px;line-height:1;font-variant-numeric:tabular-nums}
+/* invisible spacer reserving room for the timestamp on the text's last line
+   (WhatsApp-style inline stamp) */
+.msg .bubble .stampspace{display:inline-block;width:50px;height:1px}
+.msg.out .bubble .stampspace{width:60px}
+.msg .bubble .stamp{position:absolute;right:11px;bottom:6px;display:inline-flex;align-items:center;gap:3px;font-size:10px;line-height:1;font-variant-numeric:tabular-nums}
 .msg.in{align-self:flex-start}
 .msg.in .bubble{background:var(--surface);border-top-left-radius:5px}
 .msg.in .bubble .stamp{color:var(--text-faint)}
