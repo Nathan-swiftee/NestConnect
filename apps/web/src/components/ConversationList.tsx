@@ -1,6 +1,6 @@
-import { useConversations, useSound } from "../hooks";
+import { useConversations } from "../hooks";
 import { relativeTime, initials, slaCountdown } from "../lib/format";
-import { channelMeta, SearchIcon, MenuIcon, SoundOnIcon, SoundOffIcon } from "../lib/icons";
+import { channelMeta, SearchIcon, MenuIcon, CmdIcon } from "../lib/icons";
 
 interface Props {
   view: string;
@@ -14,32 +14,19 @@ interface Props {
 
 export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onOpenDrawer }: Props) {
   const { data, isLoading } = useConversations(view);
-  const sound = useSound();
 
   return (
     <section className="list" aria-label="Conversations">
-      <div className="list__mobilebar">
-        <button className="list__burger" onClick={onOpenDrawer} aria-label="Open menu" title="Menu">
-          <MenuIcon />
-        </button>
-        <span className="wordmark">
-          Nest <span className="dot">Connect</span>
-        </span>
-        <button
-          className={"list__soundtoggle" + (sound.on ? " on" : "")}
-          onClick={sound.toggle}
-          title={sound.on ? "Mute sounds" : "Unmute sounds"}
-          aria-label="Toggle sounds"
-        >
-          {sound.on ? <SoundOnIcon /> : <SoundOffIcon />}
-        </button>
-      </div>
       <div className="list__head">
         <div className="list__title">
+          <button className="list__burger" onClick={onOpenDrawer} aria-label="Open menu" title="Menu">
+            <MenuIcon />
+          </button>
           <h1>{title}</h1>
           <span className="badge">{count}</span>
-          <button className="kbd" onClick={onOpenCmdk} title="Command menu">
-            ⌘ K
+          <button className="kbd" onClick={onOpenCmdk} title="Command menu" aria-label="Command menu">
+            <CmdIcon />
+            <span>K</span>
           </button>
         </div>
         <div className="search">
@@ -55,7 +42,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
 
       <div className="convs">
         {isLoading && <div className="empty">Loading…</div>}
-        {data && data.length === 0 && <div className="empty">Nothing here — inbox zero ✨</div>}
+        {data && data.length === 0 && <div className="empty">Nothing here — inbox zero.</div>}
         {data?.map((c) => {
           const cm = channelMeta(c.channel);
           const owned = !!c.assigneeUserId;

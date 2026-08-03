@@ -18,6 +18,9 @@ import {
   CheckCircleIcon,
   ReopenIcon,
   BackIcon,
+  BoltIcon,
+  CheckSingle,
+  CheckDouble,
 } from "../lib/icons";
 
 const SALES_TEAM_ID = "team_sales";
@@ -84,6 +87,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   }
 
   const cm = channelMeta(conv.channel);
+  const Glyph = cm.Glyph;
   const isEmail = conv.channel === "email";
   const isClosed = conv.status === "closed";
   const owned = !!conv.assigneeUserId;
@@ -147,9 +151,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               <div className="who-subject">{conv.subject}</div>
             )}
             <div className="who-sub">
-              <span className="pill">
-                <span className="d" style={{ background: cm.color }} />
-                {cm.label}
+              <span className="pill" title={cm.label} aria-label={cm.label}>
+                <span className="pill-ic" style={{ color: cm.color }}>
+                  <Glyph />
+                </span>
               </span>
               <span className="who-presence">{sub}</span>
             </div>
@@ -248,7 +253,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   {relativeTime(m.createdAt)}
                   {m.direction === "out" && (
                     <span className={"tick" + (m.status === "read" ? " read" : "")}>
-                      {m.status === "read" || m.status === "delivered" ? "✓✓" : "✓"}
+                      {m.status === "read" || m.status === "delivered" ? <CheckDouble /> : <CheckSingle />}
                     </span>
                   )}
                 </span>
@@ -257,7 +262,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           ),
         )}
         {conv.messages.length === 0 && (
-          <div className="thread-empty">No messages yet — say hello 👋</div>
+          <div className="thread-empty">No messages yet — start the conversation.</div>
         )}
         <div ref={endRef} />
       </div>
@@ -293,8 +298,19 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               onClick={() => setInternal((v) => !v)}
               title="Toggle internal note"
             >
-              <span className="d" style={{ background: internal ? "var(--amber)" : cm.color }} />
-              {internal ? "Internal note · team only" : `${cm.label} · ${conv.contact.displayName}`}
+              {internal ? (
+                <>
+                  <span className="d" style={{ background: "var(--amber)" }} />
+                  Internal note · team only
+                </>
+              ) : (
+                <>
+                  <span className="chsel-ic" style={{ color: cm.color }}>
+                    <Glyph />
+                  </span>
+                  {conv.contact.displayName}
+                </>
+              )}
             </button>
           </div>
           <div className="compinput">
@@ -316,7 +332,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               }
             />
             <button className="tool" title="Template" onClick={() => onToast("Template picker")}>
-              ⚡
+              <BoltIcon />
             </button>
             <button className="tool hide-sm" title="Attach">
               <AttachIcon />

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { ChannelType, RoutingStrategy } from "@ding/schemas";
 import { useCreateInbox, useMe } from "../hooks";
+import { XIcon } from "../lib/icons";
 
 const TYPES: { value: ChannelType; label: string }[] = [
   { value: "email", label: "Email address" },
@@ -59,7 +60,7 @@ export function CreateInboxModal({ onClose, onToast, onSelectView }: Props) {
         <div className="modal__head">
           <h2>New inbox &amp; route</h2>
           <button type="button" className="modal__x" onClick={onClose} aria-label="Close">
-            ✕
+            <XIcon />
           </button>
         </div>
         <div className="modal__body">

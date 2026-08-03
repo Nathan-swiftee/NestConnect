@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { GROUP_MAX_MEMBERS } from "@ding/schemas";
 import { useCreateGroup, useViews } from "../hooks";
+import { XIcon } from "../lib/icons";
 
 interface Member {
   phone: string;
@@ -51,7 +52,7 @@ export function CreateGroupModal({ onClose, onToast, onSelectView }: Props) {
       <form className="modal__box" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal__head">
           <h2>New group space</h2>
-          <button type="button" className="modal__x" onClick={onClose} aria-label="Close">✕</button>
+          <button type="button" className="modal__x" onClick={onClose} aria-label="Close"><XIcon /></button>
         </div>
         <div className="modal__body">
           {groupInboxes.length === 0 && (
@@ -80,7 +81,7 @@ export function CreateGroupModal({ onClose, onToast, onSelectView }: Props) {
                 <div className="memrow" key={i}>
                   <input value={m.phone} onChange={(e) => setMember(i, { phone: e.target.value })} placeholder="+44 7…" />
                   <input value={m.name} onChange={(e) => setMember(i, { name: e.target.value })} placeholder="Name (optional)" />
-                  <button type="button" className="rm" onClick={() => removeRow(i)} disabled={members.length === 1}>✕</button>
+                  <button type="button" className="rm" onClick={() => removeRow(i)} disabled={members.length === 1} aria-label="Remove member"><XIcon /></button>
                 </div>
               ))}
             </div>

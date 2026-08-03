@@ -11,14 +11,15 @@ import { useConversations, useMediaQuery, useRealtime, useViews } from "../hooks
 import { unlock } from "../lib/sound";
 
 export function Workspace() {
-  const isMobile = useMediaQuery("(max-width: 860px)");
-  const isNarrow = useMediaQuery("(max-width: 1180px)");
+  const isMobile = useMediaQuery("(max-width: 820px)");
+  const isCompact = useMediaQuery("(max-width: 1023px)");
+  const isPanelOverlay = useMediaQuery("(max-width: 1399px)");
   const [view, setView] = useState("inbound");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobilePane, setMobilePane] = useState<"list" | "thread">("list");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showPanel, setShowPanel] = useState(
-    () => typeof window === "undefined" || !window.matchMedia("(max-width: 1180px)").matches,
+    () => typeof window === "undefined" || !window.matchMedia("(max-width: 1399px)").matches,
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [newInboxOpen, setNewInboxOpen] = useState(false);
@@ -47,15 +48,15 @@ export function Workspace() {
     }
   }, [convos.data, selectedId, isMobile]);
 
-  // Details panel: inline + open on desktop, closed (opens as an overlay) when narrow.
+  // Details panel: inline + open on wide screens, closed (opens as an overlay) below 1400.
   useEffect(() => {
-    setShowPanel(!isNarrow);
-  }, [isNarrow]);
+    setShowPanel(!isPanelOverlay);
+  }, [isPanelOverlay]);
 
-  // Leaving mobile tears down the drawer so it can't linger over the desktop layout.
+  // Once the sidebar is inline again, tear down the drawer so it can't linger.
   useEffect(() => {
-    if (!isMobile) setDrawerOpen(false);
-  }, [isMobile]);
+    if (!isCompact) setDrawerOpen(false);
+  }, [isCompact]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -109,7 +110,7 @@ export function Workspace() {
             onSelectView={selectView}
             onNewInbox={() => { setNewInboxOpen(true); setDrawerOpen(false); }}
             onNewGroup={() => { setNewGroupOpen(true); setDrawerOpen(false); }}
-            onClose={isMobile ? () => setDrawerOpen(false) : undefined}
+            onClose={isCompact ? () => setDrawerOpen(false) : undefined}
           />
           <ConversationList
             view={view}
@@ -130,11 +131,11 @@ export function Workspace() {
           />
           {showPanel && (
             <>
-              {isNarrow && <div className="panel-backdrop" onClick={() => setShowPanel(false)} />}
+              {isPanelOverlay && <div className="panel-backdrop" onClick={() => setShowPanel(false)} />}
               <ContextPanel
                 conversationId={selectedId}
                 onToast={notify}
-                onClose={isNarrow ? () => setShowPanel(false) : undefined}
+                onClose={isPanelOverlay ? () => setShowPanel(false) : undefined}
               />
             </>
           )}

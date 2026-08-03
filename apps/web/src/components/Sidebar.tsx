@@ -1,5 +1,5 @@
 import { useLogout, useMe, useSound, useViews } from "../hooks";
-import { InboxIcon, TeamIcon, PlusIcon, ThemeIcon, SoundOnIcon, SoundOffIcon, channelMeta } from "../lib/icons";
+import { InboxIcon, TeamIcon, PlusIcon, ThemeIcon, SoundOnIcon, SoundOffIcon, XIcon, channelMeta } from "../lib/icons";
 import { initials } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 
@@ -31,7 +31,7 @@ export function Sidebar({ view, onSelectView, onNewInbox, onNewGroup, onClose }:
         <span className="side__sub">Swiftee</span>
         {onClose && (
           <button className="side__close" onClick={onClose} aria-label="Close menu" title="Close">
-            ✕
+            <XIcon />
           </button>
         )}
       </div>

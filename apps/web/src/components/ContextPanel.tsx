@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { GROUP_MAX_MEMBERS, type ChannelType } from "@ding/schemas";
 import { useAddParticipant, useConversation, useRemoveParticipant } from "../hooks";
 import { initials, slaCountdown } from "../lib/format";
-import { channelMeta, PhoneIcon, MailIcon, ProfileIcon } from "../lib/icons";
+import { channelMeta, PhoneIcon, MailIcon, ProfileIcon, XIcon, ChevronRight } from "../lib/icons";
 
 const TEAM_NAME: Record<string, string> = {
   team_support: "Support team",
@@ -35,6 +35,7 @@ export function ContextPanel({ conversationId, onToast, onClose }: Props) {
   const highPriority = conv.priority === "high" || conv.priority === "urgent";
   const others = (["whatsapp", "email", "whatsapp_group"] as ChannelType[]).filter((t) => t !== conv.channel);
   const memberCount = conv.participants.length;
+  const GroupGlyph = channelMeta("whatsapp_group").Glyph;
 
   const addMember = (e: FormEvent) => {
     e.preventDefault();
@@ -65,7 +66,7 @@ export function ContextPanel({ conversationId, onToast, onClose }: Props) {
       {onClose && (
         <div className="panel__mhead">
           <span>Details</span>
-          <button onClick={onClose} aria-label="Close details" title="Close">✕</button>
+          <button onClick={onClose} aria-label="Close details" title="Close"><XIcon /></button>
         </div>
       )}
       <div className="panel__scroll">
@@ -74,7 +75,16 @@ export function ContextPanel({ conversationId, onToast, onClose }: Props) {
             {conv.contact.displayName.slice(0, 2).toUpperCase()}
           </div>
           <h3>{conv.contact.displayName}</h3>
-          <div className="co">{isGroup ? `WhatsApp group · ${memberCount} members` : conv.contact.company}</div>
+          <div className="co">
+            {isGroup ? (
+              <span className="co-ch">
+                <span className="co-ch__ic" style={{ color: "var(--group)" }}><GroupGlyph /></span>
+                {memberCount} members
+              </span>
+            ) : (
+              conv.contact.company
+            )}
+          </div>
           {!isGroup && (
             <div className="quick">
               <button title="Call"><PhoneIcon /></button>
@@ -164,9 +174,10 @@ export function ContextPanel({ conversationId, onToast, onClose }: Props) {
                       type="button"
                       className="rm"
                       title="Remove"
+                      aria-label="Remove member"
                       onClick={() => removeParticipant.mutate(p.contact.id, { onSuccess: () => onToast("Member removed") })}
                     >
-                      ✕
+                      <XIcon />
                     </button>
                   </div>
                 ))}
@@ -210,7 +221,7 @@ export function ContextPanel({ conversationId, onToast, onClose }: Props) {
                       <b>{cm.label}</b>
                       <small>View history</small>
                     </div>
-                    <span className="n">›</span>
+                    <span className="n"><ChevronRight /></span>
                   </button>
                 );
               })}
