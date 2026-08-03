@@ -66,7 +66,7 @@ export function Sidebar({ view, onSelectView, onNewInbox, onNewGroup, onClose }:
         </div>
 
         <div className="sect-label">
-          Shared inboxes <span className="line" />
+          Team Inboxes <span className="line" />
         </div>
         {data.shared.teams.map((t) => (
           <button
@@ -81,15 +81,22 @@ export function Sidebar({ view, onSelectView, onNewInbox, onNewGroup, onClose }:
             <span className="badge">{t.count}</span>
           </button>
         ))}
+
+        <div className="sect-label">
+          Channels <span className="line" />
+        </div>
         {data.shared.inboxes.map((i) => {
           const cm = i.channel ? channelMeta(i.channel) : null;
+          const Glyph = cm?.Glyph;
           return (
             <button
               key={i.key}
               className={"navrow" + (view === i.key ? " active" : "")}
               onClick={() => onSelectView(i.key)}
             >
-              <span className="cdot" style={{ background: cm ? cm.color : "var(--text-faint)" }} />
+              <span className="navicon chan" style={{ color: cm ? cm.color : "var(--text-faint)" }}>
+                {Glyph ? <Glyph /> : <span className="cdot" style={{ background: "var(--text-faint)" }} />}
+              </span>
               <span className="lbl">{i.title}</span>
               <span className={"badge" + (i.count > 0 ? " on" : "")}>{i.count}</span>
             </button>
@@ -97,7 +104,7 @@ export function Sidebar({ view, onSelectView, onNewInbox, onNewGroup, onClose }:
         })}
 
         <button className="newinbox" onClick={onNewInbox}>
-          <PlusIcon /> New inbox &amp; route
+          <PlusIcon /> New channel
         </button>
         <button className="newinbox subtle" onClick={onNewGroup}>
           <PlusIcon /> New group space

@@ -172,7 +172,7 @@ export class PrismaStore extends Store {
       { key: "mine", title: "Mine", count: await count("mine") },
       { key: "grabs", title: "Up for grabs", count: await count("grabs") },
       { key: "mentions", title: "@ Mentions", count: await count("mentions") },
-      { key: "snoozed", title: "Snoozed", count: await count("snoozed") },
+      { key: "snoozed", title: "Later", count: await count("snoozed") },
     ];
 
     const teamRows = await this.prisma.team.findMany({ where: { id: { in: userTeams } } });

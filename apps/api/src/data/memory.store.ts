@@ -172,7 +172,7 @@ export class MemoryStore extends Store {
       { key: "mine", title: "Mine", count: count("mine") },
       { key: "grabs", title: "Up for grabs", count: count("grabs") },
       { key: "mentions", title: "@ Mentions", count: count("mentions") },
-      { key: "snoozed", title: "Snoozed", count: count("snoozed") },
+      { key: "snoozed", title: "Later", count: count("snoozed") },
     ];
     const teams: ViewItem[] = this.teams
       .filter((t) => userTeams.includes(t.id))
