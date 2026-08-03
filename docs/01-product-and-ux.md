@@ -4,13 +4,13 @@
 
 > **One fast, beautiful place where every Swiftee client conversation lives — and always reaches the right person.**
 
-Swiftee talks to clients across WhatsApp (1:1 and small groups) and email. Today those live in separate apps, on personal phones, in individual inboxes — invisible to the team, impossible to route, easy to drop. Ding replaces that with a **shared, realtime team inbox** that feels as immediate as WhatsApp but works like a professional operations tool: teams, ownership, routing, SLAs, and collaboration.
+Swiftee talks to clients across WhatsApp (1:1 and small groups) and email. Today those live in separate apps, on personal phones, in individual inboxes — invisible to the team, impossible to route, easy to drop. Relay replaces that with a **shared, realtime team inbox** that feels as immediate as WhatsApp but works like a professional operations tool: teams, ownership, routing, SLAs, and collaboration.
 
 The product bar is **"nicer to use than WhatsApp itself"** — because agents live in it all day.
 
 ## Who it's for (personas)
 
-| Persona | Needs | What Ding gives them |
+| Persona | Needs | What Relay gives them |
 |---|---|---|
 | **Agent** (front-line, handles clients all day) | Speed, keyboard-first, never lose a message, know what's "mine" | My Inbound, ⌘K everything, instant send, snooze, canned replies |
 | **Team lead / manager** | Load balancing, visibility, reassign, SLAs | Shared inboxes, routing rules, reassignment, live team presence, reporting |
@@ -33,7 +33,7 @@ We deliberately keep the **familiar WhatsApp feel** (left conversation list, rig
 
 ```mermaid
 flowchart TD
-    App["Ding app shell"] --> Nav["Left rail (icons)"]
+    App["Relay app shell"] --> Nav["Left rail (icons)"]
     App --> Sidebar["Sidebar (2 sections)"]
     App --> List["Conversation list"]
     App --> Thread["Conversation view"]
@@ -155,4 +155,4 @@ The composer adapts to the conversation's channel — a subtle but important "tw
 - Voice/video calling, SMS, Instagram/Messenger (design the channel abstraction to allow them later — don't build them now).
 - A public help-centre / knowledge base (can integrate later; AI-draft can read from it).
 - Large WhatsApp community groups (not possible compliantly — see channels doc).
-- A full CRM — Ding owns conversations and light contact data; it integrates with a CRM rather than replacing one.
+- A full CRM — Relay owns conversations and light contact data; it integrates with a CRM rather than replacing one.

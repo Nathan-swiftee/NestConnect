@@ -6,7 +6,7 @@ A phased plan that ships something usable early and de-risks the hardest parts (
 
 ```mermaid
 gantt
-    title Ding delivery roadmap (indicative)
+    title Relay delivery roadmap (indicative)
     dateFormat  YYYY-MM-DD
     axisFormat  %b
     section Foundations
@@ -53,7 +53,7 @@ gantt
 - Realtime thread, conversation list, contact identity resolution, "assign to me".
 - Basic notifications (web push).
 
-**Exit:** Swiftee handles live WhatsApp customer chats in Ding on one number, end-to-end.
+**Exit:** Swiftee handles live WhatsApp customer chats in Relay on one number, end-to-end.
 
 ## Phase 2 — Shared inboxes, teams & routing (≈4 weeks)
 
@@ -76,7 +76,7 @@ gantt
 - Rich email composer (Tiptap): subject, cc/bcc, signatures, quoting, drafts.
 - **Unified Client Space**: WhatsApp + email merged into one contact timeline.
 
-**Exit:** a shared `support@` inbox is handled in Ding with the same routing/collaboration as WhatsApp.
+**Exit:** a shared `support@` inbox is handled in Relay with the same routing/collaboration as WhatsApp.
 
 ## Phase 4 — WhatsApp Groups / client spaces (≈3 weeks)
 
@@ -86,7 +86,7 @@ gantt
 - Group conversation type + participant model; group-aware composer & templates.
 - Client "space" UX in the sidebar (named rooms, pinned info).
 
-**Exit:** Swiftee runs official WhatsApp client groups inside Ding.
+**Exit:** Swiftee runs official WhatsApp client groups inside Relay.
 
 ## Phase 5 — Workflows & automation (≈4 weeks)
 
@@ -126,6 +126,6 @@ A tight **2–3 engineer** team can reach the internal-launch milestone (P2). Th
 ## Sequencing rationale
 
 1. **WhatsApp before email** — it's the primary channel and the biggest technical/compliance risk; prove it first.
-2. **Routing before groups** — the team-inbox mechanics are what make Ding valuable; groups build on them.
+2. **Routing before groups** — the team-inbox mechanics are what make Relay valuable; groups build on them.
 3. **Workflows after the manual flows work** — automate a process you already understand, not a hypothetical one.
 4. **Validate the 8-member group cap before Phase 4** — it's the one requirement with no compliant fallback.

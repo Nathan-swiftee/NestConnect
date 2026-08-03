@@ -20,10 +20,10 @@ export function LoginScreen() {
             <Logo />
           </div>
           <span className="wordmark">
-            ding<span className="dot">·</span>
+            relay<span className="dot">·</span>
           </span>
         </div>
-        <h1>Sign in to Swiftee</h1>
+        <h1>Sign in to Relay</h1>
         <p className="login__sub">Your omnichannel team inbox</p>
 
         <label className="field">

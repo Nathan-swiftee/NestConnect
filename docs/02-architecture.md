@@ -84,7 +84,7 @@ flowchart TB
       SPA["React SPA / PWA"]
     end
 
-    subgraph Core["Ding services (Railway)"]
+    subgraph Core["Relay services (Railway)"]
       direction TB
       API["API + domain core<br/>(NestJS: conversations, routing,<br/>teams, inboxes, contacts)"]
       RT["Realtime gateway<br/>(Socket.IO + Redis adapter)"]
