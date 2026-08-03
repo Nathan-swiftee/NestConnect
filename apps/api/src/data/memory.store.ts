@@ -8,6 +8,8 @@ import type {
   Inbox,
   Message,
   MessageStatus,
+  Participant,
+  ParticipantRole,
   RoutingStrategy,
   Team,
   User,
@@ -146,8 +148,9 @@ export class MemoryStore extends Store {
   }
 
   private summary(rec: ConversationRecord): Conversation {
-    const { messages: _messages, ...rest } = rec;
+    const { messages: _messages, participants: _participants, ...rest } = rec;
     void _messages;
+    void _participants;
     return rest;
   }
 
@@ -182,7 +185,7 @@ export class MemoryStore extends Store {
   async getConversation(id: string): Promise<ConversationWithMessages | undefined> {
     const rec = this.conversations.find((c) => c.id === id);
     if (!rec) return undefined;
-    return { ...this.summary(rec), messages: rec.messages };
+    return { ...this.summary(rec), messages: rec.messages, participants: rec.participants ?? [] };
   }
 
   async addMessage(
@@ -359,5 +362,98 @@ export class MemoryStore extends Store {
       }
     }
     return undefined;
+  }
+
+  /* ---- groups ---- */
+
+  async findConversationByChannelRef(channelRef: string): Promise<string | undefined> {
+    return this.conversations.find((c) => c.channelRef === channelRef)?.id;
+  }
+
+  async createContact(params: { orgId: string; displayName: string; avatarColor?: string }): Promise<Contact> {
+    const contact: Contact = {
+      id: `ct_${++this.idSeq}`,
+      orgId: params.orgId,
+      displayName: params.displayName,
+      avatarColor: params.avatarColor ?? AVATAR_PALETTE[this.contacts.length % AVATAR_PALETTE.length],
+    };
+    this.contacts.push(contact);
+    return contact;
+  }
+
+  async createGroupConversation(params: {
+    orgId: string;
+    inboxId: string;
+    contact: Contact;
+    subject: string;
+    channelRef: string;
+    inviteLink: string;
+    memberContacts: Contact[];
+    assigneeUserId?: string | null;
+    assignedTeamId?: string | null;
+  }): Promise<Conversation> {
+    const now = new Date().toISOString();
+    const id = `conv_${++this.idSeq}`;
+    const participants: Participant[] = params.memberContacts.map((ct) => ({
+      id: `part_${++this.idSeq}`,
+      conversationId: id,
+      contact: ct,
+      role: "member",
+      joinedAt: now,
+    }));
+    const rec: ConversationRecord = {
+      id,
+      orgId: params.orgId,
+      inboxId: params.inboxId,
+      channel: "whatsapp_group",
+      contact: params.contact,
+      subject: params.subject,
+      channelRef: params.channelRef,
+      inviteLink: params.inviteLink,
+      status: "open",
+      assigneeUserId: params.assigneeUserId ?? null,
+      assignedTeamId: params.assignedTeamId ?? null,
+      priority: "normal",
+      labels: [],
+      unread: false,
+      slaDueAt: null,
+      lastActivityAt: now,
+      seq: 0,
+      preview: `Group created · ${params.memberContacts.length} members`,
+      messages: [],
+      participants,
+    };
+    this.conversations.push(rec);
+    return this.summary(rec);
+  }
+
+  async listParticipants(conversationId: string): Promise<Participant[]> {
+    return this.conversations.find((c) => c.id === conversationId)?.participants ?? [];
+  }
+
+  async countParticipants(conversationId: string): Promise<number> {
+    return (this.conversations.find((c) => c.id === conversationId)?.participants ?? []).length;
+  }
+
+  async addParticipant(conversationId: string, contact: Contact, role: ParticipantRole = "member"): Promise<Participant> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) throw new Error(`Conversation ${conversationId} not found`);
+    rec.participants ??= [];
+    const existing = rec.participants.find((p) => p.contact.id === contact.id);
+    if (existing) return existing;
+    const p: Participant = {
+      id: `part_${++this.idSeq}`,
+      conversationId,
+      contact,
+      role,
+      joinedAt: new Date().toISOString(),
+    };
+    rec.participants.push(p);
+    return p;
+  }
+
+  async removeParticipant(conversationId: string, contactId: string): Promise<void> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (rec) rec.participants = (rec.participants ?? []).filter((p) => p.contact.id !== contactId);
   }
 }

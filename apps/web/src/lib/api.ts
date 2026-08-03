@@ -1,10 +1,13 @@
 import type {
+  AddParticipantInput,
   ChannelType,
   Conversation,
   ConversationWithMessages,
+  CreateGroupInput,
   CreateInboxInput,
   Inbox,
   Message,
+  Participant,
   Team,
   User,
 } from "@ding/schemas";
@@ -65,4 +68,10 @@ export const api = {
     id: string,
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },
   ) => post<Conversation>(`/conversations/${id}/assign`, input),
+  // groups
+  createGroup: (input: CreateGroupInput) => post<ConversationWithMessages>("/groups", input),
+  addParticipant: (conversationId: string, input: AddParticipantInput) =>
+    post<Participant>(`/groups/${conversationId}/participants`, input),
+  removeParticipant: (conversationId: string, contactId: string) =>
+    request<{ ok: boolean }>(`/groups/${conversationId}/participants/${contactId}`, { method: "DELETE" }),
 };

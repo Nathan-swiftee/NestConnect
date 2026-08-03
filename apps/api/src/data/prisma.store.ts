@@ -8,6 +8,8 @@ import type {
   Inbox,
   Message,
   MessageStatus,
+  Participant,
+  ParticipantRole,
   RoutingStrategy,
   User,
 } from "@ding/schemas";
@@ -18,6 +20,7 @@ import {
   mapConversationWithMessages,
   mapInbox,
   mapMessage,
+  mapParticipant,
   mapTeam,
   mapUser,
 } from "./mappers";
@@ -198,7 +201,11 @@ export class PrismaStore extends Store {
   async getConversation(id: string): Promise<ConversationWithMessages | undefined> {
     const row = await this.prisma.conversation.findUnique({
       where: { id },
-      include: { ...convInclude, messages: true },
+      include: {
+        ...convInclude,
+        messages: true,
+        participants: { include: { contact: { include: { identities: true } } } },
+      },
     });
     return row ? mapConversationWithMessages(row) : undefined;
   }
@@ -409,5 +416,84 @@ export class PrismaStore extends Store {
     if (!msg) return undefined;
     const updated = await this.prisma.message.update({ where: { id: msg.id }, data: { status } });
     return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  /* ---- groups ---- */
+
+  async findConversationByChannelRef(channelRef: string): Promise<string | undefined> {
+    const c = await this.prisma.conversation.findFirst({ where: { channelRef }, select: { id: true } });
+    return c?.id;
+  }
+
+  async createContact(params: { orgId: string; displayName: string; avatarColor?: string }): Promise<Contact> {
+    const c = await this.prisma.contact.create({
+      data: { orgId: params.orgId, displayName: params.displayName, avatarColor: params.avatarColor },
+      include: { identities: true },
+    });
+    return mapContact(c);
+  }
+
+  async createGroupConversation(params: {
+    orgId: string;
+    inboxId: string;
+    contact: Contact;
+    subject: string;
+    channelRef: string;
+    inviteLink: string;
+    memberContacts: Contact[];
+    assigneeUserId?: string | null;
+    assignedTeamId?: string | null;
+  }): Promise<Conversation> {
+    const conv = await this.prisma.conversation.create({
+      data: {
+        orgId: params.orgId,
+        inboxId: params.inboxId,
+        contactId: params.contact.id,
+        channel: "whatsapp_group",
+        subject: params.subject,
+        channelRef: params.channelRef,
+        inviteLink: params.inviteLink,
+        status: "open",
+        assigneeUserId: params.assigneeUserId ?? null,
+        assignedTeamId: params.assignedTeamId ?? null,
+        priority: "normal",
+        unread: false,
+        seq: 0,
+        preview: `Group created · ${params.memberContacts.length} members`,
+        participants: { create: params.memberContacts.map((ct) => ({ contactId: ct.id, role: "member" })) },
+      },
+      include: convInclude,
+    });
+    return mapConversation(conv);
+  }
+
+  async listParticipants(conversationId: string): Promise<Participant[]> {
+    const rows = await this.prisma.participant.findMany({
+      where: { conversationId },
+      include: { contact: { include: { identities: true } } },
+      orderBy: { joinedAt: "asc" },
+    });
+    return rows.map(mapParticipant);
+  }
+
+  async countParticipants(conversationId: string): Promise<number> {
+    return this.prisma.participant.count({ where: { conversationId } });
+  }
+
+  async addParticipant(conversationId: string, contact: Contact, role: ParticipantRole = "member"): Promise<Participant> {
+    const existing = await this.prisma.participant.findUnique({
+      where: { conversationId_contactId: { conversationId, contactId: contact.id } },
+      include: { contact: { include: { identities: true } } },
+    });
+    if (existing) return mapParticipant(existing);
+    const row = await this.prisma.participant.create({
+      data: { conversationId, contactId: contact.id, role },
+      include: { contact: { include: { identities: true } } },
+    });
+    return mapParticipant(row);
+  }
+
+  async removeParticipant(conversationId: string, contactId: string): Promise<void> {
+    await this.prisma.participant.deleteMany({ where: { conversationId, contactId } });
   }
 }

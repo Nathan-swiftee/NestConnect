@@ -5,9 +5,10 @@ interface Props {
   view: string;
   onSelectView: (key: string) => void;
   onNewInbox: () => void;
+  onNewGroup: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onNewInbox }: Props) {
+export function Sidebar({ view, onSelectView, onNewInbox, onNewGroup }: Props) {
   const { data } = useViews();
   if (!data) return <aside className="side" aria-label="Inboxes" />;
 
@@ -85,6 +86,9 @@ export function Sidebar({ view, onSelectView, onNewInbox }: Props) {
 
         <button className="newinbox" onClick={onNewInbox}>
           <PlusIcon /> New inbox &amp; route
+        </button>
+        <button className="newinbox subtle" onClick={onNewGroup}>
+          <PlusIcon /> New group space
         </button>
       </div>
     </aside>

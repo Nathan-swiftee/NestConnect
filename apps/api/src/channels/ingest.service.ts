@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { GROUP_MAX_MEMBERS } from "@ding/schemas";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoutingService } from "./routing.service";
@@ -78,6 +79,40 @@ export class IngestService {
     if (message) this.realtime.emitMessageCreated(conv.id, message);
 
     return { conversationId: conv.id, created };
+  }
+
+  /** Inbound message in an existing WhatsApp group — routed by group id, attributed to the sender. */
+  async ingestWhatsAppGroup(input: {
+    groupId: string;
+    from: string;
+    name?: string;
+    text: string;
+    channelMsgId?: string;
+  }): Promise<{ conversationId: string; created: boolean } | undefined> {
+    const conversationId = await this.store.findConversationByChannelRef(input.groupId);
+    if (!conversationId) {
+      this.logger.warn(`No group conversation for WhatsApp group ${input.groupId}`);
+      return undefined;
+    }
+    const conv = await this.store.getConversation(conversationId);
+    const contact = await this.store.upsertContactByIdentity({
+      orgId: conv?.orgId ?? "org_swiftee",
+      kind: "phone",
+      value: input.from,
+      displayName: input.name || input.from,
+    });
+    const isMember = conv?.participants.some((p) => p.contact.id === contact.id) ?? false;
+    if (!isMember && (await this.store.countParticipants(conversationId)) < GROUP_MAX_MEMBERS) {
+      await this.store.addParticipant(conversationId, contact);
+    }
+
+    const message = await this.store.appendInboundMessage(conversationId, {
+      authorName: contact.displayName,
+      body: input.text,
+      channelMsgId: input.channelMsgId,
+    });
+    if (message) this.realtime.emitMessageCreated(conversationId, message);
+    return { conversationId, created: false };
   }
 
   async ingestEmail(input: EmailInbound): Promise<{ conversationId: string; created: boolean } | undefined> {

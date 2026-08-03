@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import type { ChannelType } from "@ding/schemas";
-import { useConversation } from "../hooks";
-import { slaCountdown } from "../lib/format";
+import { useEffect, useState, type FormEvent } from "react";
+import { GROUP_MAX_MEMBERS, type ChannelType } from "@ding/schemas";
+import { useAddParticipant, useConversation, useRemoveParticipant } from "../hooks";
+import { initials, slaCountdown } from "../lib/format";
 import { channelMeta, PhoneIcon, MailIcon, ProfileIcon } from "../lib/icons";
 
 const TEAM_NAME: Record<string, string> = {
@@ -11,11 +11,16 @@ const TEAM_NAME: Record<string, string> = {
 
 interface Props {
   conversationId: string | null;
+  onToast: (msg: string) => void;
 }
 
-export function ContextPanel({ conversationId }: Props) {
+export function ContextPanel({ conversationId, onToast }: Props) {
   const { data: conv } = useConversation(conversationId);
+  const addParticipant = useAddParticipant(conversationId ?? "");
+  const removeParticipant = useRemoveParticipant(conversationId ?? "");
   const [now, setNow] = useState(() => Date.now());
+  const [memberPhone, setMemberPhone] = useState("");
+  const [memberName, setMemberName] = useState("");
 
   useEffect(() => {
     if (!conv?.slaDueAt) return;
@@ -25,10 +30,34 @@ export function ContextPanel({ conversationId }: Props) {
 
   if (!conv) return <aside className="panel" aria-label="Details" />;
 
-  const others = (["whatsapp", "email", "whatsapp_group"] as ChannelType[]).filter(
-    (t) => t !== conv.channel,
-  );
+  const isGroup = conv.channel === "whatsapp_group";
   const highPriority = conv.priority === "high" || conv.priority === "urgent";
+  const others = (["whatsapp", "email", "whatsapp_group"] as ChannelType[]).filter((t) => t !== conv.channel);
+  const memberCount = conv.participants.length;
+
+  const addMember = (e: FormEvent) => {
+    e.preventDefault();
+    const phone = memberPhone.trim();
+    if (!phone) return;
+    addParticipant.mutate(
+      { phone, name: memberName.trim() || undefined },
+      {
+        onSuccess: () => {
+          setMemberPhone("");
+          setMemberName("");
+          onToast("Member added");
+        },
+        onError: () => onToast(`Groups cap at ${GROUP_MAX_MEMBERS} members`),
+      },
+    );
+  };
+
+  const copyInvite = () => {
+    if (conv.inviteLink) {
+      navigator.clipboard?.writeText(conv.inviteLink);
+      onToast("Invite link copied");
+    }
+  };
 
   return (
     <aside className="panel" aria-label="Details">
@@ -38,18 +67,14 @@ export function ContextPanel({ conversationId }: Props) {
             {conv.contact.displayName.slice(0, 2).toUpperCase()}
           </div>
           <h3>{conv.contact.displayName}</h3>
-          <div className="co">{conv.contact.company}</div>
-          <div className="quick">
-            <button title="Call">
-              <PhoneIcon />
-            </button>
-            <button title="Email">
-              <MailIcon />
-            </button>
-            <button title="Profile">
-              <ProfileIcon />
-            </button>
-          </div>
+          <div className="co">{isGroup ? `WhatsApp group · ${memberCount} members` : conv.contact.company}</div>
+          {!isGroup && (
+            <div className="quick">
+              <button title="Call"><PhoneIcon /></button>
+              <button title="Email"><MailIcon /></button>
+              <button title="Profile"><ProfileIcon /></button>
+            </div>
+          )}
         </div>
 
         <div className="block">
@@ -70,11 +95,7 @@ export function ContextPanel({ conversationId }: Props) {
             <span className="v">
               <span
                 className="prio"
-                style={
-                  highPriority
-                    ? undefined
-                    : { background: "var(--surface-2)", color: "var(--text-muted)" }
-                }
+                style={highPriority ? undefined : { background: "var(--surface-2)", color: "var(--text-muted)" }}
               >
                 {conv.priority}
               </span>
@@ -109,39 +130,86 @@ export function ContextPanel({ conversationId }: Props) {
           </div>
         </div>
 
-        <div className="block">
-          <div className="t">Contact</div>
-          <div className="kv">
-            <span className="k">Phone</span>
-            <span className="v">{conv.contact.phone ?? "—"}</span>
-          </div>
-          <div className="kv">
-            <span className="k">Email</span>
-            <span className="v" style={{ fontWeight: 550, fontSize: 12.5 }}>
-              {conv.contact.email ?? "—"}
-            </span>
-          </div>
-        </div>
+        {isGroup ? (
+          <>
+            {conv.inviteLink && (
+              <div className="block">
+                <div className="t">Invite link</div>
+                <div className="invite">
+                  <code>{conv.inviteLink}</code>
+                  <button type="button" onClick={copyInvite}>Copy</button>
+                </div>
+              </div>
+            )}
+            <div className="block">
+              <div className="t">
+                Members <span className="count">{memberCount} / {GROUP_MAX_MEMBERS}</span>
+              </div>
+              <div className="members">
+                {conv.participants.map((p) => (
+                  <div key={p.id} className="member">
+                    <span className="mav" style={{ background: p.contact.avatarColor }}>
+                      {initials(p.contact.displayName)}
+                    </span>
+                    <span className="mname">{p.contact.displayName}</span>
+                    {p.role === "admin" && <span className="mrole">admin</span>}
+                    <button
+                      type="button"
+                      className="rm"
+                      title="Remove"
+                      onClick={() => removeParticipant.mutate(p.contact.id, { onSuccess: () => onToast("Member removed") })}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {memberCount < GROUP_MAX_MEMBERS ? (
+                <form className="addmember" onSubmit={addMember}>
+                  <input value={memberPhone} onChange={(e) => setMemberPhone(e.target.value)} placeholder="+44 7…" />
+                  <input value={memberName} onChange={(e) => setMemberName(e.target.value)} placeholder="Name (optional)" />
+                  <button type="submit" disabled={addParticipant.isPending || !memberPhone.trim()}>Add</button>
+                </form>
+              ) : (
+                <div className="capnote">Group is at the {GROUP_MAX_MEMBERS}-member limit.</div>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="block">
+              <div className="t">Contact</div>
+              <div className="kv">
+                <span className="k">Phone</span>
+                <span className="v">{conv.contact.phone ?? "—"}</span>
+              </div>
+              <div className="kv">
+                <span className="k">Email</span>
+                <span className="v" style={{ fontWeight: 550, fontSize: 12.5 }}>{conv.contact.email ?? "—"}</span>
+              </div>
+            </div>
 
-        <div className="block">
-          <div className="t">Across channels</div>
-          {others.map((t) => {
-            const cm = channelMeta(t);
-            const Glyph = cm.Glyph;
-            return (
-              <button key={t} className="xthread">
-                <div className="ic" style={{ background: cm.color }}>
-                  <Glyph />
-                </div>
-                <div className="m">
-                  <b>{cm.label}</b>
-                  <small>View history</small>
-                </div>
-                <span className="n">›</span>
-              </button>
-            );
-          })}
-        </div>
+            <div className="block">
+              <div className="t">Across channels</div>
+              {others.map((t) => {
+                const cm = channelMeta(t);
+                const Glyph = cm.Glyph;
+                return (
+                  <button key={t} className="xthread">
+                    <div className="ic" style={{ background: cm.color }}>
+                      <Glyph />
+                    </div>
+                    <div className="m">
+                      <b>{cm.label}</b>
+                      <small>View history</small>
+                    </div>
+                    <span className="n">›</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </aside>
   );

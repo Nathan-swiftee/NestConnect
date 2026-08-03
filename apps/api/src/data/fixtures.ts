@@ -3,6 +3,7 @@ import type {
   Contact,
   Inbox,
   Message,
+  Participant,
   Team,
   User,
 } from "@ding/schemas";
@@ -17,7 +18,10 @@ export const ORG_ID = "org_swiftee";
 export const DEMO_USER_ID = "usr_nathan";
 
 /** A conversation plus its message history, as held in the store. */
-export type ConversationRecord = Conversation & { messages: Message[] };
+export type ConversationRecord = Conversation & {
+  messages: Message[];
+  participants?: Participant[];
+};
 
 const now = new Date("2026-08-03T14:20:00.000Z");
 const mins = (m: number) => new Date(now.getTime() - m * 60_000).toISOString();
@@ -67,6 +71,13 @@ export function makeSeed() {
     tide: c({ id: "ct_tide", orgId: ORG_ID, displayName: "Tide & Co.", company: "Wholesale · Cardiff", phone: "+44 29 2055 0166", email: "team@tideandco.com", avatarColor: "linear-gradient(135deg,#14B8A6,#0EA5E9)" }),
   };
 
+  // Members of the demo WhatsApp group "The Ivy House" (client people + a Swiftee rep).
+  const ivyMembers: Contact[] = [
+    { id: "ct_priya", orgId: ORG_ID, displayName: "Priya · Ivy House", phone: "+44 117 496 0122", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)" },
+    { id: "ct_marco", orgId: ORG_ID, displayName: "Marco · Ivy House", phone: "+44 117 496 0140", avatarColor: "linear-gradient(135deg,#8B5CF6,#6366F1)" },
+    { id: "ct_jamesg", orgId: ORG_ID, displayName: "James · Swiftee", phone: "+44 20 7946 0100", avatarColor: "linear-gradient(135deg,#0EA5E9,#22D3EE)" },
+  ];
+
   let mid = 0;
   const msg = (
     conversationId: string,
@@ -93,8 +104,10 @@ export function makeSeed() {
   const conversations: ConversationRecord[] = [
     {
       id: "conv_ivy", orgId: ORG_ID, inboxId: "inbox_ivy", channel: "whatsapp_group",
-      contact: contacts.ivy, status: "open", assigneeUserId: DEMO_USER_ID, assignedTeamId: "team_support",
+      channelRef: "group_ivy_demo", inviteLink: "https://chat.whatsapp.com/DINGivyhouse01",
+      contact: contacts.ivy, subject: "The Ivy House", status: "open", assigneeUserId: DEMO_USER_ID, assignedTeamId: "team_support",
       priority: "high", labels: [LABEL.vip, LABEL.delivery], unread: true,
+      participants: ivyMembers.map((m, i) => ({ id: `part_ivy_${i + 1}`, conversationId: "conv_ivy", contact: m, role: (i === 2 ? "admin" : "member") as "admin" | "member", joinedAt: mins(600) })),
       slaDueAt: mins(-72), lastActivityAt: mins(1), seq: 5, preview: "Priya: Can we push the delivery to 5pm?",
       messages: [
         msg("conv_ivy", 1, "in", "contact", "Priya (The Ivy House)", "Morning! Are we still on for the linen drop today?", 320),

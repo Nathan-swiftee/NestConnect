@@ -7,6 +7,8 @@ import type {
   Inbox,
   Message,
   MessageStatus,
+  Participant,
+  ParticipantRole,
   Priority,
   RoutingStrategy,
   Team,
@@ -25,9 +27,13 @@ type ConversationFullRow = Prisma.ConversationGetPayload<{
     contact: { include: { identities: true } };
     labels: { include: { label: true } };
     messages: true;
+    participants: { include: { contact: { include: { identities: true } } } };
   };
 }>;
 type MessageRow = Prisma.MessageGetPayload<object>;
+type ParticipantRow = Prisma.ParticipantGetPayload<{
+  include: { contact: { include: { identities: true } } };
+}>;
 
 export function mapUser(u: Prisma.UserGetPayload<object>): User {
   return {
@@ -90,6 +96,16 @@ export function mapMessage(m: MessageRow): Message {
   };
 }
 
+export function mapParticipant(p: ParticipantRow): Participant {
+  return {
+    id: p.id,
+    conversationId: p.conversationId,
+    contact: mapContact(p.contact),
+    role: p.role as ParticipantRole,
+    joinedAt: p.joinedAt.toISOString(),
+  };
+}
+
 export function mapConversation(c: ConversationSummaryRow): Conversation {
   return {
     id: c.id,
@@ -98,6 +114,8 @@ export function mapConversation(c: ConversationSummaryRow): Conversation {
     channel: c.channel as ChannelType,
     contact: mapContact(c.contact),
     subject: c.subject ?? undefined,
+    inviteLink: c.inviteLink ?? undefined,
+    channelRef: c.channelRef ?? undefined,
     status: c.status as Conversation["status"],
     assigneeUserId: c.assigneeUserId,
     assignedTeamId: c.assignedTeamId,
@@ -115,5 +133,6 @@ export function mapConversationWithMessages(c: ConversationFullRow): Conversatio
   return {
     ...mapConversation(c),
     messages: [...c.messages].sort((a, b) => a.seq - b.seq).map(mapMessage),
+    participants: c.participants.map(mapParticipant),
   };
 }

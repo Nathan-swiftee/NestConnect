@@ -119,14 +119,33 @@ export const messageSchema = z.object({
 });
 export type Message = z.infer<typeof messageSchema>;
 
+/** Official WhatsApp Groups API cap: a group holds at most 8 members. */
+export const GROUP_MAX_MEMBERS = 8;
+
+export const participantRoleSchema = z.enum(["member", "admin"]);
+export type ParticipantRole = z.infer<typeof participantRoleSchema>;
+
+export const participantSchema = z.object({
+  id: z.string(),
+  conversationId: z.string(),
+  contact: contactSchema,
+  role: participantRoleSchema.default("member"),
+  joinedAt: z.string(),
+});
+export type Participant = z.infer<typeof participantSchema>;
+
 export const conversationSchema = z.object({
   id: z.string(),
   orgId: z.string(),
   inboxId: z.string(),
   channel: channelTypeSchema,
   contact: contactSchema,
-  /** Email thread subject (null for chat channels). */
+  /** Email thread subject / group name. */
   subject: z.string().nullable().optional(),
+  /** Group invite link (whatsapp_group only). */
+  inviteLink: z.string().nullable().optional(),
+  /** Provider-side reference: the WhatsApp group id (whatsapp_group only). */
+  channelRef: z.string().nullable().optional(),
   status: conversationStatusSchema.default("open"),
   assigneeUserId: z.string().nullable().default(null),
   assignedTeamId: z.string().nullable().default(null),
@@ -143,6 +162,8 @@ export type Conversation = z.infer<typeof conversationSchema>;
 /** A conversation plus its messages — the thread view payload. */
 export const conversationWithMessagesSchema = conversationSchema.extend({
   messages: z.array(messageSchema),
+  /** Group members (whatsapp_group only; empty otherwise). */
+  participants: z.array(participantSchema).default([]),
 });
 export type ConversationWithMessages = z.infer<typeof conversationWithMessagesSchema>;
 
@@ -176,6 +197,22 @@ export const loginInputSchema = z.object({
   password: z.string().min(1),
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
+
+export const groupMemberInputSchema = z.object({
+  phone: z.string().min(1),
+  name: z.string().optional(),
+});
+export type GroupMemberInput = z.infer<typeof groupMemberInputSchema>;
+
+export const createGroupInputSchema = z.object({
+  inboxId: z.string(),
+  name: z.string().min(1),
+  members: z.array(groupMemberInputSchema).max(GROUP_MAX_MEMBERS),
+});
+export type CreateGroupInput = z.infer<typeof createGroupInputSchema>;
+
+export const addParticipantInputSchema = groupMemberInputSchema;
+export type AddParticipantInput = z.infer<typeof addParticipantInputSchema>;
 
 /* ------------------------------------------------------------------ */
 /* Realtime event contract (Socket.IO)                                 */

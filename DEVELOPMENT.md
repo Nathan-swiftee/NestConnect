@@ -79,6 +79,9 @@ Per-app: `pnpm --filter @ding/api dev`, `pnpm --filter @ding/web dev`.
 | GET | `/api/channels/whatsapp/webhook` | Meta webhook verification handshake |
 | POST | `/api/channels/whatsapp/webhook` | Inbound messages + delivery statuses |
 | POST | `/api/channels/email/webhook` | Inbound email (Postmark-style), threaded by Message-ID |
+| POST | `/api/groups` | Create a WhatsApp group space (admins/managers) |
+| POST | `/api/groups/:id/participants` | Add a member (enforces the 8-member cap) |
+| DELETE | `/api/groups/:id/participants/:contactId` | Remove a member |
 
 Realtime events (Socket.IO) are defined in `packages/schemas` under
 `ServerEvent` / `ClientEvent`.
@@ -131,6 +134,29 @@ node tools/simulate-whatsapp.mjs --status wamid.mock_123 read
 Point Meta's webhook at `POST /api/channels/whatsapp/webhook` with verify token
 `WHATSAPP_VERIFY_TOKEN`. Map a WhatsApp number to an inbox via the inbox's
 `channelConfig.phoneNumberId` (falls back to the first WhatsApp inbox in dev).
+
+## WhatsApp groups (Phase 4)
+
+Official WhatsApp **group spaces** (≤8 members). A group is a `whatsapp_group`
+conversation with a participant list, an invite link, and a `channelRef` (the
+group id).
+
+- **Create**: `POST /api/groups { inboxId, name, members: [{ phone, name? }] }`
+  (admins/managers) — provisions the group (mock unless WhatsApp is live), stores
+  the invite link, adds participants, and routes it. The **8-member cap** is
+  enforced on create and add.
+- **Manage** members from the conversation's context panel, or via
+  `POST /api/groups/:id/participants` and `DELETE /api/groups/:id/participants/:contactId`.
+- **Inbound**: group messages are matched to the group by id and attributed to
+  the sending member; `group_participants_update` webhooks keep the roster live.
+
+Simulate group traffic (use the conversation's `channelRef` as `<groupRef>`):
+
+```bash
+node tools/simulate-group.mjs msg  <groupRef> "447700900999" "Priya" "Morning all!"
+node tools/simulate-group.mjs join <groupRef> "447700900888" "Sam"
+node tools/simulate-group.mjs leave <groupRef> "447700900888"
+```
 
 ## Email shared inboxes (Phase 2)
 

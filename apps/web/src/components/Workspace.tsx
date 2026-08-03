@@ -6,6 +6,7 @@ import { Thread } from "./Thread";
 import { ContextPanel } from "./ContextPanel";
 import { CommandPalette } from "./CommandPalette";
 import { CreateInboxModal } from "./CreateInboxModal";
+import { CreateGroupModal } from "./CreateGroupModal";
 import { useConversations, useRealtime, useViews } from "../hooks";
 
 export function Workspace() {
@@ -14,6 +15,7 @@ export function Workspace() {
   const [showPanel, setShowPanel] = useState(true);
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [newInboxOpen, setNewInboxOpen] = useState(false);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   useRealtime(selectedId);
@@ -64,6 +66,7 @@ export function Workspace() {
             view={view}
             onSelectView={setView}
             onNewInbox={() => setNewInboxOpen(true)}
+            onNewGroup={() => setNewGroupOpen(true)}
           />
           <ConversationList
             view={view}
@@ -79,7 +82,7 @@ export function Workspace() {
             onTogglePanel={() => setShowPanel((v) => !v)}
             onToast={notify}
           />
-          {showPanel && <ContextPanel conversationId={selectedId} />}
+          {showPanel && <ContextPanel conversationId={selectedId} onToast={notify} />}
         </div>
       </div>
 
@@ -97,6 +100,10 @@ export function Workspace() {
 
       {newInboxOpen && (
         <CreateInboxModal onClose={() => setNewInboxOpen(false)} onToast={notify} onSelectView={setView} />
+      )}
+
+      {newGroupOpen && (
+        <CreateGroupModal onClose={() => setNewGroupOpen(false)} onToast={notify} onSelectView={setView} />
       )}
 
       <div className={"toast" + (toast ? " show" : "")}>

@@ -6,6 +6,8 @@ import type {
   Inbox,
   Message,
   MessageStatus,
+  Participant,
+  ParticipantRole,
   RoutingStrategy,
   Team,
   User,
@@ -117,4 +119,32 @@ export abstract class Store {
     channelMsgId: string,
     status: MessageStatus,
   ): Promise<{ conversationId: string; message: Message } | undefined>;
+
+  /* ---- WhatsApp groups ---- */
+
+  abstract findConversationByChannelRef(channelRef: string): Promise<string | undefined>;
+
+  /** Create a bare contact (e.g. the synthetic contact that represents a group). */
+  abstract createContact(params: {
+    orgId: string;
+    displayName: string;
+    avatarColor?: string;
+  }): Promise<Contact>;
+
+  abstract createGroupConversation(params: {
+    orgId: string;
+    inboxId: string;
+    contact: Contact;
+    subject: string;
+    channelRef: string;
+    inviteLink: string;
+    memberContacts: Contact[];
+    assigneeUserId?: string | null;
+    assignedTeamId?: string | null;
+  }): Promise<Conversation>;
+
+  abstract listParticipants(conversationId: string): Promise<Participant[]>;
+  abstract countParticipants(conversationId: string): Promise<number>;
+  abstract addParticipant(conversationId: string, contact: Contact, role?: ParticipantRole): Promise<Participant>;
+  abstract removeParticipant(conversationId: string, contactId: string): Promise<void>;
 }
