@@ -1,0 +1,330 @@
+// Ding data model — the Postgres/Prisma schema behind the platform.
+// Phase 0 runs on in-memory fixtures; this is the real persistence layer,
+// ready for `prisma migrate`. Mirrors docs/04-data-model.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ChannelType {
+  whatsapp
+  whatsapp_group
+  email
+}
+
+enum ConversationStatus {
+  open
+  pending
+  snoozed
+  closed
+}
+
+enum MessageDirection {
+  in
+  out
+}
+
+enum MessageStatus {
+  queued
+  sent
+  delivered
+  read
+  failed
+}
+
+enum AuthorType {
+  contact
+  user
+  system
+}
+
+enum Priority {
+  low
+  normal
+  high
+  urgent
+}
+
+enum Role {
+  admin
+  manager
+  agent
+}
+
+enum RoutingStrategy {
+  manual
+  round_robin
+  load_balanced
+  most_idle
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  region    String   @default("uk")
+  createdAt DateTime @default(now())
+
+  users         User[]
+  teams         Team[]
+  inboxes       Inbox[]
+  contacts      Contact[]
+  conversations Conversation[]
+  labels        Label[]
+  templates     Template[]
+  auditLogs     AuditLog[]
+}
+
+model User {
+  id          String   @id @default(cuid())
+  orgId       String
+  name        String
+  email       String
+  role        Role     @default(agent)
+  avatarColor String?
+  online      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  org         Organization   @relation(fields: [orgId], references: [id])
+  memberships TeamMember[]
+  assigned    Conversation[] @relation("assignee")
+  messages    Message[]
+  notes       Note[]
+
+  @@unique([orgId, email])
+  @@index([orgId])
+}
+
+model Team {
+  id              String          @id @default(cuid())
+  orgId           String
+  name            String
+  routingStrategy RoutingStrategy @default(manual)
+
+  org           Organization   @relation(fields: [orgId], references: [id])
+  members       TeamMember[]
+  inboxes       InboxTeam[]
+  conversations Conversation[] @relation("assignedTeam")
+
+  @@index([orgId])
+}
+
+model TeamMember {
+  userId String
+  teamId String
+  role   String @default("member")
+
+  user User @relation(fields: [userId], references: [id])
+  team Team @relation(fields: [teamId], references: [id])
+
+  @@id([userId, teamId])
+}
+
+model Inbox {
+  id              String          @id @default(cuid())
+  orgId           String
+  type            ChannelType
+  name            String
+  handle          String
+  routingStrategy RoutingStrategy @default(manual)
+  channelConfig   Json?
+  createdAt       DateTime        @default(now())
+
+  org           Organization   @relation(fields: [orgId], references: [id])
+  teams         InboxTeam[]
+  conversations Conversation[]
+
+  @@index([orgId])
+}
+
+model InboxTeam {
+  inboxId String
+  teamId  String
+
+  inbox Inbox @relation(fields: [inboxId], references: [id])
+  team  Team  @relation(fields: [teamId], references: [id])
+
+  @@id([inboxId, teamId])
+}
+
+model Contact {
+  id          String   @id @default(cuid())
+  orgId       String
+  displayName String
+  company     String?
+  avatarColor String?
+  ownerUserId String?
+  ownerTeamId String?
+  createdAt   DateTime @default(now())
+
+  org           Organization      @relation(fields: [orgId], references: [id])
+  identities    ContactIdentity[]
+  conversations Conversation[]
+
+  @@index([orgId])
+}
+
+model ContactIdentity {
+  id        String  @id @default(cuid())
+  contactId String
+  kind      String // phone | email | wa_id
+  value     String
+  verified  Boolean @default(false)
+
+  contact Contact @relation(fields: [contactId], references: [id])
+
+  @@unique([kind, value])
+  @@index([contactId])
+}
+
+model Conversation {
+  id             String             @id @default(cuid())
+  orgId          String
+  inboxId        String
+  contactId      String
+  channel        ChannelType
+  status         ConversationStatus @default(open)
+  assigneeUserId String?
+  assignedTeamId String?
+  priority       Priority           @default(normal)
+  unread         Boolean            @default(false)
+  slaDueAt       DateTime?
+  lastActivityAt DateTime           @default(now())
+  seq            Int                @default(0)
+  preview        String             @default("")
+  createdAt      DateTime           @default(now())
+
+  org              Organization        @relation(fields: [orgId], references: [id])
+  inbox            Inbox               @relation(fields: [inboxId], references: [id])
+  contact          Contact             @relation(fields: [contactId], references: [id])
+  assignee         User?               @relation("assignee", fields: [assigneeUserId], references: [id])
+  team             Team?               @relation("assignedTeam", fields: [assignedTeamId], references: [id])
+  messages         Message[]
+  notes            Note[]
+  labels           ConversationLabel[]
+  assignmentEvents AssignmentEvent[]
+
+  @@index([orgId, inboxId, status, lastActivityAt])
+  @@index([orgId, assigneeUserId, status, lastActivityAt])
+}
+
+model Message {
+  id             String           @id @default(cuid())
+  conversationId String
+  seq            Int
+  direction      MessageDirection
+  authorType     AuthorType
+  authorUserId   String?
+  authorName     String?
+  body           String
+  status         MessageStatus    @default(sent)
+  internal       Boolean          @default(false)
+  channelMsgId   String?
+  createdAt      DateTime         @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  author       User?        @relation(fields: [authorUserId], references: [id])
+  attachments  Attachment[]
+
+  @@index([conversationId, seq])
+}
+
+model Attachment {
+  id        String @id @default(cuid())
+  messageId String
+  r2Key     String
+  mime      String
+  size      Int
+  filename  String
+
+  message Message @relation(fields: [messageId], references: [id])
+}
+
+model Note {
+  id             String   @id @default(cuid())
+  conversationId String
+  authorUserId   String
+  body           String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  author       User         @relation(fields: [authorUserId], references: [id])
+}
+
+model Label {
+  id    String @id @default(cuid())
+  orgId String
+  name  String
+  color String
+
+  org           Organization        @relation(fields: [orgId], references: [id])
+  conversations ConversationLabel[]
+
+  @@unique([orgId, name])
+}
+
+model ConversationLabel {
+  conversationId String
+  labelId        String
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  label        Label        @relation(fields: [labelId], references: [id])
+
+  @@id([conversationId, labelId])
+}
+
+model AssignmentEvent {
+  id             String   @id @default(cuid())
+  conversationId String
+  fromUserId     String?
+  toUserId       String?
+  toTeamId       String?
+  byUserId       String?
+  reason         String?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+}
+
+model Template {
+  id             String @id @default(cuid())
+  orgId          String
+  name           String
+  category       String // marketing | utility | authentication
+  language       String @default("en")
+  body           String
+  approvalStatus String @default("pending")
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId, name, language])
+}
+
+model RoutingRule {
+  id         String          @id @default(cuid())
+  inboxId    String?
+  teamId     String?
+  strategy   RoutingStrategy @default(manual)
+  conditions Json?
+  priority   Int             @default(0)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  orgId     String
+  actor     String
+  action    String
+  target    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, createdAt])
+}

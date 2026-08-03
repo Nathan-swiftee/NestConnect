@@ -1,0 +1,95 @@
+import { useViews } from "../hooks";
+import { InboxIcon, TeamIcon, PlusIcon, channelMeta } from "../lib/icons";
+
+interface Props {
+  view: string;
+  onSelectView: (key: string) => void;
+  onToast: (msg: string) => void;
+}
+
+export function Sidebar({ view, onSelectView, onToast }: Props) {
+  const { data } = useViews();
+  if (!data) return <aside className="side" aria-label="Inboxes" />;
+
+  const inbound = data.my.find((m) => m.key === "inbound");
+  const subs = data.my.filter((m) => m.key !== "inbound");
+
+  return (
+    <aside className="side" aria-label="Inboxes">
+      <div className="side__head">
+        <span className="wordmark">
+          ding<span className="dot">·</span>
+        </span>
+        <span className="side__sub">Swiftee</span>
+      </div>
+      <div className="side__scroll">
+        <div className="sect-label">
+          My space <span className="line" />
+        </div>
+        {inbound && (
+          <button
+            className={"navrow" + (view === inbound.key ? " active" : "")}
+            onClick={() => onSelectView(inbound.key)}
+          >
+            <span className="navicon">
+              <InboxIcon />
+            </span>
+            <span className="lbl">{inbound.title}</span>
+            <span className="badge on">{inbound.count}</span>
+          </button>
+        )}
+        <div className="sub">
+          {subs.map((s) => (
+            <button
+              key={s.key}
+              className={"subrow" + (view === s.key ? " active" : "")}
+              onClick={() => onSelectView(s.key)}
+            >
+              <span className="mk" />
+              <span className="lbl">{s.title}</span>
+              <span className="n">{s.count}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="sect-label">
+          Shared inboxes <span className="line" />
+        </div>
+        {data.shared.teams.map((t) => (
+          <button
+            key={t.key}
+            className={"navrow" + (view === t.key ? " active" : "")}
+            onClick={() => onSelectView(t.key)}
+          >
+            <span className="navicon">
+              <TeamIcon />
+            </span>
+            <span className="lbl">{t.title}</span>
+            <span className="badge">{t.count}</span>
+          </button>
+        ))}
+        {data.shared.inboxes.map((i) => {
+          const cm = i.channel ? channelMeta(i.channel) : null;
+          return (
+            <button
+              key={i.key}
+              className={"navrow" + (view === i.key ? " active" : "")}
+              onClick={() => onSelectView(i.key)}
+            >
+              <span className="cdot" style={{ background: cm ? cm.color : "var(--text-faint)" }} />
+              <span className="lbl">{i.title}</span>
+              <span className={"badge" + (i.count > 0 ? " on" : "")}>{i.count}</span>
+            </button>
+          );
+        })}
+
+        <button
+          className="newinbox"
+          onClick={() => onToast("Connect a WhatsApp number, group or email — then pick a team")}
+        >
+          <PlusIcon /> New inbox &amp; route
+        </button>
+      </div>
+    </aside>
+  );
+}

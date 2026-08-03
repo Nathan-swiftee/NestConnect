@@ -2,7 +2,13 @@
 
 > A sleek, WhatsApp-native team inbox for Swiftee. Unifies **WhatsApp Business** (1:1 and small client **groups**), **shared email inboxes**, teams, routing, and (later) workflows — with realtime, multiplayer UX.
 
-This repository currently holds the **product + technical plan**. No application code has been written yet — these docs are the blueprint we build from.
+This repository holds the **product + technical plan** _and_ a running **Phase 0 scaffold** — a pnpm/Turborepo monorepo (React app shell + NestJS API + realtime + shared schemas) that boots with zero infrastructure. Run it:
+
+```bash
+pnpm install && pnpm dev     # web → :5173, API → :3001
+```
+
+See **[DEVELOPMENT.md](DEVELOPMENT.md)** for the dev guide and the Postgres/Redis path.
 
 ---
 
