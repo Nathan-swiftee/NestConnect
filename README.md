@@ -14,6 +14,10 @@ Ding is a **team inbox** in the family of Front / Missive / Intercom / Chatwoot,
 1. **A two-section sidebar** — a personal **My Inbound** space (what's assigned to me + inbound my team hasn't picked up yet) sitting above **Shared Inboxes** (team-owned WhatsApp numbers, group spaces and email addresses you can create and route on the fly).
 2. **Multiplayer, realtime everything** — WhatsApp-speed delivery, typing/read receipts, live presence and collision detection so two agents never talk over each other, plus an internal collaboration lane ("chat about the chat") beside every client thread.
 
+## See it
+
+An interactive concept mockup of the main screen lives at [`docs/mockups/ding-inbox.html`](docs/mockups/ding-inbox.html) — the two-section sidebar (My Space / Shared Inboxes), a live WhatsApp-style thread with an inline internal note, the channel-aware composer, and ⌘K routing. Open it in a browser; it's clickable (switch views, open conversations, press ⌘K).
+
 ## The single most important decision
 
 **Go 100% official on WhatsApp.** As of 2026, Meta ships an official **Groups API** (small groups, ≤8 members, invite-link join, up to 10,000 groups per number). This means Swiftee's "groups with clients" requirement can be met **on the compliant WhatsApp Business Platform** — we do **not** need Baileys / whatsapp-web.js, which remain a Terms-of-Service violation and, per 2026 field data, get numbers **banned within 2–8 weeks**. Betting the business's primary channel on a ban-prone grey-market library would be a mistake. See [`docs/03-channels.md`](docs/03-channels.md).
