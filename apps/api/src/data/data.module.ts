@@ -1,13 +1,19 @@
-import { Global, Module } from "@nestjs/common";
+import { Global, Module, type Provider } from "@nestjs/common";
+import { env } from "../config/env";
 import { Store } from "./store";
+import { MemoryStore } from "./memory.store";
+import { PrismaService } from "./prisma.service";
+import { PrismaStore } from "./prisma.store";
 
-/**
- * Provides the shared data store app-wide. Swapping the in-memory Store for a
- * Prisma-backed one later is a change confined to this module.
- */
+// Choose the store implementation once, by configuration. Services depend only
+// on the abstract `Store`, so this is the single place persistence is decided.
+const providers: Provider[] = env.usingDatabase
+  ? [PrismaService, { provide: Store, useClass: PrismaStore }]
+  : [{ provide: Store, useClass: MemoryStore }];
+
 @Global()
 @Module({
-  providers: [Store],
+  providers,
   exports: [Store],
 })
 export class DataModule {}

@@ -1,0 +1,306 @@
+import { Injectable } from "@nestjs/common";
+import type {
+  ChannelType,
+  Contact,
+  Conversation,
+  ConversationWithMessages,
+  Inbox,
+  Message,
+  MessageStatus,
+  Team,
+  User,
+} from "@ding/schemas";
+import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
+import { Store, type AppendInboundInput, type SidebarViews, type ViewItem } from "./store";
+
+const AVATAR_PALETTE = [
+  "linear-gradient(135deg,#F97316,#DB2777)",
+  "linear-gradient(135deg,#0EA5E9,#2563EB)",
+  "linear-gradient(135deg,#10B981,#059669)",
+  "linear-gradient(135deg,#6366F1,#A855F7)",
+  "linear-gradient(135deg,#F59E0B,#EF4444)",
+  "linear-gradient(135deg,#14B8A6,#0EA5E9)",
+];
+
+/** Zero-infrastructure store backed by in-memory fixtures. Default in dev. */
+@Injectable()
+export class MemoryStore extends Store {
+  private users: User[];
+  private teams: Team[];
+  private membership: Record<string, string[]>;
+  private inboxes: Inbox[];
+  private conversations: ConversationRecord[];
+  private contacts: Contact[];
+  private idSeq = 10_000;
+
+  constructor() {
+    super();
+    const seed = makeSeed();
+    this.users = seed.users;
+    this.teams = seed.teams;
+    this.membership = seed.membership;
+    this.inboxes = seed.inboxes;
+    this.conversations = seed.conversations;
+    this.contacts = seed.conversations.map((c) => ({ ...c.contact }));
+  }
+
+  get demoUserId(): string {
+    return DEMO_USER_ID;
+  }
+
+  async getUser(id: string): Promise<User | undefined> {
+    return this.users.find((u) => u.id === id);
+  }
+
+  async teamsForUser(userId: string): Promise<string[]> {
+    return this.membership[userId] ?? [];
+  }
+
+  async me(userId: string) {
+    const user = this.users.find((u) => u.id === userId);
+    const teamIds = this.membership[userId] ?? [];
+    return { user, teams: this.teams.filter((t) => teamIds.includes(t.id)) };
+  }
+
+  async listInboxes(): Promise<Inbox[]> {
+    return this.inboxes;
+  }
+
+  async getMembers(teamId: string): Promise<User[]> {
+    const ids = Object.entries(this.membership)
+      .filter(([, teams]) => teams.includes(teamId))
+      .map(([userId]) => userId);
+    return this.users.filter((u) => ids.includes(u.id));
+  }
+
+  private inbox(id: string): Inbox | undefined {
+    return this.inboxes.find((i) => i.id === id);
+  }
+
+  private mentionToken(userId: string): string {
+    const u = this.users.find((x) => x.id === userId);
+    return "@" + (u?.email.split("@")[0].toLowerCase() ?? "");
+  }
+
+  private isUpForGrabs(rec: ConversationRecord, userTeams: string[]): boolean {
+    if (rec.assigneeUserId) return false;
+    if (rec.status === "closed") return false;
+    const inbox = this.inbox(rec.inboxId);
+    return !!inbox && inbox.teamIds.some((t) => userTeams.includes(t));
+  }
+
+  private matchesView(rec: ConversationRecord, view: string, userId: string, userTeams: string[]): boolean {
+    const active = rec.status === "open" || rec.status === "pending";
+    if (view === "mine") return rec.assigneeUserId === userId && active;
+    if (view === "grabs") return this.isUpForGrabs(rec, userTeams);
+    if (view === "inbound") return (rec.assigneeUserId === userId && active) || this.isUpForGrabs(rec, userTeams);
+    if (view === "snoozed") return rec.status === "snoozed";
+    if (view === "mentions") {
+      const token = this.mentionToken(userId);
+      return rec.messages.some((m) => m.internal && m.body.toLowerCase().includes(token));
+    }
+    if (view.startsWith("team:")) {
+      const inbox = this.inbox(rec.inboxId);
+      return !!inbox && inbox.teamIds.includes(view.slice(5));
+    }
+    if (view.startsWith("inbox:")) return rec.inboxId === view.slice(6);
+    return false;
+  }
+
+  private summary(rec: ConversationRecord): Conversation {
+    const { messages: _messages, ...rest } = rec;
+    void _messages;
+    return rest;
+  }
+
+  async listConversations(view: string, userId: string): Promise<Conversation[]> {
+    const userTeams = this.membership[userId] ?? [];
+    return this.conversations
+      .filter((r) => this.matchesView(r, view, userId, userTeams))
+      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+      .map((r) => this.summary(r));
+  }
+
+  async views(userId: string): Promise<SidebarViews> {
+    const userTeams = this.membership[userId] ?? [];
+    const count = (view: string) =>
+      this.conversations.filter((r) => this.matchesView(r, view, userId, userTeams)).length;
+    const my: ViewItem[] = [
+      { key: "inbound", title: "My Inbound", count: count("inbound") },
+      { key: "mine", title: "Mine", count: count("mine") },
+      { key: "grabs", title: "Up for grabs", count: count("grabs") },
+      { key: "mentions", title: "@ Mentions", count: count("mentions") },
+      { key: "snoozed", title: "Snoozed", count: count("snoozed") },
+    ];
+    const teams: ViewItem[] = this.teams
+      .filter((t) => userTeams.includes(t.id))
+      .map((t) => ({ key: `team:${t.id}`, title: t.name, count: count(`team:${t.id}`) }));
+    const inboxes: ViewItem[] = this.inboxes
+      .filter((i) => i.teamIds.some((t) => userTeams.includes(t)))
+      .map((i) => ({ key: `inbox:${i.id}`, title: i.name, count: count(`inbox:${i.id}`), channel: i.type, handle: i.handle }));
+    return { my, shared: { teams, inboxes } };
+  }
+
+  async getConversation(id: string): Promise<ConversationWithMessages | undefined> {
+    const rec = this.conversations.find((c) => c.id === id);
+    if (!rec) return undefined;
+    return { ...this.summary(rec), messages: rec.messages };
+  }
+
+  async addMessage(
+    conversationId: string,
+    input: { body: string; internal: boolean },
+    author: User,
+  ): Promise<Message | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    const message: Message = {
+      id: `msg_live_${++this.idSeq}`,
+      conversationId,
+      seq: ++rec.seq,
+      direction: "out",
+      authorType: "user",
+      authorName: author.name,
+      body: input.body,
+      status: "sent",
+      internal: input.internal,
+      createdAt: new Date().toISOString(),
+    };
+    rec.messages.push(message);
+    rec.lastActivityAt = message.createdAt;
+    rec.unread = false;
+    if (!input.internal) rec.preview = input.body;
+    return message;
+  }
+
+  async assign(
+    conversationId: string,
+    input: { assigneeUserId?: string | null; assignedTeamId?: string | null },
+  ): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    if (input.assigneeUserId !== undefined) rec.assigneeUserId = input.assigneeUserId;
+    if (input.assignedTeamId !== undefined) rec.assignedTeamId = input.assignedTeamId;
+    rec.lastActivityAt = new Date().toISOString();
+    return this.summary(rec);
+  }
+
+  async setMessageChannelId(messageId: string, channelMsgId: string): Promise<void> {
+    for (const rec of this.conversations) {
+      const m = rec.messages.find((x) => x.id === messageId);
+      if (m) {
+        m.channelMsgId = channelMsgId;
+        return;
+      }
+    }
+  }
+
+  /* ---- ingestion ---- */
+
+  async getInboxByWhatsAppPhoneId(_phoneNumberId: string): Promise<Inbox | undefined> {
+    void _phoneNumberId;
+    return this.inboxes.find((i) => i.type === "whatsapp");
+  }
+
+  async upsertContactByIdentity(params: {
+    orgId: string;
+    kind: "phone" | "email" | "wa_id";
+    value: string;
+    displayName: string;
+    company?: string;
+    avatarColor?: string;
+  }): Promise<Contact> {
+    const key = params.kind === "email" ? "email" : "phone";
+    const existing = this.contacts.find((c) => (c as Record<string, unknown>)[key] === params.value);
+    if (existing) return existing;
+    const contact: Contact = {
+      id: `ct_${++this.idSeq}`,
+      orgId: params.orgId,
+      displayName: params.displayName,
+      company: params.company,
+      avatarColor: params.avatarColor ?? AVATAR_PALETTE[this.contacts.length % AVATAR_PALETTE.length],
+      [key]: params.value,
+    } as Contact;
+    this.contacts.push(contact);
+    return contact;
+  }
+
+  async findOrCreateOpenConversation(params: {
+    orgId: string;
+    inboxId: string;
+    contact: Contact;
+    channel: ChannelType;
+    assigneeUserId?: string | null;
+    assignedTeamId?: string | null;
+  }): Promise<{ conversation: Conversation; created: boolean }> {
+    const open = this.conversations.find(
+      (c) =>
+        c.inboxId === params.inboxId &&
+        c.contact.id === params.contact.id &&
+        (c.status === "open" || c.status === "pending"),
+    );
+    if (open) return { conversation: this.summary(open), created: false };
+
+    const now = new Date().toISOString();
+    const rec: ConversationRecord = {
+      id: `conv_${++this.idSeq}`,
+      orgId: params.orgId,
+      inboxId: params.inboxId,
+      channel: params.channel,
+      contact: params.contact,
+      status: "open",
+      assigneeUserId: params.assigneeUserId ?? null,
+      assignedTeamId: params.assignedTeamId ?? null,
+      priority: "normal",
+      labels: [],
+      unread: true,
+      slaDueAt: null,
+      lastActivityAt: now,
+      seq: 0,
+      preview: "",
+      messages: [],
+    };
+    this.conversations.push(rec);
+    return { conversation: this.summary(rec), created: true };
+  }
+
+  async appendInboundMessage(
+    conversationId: string,
+    input: AppendInboundInput,
+  ): Promise<Message | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    const message: Message = {
+      id: `msg_in_${++this.idSeq}`,
+      conversationId,
+      seq: ++rec.seq,
+      direction: "in",
+      authorType: "contact",
+      authorName: input.authorName,
+      body: input.body,
+      status: "delivered",
+      internal: false,
+      channelMsgId: input.channelMsgId,
+      createdAt: new Date().toISOString(),
+    };
+    rec.messages.push(message);
+    rec.lastActivityAt = message.createdAt;
+    rec.unread = true;
+    rec.preview = input.body;
+    return message;
+  }
+
+  async updateMessageStatusByChannelId(
+    channelMsgId: string,
+    status: MessageStatus,
+  ): Promise<{ conversationId: string; message: Message } | undefined> {
+    for (const rec of this.conversations) {
+      const m = rec.messages.find((x) => x.channelMsgId === channelMsgId);
+      if (m) {
+        m.status = status;
+        return { conversationId: rec.id, message: m };
+      }
+    }
+    return undefined;
+  }
+}

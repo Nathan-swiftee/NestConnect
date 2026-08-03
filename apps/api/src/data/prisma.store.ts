@@ -1,0 +1,354 @@
+import { Injectable } from "@nestjs/common";
+import type { Prisma } from "@prisma/client";
+import type {
+  ChannelType,
+  Contact,
+  Conversation,
+  ConversationWithMessages,
+  Inbox,
+  Message,
+  MessageStatus,
+  User,
+} from "@ding/schemas";
+import { DEMO_USER_ID, ORG_ID } from "./fixtures";
+import {
+  mapContact,
+  mapConversation,
+  mapConversationWithMessages,
+  mapInbox,
+  mapMessage,
+  mapTeam,
+  mapUser,
+} from "./mappers";
+import { PrismaService } from "./prisma.service";
+import { Store, type AppendInboundInput, type SidebarViews, type ViewItem } from "./store";
+
+const convInclude = {
+  contact: { include: { identities: true } },
+  labels: { include: { label: true } },
+} satisfies Prisma.ConversationInclude;
+
+/** Postgres-backed store (active when DATABASE_URL is set). */
+@Injectable()
+export class PrismaStore extends Store {
+  constructor(private readonly prisma: PrismaService) {
+    super();
+  }
+
+  get demoUserId(): string {
+    return DEMO_USER_ID;
+  }
+
+  async getUser(id: string): Promise<User | undefined> {
+    const u = await this.prisma.user.findUnique({ where: { id } });
+    return u ? mapUser(u) : undefined;
+  }
+
+  async teamsForUser(userId: string): Promise<string[]> {
+    const rows = await this.prisma.teamMember.findMany({ where: { userId } });
+    return rows.map((r) => r.teamId);
+  }
+
+  async me(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const memberships = await this.prisma.teamMember.findMany({
+      where: { userId },
+      include: { team: true },
+    });
+    return {
+      user: user ? mapUser(user) : undefined,
+      teams: memberships.map((m) => mapTeam(m.team)),
+    };
+  }
+
+  async listInboxes(): Promise<Inbox[]> {
+    const rows = await this.prisma.inbox.findMany({ where: { orgId: ORG_ID }, include: { teams: true } });
+    return rows.map(mapInbox);
+  }
+
+  async getMembers(teamId: string): Promise<User[]> {
+    const rows = await this.prisma.teamMember.findMany({ where: { teamId }, include: { user: true } });
+    return rows.map((r) => mapUser(r.user));
+  }
+
+  private async mentionToken(userId: string): Promise<string> {
+    const u = await this.prisma.user.findUnique({ where: { id: userId } });
+    return "@" + (u?.email.split("@")[0].toLowerCase() ?? "");
+  }
+
+  private buildWhere(
+    view: string,
+    userId: string,
+    userTeams: string[],
+    token: string,
+  ): Prisma.ConversationWhereInput {
+    const org = { orgId: ORG_ID };
+    const active: Prisma.ConversationWhereInput = { status: { in: ["open", "pending"] } };
+    const mine: Prisma.ConversationWhereInput = { ...org, ...active, assigneeUserId: userId };
+    const grabs: Prisma.ConversationWhereInput = {
+      ...org,
+      ...active,
+      assigneeUserId: null,
+      inbox: { teams: { some: { teamId: { in: userTeams } } } },
+    };
+    if (view === "mine") return mine;
+    if (view === "grabs") return grabs;
+    if (view === "inbound") return { OR: [mine, grabs] };
+    if (view === "snoozed") return { ...org, status: "snoozed" };
+    if (view === "mentions") {
+      return {
+        ...org,
+        messages: { some: { internal: true, body: { contains: token, mode: "insensitive" } } },
+      };
+    }
+    if (view.startsWith("team:")) {
+      return { ...org, inbox: { teams: { some: { teamId: view.slice(5) } } } };
+    }
+    if (view.startsWith("inbox:")) return { ...org, inboxId: view.slice(6) };
+    return { id: "__none__" };
+  }
+
+  async listConversations(view: string, userId: string): Promise<Conversation[]> {
+    const userTeams = await this.teamsForUser(userId);
+    const token = await this.mentionToken(userId);
+    const rows = await this.prisma.conversation.findMany({
+      where: this.buildWhere(view, userId, userTeams, token),
+      include: convInclude,
+      orderBy: { lastActivityAt: "desc" },
+    });
+    return rows.map(mapConversation);
+  }
+
+  async views(userId: string): Promise<SidebarViews> {
+    const userTeams = await this.teamsForUser(userId);
+    const token = await this.mentionToken(userId);
+    const count = (view: string) =>
+      this.prisma.conversation.count({ where: this.buildWhere(view, userId, userTeams, token) });
+
+    const my: ViewItem[] = [
+      { key: "inbound", title: "My Inbound", count: await count("inbound") },
+      { key: "mine", title: "Mine", count: await count("mine") },
+      { key: "grabs", title: "Up for grabs", count: await count("grabs") },
+      { key: "mentions", title: "@ Mentions", count: await count("mentions") },
+      { key: "snoozed", title: "Snoozed", count: await count("snoozed") },
+    ];
+
+    const teamRows = await this.prisma.team.findMany({ where: { id: { in: userTeams } } });
+    const teams: ViewItem[] = [];
+    for (const t of teamRows) {
+      teams.push({ key: `team:${t.id}`, title: t.name, count: await count(`team:${t.id}`) });
+    }
+
+    const inboxRows = await this.prisma.inbox.findMany({
+      where: { teams: { some: { teamId: { in: userTeams } } } },
+      include: { teams: true },
+    });
+    const inboxes: ViewItem[] = [];
+    for (const i of inboxRows) {
+      inboxes.push({
+        key: `inbox:${i.id}`,
+        title: i.name,
+        count: await count(`inbox:${i.id}`),
+        channel: i.type as ChannelType,
+        handle: i.handle,
+      });
+    }
+
+    return { my, shared: { teams, inboxes } };
+  }
+
+  async getConversation(id: string): Promise<ConversationWithMessages | undefined> {
+    const row = await this.prisma.conversation.findUnique({
+      where: { id },
+      include: { ...convInclude, messages: true },
+    });
+    return row ? mapConversationWithMessages(row) : undefined;
+  }
+
+  async addMessage(
+    conversationId: string,
+    input: { body: string; internal: boolean },
+    author: User,
+  ): Promise<Message | undefined> {
+    const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return undefined;
+    const seq = conv.seq + 1;
+    const [message] = await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          conversationId,
+          seq,
+          direction: "out",
+          authorType: "user",
+          authorUserId: author.id,
+          authorName: author.name,
+          body: input.body,
+          status: "sent",
+          internal: input.internal,
+        },
+      }),
+      this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          seq,
+          lastActivityAt: new Date(),
+          unread: false,
+          ...(input.internal ? {} : { preview: input.body }),
+        },
+      }),
+    ]);
+    return mapMessage(message);
+  }
+
+  async assign(
+    conversationId: string,
+    input: { assigneeUserId?: string | null; assignedTeamId?: string | null },
+    byUserId?: string,
+  ): Promise<Conversation | undefined> {
+    const data: Prisma.ConversationUpdateInput = { lastActivityAt: new Date() };
+    if (input.assigneeUserId !== undefined)
+      data.assignee = input.assigneeUserId
+        ? { connect: { id: input.assigneeUserId } }
+        : { disconnect: true };
+    if (input.assignedTeamId !== undefined)
+      data.team = input.assignedTeamId ? { connect: { id: input.assignedTeamId } } : { disconnect: true };
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data,
+        include: convInclude,
+      });
+      await this.prisma.assignmentEvent.create({
+        data: {
+          conversationId,
+          toUserId: input.assigneeUserId ?? null,
+          toTeamId: input.assignedTeamId ?? null,
+          byUserId: byUserId ?? null,
+        },
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async setMessageChannelId(messageId: string, channelMsgId: string): Promise<void> {
+    try {
+      await this.prisma.message.update({ where: { id: messageId }, data: { channelMsgId } });
+    } catch {
+      /* message gone — nothing to reconcile */
+    }
+  }
+
+  /* ---- ingestion ---- */
+
+  async getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined> {
+    const rows = await this.prisma.inbox.findMany({
+      where: { orgId: ORG_ID, type: { in: ["whatsapp", "whatsapp_group"] } },
+      include: { teams: true },
+    });
+    const byConfig = rows.find(
+      (i) => (i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId === phoneNumberId,
+    );
+    const target = byConfig ?? rows.find((i) => i.type === "whatsapp") ?? rows[0];
+    return target ? mapInbox(target) : undefined;
+  }
+
+  async upsertContactByIdentity(params: {
+    orgId: string;
+    kind: "phone" | "email" | "wa_id";
+    value: string;
+    displayName: string;
+    company?: string;
+    avatarColor?: string;
+  }): Promise<Contact> {
+    const ident = await this.prisma.contactIdentity.findUnique({
+      where: { kind_value: { kind: params.kind, value: params.value } },
+      include: { contact: { include: { identities: true } } },
+    });
+    if (ident) return mapContact(ident.contact);
+
+    const contact = await this.prisma.contact.create({
+      data: {
+        orgId: params.orgId,
+        displayName: params.displayName,
+        company: params.company,
+        avatarColor: params.avatarColor,
+        identities: { create: [{ kind: params.kind, value: params.value }] },
+      },
+      include: { identities: true },
+    });
+    return mapContact(contact);
+  }
+
+  async findOrCreateOpenConversation(params: {
+    orgId: string;
+    inboxId: string;
+    contact: Contact;
+    channel: ChannelType;
+    assigneeUserId?: string | null;
+    assignedTeamId?: string | null;
+  }): Promise<{ conversation: Conversation; created: boolean }> {
+    const open = await this.prisma.conversation.findFirst({
+      where: { inboxId: params.inboxId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
+      include: convInclude,
+    });
+    if (open) return { conversation: mapConversation(open), created: false };
+
+    const created = await this.prisma.conversation.create({
+      data: {
+        orgId: params.orgId,
+        inboxId: params.inboxId,
+        contactId: params.contact.id,
+        channel: params.channel,
+        status: "open",
+        assigneeUserId: params.assigneeUserId ?? null,
+        assignedTeamId: params.assignedTeamId ?? null,
+        priority: "normal",
+        unread: true,
+        seq: 0,
+        preview: "",
+      },
+      include: convInclude,
+    });
+    return { conversation: mapConversation(created), created: true };
+  }
+
+  async appendInboundMessage(
+    conversationId: string,
+    input: AppendInboundInput,
+  ): Promise<Message | undefined> {
+    const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return undefined;
+    const seq = conv.seq + 1;
+    const [message] = await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          conversationId,
+          seq,
+          direction: "in",
+          authorType: "contact",
+          authorName: input.authorName,
+          body: input.body,
+          status: "delivered",
+          channelMsgId: input.channelMsgId,
+        },
+      }),
+      this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { seq, lastActivityAt: new Date(), unread: true, preview: input.body },
+      }),
+    ]);
+    return mapMessage(message);
+  }
+
+  async updateMessageStatusByChannelId(
+    channelMsgId: string,
+    status: MessageStatus,
+  ): Promise<{ conversationId: string; message: Message } | undefined> {
+    const msg = await this.prisma.message.findFirst({ where: { channelMsgId } });
+    if (!msg) return undefined;
+    const updated = await this.prisma.message.update({ where: { id: msg.id }, data: { status } });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+}

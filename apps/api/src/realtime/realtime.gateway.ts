@@ -89,6 +89,10 @@ export class RealtimeGateway
     this.server.to(orgRoom(ORG_ID)).emit(ServerEvent.MessageCreated, { conversationId, message });
   }
 
+  emitMessageUpdated(conversationId: string, message: Message) {
+    this.server.to(orgRoom(ORG_ID)).emit(ServerEvent.MessageUpdated, { conversationId, message });
+  }
+
   emitConversationAssigned(conversation: Conversation, by?: string, reason?: string) {
     this.server.to(orgRoom(ORG_ID)).emit(ServerEvent.ConversationAssigned, { conversation, by, reason });
   }

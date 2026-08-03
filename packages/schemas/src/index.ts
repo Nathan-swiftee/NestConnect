@@ -76,6 +76,9 @@ export const contactSchema = z.object({
   phone: z.string().optional(),
   email: z.string().optional(),
   avatarColor: z.string().optional(),
+  /** Owner drives per-customer auto-routing (a client always reaches "their" person/team). */
+  ownerUserId: z.string().nullable().optional(),
+  ownerTeamId: z.string().nullable().optional(),
 });
 export type Contact = z.infer<typeof contactSchema>;
 
@@ -110,6 +113,8 @@ export const messageSchema = z.object({
   status: messageStatusSchema.default("sent"),
   /** Internal-lane note — never delivered to the customer. */
   internal: z.boolean().default(false),
+  /** Provider-side id (e.g. WhatsApp wamid) for reconciling delivery/read status. */
+  channelMsgId: z.string().nullable().optional(),
   createdAt: z.string(), // ISO-8601
 });
 export type Message = z.infer<typeof messageSchema>;

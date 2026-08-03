@@ -16,10 +16,23 @@ export const env = {
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   databaseUrl: process.env.DATABASE_URL ?? "",
   redisUrl: process.env.REDIS_URL ?? "",
+  whatsapp: {
+    // Verification token you set in the Meta webhook config.
+    verifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? "ding-dev-verify",
+    // App secret → validates X-Hub-Signature-256 on inbound webhooks (optional in dev).
+    appSecret: process.env.WHATSAPP_APP_SECRET ?? "",
+    // Access token + phone number id → enables live sending (else the provider mocks).
+    token: process.env.WHATSAPP_TOKEN ?? "",
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
+    apiVersion: process.env.WHATSAPP_API_VERSION ?? "v21.0",
+  },
   get usingDatabase() {
     return this.databaseUrl.length > 0;
   },
   get usingRedis() {
     return this.redisUrl.length > 0;
+  },
+  get whatsappLive() {
+    return Boolean(this.whatsapp.token && this.whatsapp.phoneNumberId);
   },
 };

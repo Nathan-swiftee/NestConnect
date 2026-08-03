@@ -8,38 +8,48 @@ import type {
 } from "@ding/schemas";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { ChannelDispatcher } from "../channels/channel-dispatcher";
 
 @Injectable()
 export class ConversationsService {
   constructor(
     private readonly store: Store,
     private readonly realtime: RealtimeGateway,
+    private readonly dispatcher: ChannelDispatcher,
   ) {}
 
-  list(view: string, userId: string): Conversation[] {
+  list(view: string, userId: string): Promise<Conversation[]> {
     return this.store.listConversations(view, userId);
   }
 
-  get(id: string): ConversationWithMessages {
-    const conv = this.store.getConversation(id);
+  async get(id: string): Promise<ConversationWithMessages> {
+    const conv = await this.store.getConversation(id);
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     return conv;
   }
 
-  sendMessage(id: string, input: SendMessageInput, userId: string): Message {
-    const author = this.store.getUser(userId);
+  async sendMessage(id: string, input: SendMessageInput, userId: string): Promise<Message> {
+    const author = await this.store.getUser(userId);
     if (!author) throw new NotFoundException("Current user not found");
-    const message = this.store.addMessage(id, input, author);
+
+    const message = await this.store.addMessage(id, input, author);
     if (!message) throw new NotFoundException(`Conversation ${id} not found`);
-    // Broadcast so every open client updates the thread and list previews live.
+
+    // Broadcast immediately so every open client updates the thread + previews.
     this.realtime.emitMessageCreated(id, message);
+
+    // Dispatch real (non-internal) replies out through the channel provider.
+    if (!input.internal) {
+      const conv = await this.store.getConversation(id);
+      if (conv) void this.dispatcher.dispatchOutbound(conv, message);
+    }
     return message;
   }
 
-  assign(id: string, input: AssignConversationInput, byUserId: string): Conversation {
-    const conv = this.store.assign(id, input);
+  async assign(id: string, input: AssignConversationInput, byUserId: string): Promise<Conversation> {
+    const conv = await this.store.assign(id, input, byUserId);
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
-    const by = this.store.getUser(byUserId)?.name;
+    const by = (await this.store.getUser(byUserId))?.name;
     this.realtime.emitConversationAssigned(conv, by);
     return conv;
   }

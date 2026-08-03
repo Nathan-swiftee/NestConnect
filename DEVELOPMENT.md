@@ -34,9 +34,11 @@ pnpm dev
 Setting `DATABASE_URL` flips the API onto Postgres; setting `REDIS_URL` enables
 the Socket.IO Redis adapter (multi-node realtime). Both are optional in dev.
 
-> Wiring the API services onto Prisma (they currently read the in-memory
-> `Store`) is the first task of Phase 1 — the seam is isolated in
-> `apps/api/src/data/`.
+> **Persistence is implemented (Phase 1).** The API selects its store by
+> `DATABASE_URL`: unset → `MemoryStore` (fixtures); set → `PrismaStore`
+> (Postgres). Both satisfy the same `Store` interface in `apps/api/src/data/`,
+> so it's a config switch, not a code change. An initial migration is committed
+> under `apps/api/prisma/migrations/`.
 
 ## Workspace layout
 
@@ -72,8 +74,39 @@ Per-app: `pnpm --filter @ding/api dev`, `pnpm --filter @ding/web dev`.
 | GET | `/api/inboxes` | Inboxes the user can access |
 | GET | `/api/conversations?view=` | Conversations for a view (`inbound`, `mine`, `grabs`, `mentions`, `team:<id>`, `inbox:<id>`) |
 | GET | `/api/conversations/:id` | A conversation with its messages |
-| POST | `/api/conversations/:id/messages` | Send a message (emits `message.created`) |
+| POST | `/api/conversations/:id/messages` | Send a message (emits `message.created`; WhatsApp replies dispatch through the provider) |
 | POST | `/api/conversations/:id/assign` | Assign / route (emits `conversation.assigned`) |
+| GET | `/api/channels/whatsapp/webhook` | Meta webhook verification handshake |
+| POST | `/api/channels/whatsapp/webhook` | Inbound messages + delivery statuses |
 
 Realtime events (Socket.IO) are defined in `packages/schemas` under
-`ServerEvent` / `ClientEvent`.
+`ServerEvent` / `ClientEvent`. The current user is resolved by `AuthMiddleware`
+(demo user by default, overridable with an `x-ding-user` header) and read in
+controllers via `@CurrentUserId()` — the seam where real auth (JWT/WorkOS) drops in.
+
+## WhatsApp channel (Phase 1)
+
+Inbound WhatsApp messages arrive at the webhook, are normalized, unified to a
+contact, opened as a conversation, **routed** (per-customer owner → round-robin
+→ up-for-grabs), and pushed live. Outbound replies dispatch through the
+`WhatsAppCloudProvider`.
+
+**Mock by default.** With no `WHATSAPP_TOKEN` + `WHATSAPP_PHONE_NUMBER_ID`, the
+provider fakes sends and progresses delivered/read so the whole loop works with
+zero credentials. Set both (plus `WHATSAPP_APP_SECRET` to enforce webhook
+signatures) to go live against the Cloud API.
+
+**Try it against a running API:**
+
+```bash
+# simulate an inbound customer message
+node tools/simulate-whatsapp.mjs "447700900123" "Jordan Fields" "Hi, need a quote"
+
+# then reply from the app UI (or POST /api/conversations/:id/messages) and
+# simulate a delivery receipt for the returned wamid:
+node tools/simulate-whatsapp.mjs --status wamid.mock_123 read
+```
+
+Point Meta's webhook at `POST /api/channels/whatsapp/webhook` with verify token
+`WHATSAPP_VERIFY_TOKEN`. Map a WhatsApp number to an inbox via the inbox's
+`channelConfig.phoneNumberId` (falls back to the first WhatsApp inbox in dev).

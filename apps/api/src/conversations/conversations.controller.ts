@@ -6,24 +6,16 @@ import {
   type SendMessageInput,
 } from "@ding/schemas";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
-import { Store } from "../data/store";
+import { CurrentUserId } from "../auth/current-user.decorator";
 import { ConversationsService } from "./conversations.service";
 
 @Controller("conversations")
 export class ConversationsController {
-  constructor(
-    private readonly conversations: ConversationsService,
-    private readonly store: Store,
-  ) {}
-
-  /** Current user — hardcoded to the demo user until auth lands. */
-  private get me() {
-    return this.store.demoUserId;
-  }
+  constructor(private readonly conversations: ConversationsService) {}
 
   @Get()
-  list(@Query("view") view?: string) {
-    return this.conversations.list(view ?? "inbound", this.me);
+  list(@CurrentUserId() userId: string, @Query("view") view?: string) {
+    return this.conversations.list(view ?? "inbound", userId);
   }
 
   @Get(":id")
@@ -33,17 +25,19 @@ export class ConversationsController {
 
   @Post(":id/messages")
   send(
+    @CurrentUserId() userId: string,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(sendMessageInputSchema)) body: SendMessageInput,
   ) {
-    return this.conversations.sendMessage(id, body, this.me);
+    return this.conversations.sendMessage(id, body, userId);
   }
 
   @Post(":id/assign")
   assign(
+    @CurrentUserId() userId: string,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(assignConversationInputSchema)) body: AssignConversationInput,
   ) {
-    return this.conversations.assign(id, body, this.me);
+    return this.conversations.assign(id, body, userId);
   }
 }
