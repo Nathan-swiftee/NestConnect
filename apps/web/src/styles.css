@@ -58,8 +58,8 @@ input,textarea{font:inherit}
 ::selection{background:var(--brand-ring)}
 .tnum{font-variant-numeric:tabular-nums}
 
-.stage{height:100dvh;min-height:600px;overflow:hidden;background:var(--bg)}
-.app{display:flex;height:100dvh;min-height:600px;min-width:0;position:relative}
+.stage{height:var(--app-height,100dvh);min-height:600px;overflow:hidden;background:var(--bg)}
+.app{display:flex;height:var(--app-height,100dvh);min-height:600px;min-width:0;position:relative}
 
 /* icon rail */
 .rail{width:60px;flex:0 0 60px;background:var(--surface);border-right:1px solid var(--border);
@@ -282,7 +282,7 @@ input,textarea{font:inherit}
 .center-note{display:grid;place-items:center;height:100%;color:var(--text-faint);font-size:13px;padding:20px;text-align:center}
 
 /* login */
-.login{height:100dvh;display:grid;place-items:center;padding:20px;overflow:auto;
+.login{height:var(--app-height,100dvh);display:grid;place-items:center;padding:20px;overflow:auto;
   background:radial-gradient(1100px 560px at 50% -12%, var(--brand-tint), transparent 60%), var(--bg)}
 .login__card{width:min(400px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow-lg);padding:30px 28px;display:flex;flex-direction:column;gap:12px}
 .login__brand{display:flex;align-items:center;gap:10px}
@@ -449,20 +449,28 @@ input,textarea{font:inherit}
 
 /* ≤820: phone — WhatsApp-style single pane (list ⇄ thread), no icon rail. */
 @media (max-width:820px){
+  /* let the visual-viewport height (set in JS) shrink the app for the keyboard */
+  .stage,.app{min-height:0}
+  /* 16px inputs stop iOS from auto-zooming (and cutting off) on focus;
+     !important beats the more-specific per-field sizes */
+  input,textarea,select{font-size:16px!important}
   .rail{display:none}
-  .side__foot{display:flex}
+  .side__foot{display:flex;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
   .list{width:100%;flex:1 1 auto;border-right:0}
+  .list__head{padding-top:calc(14px + env(safe-area-inset-top))}
   .thread{width:100%;flex:1 1 auto;min-width:0}
   .thread__back{display:grid}
-  .thread__head{padding:10px 12px;gap:8px}
+  .thread__head{padding:calc(10px + env(safe-area-inset-top)) 12px 10px;gap:8px}
   .app[data-pane="list"] .thread{display:none}
   .app[data-pane="thread"] .list{display:none}
   .msgs{padding:16px 14px}
   .msg{max-width:85%}
-  .composer{padding:10px 12px 14px}
+  .composer{padding:10px 12px calc(12px + env(safe-area-inset-bottom))}
+  .closedbar{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
   .panel{width:100%}
+  .panel__mhead{padding-top:calc(14px + env(safe-area-inset-top))}
   .hide-sm{display:none!important}
-  .toast{bottom:16px}
+  .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 }
 
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
