@@ -81,9 +81,29 @@ Per-app: `pnpm --filter @ding/api dev`, `pnpm --filter @ding/web dev`.
 | POST | `/api/channels/email/webhook` | Inbound email (Postmark-style), threaded by Message-ID |
 
 Realtime events (Socket.IO) are defined in `packages/schemas` under
-`ServerEvent` / `ClientEvent`. The current user is resolved by `AuthMiddleware`
-(demo user by default, overridable with an `x-ding-user` header) and read in
-controllers via `@CurrentUserId()` — the seam where real auth (JWT/WorkOS) drops in.
+`ServerEvent` / `ClientEvent`.
+
+## Auth (Phase 3)
+
+Real session auth: email + password → bcrypt-verified → a signed JWT in an
+**httpOnly cookie**. A global `AuthGuard` validates the cookie and sets the
+current user (read via `@CurrentUserId()`); routes are protected by default,
+with `@Public()` marking login, `/health`, and the channel webhooks. The
+`AuthService` is the seam where SSO (WorkOS/Clerk) drops in later.
+
+- **Sign in** with any seeded user, password `ding1234` (set via
+  `AUTH_DEV_PASSWORD`): `nathan@swiftee.co.uk` (admin), `james@swiftee.co.uk`,
+  `amara@swiftee.co.uk`.
+- Endpoints: `POST /api/auth/login`, `POST /api/auth/logout`,
+  `GET /api/auth/session`.
+- The web app gates on `GET /api/auth/session` — unauthenticated shows the login
+  screen; the avatar menu signs out.
+
+## Create an inbox
+
+`POST /api/inboxes` (admins/managers only) creates and routes a new inbox
+(WhatsApp number, group, or email address) — wired to the sidebar's
+**+ New inbox & route** button.
 
 ## WhatsApp channel (Phase 1)
 

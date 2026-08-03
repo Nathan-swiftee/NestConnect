@@ -6,6 +6,7 @@ import type {
   Inbox,
   Message,
   MessageStatus,
+  RoutingStrategy,
   Team,
   User,
 } from "@ding/schemas";
@@ -47,9 +48,19 @@ export abstract class Store {
   abstract get demoUserId(): string;
 
   abstract getUser(id: string): Promise<User | undefined>;
+  abstract findUserByEmail(email: string): Promise<User | undefined>;
+  abstract getPasswordHash(userId: string): Promise<string | undefined>;
   abstract teamsForUser(userId: string): Promise<string[]>;
   abstract me(userId: string): Promise<{ user?: User; teams: Team[] }>;
   abstract listInboxes(): Promise<Inbox[]>;
+  abstract createInbox(params: {
+    orgId: string;
+    type: ChannelType;
+    name: string;
+    handle: string;
+    teamIds: string[];
+    routingStrategy: RoutingStrategy;
+  }): Promise<Inbox>;
   abstract views(userId: string): Promise<SidebarViews>;
   abstract listConversations(view: string, userId: string): Promise<Conversation[]>;
   abstract getConversation(id: string): Promise<ConversationWithMessages | undefined>;

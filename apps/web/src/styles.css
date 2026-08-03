@@ -270,5 +270,53 @@ input,textarea{font:inherit}
 
 .center-note{display:grid;place-items:center;height:100%;color:var(--text-faint);font-size:13px;padding:20px;text-align:center}
 
+/* login */
+.login{height:100dvh;display:grid;place-items:center;padding:20px;overflow:auto;
+  background:radial-gradient(1100px 560px at 50% -12%, var(--brand-tint), transparent 60%), var(--bg)}
+.login__card{width:min(400px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow-lg);padding:30px 28px;display:flex;flex-direction:column;gap:12px}
+.login__brand{display:flex;align-items:center;gap:10px}
+.login__card h1{margin:8px 0 0;font-size:20px;font-weight:750;letter-spacing:-.02em}
+.login__sub{margin:0 0 6px;color:var(--text-muted);font-size:13px}
+.field{display:flex;flex-direction:column;gap:6px;font-size:12.5px;font-weight:600;color:var(--text-muted)}
+.field input,.field select{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2);color:var(--text);font-size:14px;font-weight:500;outline:none}
+.field input:focus,.field select:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-ring);background:var(--surface)}
+.login__err{color:var(--danger);font-size:12.5px;font-weight:600;background:var(--danger-tint);padding:8px 11px;border-radius:9px}
+.login__btn{margin-top:6px;padding:11px;border-radius:11px;background:var(--brand);color:#fff;font-weight:700;font-size:14px}
+.login__btn:hover{background:var(--brand-strong)}
+.login__btn:disabled{opacity:.6}
+.login__hint{margin-top:4px;text-align:center;font-size:12px;color:var(--text-faint)}
+.login__hint b{color:var(--text-muted)}
+
+/* rail avatar menu */
+.rail-avatar{position:relative;display:grid;place-items:center}
+.rail-menu__backdrop{position:fixed;inset:0;z-index:40}
+.rail-menu{position:absolute;bottom:0;left:46px;width:214px;background:var(--elevated);border:1px solid var(--border-strong);border-radius:12px;box-shadow:var(--shadow-lg);padding:6px;z-index:41;display:flex;flex-direction:column;gap:2px}
+.rail-menu__id{padding:8px 10px 8px;display:flex;flex-direction:column;gap:1px;border-bottom:1px solid var(--border);margin-bottom:4px}
+.rail-menu__id b{font-size:13px}
+.rail-menu__id small{font-size:11.5px;color:var(--text-muted)}
+.rail-menu button{text-align:left;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:550;color:var(--text)}
+.rail-menu button:hover{background:var(--surface-2)}
+.rail-menu button.danger{color:var(--danger)}
+.rail-menu button.danger:hover{background:var(--danger-tint)}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(6,12,10,.5);backdrop-filter:blur(3px);display:flex;align-items:flex-start;justify-content:center;z-index:50}
+.modal__box{margin-top:9vh;width:min(460px,94vw);background:var(--elevated);border:1px solid var(--border-strong);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;display:flex;flex-direction:column}
+.modal__head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--border)}
+.modal__head h2{margin:0;font-size:16px;font-weight:750}
+.modal__x{width:30px;height:30px;border-radius:8px;color:var(--text-muted);font-size:13px}
+.modal__x:hover{background:var(--surface-2);color:var(--text)}
+.modal__body{padding:18px;display:flex;flex-direction:column;gap:14px;max-height:70vh;overflow-y:auto}
+.modal__foot{display:flex;justify-content:flex-end;gap:8px;padding:14px 18px;border-top:1px solid var(--border)}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.check{display:inline-flex;align-items:center;gap:7px;padding:7px 11px;border:1px solid var(--border);border-radius:9px;font-size:13px;font-weight:600;color:var(--text-muted);cursor:pointer}
+.check.on{border-color:var(--brand);background:var(--brand-tint);color:var(--brand-strong)}
+.check input{accent-color:var(--brand)}
+.btn-ghost{padding:9px 14px;border-radius:10px;font-weight:600;font-size:13px;color:var(--text-muted)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn-primary{padding:9px 16px;border-radius:10px;font-weight:700;font-size:13px;background:var(--brand);color:#fff}
+.btn-primary:hover{background:var(--brand-strong)}
+.btn-primary:disabled{opacity:.55}
+
 @media (max-width:1180px){ .panel{display:none} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

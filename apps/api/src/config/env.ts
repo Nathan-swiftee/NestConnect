@@ -26,6 +26,14 @@ export const env = {
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
     apiVersion: process.env.WHATSAPP_API_VERSION ?? "v21.0",
   },
+  auth: {
+    jwtSecret: process.env.AUTH_JWT_SECRET ?? "ding-dev-secret-change-me",
+    cookieName: process.env.AUTH_COOKIE_NAME ?? "ding_session",
+    // Session lifetime in seconds (default 7 days).
+    ttlSeconds: Number(process.env.AUTH_TTL_SECONDS ?? 60 * 60 * 24 * 7),
+    // Password for all seeded demo users (dev only).
+    devPassword: process.env.AUTH_DEV_PASSWORD ?? "ding1234",
+  },
   email: {
     // Postmark server token → enables live sending (else the provider mocks).
     postmarkToken: process.env.POSTMARK_TOKEN ?? "",
@@ -46,5 +54,8 @@ export const env = {
   },
   get emailLive() {
     return Boolean(this.email.postmarkToken);
+  },
+  get isProd() {
+    return process.env.NODE_ENV === "production";
   },
 };

@@ -4,10 +4,13 @@
  * zero-infra demo. Run: `pnpm db:up && pnpm db:migrate && pnpm db:seed`.
  */
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 const ORG = "org_swiftee";
+// Dev password shared by all seeded users. Change via AUTH_DEV_PASSWORD.
+const passwordHash = bcrypt.hashSync(process.env.AUTH_DEV_PASSWORD ?? "ding1234", 8);
 
 async function main() {
   await prisma.organization.upsert({
@@ -22,7 +25,11 @@ async function main() {
     { id: "usr_amara", name: "Amara", email: "amara@swiftee.co.uk", role: "agent" as const, avatarColor: "linear-gradient(135deg,#F43F5E,#F59E0B)", online: false },
   ];
   for (const u of users) {
-    await prisma.user.upsert({ where: { id: u.id }, update: {}, create: { orgId: ORG, ...u } });
+    await prisma.user.upsert({
+      where: { id: u.id },
+      update: { passwordHash },
+      create: { orgId: ORG, passwordHash, ...u },
+    });
   }
 
   const teams = [

@@ -1,18 +1,14 @@
-import { Module, type MiddlewareConsumer, type NestModule } from "@nestjs/common";
+import { Module } from "@nestjs/common";
 import { DataModule } from "./data/data.module";
+import { AuthModule } from "./auth/auth.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { ChannelsModule } from "./channels/channels.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { HealthController } from "./health/health.controller";
-import { AuthMiddleware } from "./auth/auth.middleware";
 
 @Module({
-  imports: [DataModule, RealtimeModule, ChannelsModule, ConversationsModule, WorkspaceModule],
+  imports: [DataModule, AuthModule, RealtimeModule, ChannelsModule, ConversationsModule, WorkspaceModule],
   controllers: [HealthController],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(AuthMiddleware).forRoutes("*");
-  }
-}
+export class AppModule {}

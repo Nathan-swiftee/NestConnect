@@ -1,8 +1,44 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClientEvent, ServerEvent, type Message } from "@ding/schemas";
+import { ClientEvent, ServerEvent, type CreateInboxInput, type Message } from "@ding/schemas";
 import { api } from "./lib/api";
 import { getSocket } from "./lib/socket";
+
+export const useSession = () =>
+  useQuery({ queryKey: ["session"], queryFn: api.session, retry: false, staleTime: 30_000 });
+
+export function useLogin() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { email: string; password: string }) => api.login(v.email, v.password),
+    onSuccess: (data) => {
+      qc.setQueryData(["session"], data);
+      qc.invalidateQueries();
+    },
+  });
+}
+
+export function useLogout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.logout(),
+    onSuccess: () => {
+      qc.clear();
+      qc.setQueryData(["session"], null);
+    },
+  });
+}
+
+export function useCreateInbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateInboxInput) => api.createInbox(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["inboxes"] });
+    },
+  });
+}
 
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: api.me });
 export const useViews = () => useQuery({ queryKey: ["views"], queryFn: api.views });

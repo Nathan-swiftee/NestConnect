@@ -13,6 +13,7 @@ import {
 import type { Request } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../../config/env";
+import { Public } from "../../auth/public.decorator";
 import { WhatsAppService, type WhatsAppWebhookBody } from "./whatsapp.service";
 
 function verifySignature(raw: Buffer | undefined, appSecret: string, header?: string): boolean {
@@ -28,6 +29,7 @@ export class WhatsAppController {
   constructor(private readonly whatsapp: WhatsAppService) {}
 
   /** Meta webhook verification handshake (GET). */
+  @Public()
   @Get("webhook")
   verify(
     @Query("hub.mode") mode?: string,
@@ -41,6 +43,7 @@ export class WhatsAppController {
   }
 
   /** Inbound messages + delivery statuses (POST). */
+  @Public()
   @Post("webhook")
   @HttpCode(200)
   async receive(@Req() req: RawBodyRequest<Request>, @Body() body: WhatsAppWebhookBody) {

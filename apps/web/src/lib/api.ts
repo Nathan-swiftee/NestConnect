@@ -2,6 +2,7 @@ import type {
   ChannelType,
   Conversation,
   ConversationWithMessages,
+  CreateInboxInput,
   Inbox,
   Message,
   Team,
@@ -24,28 +25,37 @@ export interface MeResponse {
   teams: Team[];
 }
 
+export interface ApiError extends Error {
+  status: number;
+}
+
 const base = import.meta.env.VITE_API_URL ?? "";
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${base}/api${path}`);
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${base}/api${path}`, { credentials: "include", ...init });
+  if (!res.ok) {
+    const err = new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status}`) as ApiError;
+    err.status = res.status;
+    throw err;
+  }
   return res.json() as Promise<T>;
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${base}/api${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
-  return res.json() as Promise<T>;
-}
+const get = <T>(path: string) => request<T>(path);
+const post = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 export const api = {
+  // auth
+  session: () => get<MeResponse>("/auth/session"),
+  login: (email: string, password: string) => post<MeResponse>("/auth/login", { email, password }),
+  logout: () => post<{ ok: boolean }>("/auth/logout", {}),
+  // workspace
   me: () => get<MeResponse>("/me"),
   views: () => get<SidebarViews>("/views"),
   inboxes: () => get<Inbox[]>("/inboxes"),
+  createInbox: (input: CreateInboxInput) => post<Inbox>("/inboxes", input),
+  // conversations
   conversations: (view: string) =>
     get<Conversation[]>(`/conversations?view=${encodeURIComponent(view)}`),
   conversation: (id: string) => get<ConversationWithMessages>(`/conversations/${id}`),

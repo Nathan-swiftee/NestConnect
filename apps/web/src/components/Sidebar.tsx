@@ -4,10 +4,10 @@ import { InboxIcon, TeamIcon, PlusIcon, channelMeta } from "../lib/icons";
 interface Props {
   view: string;
   onSelectView: (key: string) => void;
-  onToast: (msg: string) => void;
+  onNewInbox: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onToast }: Props) {
+export function Sidebar({ view, onSelectView, onNewInbox }: Props) {
   const { data } = useViews();
   if (!data) return <aside className="side" aria-label="Inboxes" />;
 
@@ -83,10 +83,7 @@ export function Sidebar({ view, onSelectView, onToast }: Props) {
           );
         })}
 
-        <button
-          className="newinbox"
-          onClick={() => onToast("Connect a WhatsApp number, group or email — then pick a team")}
-        >
+        <button className="newinbox" onClick={onNewInbox}>
           <PlusIcon /> New inbox &amp; route
         </button>
       </div>

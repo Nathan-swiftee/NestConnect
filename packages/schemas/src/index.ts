@@ -162,6 +162,21 @@ export const assignConversationInputSchema = z.object({
 });
 export type AssignConversationInput = z.infer<typeof assignConversationInputSchema>;
 
+export const createInboxInputSchema = z.object({
+  type: channelTypeSchema,
+  name: z.string().min(1),
+  handle: z.string().min(1),
+  teamIds: z.array(z.string()).min(1),
+  routingStrategy: routingStrategySchema.default("manual"),
+});
+export type CreateInboxInput = z.infer<typeof createInboxInputSchema>;
+
+export const loginInputSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(1),
+});
+export type LoginInput = z.infer<typeof loginInputSchema>;
+
 /* ------------------------------------------------------------------ */
 /* Realtime event contract (Socket.IO)                                 */
 /* ------------------------------------------------------------------ */

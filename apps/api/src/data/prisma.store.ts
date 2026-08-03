@@ -8,6 +8,7 @@ import type {
   Inbox,
   Message,
   MessageStatus,
+  RoutingStrategy,
   User,
 } from "@ding/schemas";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
@@ -42,6 +43,43 @@ export class PrismaStore extends Store {
   async getUser(id: string): Promise<User | undefined> {
     const u = await this.prisma.user.findUnique({ where: { id } });
     return u ? mapUser(u) : undefined;
+  }
+
+  async findUserByEmail(email: string): Promise<User | undefined> {
+    const u = await this.prisma.user.findFirst({
+      where: { orgId: ORG_ID, email: { equals: email, mode: "insensitive" } },
+    });
+    return u ? mapUser(u) : undefined;
+  }
+
+  async getPasswordHash(userId: string): Promise<string | undefined> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true },
+    });
+    return u?.passwordHash ?? undefined;
+  }
+
+  async createInbox(params: {
+    orgId: string;
+    type: ChannelType;
+    name: string;
+    handle: string;
+    teamIds: string[];
+    routingStrategy: RoutingStrategy;
+  }): Promise<Inbox> {
+    const created = await this.prisma.inbox.create({
+      data: {
+        orgId: params.orgId,
+        type: params.type,
+        name: params.name,
+        handle: params.handle,
+        routingStrategy: params.routingStrategy,
+        teams: { create: params.teamIds.map((teamId) => ({ teamId })) },
+      },
+      include: { teams: true },
+    });
+    return mapInbox(created);
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

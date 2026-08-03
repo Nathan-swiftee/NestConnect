@@ -1,4 +1,5 @@
-import { useMe } from "../hooks";
+import { useState } from "react";
+import { useLogout, useMe } from "../hooks";
 import { initials } from "../lib/format";
 import {
   Logo,
@@ -16,9 +17,12 @@ function toggleTheme() {
   root.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
 }
 
-export function IconRail() {
+export function IconRail({ onToast }: { onToast: (msg: string) => void }) {
   const { data } = useMe();
   const me = data?.user;
+  const logout = useLogout();
+  const [menu, setMenu] = useState(false);
+
   return (
     <nav className="rail" aria-label="Primary">
       <div className="brandmark" title="ding">
@@ -40,9 +44,31 @@ export function IconRail() {
       <button className="railbtn" title="Toggle theme" onClick={toggleTheme}>
         <ThemeIcon />
       </button>
-      <div className="avatar-me" title={me ? `${me.name} · online` : "You"} style={{ background: me?.avatarColor }}>
-        {me ? initials(me.name) : "··"}
-        <span className="pres" />
+      <div className="rail-avatar">
+        <button
+          className="avatar-me"
+          title={me ? me.name : "You"}
+          style={{ background: me?.avatarColor }}
+          onClick={() => setMenu((v) => !v)}
+        >
+          {me ? initials(me.name) : "··"}
+          <span className="pres" />
+        </button>
+        {menu && (
+          <>
+            <div className="rail-menu__backdrop" onClick={() => setMenu(false)} />
+            <div className="rail-menu">
+              <div className="rail-menu__id">
+                <b>{me?.name}</b>
+                <small>{me?.email}</small>
+              </div>
+              <button onClick={() => { setMenu(false); onToast("Settings — coming soon"); }}>Settings</button>
+              <button className="danger" onClick={() => logout.mutate()}>
+                Sign out
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </nav>
   );

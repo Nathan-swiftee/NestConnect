@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { Logger } from "@nestjs/common";
+import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 import { env } from "./config/env";
 
@@ -9,6 +10,7 @@ async function bootstrap() {
   // X-Hub-Signature-256 HMAC on inbound webhooks.
   const app = await NestFactory.create(AppModule, { cors: false, rawBody: true });
 
+  app.use(cookieParser());
   app.enableCors({ origin: env.corsOrigin, credentials: true });
   // REST lives under /api; /health stays at the root for platform probes.
   app.setGlobalPrefix("api", { exclude: ["health"] });

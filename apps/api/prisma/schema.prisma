@@ -82,12 +82,13 @@ model Organization {
 model User {
   id          String   @id @default(cuid())
   orgId       String
-  name        String
-  email       String
-  role        Role     @default(agent)
-  avatarColor String?
-  online      Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  name         String
+  email        String
+  role         Role     @default(agent)
+  avatarColor  String?
+  online       Boolean  @default(false)
+  passwordHash String?
+  createdAt    DateTime @default(now())
 
   org         Organization   @relation(fields: [orgId], references: [id])
   memberships TeamMember[]
