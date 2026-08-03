@@ -91,7 +91,7 @@ When inbound arrives:
 ## Multi-tenancy
 
 - **Pool model**: single Postgres, **`org_id` on every row**, enforced in the domain layer; add **Row-Level Security** policies for defense-in-depth.
-- Sufficient whether Relay is (a) internal-only for Swiftee, or (b) later a multi-tenant SaaS product. If a big customer ever needs isolation, the `org_id` seam allows a silo (dedicated DB) without model changes.
+- Sufficient whether Nest Connect is (a) internal-only for Swiftee, or (b) later a multi-tenant SaaS product. If a big customer ever needs isolation, the `org_id` seam allows a silo (dedicated DB) without model changes.
 - Every query is org-scoped by default via a base repository/tenant guard — no accidental cross-tenant reads.
 
 ## Indexing & performance notes

@@ -25,7 +25,7 @@ export function IconRail({ onToast }: { onToast: (msg: string) => void }) {
 
   return (
     <nav className="rail" aria-label="Primary">
-      <div className="brandmark" title="Relay">
+      <div className="brandmark" title="Nest Connect">
         <Logo />
       </div>
       <button className="railbtn active" title="Inbox">

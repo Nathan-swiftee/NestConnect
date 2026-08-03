@@ -20,10 +20,10 @@ export function LoginScreen() {
             <Logo />
           </div>
           <span className="wordmark">
-            relay<span className="dot">·</span>
+            Nest <span className="dot">Connect</span>
           </span>
         </div>
-        <h1>Sign in to Relay</h1>
+        <h1>Sign in to Nest Connect</h1>
         <p className="login__sub">Your omnichannel team inbox</p>
 
         <label className="field">

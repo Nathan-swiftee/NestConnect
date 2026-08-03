@@ -19,7 +19,7 @@ export function Sidebar({ view, onSelectView, onNewInbox, onNewGroup }: Props) {
     <aside className="side" aria-label="Inboxes">
       <div className="side__head">
         <span className="wordmark">
-          relay<span className="dot">·</span>
+          Nest <span className="dot">Connect</span>
         </span>
         <span className="side__sub">Swiftee</span>
       </div>

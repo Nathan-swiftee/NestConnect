@@ -104,7 +104,7 @@ export function makeSeed() {
   const conversations: ConversationRecord[] = [
     {
       id: "conv_ivy", orgId: ORG_ID, inboxId: "inbox_ivy", channel: "whatsapp_group",
-      channelRef: "group_ivy_demo", inviteLink: "https://chat.whatsapp.com/RLYivyhouse01",
+      channelRef: "group_ivy_demo", inviteLink: "https://chat.whatsapp.com/NCivyhouse01",
       contact: contacts.ivy, subject: "The Ivy House", status: "open", assigneeUserId: DEMO_USER_ID, assignedTeamId: "team_support",
       priority: "high", labels: [LABEL.vip, LABEL.delivery], unread: true,
       participants: ivyMembers.map((m, i) => ({ id: `part_ivy_${i + 1}`, conversationId: "conv_ivy", contact: m, role: (i === 2 ? "admin" : "member") as "admin" | "member", joinedAt: mins(600) })),

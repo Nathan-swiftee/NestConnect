@@ -1,6 +1,6 @@
 # 05 · Routing, Teams & Workflows
 
-This is the operational heart of Relay: how work finds the right person, how teams share load, and (later) how automation removes the manual steps.
+This is the operational heart of Nest Connect: how work finds the right person, how teams share load, and (later) how automation removes the manual steps.
 
 ## Concepts
 
@@ -56,7 +56,7 @@ flowchart TD
 
 ### 1. Auto per-customer routing (a headline requirement)
 
-Each **Contact** can carry an **owner** (`owner_user_id` or `owner_team_id`). When a message comes in from a known client, Relay assigns the conversation to that owner automatically — so a client always reaches "their" person/team. Owners are set:
+Each **Contact** can carry an **owner** (`owner_user_id` or `owner_team_id`). When a message comes in from a known client, Nest Connect assigns the conversation to that owner automatically — so a client always reaches "their" person/team. Owners are set:
 
 - manually by an agent/manager ("make me the owner of Acme"),
 - by a workflow (e.g. "first agent to close a deal owns the account"),
@@ -87,7 +87,7 @@ Every move: updates the conversation, **writes an `AssignmentEvent`** (who, from
 
 ### 4. Collision control (shared-inbox safety)
 
-Because multiple agents see the same shared inbox, Relay shows **live presence on each conversation** ("Alice is viewing", "Ben is typing to this client") and a **soft-lock warning** if you start replying to something someone else is actively answering. Prevents double-replies without hard-locking anyone out.
+Because multiple agents see the same shared inbox, Nest Connect shows **live presence on each conversation** ("Alice is viewing", "Ben is typing to this client") and a **soft-lock warning** if you start replying to something someone else is actively answering. Prevents double-replies without hard-locking anyone out.
 
 ## "My Inbound" — precise semantics
 

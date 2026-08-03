@@ -1,8 +1,8 @@
-# Relay — omnichannel comms platform
+# Nest Connect — omnichannel comms platform
 
-> A sleek, WhatsApp-native team inbox used across our businesses (**Ding**, **Swiftee**, …). Unifies **WhatsApp Business** (1:1 and small client **groups**), **shared email inboxes**, teams, routing, and (later) workflows — with realtime, multiplayer UX. Each business runs as its own organization (tenant) inside Relay.
+> A sleek, WhatsApp-native team inbox used across our businesses (**Ding**, **Swiftee**, …). Unifies **WhatsApp Business** (1:1 and small client **groups**), **shared email inboxes**, teams, routing, and (later) workflows — with realtime, multiplayer UX. Each business runs as its own organization (tenant) inside Nest Connect.
 >
-> _"Relay" is a working name — trivially changed if you prefer another._
+> _The name nods to the **NestJS** backend that powers it — a shared "nest" where every business's conversations connect._
 
 This repository holds the **product + technical plan** _and_ a running **Phase 0 scaffold** — a pnpm/Turborepo monorepo (React app shell + NestJS API + realtime + shared schemas) that boots with zero infrastructure. Run it:
 
@@ -16,7 +16,7 @@ See **[DEVELOPMENT.md](DEVELOPMENT.md)** for the dev guide and the Postgres/Redi
 
 ## The 60-second summary
 
-Relay is a **team inbox** in the family of Front / Missive / Intercom / Chatwoot, but **WhatsApp-first** and built for Swiftee's way of working: every client conversation — whether it arrives on WhatsApp, in a WhatsApp group, or by email — lands in one fast, modern app where the right person or team picks it up.
+Nest Connect is a **team inbox** in the family of Front / Missive / Intercom / Chatwoot, but **WhatsApp-first** and built for Swiftee's way of working: every client conversation — whether it arrives on WhatsApp, in a WhatsApp group, or by email — lands in one fast, modern app where the right person or team picks it up.
 
 **Two things make it "ours" and not a clone:**
 1. **A two-section sidebar** — a personal **My Inbound** space (what's assigned to me + inbound my team hasn't picked up yet) sitting above **Shared Inboxes** (team-owned WhatsApp numbers, group spaces and email addresses you can create and route on the fly).
@@ -67,7 +67,7 @@ flowchart LR
       MAIL["Gmail / MS Graph<br/>+ Postmark inbound/SMTP"]
     end
 
-    subgraph Relay["Relay platform (Railway)"]
+    subgraph NC["Nest Connect platform (Railway)"]
       GW["Channel gateways<br/>(webhook ingest)"]
       API["NestJS API + routing engine"]
       RT["Realtime gateway<br/>(Socket.IO + Redis)"]

@@ -27,7 +27,7 @@ export class WhatsAppGroupsProvider {
   async createGroup(name: string, memberPhones: string[]): Promise<GroupCreateResult> {
     if (!this.isLive) {
       const groupId = `wag.mock_${Date.now()}`;
-      const inviteLink = `https://chat.whatsapp.com/RLY${this.slug(name)}`;
+      const inviteLink = `https://chat.whatsapp.com/NC${this.slug(name)}`;
       this.logger.log(`[mock] Created WhatsApp group "${name}" (${memberPhones.length} members) → ${inviteLink}`);
       return { groupId, inviteLink };
     }

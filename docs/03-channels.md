@@ -38,7 +38,7 @@ The official Groups API lets an approved business **create, manage, and message 
 ### 1:1 messaging rules (Cloud API)
 
 - **The 24-hour customer service window.** When a customer messages you, a 24-hour window opens in which you can reply with **free-form** messages. Outside it, you may only send **pre-approved message templates**.
-- **Templates (HSM)** must be submitted to and approved by Meta, and are categorized **Marketing / Utility / Authentication**. The composer in Relay is window-aware: inside the window it's free text; outside it, it offers only approved templates and explains why (see [`docs/01-product-and-ux.md`](01-product-and-ux.md)).
+- **Templates (HSM)** must be submitted to and approved by Meta, and are categorized **Marketing / Utility / Authentication**. The composer in Nest Connect is window-aware: inside the window it's free text; outside it, it offers only approved templates and explains why (see [`docs/01-product-and-ux.md`](01-product-and-ux.md)).
 - **Click-to-WhatsApp / Page CTA entry** opens a **72-hour** free window (including templates).
 - **Quality rating & messaging tiers** govern how many unique users you can message per day; low quality → throttling. We monitor quality signals and surface them to admins.
 
@@ -67,7 +67,7 @@ Plus your **BSP markup** (~$0.003–$0.010/msg for large BSPs). **Action:** mode
 
 ### Onboarding a number (Embedded Signup)
 
-Meta's **Embedded Signup** flow lets a Swiftee client (or Swiftee itself) connect a WhatsApp Business Account and phone number from inside Relay, provision the number, and register webhooks — this powers **"+ Create inbox → WhatsApp"**. Requires Meta Business verification and an OBA for group features.
+Meta's **Embedded Signup** flow lets a Swiftee client (or Swiftee itself) connect a WhatsApp Business Account and phone number from inside Nest Connect, provision the number, and register webhooks — this powers **"+ Create inbox → WhatsApp"**. Requires Meta Business verification and an OBA for group features.
 
 ---
 
@@ -86,7 +86,7 @@ For addresses Swiftee/clients already run on **Google Workspace** or **Microsoft
 
 ### Mode B — Host the address (inbound provider)
 
-For addresses we want Relay to fully own, or non-Google/MS domains:
+For addresses we want Nest Connect to fully own, or non-Google/MS domains:
 
 - **Inbound:** point/forward to **Postmark inbound** (or AWS SES → SNS). Provider parses MIME and POSTs a clean JSON webhook to our email gateway.
 - **Outbound:** send via **Postmark/SES SMTP or API** with proper **SPF, DKIM, DMARC** on Swiftee's domain for deliverability.
@@ -96,7 +96,7 @@ For addresses we want Relay to fully own, or non-Google/MS domains:
 
 ### Threading & the shared-inbox model
 
-- **Threading** uses standard headers — `Message-ID`, `In-Reply-To`, `References` — plus subject/participant heuristics, to group emails into one Relay **conversation**. Each outbound message sets/propagates these headers so replies land back in the right thread.
+- **Threading** uses standard headers — `Message-ID`, `In-Reply-To`, `References` — plus subject/participant heuristics, to group emails into one Nest Connect **conversation**. Each outbound message sets/propagates these headers so replies land back in the right thread.
 - A **shared email inbox** is just an `Inbox` of type `email` owned by one or more teams — the *same* conversation/assignment/routing model as WhatsApp. Collision detection, internal notes, and "up for grabs" all work identically.
 - **Attachments** stream to R2; large ones are linked, not inlined.
 - **Signatures, quoting, CC/BCC, drafts** handled in the Tiptap composer; per-user and per-inbox signatures.

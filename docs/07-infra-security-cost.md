@@ -2,7 +2,7 @@
 
 ## Infrastructure (Railway-first)
 
-Swiftee already uses **Railway**, so we build there. Railway gives managed Postgres + Redis, container services, private networking, and per-environment config — enough to run Relay from MVP to solid scale.
+Swiftee already uses **Railway**, so we build there. Railway gives managed Postgres + Redis, container services, private networking, and per-environment config — enough to run Nest Connect from MVP to solid scale.
 
 ```mermaid
 flowchart TB
@@ -10,7 +10,7 @@ flowchart TB
       DNS["DNS · CDN · WAF · Turnstile"]
       R2[("R2 object storage")]
     end
-    subgraph RW["Railway project: Relay"]
+    subgraph RW["Railway project: Nest Connect"]
       subgraph ENV["Environment (dev / staging / prod)"]
         WEB["web (static SPA/PWA)"]
         API["api (NestJS)"]
