@@ -20,6 +20,7 @@ async function bootstrap() {
   log.log(`  data source : ${env.usingDatabase ? "postgres" : "in-memory fixtures"}`);
   log.log(`  realtime    : ${env.usingRedis ? "socket.io + redis adapter" : "socket.io (single node)"}`);
   log.log(`  whatsapp    : ${env.whatsappLive ? "live (cloud api)" : "mock provider"}`);
+  log.log(`  email       : ${env.emailLive ? "live (postmark)" : "mock provider"}`);
   log.log(`  cors origin : ${env.corsOrigin}`);
 }
 

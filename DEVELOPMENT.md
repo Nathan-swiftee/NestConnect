@@ -78,6 +78,7 @@ Per-app: `pnpm --filter @ding/api dev`, `pnpm --filter @ding/web dev`.
 | POST | `/api/conversations/:id/assign` | Assign / route (emits `conversation.assigned`) |
 | GET | `/api/channels/whatsapp/webhook` | Meta webhook verification handshake |
 | POST | `/api/channels/whatsapp/webhook` | Inbound messages + delivery statuses |
+| POST | `/api/channels/email/webhook` | Inbound email (Postmark-style), threaded by Message-ID |
 
 Realtime events (Socket.IO) are defined in `packages/schemas` under
 `ServerEvent` / `ClientEvent`. The current user is resolved by `AuthMiddleware`
@@ -110,3 +111,29 @@ node tools/simulate-whatsapp.mjs --status wamid.mock_123 read
 Point Meta's webhook at `POST /api/channels/whatsapp/webhook` with verify token
 `WHATSAPP_VERIFY_TOKEN`. Map a WhatsApp number to an inbox via the inbox's
 `channelConfig.phoneNumberId` (falls back to the first WhatsApp inbox in dev).
+
+## Email shared inboxes (Phase 2)
+
+Email is a first-class channel through the **same** ingest/route/dispatch path
+as WhatsApp — an email inbox is just an `Inbox` of type `email` owned by a team.
+Inbound email is matched to a conversation by **Message-ID / References**
+(threading); a new thread is routed like any other conversation. Outbound
+replies go through the `EmailProvider`, which mints an RFC `Message-ID` (stored
+as the message's `channelMsgId`) and sets `In-Reply-To`/`References` so the
+customer's reply threads back.
+
+**Mock by default.** With no `POSTMARK_TOKEN`, sends are logged, not delivered.
+Set it (plus `EMAIL_FROM`/`EMAIL_DOMAIN`) to send for real via Postmark. Point a
+Postmark **inbound** webhook at `POST /api/channels/email/webhook` (optionally
+guarded by `?token=EMAIL_INBOUND_TOKEN`).
+
+**Try it against a running API:**
+
+```bash
+# inbound email → lands in the support@ shared inbox, routed to a team
+node tools/simulate-email.mjs "sam@acme.co.uk" "Sam Rivera" "support@swiftee.co.uk" "Quote request" "Can you quote weekly collections?"
+
+# reply from the app, then simulate the customer's threaded follow-up by
+# passing the reply's Message-ID (its channelMsgId):
+node tools/simulate-email.mjs "sam@acme.co.uk" "Sam Rivera" "support@swiftee.co.uk" "Re: Quote request" "One more thing…" --in-reply-to "<ding.conv_x.123@swiftee.co.uk>"
+```

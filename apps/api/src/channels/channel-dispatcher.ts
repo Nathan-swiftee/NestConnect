@@ -1,12 +1,13 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import type { Conversation, Message, MessageStatus } from "@ding/schemas";
+import type { ConversationWithMessages, Message, MessageStatus } from "@ding/schemas";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
-import { CHANNEL_PROVIDERS, ChannelProvider } from "./channel-provider";
+import { CHANNEL_PROVIDERS, ChannelProvider, type SendContext } from "./channel-provider";
 
 /**
  * Sends outbound messages through the right channel provider and reconciles
- * delivery status back onto the message (moving the ticks).
+ * delivery status back onto the message (moving the ticks). Channel-agnostic:
+ * it picks the recipient address and threading context by channel.
  */
 @Injectable()
 export class ChannelDispatcher {
@@ -18,17 +19,29 @@ export class ChannelDispatcher {
     private readonly realtime: RealtimeGateway,
   ) {}
 
-  async dispatchOutbound(conversation: Conversation, message: Message): Promise<void> {
+  async dispatchOutbound(conversation: ConversationWithMessages, message: Message): Promise<void> {
     const provider = this.providers.find((p) => p.supports(conversation.channel));
-    if (!provider) return; // channel not wired for sending yet (e.g. email)
+    if (!provider) return; // channel not wired for sending yet
 
-    const to = conversation.contact.phone;
+    const to = conversation.channel === "email" ? conversation.contact.email : conversation.contact.phone;
     if (!to) {
-      this.logger.warn(`Conversation ${conversation.id} has no phone to send to`);
+      this.logger.warn(`Conversation ${conversation.id} has no ${conversation.channel} address to send to`);
       return;
     }
 
-    const result = await provider.sendText({ to, body: message.body, conversation });
+    let context: SendContext | undefined;
+    if (conversation.channel === "email") {
+      const prior = [...conversation.messages]
+        .reverse()
+        .find((m) => m.channelMsgId && m.id !== message.id);
+      context = {
+        subject: conversation.subject ?? undefined,
+        toName: conversation.contact.displayName,
+        inReplyTo: prior?.channelMsgId ?? undefined,
+      };
+    }
+
+    const result = await provider.sendText({ to, body: message.body, conversation, context });
     if (result.channelMsgId) {
       await this.store.setMessageChannelId(message.id, result.channelMsgId);
     }

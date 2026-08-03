@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
-import type { ChannelType, Conversation } from "@ding/schemas";
+import type { ChannelType } from "@ding/schemas";
 import { env } from "../../config/env";
-import { ChannelProvider, type SendResult } from "../channel-provider";
+import { ChannelProvider, type SendParams, type SendResult } from "../channel-provider";
 
 /**
  * WhatsApp Business Platform (Cloud API) sender. Runs in mock mode until Meta
@@ -24,7 +24,7 @@ export class WhatsAppCloudProvider extends ChannelProvider {
     return channel === "whatsapp" || channel === "whatsapp_group";
   }
 
-  async sendText(params: { to: string; body: string; conversation: Conversation }): Promise<SendResult> {
+  async sendText(params: SendParams): Promise<SendResult> {
     if (!this.isLive) {
       this.logger.log(`[mock] WhatsApp → ${params.to}: ${params.body}`);
       return { ok: true, channelMsgId: `wamid.mock_${Date.now()}_${Math.floor(Math.random() * 1e6)}` };

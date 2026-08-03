@@ -26,6 +26,15 @@ export const env = {
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
     apiVersion: process.env.WHATSAPP_API_VERSION ?? "v21.0",
   },
+  email: {
+    // Postmark server token → enables live sending (else the provider mocks).
+    postmarkToken: process.env.POSTMARK_TOKEN ?? "",
+    // Address outbound email is sent from, and the domain used to mint Message-IDs.
+    from: process.env.EMAIL_FROM ?? "support@swiftee.co.uk",
+    domain: process.env.EMAIL_DOMAIN ?? "swiftee.co.uk",
+    // Optional shared secret; when set, inbound webhooks must pass ?token=.
+    inboundToken: process.env.EMAIL_INBOUND_TOKEN ?? "",
+  },
   get usingDatabase() {
     return this.databaseUrl.length > 0;
   },
@@ -34,5 +43,8 @@ export const env = {
   },
   get whatsappLive() {
     return Boolean(this.whatsapp.token && this.whatsapp.phoneNumberId);
+  },
+  get emailLive() {
+    return Boolean(this.email.postmarkToken);
   },
 };

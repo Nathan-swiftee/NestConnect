@@ -8,13 +8,27 @@ export interface SendResult {
   error?: string;
 }
 
+/** Optional context a provider can use (email threading, subjects). */
+export interface SendContext {
+  subject?: string;
+  inReplyTo?: string;
+  toName?: string;
+}
+
+export interface SendParams {
+  to: string;
+  body: string;
+  conversation: Conversation;
+  context?: SendContext;
+}
+
 /**
  * A channel adapter. The domain core never special-cases a provider — it sends
- * through this interface. Add SMS/Instagram/email later by implementing it.
+ * through this interface. Add SMS/Instagram/etc. later by implementing it.
  */
 export abstract class ChannelProvider {
   abstract supports(channel: ChannelType): boolean;
   /** True in mock mode: the provider fakes delivered/read so ticks progress. */
   abstract get simulatesStatus(): boolean;
-  abstract sendText(params: { to: string; body: string; conversation: Conversation }): Promise<SendResult>;
+  abstract sendText(params: SendParams): Promise<SendResult>;
 }

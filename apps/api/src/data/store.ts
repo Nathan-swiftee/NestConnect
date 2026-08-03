@@ -72,7 +72,11 @@ export abstract class Store {
   /* ---- channel ingestion (inbound) ---- */
 
   abstract getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined>;
+  abstract getInboxByEmailAddress(address: string): Promise<Inbox | undefined>;
   abstract getMembers(teamId: string): Promise<User[]>;
+
+  /** Threading: find the conversation owning any message with one of these provider ids. */
+  abstract findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined>;
 
   abstract upsertContactByIdentity(params: {
     orgId: string;
@@ -88,6 +92,7 @@ export abstract class Store {
     inboxId: string;
     contact: Contact;
     channel: ChannelType;
+    subject?: string;
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }>;

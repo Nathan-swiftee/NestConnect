@@ -202,6 +202,23 @@ export class MemoryStore extends Store {
     return this.inboxes.find((i) => i.type === "whatsapp");
   }
 
+  async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
+    const a = address.trim().toLowerCase();
+    return (
+      this.inboxes.find((i) => i.type === "email" && i.handle.toLowerCase() === a) ??
+      this.inboxes.find((i) => i.type === "email")
+    );
+  }
+
+  async findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined> {
+    if (!channelMsgIds.length) return undefined;
+    const set = new Set(channelMsgIds);
+    for (const rec of this.conversations) {
+      if (rec.messages.some((m) => m.channelMsgId && set.has(m.channelMsgId))) return rec.id;
+    }
+    return undefined;
+  }
+
   async upsertContactByIdentity(params: {
     orgId: string;
     kind: "phone" | "email" | "wa_id";
@@ -230,6 +247,7 @@ export class MemoryStore extends Store {
     inboxId: string;
     contact: Contact;
     channel: ChannelType;
+    subject?: string;
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
@@ -248,6 +266,7 @@ export class MemoryStore extends Store {
       inboxId: params.inboxId,
       channel: params.channel,
       contact: params.contact,
+      subject: params.subject,
       status: "open",
       assigneeUserId: params.assigneeUserId ?? null,
       assignedTeamId: params.assignedTeamId ?? null,

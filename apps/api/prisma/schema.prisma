@@ -187,6 +187,7 @@ model Conversation {
   inboxId        String
   contactId      String
   channel        ChannelType
+  subject        String?
   status         ConversationStatus @default(open)
   assigneeUserId String?
   assignedTeamId String?

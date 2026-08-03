@@ -254,6 +254,25 @@ export class PrismaStore extends Store {
     return target ? mapInbox(target) : undefined;
   }
 
+  async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
+    const rows = await this.prisma.inbox.findMany({
+      where: { orgId: ORG_ID, type: "email" },
+      include: { teams: true },
+    });
+    const a = address.trim().toLowerCase();
+    const match = rows.find((i) => i.handle.toLowerCase() === a) ?? rows[0];
+    return match ? mapInbox(match) : undefined;
+  }
+
+  async findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined> {
+    if (!channelMsgIds.length) return undefined;
+    const msg = await this.prisma.message.findFirst({
+      where: { channelMsgId: { in: channelMsgIds } },
+      orderBy: { createdAt: "desc" },
+    });
+    return msg?.conversationId;
+  }
+
   async upsertContactByIdentity(params: {
     orgId: string;
     kind: "phone" | "email" | "wa_id";
@@ -286,6 +305,7 @@ export class PrismaStore extends Store {
     inboxId: string;
     contact: Contact;
     channel: ChannelType;
+    subject?: string;
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
@@ -301,6 +321,7 @@ export class PrismaStore extends Store {
         inboxId: params.inboxId,
         contactId: params.contact.id,
         channel: params.channel,
+        subject: params.subject,
         status: "open",
         assigneeUserId: params.assigneeUserId ?? null,
         assignedTeamId: params.assignedTeamId ?? null,

@@ -116,7 +116,7 @@ export function makeSeed() {
     },
     {
       id: "conv_bloom", orgId: ORG_ID, inboxId: "inbox_support", channel: "email",
-      contact: contacts.bloom, status: "open", assigneeUserId: DEMO_USER_ID, assignedTeamId: "team_support",
+      contact: contacts.bloom, subject: "Weekly stem order", status: "open", assigneeUserId: DEMO_USER_ID, assignedTeamId: "team_support",
       priority: "normal", labels: [LABEL.order], unread: false,
       slaDueAt: null, lastActivityAt: mins(18), seq: 2, preview: "Re: Weekly stem order — confirmed for Thursday AM",
       messages: [
@@ -144,7 +144,7 @@ export function makeSeed() {
     },
     {
       id: "conv_tide", orgId: ORG_ID, inboxId: "inbox_support", channel: "email",
-      contact: contacts.tide, status: "open", assigneeUserId: null, assignedTeamId: "team_support",
+      contact: contacts.tide, subject: "New supplier onboarding", status: "open", assigneeUserId: null, assignedTeamId: "team_support",
       priority: "normal", labels: [LABEL.onboarding], unread: true,
       slaDueAt: mins(-300), lastActivityAt: mins(92), seq: 1, preview: "New supplier onboarding — a few questions",
       messages: [

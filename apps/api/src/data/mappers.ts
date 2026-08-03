@@ -97,6 +97,7 @@ export function mapConversation(c: ConversationSummaryRow): Conversation {
     inboxId: c.inboxId,
     channel: c.channel as ChannelType,
     contact: mapContact(c.contact),
+    subject: c.subject ?? undefined,
     status: c.status as Conversation["status"],
     assigneeUserId: c.assigneeUserId,
     assignedTeamId: c.assignedTeamId,

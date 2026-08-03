@@ -118,6 +118,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast }: Pr
           </div>
           <div className="who">
             <h2>{conv.contact.displayName}</h2>
+            {conv.subject && <div className="who-subject">{conv.subject}</div>}
             <div className="who-sub">
               <span className="pill">
                 <span className="d" style={{ background: cm.color }} />

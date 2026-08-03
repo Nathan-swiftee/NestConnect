@@ -125,6 +125,8 @@ export const conversationSchema = z.object({
   inboxId: z.string(),
   channel: channelTypeSchema,
   contact: contactSchema,
+  /** Email thread subject (null for chat channels). */
+  subject: z.string().nullable().optional(),
   status: conversationStatusSchema.default("open"),
   assigneeUserId: z.string().nullable().default(null),
   assignedTeamId: z.string().nullable().default(null),

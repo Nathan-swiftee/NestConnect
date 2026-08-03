@@ -11,6 +11,16 @@ export interface WhatsAppInbound {
   channelMsgId?: string;
 }
 
+export interface EmailInbound {
+  toAddress: string;
+  from: string;
+  fromName?: string;
+  subject?: string;
+  text: string;
+  messageId?: string;
+  references?: string[]; // In-Reply-To + References header ids, for threading
+}
+
 /**
  * Channel-agnostic inbound pipeline: resolve the inbox, unify the contact,
  * find or open a conversation (routing new ones), append the message, and emit
@@ -68,5 +78,56 @@ export class IngestService {
     if (message) this.realtime.emitMessageCreated(conv.id, message);
 
     return { conversationId: conv.id, created };
+  }
+
+  async ingestEmail(input: EmailInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
+    const inbox = await this.store.getInboxByEmailAddress(input.toAddress);
+    if (!inbox) {
+      this.logger.warn(`No inbox mapped for email address ${input.toAddress}`);
+      return undefined;
+    }
+
+    const contact = await this.store.upsertContactByIdentity({
+      orgId: inbox.orgId,
+      kind: "email",
+      value: input.from.toLowerCase(),
+      displayName: input.fromName || input.from,
+    });
+
+    // Thread onto an existing conversation via References/In-Reply-To first.
+    let conversationId = input.references?.length
+      ? await this.store.findConversationByMessageChannelIds(input.references)
+      : undefined;
+    let created = false;
+
+    if (!conversationId) {
+      const res = await this.store.findOrCreateOpenConversation({
+        orgId: inbox.orgId,
+        inboxId: inbox.id,
+        contact,
+        channel: "email",
+        subject: input.subject,
+      });
+      conversationId = res.conversation.id;
+      created = res.created;
+      if (created) {
+        const decision = await this.routing.route(inbox, contact);
+        const assigned = await this.store.assign(conversationId, decision);
+        this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
+        this.logger.log(
+          `New email conversation ${conversationId} from ${input.from} → ` +
+            `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (up for grabs)`}`,
+        );
+      }
+    }
+
+    const message = await this.store.appendInboundMessage(conversationId, {
+      authorName: contact.displayName,
+      body: input.text,
+      channelMsgId: input.messageId,
+    });
+    if (message) this.realtime.emitMessageCreated(conversationId, message);
+
+    return { conversationId, created };
   }
 }
