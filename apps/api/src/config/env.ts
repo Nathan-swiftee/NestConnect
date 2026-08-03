@@ -12,7 +12,8 @@ for (const p of [
 }
 
 export const env = {
-  port: Number(process.env.API_PORT ?? 3001),
+  // Railway (and most PaaS) inject PORT; fall back to API_PORT for local dev.
+  port: Number(process.env.PORT ?? process.env.API_PORT ?? 3001),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   databaseUrl: process.env.DATABASE_URL ?? "",
   redisUrl: process.env.REDIS_URL ?? "",
@@ -57,5 +58,9 @@ export const env = {
   },
   get isProd() {
     return process.env.NODE_ENV === "production";
+  },
+  // In production the API also serves the built web app (single origin).
+  get serveWeb() {
+    return this.isProd || process.env.SERVE_WEB === "true";
   },
 };

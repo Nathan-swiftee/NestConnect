@@ -1,4 +1,7 @@
-import { Module } from "@nestjs/common";
+import { Module, type ModuleMetadata } from "@nestjs/common";
+import { ServeStaticModule } from "@nestjs/serve-static";
+import { join } from "node:path";
+import { env } from "./config/env";
 import { DataModule } from "./data/data.module";
 import { AuthModule } from "./auth/auth.module";
 import { RealtimeModule } from "./realtime/realtime.module";
@@ -7,8 +10,28 @@ import { ConversationsModule } from "./conversations/conversations.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { HealthController } from "./health/health.controller";
 
+const imports: ModuleMetadata["imports"] = [
+  DataModule,
+  AuthModule,
+  RealtimeModule,
+  ChannelsModule,
+  ConversationsModule,
+  WorkspaceModule,
+];
+
+// In production the API serves the built SPA (apps/api/dist/main.js → ../../web/dist),
+// so the whole app runs as one same-origin service (auth cookies + WS work cleanly).
+if (env.serveWeb) {
+  imports.push(
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, "..", "..", "web", "dist"),
+      exclude: ["/api/(.*)", "/health", "/socket.io/(.*)"],
+    }),
+  );
+}
+
 @Module({
-  imports: [DataModule, AuthModule, RealtimeModule, ChannelsModule, ConversationsModule, WorkspaceModule],
+  imports,
   controllers: [HealthController],
 })
 export class AppModule {}
