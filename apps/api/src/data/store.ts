@@ -2,6 +2,7 @@ import type {
   ChannelType,
   Contact,
   Conversation,
+  ConversationStatus,
   ConversationWithMessages,
   Inbox,
   Message,
@@ -77,6 +78,12 @@ export abstract class Store {
     conversationId: string,
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },
     byUserId?: string,
+  ): Promise<Conversation | undefined>;
+
+  /** Change a conversation's status (close/resolve, reopen, snooze). */
+  abstract setStatus(
+    conversationId: string,
+    status: ConversationStatus,
   ): Promise<Conversation | undefined>;
 
   /** Record a provider-side id on an outbound message (for status reconciliation). */

@@ -1,6 +1,6 @@
-import { useConversations } from "../hooks";
+import { useConversations, useSound } from "../hooks";
 import { relativeTime, initials, slaCountdown } from "../lib/format";
-import { channelMeta, SearchIcon } from "../lib/icons";
+import { channelMeta, SearchIcon, MenuIcon, SoundOnIcon, SoundOffIcon } from "../lib/icons";
 
 interface Props {
   view: string;
@@ -9,13 +9,31 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenCmdk: () => void;
+  onOpenDrawer?: () => void;
 }
 
-export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk }: Props) {
+export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onOpenDrawer }: Props) {
   const { data, isLoading } = useConversations(view);
+  const sound = useSound();
 
   return (
     <section className="list" aria-label="Conversations">
+      <div className="list__mobilebar">
+        <button className="list__burger" onClick={onOpenDrawer} aria-label="Open menu" title="Menu">
+          <MenuIcon />
+        </button>
+        <span className="wordmark">
+          Nest <span className="dot">Connect</span>
+        </span>
+        <button
+          className={"list__soundtoggle" + (sound.on ? " on" : "")}
+          onClick={sound.toggle}
+          title={sound.on ? "Mute sounds" : "Unmute sounds"}
+          aria-label="Toggle sounds"
+        >
+          {sound.on ? <SoundOnIcon /> : <SoundOffIcon />}
+        </button>
+      </div>
       <div className="list__head">
         <div className="list__title">
           <h1>{title}</h1>

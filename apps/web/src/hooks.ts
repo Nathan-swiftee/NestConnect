@@ -1,16 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClientEvent,
   ServerEvent,
   type AddParticipantInput,
   type Conversation,
+  type ConversationStatus,
   type CreateGroupInput,
   type CreateInboxInput,
   type Message,
 } from "@ding/schemas";
 import { api } from "./lib/api";
 import { getSocket } from "./lib/socket";
+import { isSoundOn, playReceived, subscribeSound, toggleSound } from "./lib/sound";
 
 export const useSession = () =>
   useQuery({ queryKey: ["session"], queryFn: api.session, retry: false, staleTime: 30_000 });
@@ -114,6 +116,40 @@ export function useAssign() {
   });
 }
 
+export function useSetStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; status: ConversationStatus }) => api.setStatus(v.id, v.status),
+    onSuccess: (_conv, v) => {
+      qc.invalidateQueries({ queryKey: ["conversation", v.id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+/** Reactive `matchMedia` for responsive (mobile ⇄ desktop) layout switches. */
+export function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(
+    () => typeof window !== "undefined" && window.matchMedia(query).matches,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(mql.matches);
+    onChange();
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
+/** Sound on/off state bound to the shared sound module. */
+export function useSound(): { on: boolean; toggle: () => void } {
+  const [on, setOn] = useState(isSoundOn);
+  useEffect(() => subscribeSound(setOn), []);
+  return { on, toggle: toggleSound };
+}
+
 /**
  * Live sync: server events invalidate the relevant queries so lists, counts and
  * the open thread refresh instantly — across every connected client/tab.
@@ -129,7 +165,11 @@ export function useRealtime(openConversationId: string | null) {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
     };
-    const onMessage = (p: { conversationId: string; message: Message }) => invalidate(p.conversationId);
+    const onMessage = (p: { conversationId: string; message: Message }) => {
+      // Ping only for real inbound messages (not our own echoes or internal notes).
+      if (p.message.direction === "in" && !p.message.internal) playReceived();
+      invalidate(p.conversationId);
+    };
     const onConversation = (p: { conversation: Conversation }) => invalidate(p.conversation.id);
     const onAssigned = () => invalidate();
     socket.on(ServerEvent.MessageCreated, onMessage);

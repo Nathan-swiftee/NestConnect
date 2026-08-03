@@ -183,6 +183,12 @@ export const assignConversationInputSchema = z.object({
 });
 export type AssignConversationInput = z.infer<typeof assignConversationInputSchema>;
 
+/** Change a conversation's status — e.g. close (resolve) or reopen. */
+export const updateStatusInputSchema = z.object({
+  status: conversationStatusSchema,
+});
+export type UpdateStatusInput = z.infer<typeof updateStatusInputSchema>;
+
 export const createInboxInputSchema = z.object({
   type: channelTypeSchema,
   name: z.string().min(1),

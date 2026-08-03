@@ -12,9 +12,10 @@ const TEAM_NAME: Record<string, string> = {
 interface Props {
   conversationId: string | null;
   onToast: (msg: string) => void;
+  onClose?: () => void;
 }
 
-export function ContextPanel({ conversationId, onToast }: Props) {
+export function ContextPanel({ conversationId, onToast, onClose }: Props) {
   const { data: conv } = useConversation(conversationId);
   const addParticipant = useAddParticipant(conversationId ?? "");
   const removeParticipant = useRemoveParticipant(conversationId ?? "");
@@ -61,6 +62,12 @@ export function ContextPanel({ conversationId, onToast }: Props) {
 
   return (
     <aside className="panel" aria-label="Details">
+      {onClose && (
+        <div className="panel__mhead">
+          <span>Details</span>
+          <button onClick={onClose} aria-label="Close details" title="Close">✕</button>
+        </div>
+      )}
       <div className="panel__scroll">
         <div className="cust">
           <div className="big" style={{ background: conv.contact.avatarColor }}>

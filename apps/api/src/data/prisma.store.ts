@@ -4,6 +4,7 @@ import type {
   ChannelType,
   Contact,
   Conversation,
+  ConversationStatus,
   ConversationWithMessages,
   Inbox,
   Message,
@@ -270,6 +271,23 @@ export class PrismaStore extends Store {
           toTeamId: input.assignedTeamId ?? null,
           byUserId: byUserId ?? null,
         },
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async setStatus(conversationId: string, status: ConversationStatus): Promise<Conversation | undefined> {
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          status,
+          lastActivityAt: new Date(),
+          ...(status === "closed" ? { unread: false } : {}),
+        },
+        include: convInclude,
       });
       return mapConversation(row);
     } catch {

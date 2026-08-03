@@ -2,8 +2,10 @@ import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
   assignConversationInputSchema,
   sendMessageInputSchema,
+  updateStatusInputSchema,
   type AssignConversationInput,
   type SendMessageInput,
+  type UpdateStatusInput,
 } from "@ding/schemas";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
@@ -39,5 +41,13 @@ export class ConversationsController {
     @Body(new ZodValidationPipe(assignConversationInputSchema)) body: AssignConversationInput,
   ) {
     return this.conversations.assign(id, body, userId);
+  }
+
+  @Post(":id/status")
+  setStatus(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateStatusInputSchema)) body: UpdateStatusInput,
+  ) {
+    return this.conversations.setStatus(id, body);
   }
 }

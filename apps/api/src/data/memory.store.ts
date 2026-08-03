@@ -4,6 +4,7 @@ import type {
   ChannelType,
   Contact,
   Conversation,
+  ConversationStatus,
   ConversationWithMessages,
   Inbox,
   Message,
@@ -222,6 +223,16 @@ export class MemoryStore extends Store {
     if (!rec) return undefined;
     if (input.assigneeUserId !== undefined) rec.assigneeUserId = input.assigneeUserId;
     if (input.assignedTeamId !== undefined) rec.assignedTeamId = input.assignedTeamId;
+    rec.lastActivityAt = new Date().toISOString();
+    return this.summary(rec);
+  }
+
+  async setStatus(conversationId: string, status: ConversationStatus): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    rec.status = status;
+    // Reopening surfaces the thread again; closing clears the unread flag.
+    if (status === "closed") rec.unread = false;
     rec.lastActivityAt = new Date().toISOString();
     return this.summary(rec);
   }

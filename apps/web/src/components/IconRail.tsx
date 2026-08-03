@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { useLogout, useMe } from "../hooks";
+import { useLogout, useMe, useSound } from "../hooks";
 import { initials } from "../lib/format";
+import { toggleTheme } from "../lib/theme";
 import {
   Logo,
   InboxIcon,
@@ -8,19 +9,15 @@ import {
   InsightsIcon,
   SettingsIcon,
   ThemeIcon,
+  SoundOnIcon,
+  SoundOffIcon,
 } from "../lib/icons";
-
-function toggleTheme() {
-  const root = document.documentElement;
-  let cur = root.getAttribute("data-theme");
-  if (!cur) cur = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  root.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
-}
 
 export function IconRail({ onToast }: { onToast: (msg: string) => void }) {
   const { data } = useMe();
   const me = data?.user;
   const logout = useLogout();
+  const sound = useSound();
   const [menu, setMenu] = useState(false);
 
   return (
@@ -41,6 +38,13 @@ export function IconRail({ onToast }: { onToast: (msg: string) => void }) {
         <SettingsIcon />
       </button>
       <div className="spacer" />
+      <button
+        className={"railbtn" + (sound.on ? " active" : "")}
+        title={sound.on ? "Mute sounds" : "Unmute sounds"}
+        onClick={sound.toggle}
+      >
+        {sound.on ? <SoundOnIcon /> : <SoundOffIcon />}
+      </button>
       <button className="railbtn" title="Toggle theme" onClick={toggleTheme}>
         <ThemeIcon />
       </button>

@@ -5,6 +5,7 @@ import type {
   ConversationWithMessages,
   Message,
   SendMessageInput,
+  UpdateStatusInput,
 } from "@ding/schemas";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -51,6 +52,14 @@ export class ConversationsService {
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     const by = (await this.store.getUser(byUserId))?.name;
     this.realtime.emitConversationAssigned(conv, by);
+    return conv;
+  }
+
+  async setStatus(id: string, input: UpdateStatusInput): Promise<Conversation> {
+    const conv = await this.store.setStatus(id, input.status);
+    if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
+    // Broadcast so every client drops (or restores) it from the active lists live.
+    this.realtime.emitConversationUpdated(conv);
     return conv;
   }
 }

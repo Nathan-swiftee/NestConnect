@@ -2,6 +2,7 @@ import type {
   AddParticipantInput,
   ChannelType,
   Conversation,
+  ConversationStatus,
   ConversationWithMessages,
   CreateGroupInput,
   CreateInboxInput,
@@ -68,6 +69,8 @@ export const api = {
     id: string,
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },
   ) => post<Conversation>(`/conversations/${id}/assign`, input),
+  setStatus: (id: string, status: ConversationStatus) =>
+    post<Conversation>(`/conversations/${id}/status`, { status }),
   // groups
   createGroup: (input: CreateGroupInput) => post<ConversationWithMessages>("/groups", input),
   addParticipant: (conversationId: string, input: AddParticipantInput) =>
