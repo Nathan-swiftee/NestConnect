@@ -3,7 +3,7 @@ import { useConversations } from "../hooks";
 import { relativeTime, initials, slaCountdown } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon } from "../lib/icons";
 
-type Filter = "all" | "unread" | "groups";
+type Filter = "all" | "unread" | "groups" | "closed";
 
 interface Props {
   view: string;
@@ -21,7 +21,11 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const [q, setQ] = useState("");
 
   const query = q.trim().toLowerCase();
+  const hasGroups = (data ?? []).some((c) => c.channel === "whatsapp_group");
   const shown = (data ?? []).filter((c) => {
+    const closed = c.status === "closed";
+    // Closed lives only under its own filter; every other filter hides it.
+    if (filter === "closed" ? !closed : closed) return false;
     if (filter === "unread" && !c.unread) return false;
     if (filter === "groups" && c.channel !== "whatsapp_group") return false;
     if (query && !`${c.contact.displayName} ${c.preview} ${c.subject ?? ""}`.toLowerCase().includes(query))
@@ -61,14 +65,21 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
         <div className="chips">
           {chip("all", "All")}
           {chip("unread", "Unread")}
-          {chip("groups", "Groups")}
+          {hasGroups && chip("groups", "Groups")}
+          {chip("closed", "Closed")}
         </div>
       </div>
 
       <div className="convs">
         {isLoading && <div className="empty">Loading…</div>}
         {!isLoading && shown.length === 0 && (
-          <div className="empty">{filter === "groups" ? "No group chats here." : "Nothing here — inbox zero."}</div>
+          <div className="empty">
+            {filter === "groups"
+              ? "No group chats here."
+              : filter === "closed"
+                ? "No closed conversations."
+                : "Nothing here — inbox zero."}
+          </div>
         )}
         {shown.map((c) => {
           const cm = channelMeta(c.channel);

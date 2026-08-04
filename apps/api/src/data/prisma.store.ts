@@ -219,24 +219,31 @@ export class PrismaStore extends Store {
     return "@" + (u?.email.split("@")[0].toLowerCase() ?? "");
   }
 
+  /**
+   * `forCount` distinguishes the sidebar badge (active work only) from the
+   * conversation list (which also carries closed items so the "Closed" filter
+   * has something to show). Personal queues (inbound/grabs) stay active-only.
+   */
   private buildWhere(
     view: string,
     userId: string,
     userTeams: string[],
     token: string,
+    forCount = false,
   ): Prisma.ConversationWhereInput {
     const org = { orgId: ORG_ID };
     const active: Prisma.ConversationWhereInput = { status: { in: ["open", "pending"] } };
-    const mine: Prisma.ConversationWhereInput = { ...org, ...active, assigneeUserId: userId };
+    const activeOnly: Prisma.ConversationWhereInput = forCount ? active : {};
+    const mineActive: Prisma.ConversationWhereInput = { ...org, ...active, assigneeUserId: userId };
     const grabs: Prisma.ConversationWhereInput = {
       ...org,
       ...active,
       assigneeUserId: null,
       inbox: { teams: { some: { teamId: { in: userTeams } } } },
     };
-    if (view === "mine") return mine;
+    if (view === "mine") return { ...org, ...activeOnly, assigneeUserId: userId };
     if (view === "grabs") return grabs;
-    if (view === "inbound") return { OR: [mine, grabs] };
+    if (view === "inbound") return { OR: [mineActive, grabs] };
     if (view === "snoozed") return { ...org, status: "snoozed" };
     if (view === "mentions") {
       return {
@@ -245,9 +252,9 @@ export class PrismaStore extends Store {
       };
     }
     if (view.startsWith("team:")) {
-      return { ...org, inbox: { teams: { some: { teamId: view.slice(5) } } } };
+      return { ...org, ...activeOnly, inbox: { teams: { some: { teamId: view.slice(5) } } } };
     }
-    if (view.startsWith("inbox:")) return { ...org, inboxId: view.slice(6) };
+    if (view.startsWith("inbox:")) return { ...org, ...activeOnly, inboxId: view.slice(6) };
     return { id: "__none__" };
   }
 
@@ -266,7 +273,7 @@ export class PrismaStore extends Store {
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
     const count = (view: string) =>
-      this.prisma.conversation.count({ where: this.buildWhere(view, userId, userTeams, token) });
+      this.prisma.conversation.count({ where: this.buildWhere(view, userId, userTeams, token, true) });
 
     const my: ViewItem[] = [
       { key: "inbound", title: "My Inbound", count: await count("inbound") },

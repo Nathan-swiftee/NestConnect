@@ -213,9 +213,20 @@ export class MemoryStore extends Store {
     return !!inbox && inbox.teamIds.some((t) => userTeams.includes(t));
   }
 
-  private matchesView(rec: ConversationRecord, view: string, userId: string, userTeams: string[]): boolean {
+  /**
+   * `forCount` distinguishes the sidebar badge (active work only) from the
+   * conversation list (which also carries closed items so the "Closed" filter
+   * has something to show). Personal queues (inbound/grabs) stay active-only.
+   */
+  private matchesView(
+    rec: ConversationRecord,
+    view: string,
+    userId: string,
+    userTeams: string[],
+    forCount = false,
+  ): boolean {
     const active = rec.status === "open" || rec.status === "pending";
-    if (view === "mine") return rec.assigneeUserId === userId && active;
+    if (view === "mine") return rec.assigneeUserId === userId && (forCount ? active : true);
     if (view === "grabs") return this.isUpForGrabs(rec, userTeams);
     if (view === "inbound") return (rec.assigneeUserId === userId && active) || this.isUpForGrabs(rec, userTeams);
     if (view === "snoozed") return rec.status === "snoozed";
@@ -225,9 +236,9 @@ export class MemoryStore extends Store {
     }
     if (view.startsWith("team:")) {
       const inbox = this.inbox(rec.inboxId);
-      return !!inbox && inbox.teamIds.includes(view.slice(5));
+      return !!inbox && inbox.teamIds.includes(view.slice(5)) && (forCount ? active : true);
     }
-    if (view.startsWith("inbox:")) return rec.inboxId === view.slice(6);
+    if (view.startsWith("inbox:")) return rec.inboxId === view.slice(6) && (forCount ? active : true);
     return false;
   }
 
@@ -249,7 +260,7 @@ export class MemoryStore extends Store {
   async views(userId: string): Promise<SidebarViews> {
     const userTeams = this.membership[userId] ?? [];
     const count = (view: string) =>
-      this.conversations.filter((r) => this.matchesView(r, view, userId, userTeams)).length;
+      this.conversations.filter((r) => this.matchesView(r, view, userId, userTeams, true)).length;
     const my: ViewItem[] = [
       { key: "inbound", title: "My Inbound", count: count("inbound") },
       { key: "mine", title: "Mine", count: count("mine") },

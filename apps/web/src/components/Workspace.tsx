@@ -42,7 +42,8 @@ export function Workspace() {
   // Desktop auto-opens the first conversation; mobile stays on the list.
   useEffect(() => {
     if (!isMobile && !selectedId && convos.data && convos.data.length > 0) {
-      setSelectedId(convos.data[0].id);
+      const first = convos.data.find((c) => c.status !== "closed") ?? convos.data[0];
+      setSelectedId(first.id);
     }
   }, [convos.data, selectedId, isMobile]);
 
