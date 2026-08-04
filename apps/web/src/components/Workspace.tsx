@@ -5,7 +5,6 @@ import { ConversationList } from "./ConversationList";
 import { Thread } from "./Thread";
 import { ContextPanel } from "./ContextPanel";
 import { CommandPalette } from "./CommandPalette";
-import { CreateInboxModal } from "./CreateInboxModal";
 import { Settings } from "./Settings";
 import { useConversations, useMediaQuery, useRealtime, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
@@ -22,7 +21,6 @@ export function Workspace() {
     () => typeof window === "undefined" || !window.matchMedia("(max-width: 1399px)").matches,
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
-  const [newInboxOpen, setNewInboxOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -109,6 +107,7 @@ export function Workspace() {
             view={view}
             onSelectView={selectView}
             onClose={isCompact ? () => setDrawerOpen(false) : undefined}
+            onOpenSettings={() => { setSettingsOpen(true); setDrawerOpen(false); }}
           />
           <ConversationList
             view={view}
@@ -152,17 +151,7 @@ export function Workspace() {
         />
       )}
 
-      {settingsOpen && (
-        <Settings
-          onClose={() => setSettingsOpen(false)}
-          onToast={notify}
-          onAddChannel={() => setNewInboxOpen(true)}
-        />
-      )}
-
-      {newInboxOpen && (
-        <CreateInboxModal onClose={() => setNewInboxOpen(false)} onToast={notify} onSelectView={setView} />
-      )}
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} onToast={notify} />}
 
       <div className={"toast" + (toast ? " show" : "")}>
         <span className="dot" />

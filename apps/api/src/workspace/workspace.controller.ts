@@ -1,11 +1,25 @@
-import { Body, Controller, ForbiddenException, Get, NotFoundException, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+} from "@nestjs/common";
 import {
   createInboxInputSchema,
   createTeamInputSchema,
   createUserInputSchema,
+  updateTeamInputSchema,
+  updateUserInputSchema,
   type CreateInboxInput,
   type CreateTeamInput,
   type CreateUserInput,
+  type UpdateTeamInput,
+  type UpdateUserInput,
   type User,
 } from "@ding/schemas";
 import { Store } from "../data/store";
@@ -63,6 +77,25 @@ export class WorkspaceController {
     return this.store.createTeam({ orgId: me.orgId, name: body.name });
   }
 
+  @Patch("settings/teams/:id")
+  async updateTeam(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateTeamInputSchema)) body: UpdateTeamInput,
+  ) {
+    await this.requireManager(userId);
+    const team = await this.store.updateTeam(id, { name: body.name });
+    if (!team) throw new NotFoundException("Team not found");
+    return team;
+  }
+
+  @Delete("settings/teams/:id")
+  async deleteTeam(@CurrentUserId() userId: string, @Param("id") id: string) {
+    await this.requireManager(userId);
+    await this.store.deleteTeam(id);
+    return { ok: true };
+  }
+
   @Post("settings/people")
   async createUser(
     @CurrentUserId() userId: string,
@@ -70,6 +103,26 @@ export class WorkspaceController {
   ) {
     const me = await this.requireManager(userId);
     return this.store.createUser({ orgId: me.orgId, ...body });
+  }
+
+  @Patch("settings/people/:id")
+  async updateUser(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateUserInputSchema)) body: UpdateUserInput,
+  ) {
+    await this.requireManager(userId);
+    const user = await this.store.updateUser(id, body);
+    if (!user) throw new NotFoundException("Person not found");
+    return user;
+  }
+
+  @Delete("settings/people/:id")
+  async deleteUser(@CurrentUserId() userId: string, @Param("id") id: string) {
+    await this.requireManager(userId);
+    if (id === userId) throw new ForbiddenException("You can't remove your own account");
+    await this.store.deleteUser(id);
+    return { ok: true };
   }
 
   private async requireManager(userId: string): Promise<User> {

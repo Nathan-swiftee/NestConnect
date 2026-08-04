@@ -13,6 +13,8 @@ import type {
   Message,
   Participant,
   Team,
+  UpdateTeamInput,
+  UpdateUserInput,
   User,
 } from "@ding/schemas";
 
@@ -51,6 +53,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const patch = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 export const api = {
   // auth
@@ -66,7 +71,11 @@ export const api = {
   teams: () => get<Team[]>("/settings/teams"),
   people: () => get<Member[]>("/settings/people"),
   createTeam: (input: CreateTeamInput) => post<Team>("/settings/teams", input),
+  updateTeam: (id: string, input: UpdateTeamInput) => patch<Team>(`/settings/teams/${id}`, input),
+  deleteTeam: (id: string) => del<{ ok: boolean }>(`/settings/teams/${id}`),
   createUser: (input: CreateUserInput) => post<User>("/settings/people", input),
+  updateUser: (id: string, input: UpdateUserInput) => patch<User>(`/settings/people/${id}`, input),
+  deleteUser: (id: string) => del<{ ok: boolean }>(`/settings/people/${id}`),
   // conversations
   conversations: (view: string) =>
     get<Conversation[]>(`/conversations?view=${encodeURIComponent(view)}`),

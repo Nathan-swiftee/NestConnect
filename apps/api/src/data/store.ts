@@ -65,12 +65,16 @@ export abstract class Store {
     handle: string;
     teamIds: string[];
     routingStrategy: RoutingStrategy;
+    channelConfig?: Record<string, string>;
   }): Promise<Inbox>;
 
   /* ---- settings: teams & people ---- */
   abstract listTeams(): Promise<Team[]>;
   abstract listMembers(): Promise<Member[]>;
   abstract createTeam(params: { orgId: string; name: string }): Promise<Team>;
+  abstract updateTeam(id: string, params: { name: string }): Promise<Team | undefined>;
+  /** Delete a team, detaching its members, inbox routing and any assignments. */
+  abstract deleteTeam(id: string): Promise<void>;
   abstract createUser(params: {
     orgId: string;
     name: string;
@@ -78,6 +82,12 @@ export abstract class Store {
     role: Role;
     teamIds: string[];
   }): Promise<User>;
+  abstract updateUser(
+    id: string,
+    params: { name?: string; role?: Role; teamIds?: string[] },
+  ): Promise<User | undefined>;
+  /** Remove a person, detaching their team memberships and clearing assignments. */
+  abstract deleteUser(id: string): Promise<void>;
   abstract views(userId: string): Promise<SidebarViews>;
   abstract listConversations(view: string, userId: string): Promise<Conversation[]>;
   abstract getConversation(id: string): Promise<ConversationWithMessages | undefined>;

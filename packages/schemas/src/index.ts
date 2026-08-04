@@ -92,8 +92,36 @@ export const inboxSchema = z.object({
   teamIds: z.array(z.string()).default([]),
   routingStrategy: routingStrategySchema.default("manual"),
   unread: z.number().int().nonnegative().default(0),
+  /** True once the integration credentials needed to send/receive live are set. */
+  connected: z.boolean().optional(),
 });
 export type Inbox = z.infer<typeof inboxSchema>;
+
+/**
+ * The channelConfig keys that must be present (and non-empty) before an inbox
+ * of a given type can send/receive live. Used to derive `connected`. Secrets in
+ * channelConfig never leave the backend — only the boolean does.
+ */
+export const REQUIRED_CHANNEL_KEYS: Record<ChannelType, string[]> = {
+  whatsapp: ["phoneNumberId", "accessToken"],
+  whatsapp_group: ["phoneNumberId", "accessToken"],
+  email: ["providerToken"],
+};
+
+/**
+ * Whether an inbox is wired up to its provider. A `null`/absent config means a
+ * legacy/demo channel that predates the integration flow — treated as connected
+ * so existing inboxes don't suddenly read as broken. A present config (even `{}`)
+ * is checked strictly against REQUIRED_CHANNEL_KEYS.
+ */
+export function isInboxConnected(
+  type: ChannelType,
+  config?: Record<string, string> | null,
+): boolean {
+  if (config == null) return true;
+  const keys = REQUIRED_CHANNEL_KEYS[type] ?? [];
+  return keys.every((k) => Boolean(config[k] && config[k].trim()));
+}
 
 export const labelSchema = z.object({
   id: z.string(),
@@ -195,6 +223,8 @@ export const createInboxInputSchema = z.object({
   handle: z.string().min(1),
   teamIds: z.array(z.string()).min(1),
   routingStrategy: routingStrategySchema.default("manual"),
+  /** Provider integration credentials (phone number id, tokens, …). Backend-only. */
+  channelConfig: z.record(z.string()).optional(),
 });
 export type CreateInboxInput = z.infer<typeof createInboxInputSchema>;
 
@@ -203,6 +233,11 @@ export const createTeamInputSchema = z.object({
 });
 export type CreateTeamInput = z.infer<typeof createTeamInputSchema>;
 
+export const updateTeamInputSchema = z.object({
+  name: z.string().min(1),
+});
+export type UpdateTeamInput = z.infer<typeof updateTeamInputSchema>;
+
 export const createUserInputSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
@@ -210,6 +245,13 @@ export const createUserInputSchema = z.object({
   teamIds: z.array(z.string()).default([]),
 });
 export type CreateUserInput = z.infer<typeof createUserInputSchema>;
+
+export const updateUserInputSchema = z.object({
+  name: z.string().min(1).optional(),
+  role: roleSchema.optional(),
+  teamIds: z.array(z.string()).optional(),
+});
+export type UpdateUserInput = z.infer<typeof updateUserInputSchema>;
 
 /** A user together with the teams they belong to (Settings › People). */
 export const memberSchema = z.object({

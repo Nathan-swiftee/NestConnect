@@ -11,6 +11,8 @@ import {
   type CreateTeamInput,
   type CreateUserInput,
   type Message,
+  type UpdateTeamInput,
+  type UpdateUserInput,
 } from "@ding/schemas";
 import { api } from "./lib/api";
 import { getSocket } from "./lib/socket";
@@ -97,11 +99,61 @@ export function useCreateTeam() {
   });
 }
 
+export function useUpdateTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdateTeamInput }) => api.updateTeam(v.id, v.input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+export function useDeleteTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteTeam(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["inboxes"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateUserInput) => api.createUser(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
+  });
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdateUserInput }) => api.updateUser(v.id, v.input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteUser(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["people"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
   });
 }
 export const useConversations = (view: string) =>

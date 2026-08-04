@@ -76,6 +76,7 @@ export class PrismaStore extends Store {
     handle: string;
     teamIds: string[];
     routingStrategy: RoutingStrategy;
+    channelConfig?: Record<string, string>;
   }): Promise<Inbox> {
     const created = await this.prisma.inbox.create({
       data: {
@@ -84,6 +85,7 @@ export class PrismaStore extends Store {
         name: params.name,
         handle: params.handle,
         routingStrategy: params.routingStrategy,
+        channelConfig: params.channelConfig ?? undefined,
         teams: { create: params.teamIds.map((teamId) => ({ teamId })) },
       },
       include: { teams: true },
@@ -110,6 +112,24 @@ export class PrismaStore extends Store {
     return mapTeam(t);
   }
 
+  async updateTeam(id: string, params: { name: string }): Promise<Team | undefined> {
+    try {
+      const t = await this.prisma.team.update({ where: { id }, data: { name: params.name } });
+      return mapTeam(t);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async deleteTeam(id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.teamMember.deleteMany({ where: { teamId: id } });
+      await tx.inboxTeam.deleteMany({ where: { teamId: id } });
+      await tx.conversation.updateMany({ where: { assignedTeamId: id }, data: { assignedTeamId: null } });
+      await tx.team.delete({ where: { id } });
+    });
+  }
+
   async createUser(params: {
     orgId: string;
     name: string;
@@ -128,6 +148,43 @@ export class PrismaStore extends Store {
       },
     });
     return mapUser(u);
+  }
+
+  async updateUser(
+    id: string,
+    params: { name?: string; role?: Role; teamIds?: string[] },
+  ): Promise<User | undefined> {
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const data: Prisma.UserUpdateInput = {};
+        if (params.name !== undefined) data.name = params.name;
+        if (params.role !== undefined) data.role = params.role;
+        if (Object.keys(data).length) await tx.user.update({ where: { id }, data });
+        if (params.teamIds !== undefined) {
+          await tx.teamMember.deleteMany({ where: { userId: id } });
+          if (params.teamIds.length) {
+            await tx.teamMember.createMany({
+              data: params.teamIds.map((teamId) => ({ userId: id, teamId })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      });
+      const u = await this.prisma.user.findUnique({ where: { id } });
+      return u ? mapUser(u) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.teamMember.deleteMany({ where: { userId: id } });
+      await tx.note.deleteMany({ where: { authorUserId: id } });
+      await tx.conversation.updateMany({ where: { assigneeUserId: id }, data: { assigneeUserId: null } });
+      await tx.message.updateMany({ where: { authorUserId: id }, data: { authorUserId: null } });
+      await tx.user.delete({ where: { id } });
+    });
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

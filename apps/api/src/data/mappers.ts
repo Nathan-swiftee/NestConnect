@@ -14,6 +14,7 @@ import type {
   Team,
   User,
 } from "@ding/schemas";
+import { isInboxConnected } from "@ding/schemas";
 
 /* Prisma row → domain type mappers. Includes are typed via Prisma payload helpers. */
 
@@ -52,15 +53,17 @@ export function mapTeam(t: Prisma.TeamGetPayload<object>): Team {
 }
 
 export function mapInbox(i: InboxWithTeams): Inbox {
+  const type = i.type as ChannelType;
   return {
     id: i.id,
     orgId: i.orgId,
-    type: i.type as ChannelType,
+    type,
     name: i.name,
     handle: i.handle,
     teamIds: i.teams.map((t) => t.teamId),
     routingStrategy: i.routingStrategy as RoutingStrategy,
     unread: 0,
+    connected: isInboxConnected(type, i.channelConfig as Record<string, string> | null),
   };
 }
 

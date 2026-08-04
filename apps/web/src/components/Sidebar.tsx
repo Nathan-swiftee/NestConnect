@@ -1,5 +1,14 @@
 import { useLogout, useMe, useSound, useViews } from "../hooks";
-import { InboxIcon, TeamIcon, ThemeIcon, SoundOnIcon, SoundOffIcon, XIcon, channelMeta } from "../lib/icons";
+import {
+  InboxIcon,
+  TeamIcon,
+  ThemeIcon,
+  SoundOnIcon,
+  SoundOffIcon,
+  SettingsIcon,
+  XIcon,
+  channelMeta,
+} from "../lib/icons";
 import { initials } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 
@@ -7,9 +16,10 @@ interface Props {
   view: string;
   onSelectView: (key: string) => void;
   onClose?: () => void;
+  onOpenSettings?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onClose }: Props) {
+export function Sidebar({ view, onSelectView, onClose, onOpenSettings }: Props) {
   const { data } = useViews();
   const { data: meData } = useMe();
   const logout = useLogout();
@@ -114,6 +124,11 @@ export function Sidebar({ view, onSelectView, onClose }: Props) {
           </div>
         </div>
         <div className="side__foot-actions">
+          {onOpenSettings && (
+            <button className="iconbtn" title="Settings" onClick={onOpenSettings}>
+              <SettingsIcon />
+            </button>
+          )}
           <button className="iconbtn" title="Toggle theme" onClick={toggleTheme}>
             <ThemeIcon />
           </button>

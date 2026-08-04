@@ -17,6 +17,7 @@ import type {
   Team,
   User,
 } from "@ding/schemas";
+import { isInboxConnected } from "@ding/schemas";
 import { env } from "../config/env";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import { Store, type AppendInboundInput, type SidebarViews, type ViewItem } from "./store";
@@ -40,6 +41,8 @@ export class MemoryStore extends Store {
   private conversations: ConversationRecord[];
   private contacts: Contact[];
   private passwords: Map<string, string>;
+  /** Per-inbox provider credentials, kept server-side only (never serialised). */
+  private inboxConfig = new Map<string, Record<string, string>>();
   private idSeq = 10_000;
 
   constructor() {
@@ -80,9 +83,12 @@ export class MemoryStore extends Store {
     handle: string;
     teamIds: string[];
     routingStrategy: RoutingStrategy;
+    channelConfig?: Record<string, string>;
   }): Promise<Inbox> {
+    const id = `inbox_${++this.idSeq}`;
+    if (params.channelConfig) this.inboxConfig.set(id, params.channelConfig);
     const inbox: Inbox = {
-      id: `inbox_${++this.idSeq}`,
+      id,
       orgId: params.orgId,
       type: params.type,
       name: params.name,
@@ -92,7 +98,7 @@ export class MemoryStore extends Store {
       unread: 0,
     };
     this.inboxes.push(inbox);
-    return inbox;
+    return { ...inbox, connected: isInboxConnected(params.type, params.channelConfig ?? null) };
   }
 
   async listTeams(): Promise<Team[]> {
@@ -107,6 +113,22 @@ export class MemoryStore extends Store {
     const team: Team = { id: `team_${++this.idSeq}`, orgId: params.orgId, name: params.name };
     this.teams.push(team);
     return team;
+  }
+
+  async updateTeam(id: string, params: { name: string }): Promise<Team | undefined> {
+    const team = this.teams.find((t) => t.id === id);
+    if (!team) return undefined;
+    team.name = params.name;
+    return team;
+  }
+
+  async deleteTeam(id: string): Promise<void> {
+    this.teams = this.teams.filter((t) => t.id !== id);
+    for (const uid of Object.keys(this.membership)) {
+      this.membership[uid] = this.membership[uid].filter((t) => t !== id);
+    }
+    for (const inbox of this.inboxes) inbox.teamIds = inbox.teamIds.filter((t) => t !== id);
+    for (const c of this.conversations) if (c.assignedTeamId === id) c.assignedTeamId = null;
   }
 
   async createUser(params: {
@@ -132,6 +154,25 @@ export class MemoryStore extends Store {
     return user;
   }
 
+  async updateUser(
+    id: string,
+    params: { name?: string; role?: Role; teamIds?: string[] },
+  ): Promise<User | undefined> {
+    const user = this.users.find((u) => u.id === id);
+    if (!user) return undefined;
+    if (params.name !== undefined) user.name = params.name;
+    if (params.role !== undefined) user.role = params.role;
+    if (params.teamIds !== undefined) this.membership[id] = params.teamIds;
+    return user;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    this.users = this.users.filter((u) => u.id !== id);
+    delete this.membership[id];
+    this.passwords.delete(id);
+    for (const c of this.conversations) if (c.assigneeUserId === id) c.assigneeUserId = null;
+  }
+
   async teamsForUser(userId: string): Promise<string[]> {
     return this.membership[userId] ?? [];
   }
@@ -143,7 +184,10 @@ export class MemoryStore extends Store {
   }
 
   async listInboxes(): Promise<Inbox[]> {
-    return this.inboxes;
+    return this.inboxes.map((i) => ({
+      ...i,
+      connected: isInboxConnected(i.type, this.inboxConfig.get(i.id) ?? null),
+    }));
   }
 
   async getMembers(teamId: string): Promise<User[]> {
