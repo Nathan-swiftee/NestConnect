@@ -56,7 +56,6 @@ export function makeSeed() {
 
   const inboxes: Inbox[] = [
     { id: "inbox_wa", orgId: ORG_ID, type: "whatsapp", name: "+44 20 7946", handle: "+44 20 7946 0100", teamIds: ["team_support"], routingStrategy: "manual", unread: 2 },
-    { id: "inbox_ivy", orgId: ORG_ID, type: "whatsapp_group", name: "The Ivy House", handle: "The Ivy House · group", teamIds: ["team_support"], routingStrategy: "manual", unread: 1 },
     { id: "inbox_support", orgId: ORG_ID, type: "email", name: "support@swiftee.co.uk", handle: "support@swiftee.co.uk", teamIds: ["team_support"], routingStrategy: "round_robin", unread: 1 },
     { id: "inbox_hello", orgId: ORG_ID, type: "email", name: "hello@swiftee.co.uk", handle: "hello@swiftee.co.uk", teamIds: ["team_sales"], routingStrategy: "round_robin", unread: 0 },
   ];
@@ -103,7 +102,7 @@ export function makeSeed() {
 
   const conversations: ConversationRecord[] = [
     {
-      id: "conv_ivy", orgId: ORG_ID, inboxId: "inbox_ivy", channel: "whatsapp_group",
+      id: "conv_ivy", orgId: ORG_ID, inboxId: "inbox_wa", channel: "whatsapp_group",
       channelRef: "group_ivy_demo", inviteLink: "https://chat.whatsapp.com/NCivyhouse01",
       contact: contacts.ivy, subject: "The Ivy House", status: "open", assigneeUserId: DEMO_USER_ID, assignedTeamId: "team_support",
       priority: "high", labels: [LABEL.vip, LABEL.delivery], unread: true,

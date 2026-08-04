@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useConversations } from "../hooks";
 import { relativeTime, initials, slaCountdown } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon } from "../lib/icons";
+
+type Filter = "all" | "unread" | "groups";
 
 interface Props {
   view: string;
@@ -14,6 +17,23 @@ interface Props {
 
 export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onOpenDrawer }: Props) {
   const { data, isLoading } = useConversations(view);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [q, setQ] = useState("");
+
+  const query = q.trim().toLowerCase();
+  const shown = (data ?? []).filter((c) => {
+    if (filter === "unread" && !c.unread) return false;
+    if (filter === "groups" && c.channel !== "whatsapp_group") return false;
+    if (query && !`${c.contact.displayName} ${c.preview} ${c.subject ?? ""}`.toLowerCase().includes(query))
+      return false;
+    return true;
+  });
+
+  const chip = (key: Filter, label: string) => (
+    <button className={"chip" + (filter === key ? " active" : "")} onClick={() => setFilter(key)}>
+      {label}
+    </button>
+  );
 
   return (
     <section className="list" aria-label="Conversations">
@@ -31,19 +51,26 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
         </div>
         <div className="search">
           <SearchIcon />
-          <input placeholder="Search conversations, contacts…" aria-label="Search" />
+          <input
+            placeholder="Search conversations, contacts…"
+            aria-label="Search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
         </div>
         <div className="chips">
-          <button className="chip active">All</button>
-          <button className="chip">Unread</button>
-          <button className="chip">Assigned to me</button>
+          {chip("all", "All")}
+          {chip("unread", "Unread")}
+          {chip("groups", "Groups")}
         </div>
       </div>
 
       <div className="convs">
         {isLoading && <div className="empty">Loading…</div>}
-        {data && data.length === 0 && <div className="empty">Nothing here — inbox zero.</div>}
-        {data?.map((c) => {
+        {!isLoading && shown.length === 0 && (
+          <div className="empty">{filter === "groups" ? "No group chats here." : "Nothing here — inbox zero."}</div>
+        )}
+        {shown.map((c) => {
           const cm = channelMeta(c.channel);
           const owned = !!c.assigneeUserId;
           const Glyph = cm.Glyph;

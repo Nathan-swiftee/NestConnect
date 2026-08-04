@@ -1,17 +1,15 @@
 import { useLogout, useMe, useSound, useViews } from "../hooks";
-import { InboxIcon, TeamIcon, PlusIcon, ThemeIcon, SoundOnIcon, SoundOffIcon, XIcon, channelMeta } from "../lib/icons";
+import { InboxIcon, TeamIcon, ThemeIcon, SoundOnIcon, SoundOffIcon, XIcon, channelMeta } from "../lib/icons";
 import { initials } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 
 interface Props {
   view: string;
   onSelectView: (key: string) => void;
-  onNewInbox: () => void;
-  onNewGroup: () => void;
   onClose?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onNewInbox, onNewGroup, onClose }: Props) {
+export function Sidebar({ view, onSelectView, onClose }: Props) {
   const { data } = useViews();
   const { data: meData } = useMe();
   const logout = useLogout();
@@ -103,12 +101,6 @@ export function Sidebar({ view, onSelectView, onNewInbox, onNewGroup, onClose }:
           );
         })}
 
-        <button className="newinbox" onClick={onNewInbox}>
-          <PlusIcon /> New channel
-        </button>
-        <button className="newinbox subtle" onClick={onNewGroup}>
-          <PlusIcon /> New group space
-        </button>
       </div>
 
       <div className="side__foot">

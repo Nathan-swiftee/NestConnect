@@ -6,7 +6,10 @@ import type {
   ConversationWithMessages,
   CreateGroupInput,
   CreateInboxInput,
+  CreateTeamInput,
+  CreateUserInput,
   Inbox,
+  Member,
   Message,
   Participant,
   Team,
@@ -59,6 +62,11 @@ export const api = {
   views: () => get<SidebarViews>("/views"),
   inboxes: () => get<Inbox[]>("/inboxes"),
   createInbox: (input: CreateInboxInput) => post<Inbox>("/inboxes", input),
+  // settings
+  teams: () => get<Team[]>("/settings/teams"),
+  people: () => get<Member[]>("/settings/people"),
+  createTeam: (input: CreateTeamInput) => post<Team>("/settings/teams", input),
+  createUser: (input: CreateUserInput) => post<User>("/settings/people", input),
   // conversations
   conversations: (view: string) =>
     get<Conversation[]>(`/conversations?view=${encodeURIComponent(view)}`),

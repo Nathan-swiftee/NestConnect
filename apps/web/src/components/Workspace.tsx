@@ -6,7 +6,7 @@ import { Thread } from "./Thread";
 import { ContextPanel } from "./ContextPanel";
 import { CommandPalette } from "./CommandPalette";
 import { CreateInboxModal } from "./CreateInboxModal";
-import { CreateGroupModal } from "./CreateGroupModal";
+import { Settings } from "./Settings";
 import { useConversations, useMediaQuery, useRealtime, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
 
@@ -23,7 +23,7 @@ export function Workspace() {
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [newInboxOpen, setNewInboxOpen] = useState(false);
-  const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   useRealtime(selectedId);
@@ -103,13 +103,11 @@ export function Workspace() {
     <>
       <div className="stage">
         <div className={"app" + (drawerOpen ? " drawer-open" : "")} data-pane={pane}>
-          <IconRail onToast={notify} />
+          <IconRail onOpenSettings={() => setSettingsOpen(true)} />
           {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />}
           <Sidebar
             view={view}
             onSelectView={selectView}
-            onNewInbox={() => { setNewInboxOpen(true); setDrawerOpen(false); }}
-            onNewGroup={() => { setNewGroupOpen(true); setDrawerOpen(false); }}
             onClose={isCompact ? () => setDrawerOpen(false) : undefined}
           />
           <ConversationList
@@ -154,12 +152,16 @@ export function Workspace() {
         />
       )}
 
-      {newInboxOpen && (
-        <CreateInboxModal onClose={() => setNewInboxOpen(false)} onToast={notify} onSelectView={setView} />
+      {settingsOpen && (
+        <Settings
+          onClose={() => setSettingsOpen(false)}
+          onToast={notify}
+          onAddChannel={() => setNewInboxOpen(true)}
+        />
       )}
 
-      {newGroupOpen && (
-        <CreateGroupModal onClose={() => setNewGroupOpen(false)} onToast={notify} onSelectView={setView} />
+      {newInboxOpen && (
+        <CreateInboxModal onClose={() => setNewInboxOpen(false)} onToast={notify} onSelectView={setView} />
       )}
 
       <div className={"toast" + (toast ? " show" : "")}>

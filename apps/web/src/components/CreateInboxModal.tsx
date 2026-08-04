@@ -6,7 +6,6 @@ import { XIcon } from "../lib/icons";
 const TYPES: { value: ChannelType; label: string }[] = [
   { value: "email", label: "Email address" },
   { value: "whatsapp", label: "WhatsApp number" },
-  { value: "whatsapp_group", label: "WhatsApp group" },
 ];
 const STRATEGIES: { value: RoutingStrategy; label: string }[] = [
   { value: "manual", label: "Manual — up for grabs" },
@@ -51,8 +50,7 @@ export function CreateInboxModal({ onClose, onToast, onSelectView }: Props) {
     );
   };
 
-  const placeholder =
-    type === "email" ? "support@swiftee.co.uk" : type === "whatsapp_group" ? "The Ivy House" : "+44 20 7946 0100";
+  const placeholder = type === "email" ? "support@swiftee.co.uk" : "+44 20 7946 0100";
 
   return (
     <div className="modal" onClick={onClose}>

@@ -8,6 +8,8 @@ import {
   type ConversationStatus,
   type CreateGroupInput,
   type CreateInboxInput,
+  type CreateTeamInput,
+  type CreateUserInput,
   type Message,
 } from "@ding/schemas";
 import { api } from "./lib/api";
@@ -79,6 +81,29 @@ export function useRemoveParticipant(conversationId: string) {
 
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: api.me });
 export const useViews = () => useQuery({ queryKey: ["views"], queryFn: api.views });
+export const useInboxes = () => useQuery({ queryKey: ["inboxes"], queryFn: api.inboxes });
+export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: api.teams });
+export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
+
+export function useCreateTeam() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateTeamInput) => api.createTeam(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateUserInput) => api.createUser(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["people"] }),
+  });
+}
 export const useConversations = (view: string) =>
   useQuery({ queryKey: ["conversations", view], queryFn: () => api.conversations(view) });
 export const useConversation = (id: string | null) =>

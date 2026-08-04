@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import bcrypt from "bcryptjs";
 import type { Prisma } from "@prisma/client";
 import type {
   ChannelType,
@@ -7,13 +8,17 @@ import type {
   ConversationStatus,
   ConversationWithMessages,
   Inbox,
+  Member,
   Message,
   MessageStatus,
   Participant,
   ParticipantRole,
+  Role,
   RoutingStrategy,
+  Team,
   User,
 } from "@ding/schemas";
+import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 import {
   mapContact,
@@ -84,6 +89,45 @@ export class PrismaStore extends Store {
       include: { teams: true },
     });
     return mapInbox(created);
+  }
+
+  async listTeams(): Promise<Team[]> {
+    const rows = await this.prisma.team.findMany({ where: { orgId: ORG_ID }, orderBy: { name: "asc" } });
+    return rows.map(mapTeam);
+  }
+
+  async listMembers(): Promise<Member[]> {
+    const rows = await this.prisma.user.findMany({
+      where: { orgId: ORG_ID },
+      include: { memberships: true },
+      orderBy: { name: "asc" },
+    });
+    return rows.map((u) => ({ user: mapUser(u), teamIds: u.memberships.map((m) => m.teamId) }));
+  }
+
+  async createTeam(params: { orgId: string; name: string }): Promise<Team> {
+    const t = await this.prisma.team.create({ data: { orgId: params.orgId, name: params.name } });
+    return mapTeam(t);
+  }
+
+  async createUser(params: {
+    orgId: string;
+    name: string;
+    email: string;
+    role: Role;
+    teamIds: string[];
+  }): Promise<User> {
+    const u = await this.prisma.user.create({
+      data: {
+        orgId: params.orgId,
+        name: params.name,
+        email: params.email,
+        role: params.role,
+        passwordHash: bcrypt.hashSync(env.auth.devPassword, 8),
+        memberships: { create: params.teamIds.map((teamId) => ({ teamId })) },
+      },
+    });
+    return mapUser(u);
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

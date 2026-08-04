@@ -5,10 +5,12 @@ import type {
   ConversationStatus,
   ConversationWithMessages,
   Inbox,
+  Member,
   Message,
   MessageStatus,
   Participant,
   ParticipantRole,
+  Role,
   RoutingStrategy,
   Team,
   User,
@@ -64,6 +66,18 @@ export abstract class Store {
     teamIds: string[];
     routingStrategy: RoutingStrategy;
   }): Promise<Inbox>;
+
+  /* ---- settings: teams & people ---- */
+  abstract listTeams(): Promise<Team[]>;
+  abstract listMembers(): Promise<Member[]>;
+  abstract createTeam(params: { orgId: string; name: string }): Promise<Team>;
+  abstract createUser(params: {
+    orgId: string;
+    name: string;
+    email: string;
+    role: Role;
+    teamIds: string[];
+  }): Promise<User>;
   abstract views(userId: string): Promise<SidebarViews>;
   abstract listConversations(view: string, userId: string): Promise<Conversation[]>;
   abstract getConversation(id: string): Promise<ConversationWithMessages | undefined>;

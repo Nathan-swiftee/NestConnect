@@ -7,10 +7,12 @@ import type {
   ConversationStatus,
   ConversationWithMessages,
   Inbox,
+  Member,
   Message,
   MessageStatus,
   Participant,
   ParticipantRole,
+  Role,
   RoutingStrategy,
   Team,
   User,
@@ -91,6 +93,43 @@ export class MemoryStore extends Store {
     };
     this.inboxes.push(inbox);
     return inbox;
+  }
+
+  async listTeams(): Promise<Team[]> {
+    return this.teams;
+  }
+
+  async listMembers(): Promise<Member[]> {
+    return this.users.map((u) => ({ user: u, teamIds: this.membership[u.id] ?? [] }));
+  }
+
+  async createTeam(params: { orgId: string; name: string }): Promise<Team> {
+    const team: Team = { id: `team_${++this.idSeq}`, orgId: params.orgId, name: params.name };
+    this.teams.push(team);
+    return team;
+  }
+
+  async createUser(params: {
+    orgId: string;
+    name: string;
+    email: string;
+    role: Role;
+    teamIds: string[];
+  }): Promise<User> {
+    const id = `usr_${++this.idSeq}`;
+    const user: User = {
+      id,
+      orgId: params.orgId,
+      name: params.name,
+      email: params.email,
+      role: params.role,
+      avatarColor: AVATAR_PALETTE[this.users.length % AVATAR_PALETTE.length],
+      online: false,
+    };
+    this.users.push(user);
+    this.membership[id] = params.teamIds;
+    this.passwords.set(id, bcrypt.hashSync(env.auth.devPassword, 8));
+    return user;
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

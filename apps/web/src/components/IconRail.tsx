@@ -13,7 +13,7 @@ import {
   SoundOffIcon,
 } from "../lib/icons";
 
-export function IconRail({ onToast }: { onToast: (msg: string) => void }) {
+export function IconRail({ onOpenSettings }: { onOpenSettings: () => void }) {
   const { data } = useMe();
   const me = data?.user;
   const logout = useLogout();
@@ -34,7 +34,7 @@ export function IconRail({ onToast }: { onToast: (msg: string) => void }) {
       <button className="railbtn" title="Insights">
         <InsightsIcon />
       </button>
-      <button className="railbtn" title="Settings">
+      <button className="railbtn" title="Settings" onClick={onOpenSettings}>
         <SettingsIcon />
       </button>
       <div className="spacer" />
@@ -66,7 +66,7 @@ export function IconRail({ onToast }: { onToast: (msg: string) => void }) {
                 <b>{me?.name}</b>
                 <small>{me?.email}</small>
               </div>
-              <button onClick={() => { setMenu(false); onToast("Settings — coming soon"); }}>Settings</button>
+              <button onClick={() => { setMenu(false); onOpenSettings(); }}>Settings</button>
               <button className="danger" onClick={() => logout.mutate()}>
                 Sign out
               </button>

@@ -283,38 +283,41 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       ) : (
         <div className="composer">
           <div className="compbar">
-            {internal ? (
-              <span className="winhint" style={{ background: "var(--amber-tint)", color: "var(--amber)" }}>
-                <span className="d" style={{ background: "var(--amber)" }} /> Internal note — your team only
-              </span>
-            ) : isEmail ? (
-              <span className="winhint" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
-                <span className="d" style={{ background: "var(--email)" }} /> Email reply
-              </span>
-            ) : (
-              <span className="winhint">
-                <span className="d" /> Replying within the 24-hour window
-              </span>
-            )}
-            <button
-              className="chsel"
-              onClick={() => setInternal((v) => !v)}
-              title="Toggle internal note"
-            >
-              {internal ? (
-                <>
-                  <span className="d" style={{ background: "var(--amber)" }} />
-                  Internal note · team only
-                </>
-              ) : (
-                <>
-                  <span className="chsel-ic" style={{ color: cm.color }}>
-                    <Glyph />
-                  </span>
-                  {conv.contact.displayName}
-                </>
-              )}
-            </button>
+            <div className="compmode" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!internal}
+                className={"modebtn" + (!internal ? " active" : "")}
+                onClick={() => setInternal(false)}
+              >
+                <span className="modebtn__ic" style={!internal ? { color: cm.color } : undefined}>
+                  <Glyph />
+                </span>
+                Reply
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={internal}
+                className={"modebtn note" + (internal ? " active" : "")}
+                onClick={() => setInternal(true)}
+              >
+                <span className="modebtn__ic">
+                  <NoteIcon />
+                </span>
+                Note
+              </button>
+            </div>
+            <span className="compctx">
+              {internal
+                ? "Only your team can see this"
+                : isEmail
+                  ? `Email · ${conv.contact.displayName}`
+                  : conv.channel === "whatsapp_group"
+                    ? `Group · ${conv.contact.displayName}`
+                    : "WhatsApp · within 24h window"}
+            </span>
           </div>
           <div className="compinput">
             <button className="tool" title="Emoji">

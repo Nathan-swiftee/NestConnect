@@ -198,6 +198,26 @@ export const createInboxInputSchema = z.object({
 });
 export type CreateInboxInput = z.infer<typeof createInboxInputSchema>;
 
+export const createTeamInputSchema = z.object({
+  name: z.string().min(1),
+});
+export type CreateTeamInput = z.infer<typeof createTeamInputSchema>;
+
+export const createUserInputSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  role: roleSchema.default("agent"),
+  teamIds: z.array(z.string()).default([]),
+});
+export type CreateUserInput = z.infer<typeof createUserInputSchema>;
+
+/** A user together with the teams they belong to (Settings › People). */
+export const memberSchema = z.object({
+  user: userSchema,
+  teamIds: z.array(z.string()),
+});
+export type Member = z.infer<typeof memberSchema>;
+
 export const loginInputSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
