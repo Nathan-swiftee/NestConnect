@@ -513,9 +513,13 @@ input,textarea{font:inherit}
   .side__foot{display:flex;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
   .list{width:100%;flex:1 1 auto;border-right:0}
   .list__head{padding-top:calc(14px + env(safe-area-inset-top))}
-  .thread{width:100%;flex:1 1 auto;min-width:0}
+  .thread{width:100%;flex:1 1 auto;min-width:0;container-type:normal}
   .thread__back{display:grid}
   .thread__head{padding:calc(10px + env(safe-area-inset-top)) 12px 10px;gap:8px}
+  /* pin the chat + list headers so a page-level scroll can't carry them up */
+  .thread__head,.list__head{position:sticky;top:0;z-index:6}
+  /* container query is off on mobile now, so hide the header labels here */
+  .assignbtn .lbl,.resolvebtn .lbl,.thread__head .who-presence{display:none}
   .app[data-pane="list"] .thread{display:none}
   .app[data-pane="thread"] .list{display:none}
   .msgs{padding:16px 14px}
