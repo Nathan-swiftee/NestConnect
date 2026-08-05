@@ -383,7 +383,9 @@ input,textarea{font:inherit}
 .xthread .n{font-size:11px;font-weight:700;color:var(--text-faint)}
 
 /* command palette — floating polished glass */
-.cmdk{position:fixed;inset:0;background:rgba(6,12,10,.42);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;z-index:50;animation:overlayIn .2s ease}
+/* Only a whisper of scrim so the palette's glass refracts the live app behind it
+   (like the assign dropdown), instead of sitting on a flat grey wash. */
+.cmdk{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 30%,transparent);backdrop-filter:saturate(120%) blur(2px);-webkit-backdrop-filter:saturate(120%) blur(2px);display:flex;align-items:flex-start;justify-content:center;z-index:50;animation:overlayIn .2s ease}
 .cmdk__box{margin-top:12vh;width:min(560px,92vw);border-radius:var(--r-20);overflow:hidden;animation:sheetIn .26s var(--ease)}
 .cmdk__in{display:flex;align-items:center;gap:11px;padding:15px 17px;border-bottom:1px solid var(--glass-line)}
 .cmdk__in svg{width:18px;height:18px;color:var(--text-faint)}
@@ -395,8 +397,12 @@ input,textarea{font:inherit}
 .cmditem .ic{width:30px;height:30px;border-radius:var(--r-8);background:var(--surface-2);display:grid;place-items:center;color:var(--text-muted);flex:0 0 30px}
 .cmditem:hover .ic,.cmditem.sel .ic{background:var(--brand);color:#fff}
 .cmditem .ic svg{width:16px;height:16px}
-.cmditem .lbl{flex:1;font-weight:600}
-.cmditem .lbl small{display:block;font-weight:500;color:var(--text-muted);font-size:12px}
+.cmditem .lbl{flex:1;min-width:0;font-weight:600}
+.cmditem .lbl small{display:block;font-weight:500;color:var(--text-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmditem__ch{display:grid;place-items:center}
+.cmdk__back{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:var(--text-muted);flex:0 0 28px;margin:-2px 0 -2px -2px;transition:background .14s,color .14s}
+.cmdk__back:hover{background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)}
+.cmdk__back svg{width:18px;height:18px}
 
 .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--surface);padding:11px 18px;border-radius:var(--r-12);font-weight:600;font-size:13px;box-shadow:var(--shadow-lg);opacity:0;pointer-events:none;transition:.25s var(--ease);z-index:60;display:flex;align-items:center;gap:9px}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
-import { useAssign, useMe } from "../hooks";
-import { CmdIcon, ProfileIcon, RouteIcon, SnoozeIcon, PlusIcon } from "../lib/icons";
+import { useAssign, useConversations, useMe, useTeams } from "../hooks";
+import { channelMeta, BackIcon, ProfileIcon, RouteIcon, SnoozeIcon, SearchIcon } from "../lib/icons";
 
 interface Props {
   conversationId: string | null;
@@ -15,24 +15,45 @@ interface Cmd {
   sub?: string;
   icon: JSX.Element;
   run: () => void;
+  /** Keep the palette open after running (e.g. drilling into a sub-list). */
+  keepOpen?: boolean;
 }
 
 export function CommandPalette({ conversationId, onClose, onSelectConversation, onToast }: Props) {
   const assign = useAssign();
   const { data: me } = useMe();
+  const { data: teams } = useTeams();
+  const { data: convs } = useConversations("inbound");
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<"root" | "route">("root");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+  }, [mode]);
+
+  const routeTo = (teamId: string, name: string) => {
+    if (!conversationId) return;
+    assign.mutate({ id: conversationId, input: { assigneeUserId: null, assignedTeamId: teamId } });
+    onToast(`Routed to ${name}`);
+  };
 
   const commands = useMemo<Cmd[]>(() => {
+    // Second step of "Route to…" — every team is a target.
+    if (mode === "route") {
+      return (teams ?? []).map((t) => ({
+        group: "Route to team",
+        label: t.name,
+        icon: <RouteIcon />,
+        run: () => routeTo(t.id, t.name),
+      }));
+    }
+
     const list: Cmd[] = [];
     if (conversationId) {
       list.push(
         {
-          group: "Route & assign",
+          group: "This conversation",
           label: "Assign to me",
           sub: "Take this conversation",
           icon: <ProfileIcon />,
@@ -42,17 +63,18 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
           },
         },
         {
-          group: "Route & assign",
-          label: "Route to Sales team",
-          sub: "Hand off to another team",
+          group: "This conversation",
+          label: "Route to…",
+          sub: "Hand off to a team",
           icon: <RouteIcon />,
+          keepOpen: true,
           run: () => {
-            assign.mutate({ id: conversationId, input: { assigneeUserId: null, assignedTeamId: "team_sales" } });
-            onToast("Routed to Sales team");
+            setQuery("");
+            setMode("route");
           },
         },
         {
-          group: "Route & assign",
+          group: "This conversation",
           label: "Snooze until tomorrow",
           sub: "Hide until 9:00",
           icon: <SnoozeIcon />,
@@ -60,31 +82,26 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
         },
       );
     }
-    list.push(
-      {
-        group: "Jump to",
-        label: "The Ivy House",
-        sub: "WhatsApp group",
-        icon: <CmdIcon />,
-        run: () => onSelectConversation("conv_ivy"),
-      },
-      {
-        group: "Jump to",
-        label: "Tide & Co.",
-        sub: "Email · onboarding",
-        icon: <CmdIcon />,
-        run: () => onSelectConversation("conv_tide"),
-      },
-      {
-        group: "Create",
-        label: "New inbox & route",
-        sub: "Connect WhatsApp, group or email",
-        icon: <PlusIcon />,
-        run: () => onToast("New inbox flow"),
-      },
-    );
+
+    // Jump straight to any of your open conversations.
+    for (const c of convs ?? []) {
+      const cm = channelMeta(c.channel);
+      const Glyph = cm.Glyph;
+      list.push({
+        group: "Go to conversation",
+        label: c.contact.displayName,
+        sub: c.preview ? `${cm.label} · ${c.preview}` : cm.label,
+        icon: (
+          <span className="cmditem__ch" style={{ color: cm.color }}>
+            <Glyph />
+          </span>
+        ),
+        run: () => onSelectConversation(c.id),
+      });
+    }
     return list;
-  }, [conversationId, me, assign, onSelectConversation, onToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, conversationId, me, teams, convs]);
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -106,37 +123,51 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
     const first = matches[0];
     if (first) {
       first.run();
-      onClose();
+      if (!first.keepOpen) onClose();
     }
+  };
+
+  const goBack = () => {
+    setMode("root");
+    setQuery("");
   };
 
   return (
     <div className="cmdk" onClick={onClose}>
       <div className="cmdk__box" onClick={(e) => e.stopPropagation()}>
         <div className="cmdk__in">
-          <CmdIcon />
+          {mode === "route" ? (
+            <button className="cmdk__back" onClick={goBack} title="Back" aria-label="Back">
+              <BackIcon />
+            </button>
+          ) : (
+            <SearchIcon />
+          )}
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") runFirst();
-              if (e.key === "Escape") onClose();
+              if (e.key === "Escape") {
+                if (mode === "route") goBack();
+                else onClose();
+              }
             }}
-            placeholder="Route, assign, snooze, jump to a conversation…"
+            placeholder={mode === "route" ? "Route to which team?" : "Search conversations, route, assign, snooze…"}
           />
         </div>
         <div className="cmdk__list">
           {groups.map(([group, items]) => (
             <div key={group}>
               <div className="cmdk__grp">{group}</div>
-              {items.map((c, i) => (
+              {items.map((c) => (
                 <button
-                  key={c.label}
-                  className={"cmditem" + (matches[0] === c && i === 0 ? " sel" : "")}
+                  key={group + c.label}
+                  className={"cmditem" + (matches[0] === c ? " sel" : "")}
                   onClick={() => {
                     c.run();
-                    onClose();
+                    if (!c.keepOpen) onClose();
                   }}
                 >
                   <span className="ic">{c.icon}</span>
