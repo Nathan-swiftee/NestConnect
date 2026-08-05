@@ -234,16 +234,16 @@ export class PrismaStore extends Store {
     const org = { orgId: ORG_ID };
     const active: Prisma.ConversationWhereInput = { status: { in: ["open", "pending"] } };
     const activeOnly: Prisma.ConversationWhereInput = forCount ? active : {};
-    const mineActive: Prisma.ConversationWhereInput = { ...org, ...active, assigneeUserId: userId };
+    const mine: Prisma.ConversationWhereInput = { ...org, ...activeOnly, assigneeUserId: userId };
     const grabs: Prisma.ConversationWhereInput = {
       ...org,
       ...active,
       assigneeUserId: null,
       inbox: { teams: { some: { teamId: { in: userTeams } } } },
     };
-    if (view === "mine") return { ...org, ...activeOnly, assigneeUserId: userId };
+    if (view === "mine") return mine;
     if (view === "grabs") return grabs;
-    if (view === "inbound") return { OR: [mineActive, grabs] };
+    if (view === "inbound") return { OR: [mine, grabs] };
     if (view === "snoozed") return { ...org, status: "snoozed" };
     if (view === "mentions") {
       return {

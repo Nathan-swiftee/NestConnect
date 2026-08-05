@@ -228,7 +228,8 @@ export class MemoryStore extends Store {
     const active = rec.status === "open" || rec.status === "pending";
     if (view === "mine") return rec.assigneeUserId === userId && (forCount ? active : true);
     if (view === "grabs") return this.isUpForGrabs(rec, userTeams);
-    if (view === "inbound") return (rec.assigneeUserId === userId && active) || this.isUpForGrabs(rec, userTeams);
+    if (view === "inbound")
+      return (rec.assigneeUserId === userId && (forCount ? active : true)) || this.isUpForGrabs(rec, userTeams);
     if (view === "snoozed") return rec.status === "snoozed";
     if (view === "mentions") {
       const token = this.mentionToken(userId);
