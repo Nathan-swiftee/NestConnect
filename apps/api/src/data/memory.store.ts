@@ -306,7 +306,11 @@ export class MemoryStore extends Store {
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
     rec.unread = false;
-    if (!input.internal) rec.preview = input.body;
+    if (!input.internal) {
+      rec.preview = input.body;
+      // Replying to an unclaimed chat takes ownership of it.
+      if (!rec.assigneeUserId && rec.status !== "closed") rec.assigneeUserId = author.id;
+    }
     return message;
   }
 
@@ -453,6 +457,11 @@ export class MemoryStore extends Store {
     rec.lastActivityAt = message.createdAt;
     rec.unread = true;
     rec.preview = input.body;
+    // A new customer message on a closed chat reopens it back into the queue.
+    if (rec.status === "closed") {
+      rec.status = "open";
+      rec.assigneeUserId = null;
+    }
     return message;
   }
 

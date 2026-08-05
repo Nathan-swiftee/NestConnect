@@ -327,6 +327,8 @@ export class PrismaStore extends Store {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
     if (!conv) return undefined;
     const seq = conv.seq + 1;
+    // Replying to an unclaimed chat takes ownership of it.
+    const assignOnReply = !input.internal && !conv.assigneeUserId && conv.status !== "closed";
     const [message] = await this.prisma.$transaction([
       this.prisma.message.create({
         data: {
@@ -348,6 +350,7 @@ export class PrismaStore extends Store {
           lastActivityAt: new Date(),
           unread: false,
           ...(input.internal ? {} : { preview: input.body }),
+          ...(assignOnReply ? { assigneeUserId: author.id } : {}),
         },
       }),
     ]);
@@ -513,6 +516,8 @@ export class PrismaStore extends Store {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
     if (!conv) return undefined;
     const seq = conv.seq + 1;
+    // A new customer message on a closed chat reopens it back into the queue.
+    const reopen = conv.status === "closed";
     const [message] = await this.prisma.$transaction([
       this.prisma.message.create({
         data: {
@@ -528,7 +533,13 @@ export class PrismaStore extends Store {
       }),
       this.prisma.conversation.update({
         where: { id: conversationId },
-        data: { seq, lastActivityAt: new Date(), unread: true, preview: input.body },
+        data: {
+          seq,
+          lastActivityAt: new Date(),
+          unread: true,
+          preview: input.body,
+          ...(reopen ? { status: "open", assigneeUserId: null } : {}),
+        },
       }),
     ]);
     return mapMessage(message);

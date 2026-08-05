@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus } from "../hooks";
 import { relativeTime, initials } from "../lib/format";
 import { playSent, unlock } from "../lib/sound";
@@ -66,10 +66,19 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [menu, setMenu] = useState(false);
   const [internal, setInternal] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const replyBtnRef = useRef<HTMLButtonElement>(null);
+  const noteBtnRef = useRef<HTMLButtonElement>(null);
+  const [modeThumb, setModeThumb] = useState({ left: 0, width: 0 });
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conv?.messages.length, conversationId]);
+
+  // Slide the Reply|Note thumb under the active tab.
+  useLayoutEffect(() => {
+    const btn = internal ? noteBtnRef.current : replyBtnRef.current;
+    if (btn) setModeThumb({ left: btn.offsetLeft, width: btn.offsetWidth });
+  }, [internal, conversationId, conv?.status]);
 
   if (!conversationId) {
     return (
@@ -190,33 +199,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             )}
             <ChevronDown />
           </button>
-          {menu && (
-            <>
-              <div style={{ position: "fixed", inset: 0, zIndex: 10 }} onClick={() => setMenu(false)} />
-              <div className="menu" role="menu">
-                <button onClick={take}>
-                  <ProfileIcon /> Assign to me
-                </button>
-                <button onClick={routeSales}>
-                  <RouteIcon /> Route to Sales team
-                </button>
-                <div className="sep" />
-                <button onClick={unassign}>
-                  <InboxIcon /> Move to Up for grabs
-                </button>
-                <div className="sep" />
-                {isClosed ? (
-                  <button onClick={reopenConversation}>
-                    <ReopenIcon /> Reopen conversation
-                  </button>
-                ) : (
-                  <button onClick={closeConversation}>
-                    <CheckCircleIcon /> Close conversation
-                  </button>
-                )}
-              </div>
-            </>
-          )}
           <button className="iconbtn" title="Snooze" onClick={() => onToast("Snoozed until tomorrow 9:00")}>
             <SnoozeIcon />
           </button>
@@ -228,6 +210,34 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </button>
         </div>
       </header>
+
+      {menu && (
+        <>
+          <div className="menu-backdrop" onClick={() => setMenu(false)} />
+          <div className="menu" role="menu">
+            <button onClick={take}>
+              <ProfileIcon /> Assign to me
+            </button>
+            <button onClick={routeSales}>
+              <RouteIcon /> Route to Sales team
+            </button>
+            <div className="sep" />
+            <button onClick={unassign}>
+              <InboxIcon /> Move to Up for grabs
+            </button>
+            <div className="sep" />
+            {isClosed ? (
+              <button onClick={reopenConversation}>
+                <ReopenIcon /> Reopen conversation
+              </button>
+            ) : (
+              <button onClick={closeConversation}>
+                <CheckCircleIcon /> Close conversation
+              </button>
+            )}
+          </div>
+        </>
+      )}
 
       <div className={"msgs" + (isClosed ? " is-closed" : "")}>
         <div className="daysep">{dayLabel(conv.messages[0]?.createdAt)}</div>
@@ -284,9 +294,14 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         <div className="composer">
           <div className="compbar">
             <div className="compmode" role="tablist">
+              <span
+                className="seg-thumb"
+                style={{ transform: `translateX(${modeThumb.left}px)`, width: modeThumb.width }}
+              />
               <button
                 type="button"
                 role="tab"
+                ref={replyBtnRef}
                 aria-selected={!internal}
                 className={"modebtn" + (!internal ? " active" : "")}
                 onClick={() => setInternal(false)}
@@ -299,6 +314,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               <button
                 type="button"
                 role="tab"
+                ref={noteBtnRef}
                 aria-selected={internal}
                 className={"modebtn note" + (internal ? " active" : "")}
                 onClick={() => setInternal(true)}

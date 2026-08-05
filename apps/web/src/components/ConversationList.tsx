@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useConversations } from "../hooks";
 import { relativeTime, initials, slaCountdown } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon } from "../lib/icons";
@@ -33,11 +33,19 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
     return true;
   });
 
-  const chip = (key: Filter, label: string) => (
-    <button className={"chip" + (filter === key ? " active" : "")} onClick={() => setFilter(key)}>
-      {label}
-    </button>
-  );
+  const filters: { key: Filter; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "unread", label: "Unread" },
+    ...(hasGroups ? [{ key: "groups" as Filter, label: "Groups" }] : []),
+    { key: "closed", label: "Closed" },
+  ];
+  const chipsRef = useRef<HTMLDivElement>(null);
+  const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [thumb, setThumb] = useState({ left: 0, width: 0 });
+  useLayoutEffect(() => {
+    const btn = chipRefs.current[filter];
+    if (btn) setThumb({ left: btn.offsetLeft, width: btn.offsetWidth });
+  }, [filter, hasGroups]);
 
   return (
     <section className="list" aria-label="Conversations">
@@ -62,11 +70,23 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <div className="chips">
-          {chip("all", "All")}
-          {chip("unread", "Unread")}
-          {hasGroups && chip("groups", "Groups")}
-          {chip("closed", "Closed")}
+        <div className="chips" ref={chipsRef}>
+          <span
+            className="seg-thumb"
+            style={{ transform: `translateX(${thumb.left}px)`, width: thumb.width }}
+          />
+          {filters.map((f) => (
+            <button
+              key={f.key}
+              ref={(el) => {
+                chipRefs.current[f.key] = el;
+              }}
+              className={"chip" + (filter === f.key ? " active" : "")}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
       </div>
 
