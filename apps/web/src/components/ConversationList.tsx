@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useConversations } from "../hooks";
 import { relativeTime, initials, slaCountdown } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon } from "../lib/icons";
+import { useHoverGlide } from "../lib/useHoverGlide";
 
 type Filter = "all" | "unread" | "groups" | "closed";
 
@@ -41,6 +42,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   ];
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const thumbRef = useRef<HTMLSpanElement>(null);
+  const { containerRef: chipsRef, thumbRef: chipHoverRef, hoverProps } = useHoverGlide<HTMLDivElement>(".chip", "x");
   // Move the thumb directly on the DOM (no state → no extra render → no flash).
   useLayoutEffect(() => {
     const btn = chipRefs.current[filter];
@@ -74,7 +76,8 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <div className="chips">
+        <div className="chips" ref={chipsRef} {...hoverProps}>
+          <span className="seg-hover" ref={chipHoverRef} />
           <span className="seg-thumb" ref={thumbRef} />
           {filters.map((f) => (
             <button

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type { Message } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useTeams } from "../hooks";
 import { relativeTime, initials } from "../lib/format";
+import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
 import {
   channelMeta,
@@ -82,6 +83,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
   const modeThumbRef = useRef<HTMLSpanElement>(null);
+  const { containerRef: modeRef, thumbRef: modeHoverRef, hoverProps: modeHover } = useHoverGlide<HTMLDivElement>(".modebtn", "x");
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -322,7 +324,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       ) : (
         <div className="composer">
           <div className="compbar">
-            <div className="compmode" role="tablist">
+            <div className="compmode" role="tablist" ref={modeRef} {...modeHover}>
+              <span className="seg-hover" ref={modeHoverRef} />
               <span className="seg-thumb" ref={modeThumbRef} />
               <button
                 type="button"

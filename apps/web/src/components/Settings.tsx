@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useHoverGlide } from "../lib/useHoverGlide";
 import type { ChannelType, Inbox, Role, RoutingStrategy, Team } from "@ding/schemas";
 import {
   useCreateInbox,
@@ -67,6 +68,7 @@ export function Settings({ onClose, onToast }: Props) {
   const [tab, setTab] = useState<Tab>("channels");
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tabThumbRef = useRef<HTMLSpanElement>(null);
+  const { containerRef: tabsRef, thumbRef: tabHoverRef, hoverProps: tabHover } = useHoverGlide<HTMLElement>(".settabs__btn", "xy");
   // Slide the tab thumb to the active tab — works for both the vertical (desktop)
   // and horizontal (mobile) layouts by matching its full box.
   useLayoutEffect(() => {
@@ -93,7 +95,8 @@ export function Settings({ onClose, onToast }: Props) {
         </button>
       </header>
       <div className="settings__body">
-        <nav className="settings__tabs">
+        <nav className="settings__tabs" ref={tabsRef} {...tabHover}>
+          <span className="settabs__hover" ref={tabHoverRef} />
           <span className="settabs__thumb" ref={tabThumbRef} />
           {TABS.map((t) => (
             <button

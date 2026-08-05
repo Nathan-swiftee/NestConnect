@@ -354,6 +354,10 @@ input,textarea{font:inherit}
 .seg-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-full);z-index:0;pointer-events:none;will-change:transform,width;transition:transform .24s var(--ease),width .24s var(--ease)}
 .compmode .seg-thumb{background:var(--surface);box-shadow:inset 0 1px 0 var(--glass-hi),0 2px 8px -3px rgba(13,21,18,.28),0 0 0 1px var(--glass-brd)}
 .chips .seg-thumb{background:var(--brand-tint);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 1px color-mix(in srgb,var(--brand) 20%,transparent)}
+/* subtle capsule that glides under the pointer on hover (behind the selected thumb) */
+.seg-hover{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-full);z-index:0;pointer-events:none;opacity:0;
+  background:color-mix(in srgb,var(--text) 7%,transparent);will-change:transform,width;
+  transition:transform .2s cubic-bezier(.4,0,.2,1),width .2s cubic-bezier(.4,0,.2,1),opacity .16s ease}
 .compctx{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .compinput{display:flex;align-items:flex-end;gap:8px;background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-24);padding:6px 6px 6px 16px;
   box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow .15s,border-color .15s}
@@ -508,8 +512,10 @@ input,textarea{font:inherit}
 .settabs__thumb{position:absolute;top:0;left:0;border-radius:var(--r-12);background:var(--brand-tint);z-index:0;pointer-events:none;will-change:transform,width,height;
   box-shadow:inset 0 1px 0 var(--glass-hi),0 4px 12px -8px var(--brand-ring);
   transition:transform .24s var(--ease),width .24s var(--ease),height .24s var(--ease)}
+.settabs__hover{position:absolute;top:0;left:0;border-radius:var(--r-12);background:var(--surface-2);z-index:0;pointer-events:none;opacity:0;will-change:transform,width,height;
+  transition:transform .2s cubic-bezier(.4,0,.2,1),width .2s cubic-bezier(.4,0,.2,1),height .2s cubic-bezier(.4,0,.2,1),opacity .16s ease}
 .settabs__btn{position:relative;z-index:1;text-align:left;padding:9px 13px;border-radius:var(--r-12);font-weight:600;font-size:14px;color:var(--text-muted);transition:color .15s ease .08s}
-.settabs__btn:hover:not(.active){background:var(--surface-2);color:var(--text)}
+.settabs__btn:hover:not(.active){color:var(--text)}
 .settabs__btn.active{color:var(--brand-strong)}
 .settings__pane{flex:1;overflow-y:auto;padding:24px 28px;animation:paneIn .26s var(--ease)}
 @keyframes paneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
