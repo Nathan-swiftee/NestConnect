@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import type { Message } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useTeams } from "../hooks";
 import { relativeTime, initials } from "../lib/format";
 import { playSent, unlock } from "../lib/sound";
@@ -51,6 +52,19 @@ function dayLabel(iso?: string): string {
   return d.toDateString() === now.toDateString()
     ? "Today"
     : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+
+/** Split messages into consecutive same-day groups so each day's sticky pill
+ *  lives in its own section and gets pushed out by the next day's pill. */
+function groupMessagesByDay(messages: Message[]): { key: string; label: string; items: Message[] }[] {
+  const groups: { key: string; label: string; items: Message[] }[] = [];
+  for (const m of messages) {
+    const key = new Date(m.createdAt).toDateString();
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(m);
+    else groups.push({ key, label: dayLabel(m.createdAt), items: [m] });
+  }
+  return groups;
 }
 
 export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed }: Props) {
@@ -251,15 +265,12 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       )}
 
       <div className={"msgs" + (isClosed ? " is-closed" : "")}>
-        {conv.messages.map((m, i) => {
-          const prev = conv.messages[i - 1];
-          const newDay =
-            !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
-          return (
-            <Fragment key={m.id}>
-              {newDay && <div className="daysep">{dayLabel(m.createdAt)}</div>}
-              {m.internal ? (
-                <div className="note">
+        {groupMessagesByDay(conv.messages).map((group) => (
+          <section className="daygroup" key={group.key}>
+            <div className="daysep">{group.label}</div>
+            {group.items.map((m) =>
+              m.internal ? (
+                <div key={m.id} className="note">
                   <div className="ic">
                     <NoteIcon />
                   </div>
@@ -271,7 +282,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   </div>
                 </div>
               ) : (
-                <div className={"msg " + (m.direction === "out" ? "out" : "in")}>
+                <div key={m.id} className={"msg " + (m.direction === "out" ? "out" : "in")}>
                   {m.direction === "in" && m.authorName && <div className="sender">{m.authorName}</div>}
                   <div className="bubble">
                     <span className="txt">
@@ -288,10 +299,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     </span>
                   </div>
                 </div>
-              )}
-            </Fragment>
-          );
-        })}
+              ),
+            )}
+          </section>
+        ))}
         {conv.messages.length === 0 && (
           <div className="thread-empty">No messages yet — start the conversation.</div>
         )}
