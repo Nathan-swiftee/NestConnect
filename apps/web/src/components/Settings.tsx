@@ -56,6 +56,13 @@ const STRATEGIES: { value: RoutingStrategy; label: string }[] = [
   { value: "most_idle", label: "Most idle" },
 ];
 
+/** Show up to `max` team names, then "+N", so a person/channel on many teams
+ *  can't blow out the row. Full list stays available via the title attribute. */
+function summariseTeams(names: string[], max = 2): string {
+  if (names.length <= max) return names.join(", ");
+  return `${names.slice(0, max).join(", ")} +${names.length - max}`;
+}
+
 export function Settings({ onClose, onToast }: Props) {
   const [tab, setTab] = useState<Tab>("channels");
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -207,7 +214,9 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
                   <small>{i.handle}</small>
                 </div>
                 <div className="setrow__meta">
-                  <span className="setrow__routing">{i.teamIds.map(teamName).join(", ") || "Unrouted"}</span>
+                  <span className="setrow__routing" title={i.teamIds.map(teamName).join(", ")}>
+                    {summariseTeams(i.teamIds.map(teamName)) || "Unrouted"}
+                  </span>
                   <span className="setrow__tag">{i.routingStrategy.replace(/_/g, " ")}</span>
                 </div>
                 <span className={"connpill " + (connected ? "on" : "off")} title={connected ? "Integration live" : "Add credentials to go live"}>
@@ -780,7 +789,9 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
                 </div>
                 <div className="setrow__meta">
                   <span className="setrow__tag">{m.user.role}</span>
-                  <span className="setrow__routing">{m.teamIds.map(teamName).join(", ") || "No team"}</span>
+                  <span className="setrow__routing" title={m.teamIds.map(teamName).join(", ")}>
+                    {summariseTeams(m.teamIds.map(teamName)) || "No team"}
+                  </span>
                 </div>
                 <div className="rowacts">
                   <button className="iconbtn" title="Edit member" onClick={() => startEdit(m.user.id, m.user.role, m.teamIds)}>
