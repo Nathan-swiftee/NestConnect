@@ -67,16 +67,21 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const endRef = useRef<HTMLDivElement>(null);
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
-  const [modeThumb, setModeThumb] = useState({ left: 0, width: 0 });
+  const modeThumbRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conv?.messages.length, conversationId]);
 
-  // Slide the Reply|Note thumb under the active tab.
+  // Slide the Reply|Note thumb under the active tab. Written to the DOM directly
+  // (no state → no extra render) so the slide starts on the same frame as the click.
   useLayoutEffect(() => {
     const btn = internal ? noteBtnRef.current : replyBtnRef.current;
-    if (btn) setModeThumb({ left: btn.offsetLeft, width: btn.offsetWidth });
+    const thumb = modeThumbRef.current;
+    if (btn && thumb) {
+      thumb.style.transform = `translateX(${btn.offsetLeft}px)`;
+      thumb.style.width = `${btn.offsetWidth}px`;
+    }
   }, [internal, conversationId, conv?.status]);
 
   if (!conversationId) {
@@ -300,10 +305,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         <div className="composer">
           <div className="compbar">
             <div className="compmode" role="tablist">
-              <span
-                className="seg-thumb"
-                style={{ transform: `translateX(${modeThumb.left}px)`, width: modeThumb.width }}
-              />
+              <span className="seg-thumb" ref={modeThumbRef} />
               <button
                 type="button"
                 role="tab"

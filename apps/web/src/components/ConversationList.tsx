@@ -39,12 +39,16 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
     ...(hasGroups ? [{ key: "groups" as Filter, label: "Groups" }] : []),
     { key: "closed", label: "Closed" },
   ];
-  const chipsRef = useRef<HTMLDivElement>(null);
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [thumb, setThumb] = useState({ left: 0, width: 0 });
+  const thumbRef = useRef<HTMLSpanElement>(null);
+  // Move the thumb directly on the DOM (no state → no extra render → no flash).
   useLayoutEffect(() => {
     const btn = chipRefs.current[filter];
-    if (btn) setThumb({ left: btn.offsetLeft, width: btn.offsetWidth });
+    const thumb = thumbRef.current;
+    if (btn && thumb) {
+      thumb.style.transform = `translateX(${btn.offsetLeft}px)`;
+      thumb.style.width = `${btn.offsetWidth}px`;
+    }
   }, [filter, hasGroups]);
 
   return (
@@ -70,11 +74,8 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             onChange={(e) => setQ(e.target.value)}
           />
         </div>
-        <div className="chips" ref={chipsRef}>
-          <span
-            className="seg-thumb"
-            style={{ transform: `translateX(${thumb.left}px)`, width: thumb.width }}
-          />
+        <div className="chips">
+          <span className="seg-thumb" ref={thumbRef} />
           {filters.map((f) => (
             <button
               key={f.key}

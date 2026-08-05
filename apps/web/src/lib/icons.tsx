@@ -24,8 +24,9 @@ export const InsightsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M5 20V10M12 20V4M19 20v-7" /></svg>
 );
 export const SettingsIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-    <circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M22 12h-3M5 12H2M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1M18.4 18.4l-2.1-2.1M7.7 7.7 5.6 5.6" />
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
+    <path d="M10.32 3.2a1 1 0 0 1 .98-.8h1.4a1 1 0 0 1 .98.8l.26 1.36a6.9 6.9 0 0 1 1.7 1l1.32-.46a1 1 0 0 1 1.18.44l.7 1.21a1 1 0 0 1-.2 1.26l-1.06.92a6.95 6.95 0 0 1 0 1.96l1.06.92a1 1 0 0 1 .2 1.26l-.7 1.21a1 1 0 0 1-1.18.44l-1.32-.46a6.9 6.9 0 0 1-1.7 1l-.26 1.36a1 1 0 0 1-.98.8h-1.4a1 1 0 0 1-.98-.8l-.26-1.36a6.9 6.9 0 0 1-1.7-1l-1.32.46a1 1 0 0 1-1.18-.44l-.7-1.21a1 1 0 0 1 .2-1.26l1.06-.92a6.95 6.95 0 0 1 0-1.96l-1.06-.92a1 1 0 0 1-.2-1.26l.7-1.21a1 1 0 0 1 1.18-.44l1.32.46a6.9 6.9 0 0 1 1.7-1l.26-1.36Z" />
+    <circle cx="12" cy="12" r="2.7" />
   </svg>
 );
 export const ThemeIcon = () => (

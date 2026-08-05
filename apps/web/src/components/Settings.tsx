@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import type { ChannelType, Role, RoutingStrategy } from "@ding/schemas";
 import {
   useCreateInbox,
@@ -44,6 +44,25 @@ const STRATEGIES: { value: RoutingStrategy; label: string }[] = [
 
 export function Settings({ onClose, onToast }: Props) {
   const [tab, setTab] = useState<Tab>("channels");
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const tabThumbRef = useRef<HTMLSpanElement>(null);
+  // Slide the tab thumb to the active tab — works for both the vertical (desktop)
+  // and horizontal (mobile) layouts by matching its full box.
+  useLayoutEffect(() => {
+    const move = () => {
+      const btn = tabRefs.current[tab];
+      const thumb = tabThumbRef.current;
+      if (btn && thumb) {
+        thumb.style.transform = `translate(${btn.offsetLeft}px, ${btn.offsetTop}px)`;
+        thumb.style.width = `${btn.offsetWidth}px`;
+        thumb.style.height = `${btn.offsetHeight}px`;
+      }
+    };
+    move();
+    window.addEventListener("resize", move);
+    return () => window.removeEventListener("resize", move);
+  }, [tab]);
+
   return (
     <div className="settings" role="dialog" aria-label="Settings">
       <header className="settings__head">
@@ -54,9 +73,13 @@ export function Settings({ onClose, onToast }: Props) {
       </header>
       <div className="settings__body">
         <nav className="settings__tabs">
+          <span className="settabs__thumb" ref={tabThumbRef} />
           {TABS.map((t) => (
             <button
               key={t.key}
+              ref={(el) => {
+                tabRefs.current[t.key] = el;
+              }}
               className={"settabs__btn" + (tab === t.key ? " active" : "")}
               onClick={() => setTab(t.key)}
             >
@@ -64,7 +87,7 @@ export function Settings({ onClose, onToast }: Props) {
             </button>
           ))}
         </nav>
-        <div className="settings__pane">
+        <div className="settings__pane" key={tab}>
           {tab === "channels" && <ChannelsPane onToast={onToast} />}
           {tab === "teams" && <TeamsPane onToast={onToast} />}
           {tab === "people" && <PeoplePane onToast={onToast} />}
