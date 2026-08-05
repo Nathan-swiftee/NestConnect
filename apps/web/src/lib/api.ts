@@ -76,6 +76,7 @@ export const api = {
   createTeam: (input: CreateTeamInput) => post<Team>("/settings/teams", input),
   updateTeam: (id: string, input: UpdateTeamInput) => patch<Team>(`/settings/teams/${id}`, input),
   deleteTeam: (id: string) => del<{ ok: boolean }>(`/settings/teams/${id}`),
+  reorderTeams: (orderedIds: string[]) => post<Team[]>("/settings/teams/reorder", { orderedIds }),
   createUser: (input: CreateUserInput) => post<User>("/settings/people", input),
   updateUser: (id: string, input: UpdateUserInput) => patch<User>(`/settings/people/${id}`, input),
   deleteUser: (id: string) => del<{ ok: boolean }>(`/settings/people/${id}`),

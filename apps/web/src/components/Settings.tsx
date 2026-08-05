@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import type { ChannelType, Inbox, Role, RoutingStrategy } from "@ding/schemas";
+import type { ChannelType, Inbox, Role, RoutingStrategy, Team } from "@ding/schemas";
 import {
   useCreateInbox,
   useCreateTeam,
@@ -10,13 +10,25 @@ import {
   useInboxes,
   useMe,
   usePeople,
+  useReorderTeams,
   useTeams,
   useUpdateInbox,
   useUpdateTeam,
   useUpdateUser,
 } from "../hooks";
 import { initials } from "../lib/format";
-import { channelMeta, EditIcon, PlusIcon, TeamIcon, TrashIcon, XIcon } from "../lib/icons";
+import {
+  channelMeta,
+  ChevronDown,
+  ChevronUp,
+  EditIcon,
+  PlusIcon,
+  TeamGlyph,
+  TEAM_ICON_KEYS,
+  TEAM_ICONS,
+  TrashIcon,
+  XIcon,
+} from "../lib/icons";
 
 type Tab = "channels" | "teams" | "people";
 
@@ -498,9 +510,12 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
   const create = useCreateTeam();
   const update = useUpdateTeam();
   const del = useDeleteTeam();
+  const reorder = useReorderTeams();
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [draft, setDraft] = useState("");
+  const [draftName, setDraftName] = useState("");
+  const [draftIcon, setDraftIcon] = useState<string | null>(null);
+  const ordered = teams.data ?? [];
   const memberCount = (teamId: string) => (people.data ?? []).filter((m) => m.teamIds.includes(teamId)).length;
 
   const submit = (e: FormEvent) => {
@@ -511,29 +526,36 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
       { name: n },
       {
         onSuccess: () => { setName(""); onToast(`Team “${n}” created`); },
-        onError: () => onToast("Only admins/managers can create teams"),
+        onError: () => onToast("Only admins & managers can create teams"),
       },
     );
   };
 
-  const startEdit = (id: string, current: string) => { setEditingId(id); setDraft(current); };
+  const startEdit = (t: Team) => { setEditingId(t.id); setDraftName(t.name); setDraftIcon(t.icon ?? null); };
   const saveEdit = (id: string) => {
-    const n = draft.trim();
+    const n = draftName.trim();
     if (!n) return;
     update.mutate(
-      { id, input: { name: n } },
+      { id, input: { name: n, icon: draftIcon } },
       {
-        onSuccess: () => { setEditingId(null); onToast("Team renamed"); },
-        onError: () => onToast("Couldn't rename team"),
+        onSuccess: () => { setEditingId(null); onToast("Team updated"); },
+        onError: () => onToast("Couldn't update team"),
       },
     );
   };
   const remove = (id: string, teamName: string) => {
     if (!window.confirm(`Delete “${teamName}”? Its channels and people will be detached.`)) return;
     del.mutate(id, {
-      onSuccess: () => onToast(`Team “${teamName}” deleted`),
+      onSuccess: () => { setEditingId(null); onToast(`Team “${teamName}” deleted`); },
       onError: () => onToast("Couldn't delete team"),
     });
+  };
+  const move = (index: number, dir: -1 | 1) => {
+    const j = index + dir;
+    if (j < 0 || j >= ordered.length) return;
+    const ids = ordered.map((t) => t.id);
+    [ids[index], ids[j]] = [ids[j], ids[index]];
+    reorder.mutate(ids);
   };
 
   return (
@@ -541,7 +563,7 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
       <div className="setpane__head">
         <div>
           <h2>Teams</h2>
-          <p>Channels route to teams; a person can belong to several.</p>
+          <p>Channels route to teams; a person can belong to several. Reorder with the arrows and give each an icon.</p>
         </div>
       </div>
       <form className="setadd" onSubmit={submit}>
@@ -551,43 +573,75 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
         </button>
       </form>
       <div className="setlist">
-        {teams.data?.map((t) => {
+        {ordered.map((t, i) => {
           const n = memberCount(t.id);
           const editing = editingId === t.id;
           return (
-            <div className="setrow" key={t.id}>
-              <span className="setrow__ic">
-                <TeamIcon />
-              </span>
-              {editing ? (
-                <div className="setrow__inline">
-                  <input
-                    value={draft}
-                    autoFocus
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") saveEdit(t.id);
-                      if (e.key === "Escape") setEditingId(null);
-                    }}
-                  />
-                  <button className="btn-primary sm" onClick={() => saveEdit(t.id)} disabled={!draft.trim()}>Save</button>
-                  <button className="btn-ghost sm" onClick={() => setEditingId(null)}>Cancel</button>
+            <div className="setmember" key={t.id}>
+              <div className="setrow">
+                <span className="setrow__ic">
+                  <TeamGlyph icon={t.icon} />
+                </span>
+                <div className="setrow__main">
+                  <b>{t.name}</b>
+                  <small>{n} member{n === 1 ? "" : "s"}</small>
                 </div>
-              ) : (
-                <>
-                  <div className="setrow__main">
-                    <b>{t.name}</b>
-                    <small>{n} member{n === 1 ? "" : "s"}</small>
+                <div className="rowacts">
+                  <button className="iconbtn" title="Move up" disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)}>
+                    <ChevronUp />
+                  </button>
+                  <button className="iconbtn" title="Move down" disabled={i === ordered.length - 1 || reorder.isPending} onClick={() => move(i, 1)}>
+                    <ChevronDown />
+                  </button>
+                  <button className="iconbtn" title="Edit team" onClick={() => (editing ? setEditingId(null) : startEdit(t))}>
+                    <EditIcon />
+                  </button>
+                  <button className="iconbtn danger" title="Delete team" onClick={() => remove(t.id, t.name)}>
+                    <TrashIcon />
+                  </button>
+                </div>
+              </div>
+              {editing && (
+                <div className="editbox">
+                  <label className="field">
+                    <span>Team name</span>
+                    <input
+                      value={draftName}
+                      autoFocus
+                      onChange={(e) => setDraftName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit(t.id);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                    />
+                  </label>
+                  <div className="field">
+                    <span>Icon</span>
+                    <div className="iconpick">
+                      {TEAM_ICON_KEYS.map((k) => {
+                        const Ic = TEAM_ICONS[k];
+                        return (
+                          <button
+                            key={k}
+                            type="button"
+                            className={"iconpick__btn" + (draftIcon === k ? " on" : "")}
+                            onClick={() => setDraftIcon(draftIcon === k ? null : k)}
+                            title={k}
+                            aria-label={k}
+                          >
+                            <Ic />
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="rowacts">
-                    <button className="iconbtn" title="Rename" onClick={() => startEdit(t.id, t.name)}>
-                      <EditIcon />
-                    </button>
-                    <button className="iconbtn danger" title="Delete team" onClick={() => remove(t.id, t.name)}>
-                      <TrashIcon />
+                  <div className="setform__foot">
+                    <button className="btn-ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                    <button className="btn-primary" type="button" onClick={() => saveEdit(t.id)} disabled={update.isPending || !draftName.trim()}>
+                      Save changes
                     </button>
                   </div>
-                </>
+                </div>
               )}
             </div>
           );

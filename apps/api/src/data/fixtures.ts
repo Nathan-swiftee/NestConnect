@@ -43,8 +43,8 @@ export function makeSeed() {
   ];
 
   const teams: Team[] = [
-    { id: "team_support", orgId: ORG_ID, name: "Support team" },
-    { id: "team_sales", orgId: ORG_ID, name: "Sales team" },
+    { id: "team_support", orgId: ORG_ID, name: "Support team", icon: "headset", order: 0 },
+    { id: "team_sales", orgId: ORG_ID, name: "Sales team", icon: "cart", order: 1 },
   ];
 
   // Demo "me" (Nathan) belongs to both teams.

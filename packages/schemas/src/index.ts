@@ -65,6 +65,10 @@ export const teamSchema = z.object({
   id: z.string(),
   orgId: z.string(),
   name: z.string(),
+  /** Icon key from the shared team-icon library (see web lib/icons). */
+  icon: z.string().nullable().optional(),
+  /** Sort position in Settings and the sidebar (ascending). */
+  order: z.number().int().default(0),
 });
 export type Team = z.infer<typeof teamSchema>;
 
@@ -239,13 +243,21 @@ export type UpdateInboxInput = z.infer<typeof updateInboxInputSchema>;
 
 export const createTeamInputSchema = z.object({
   name: z.string().min(1),
+  icon: z.string().optional(),
 });
 export type CreateTeamInput = z.infer<typeof createTeamInputSchema>;
 
 export const updateTeamInputSchema = z.object({
-  name: z.string().min(1),
+  name: z.string().min(1).optional(),
+  icon: z.string().nullable().optional(),
 });
 export type UpdateTeamInput = z.infer<typeof updateTeamInputSchema>;
+
+/** Persist a new team ordering (array of team ids in the desired order). */
+export const reorderTeamsInputSchema = z.object({
+  orderedIds: z.array(z.string()).min(1),
+});
+export type ReorderTeamsInput = z.infer<typeof reorderTeamsInputSchema>;
 
 export const createUserInputSchema = z.object({
   name: z.string().min(1),

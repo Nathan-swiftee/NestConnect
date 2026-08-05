@@ -104,6 +104,8 @@ model Team {
   id              String          @id @default(cuid())
   orgId           String
   name            String
+  icon            String?
+  order           Int             @default(0)
   routingStrategy RoutingStrategy @default(manual)
 
   org           Organization   @relation(fields: [orgId], references: [id])

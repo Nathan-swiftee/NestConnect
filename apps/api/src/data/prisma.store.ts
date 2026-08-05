@@ -149,7 +149,10 @@ export class PrismaStore extends Store {
   }
 
   async listTeams(): Promise<Team[]> {
-    const rows = await this.prisma.team.findMany({ where: { orgId: ORG_ID }, orderBy: { name: "asc" } });
+    const rows = await this.prisma.team.findMany({
+      where: { orgId: ORG_ID },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+    });
     return rows.map(mapTeam);
   }
 
@@ -162,18 +165,42 @@ export class PrismaStore extends Store {
     return rows.map((u) => ({ user: mapUser(u), teamIds: u.memberships.map((m) => m.teamId) }));
   }
 
-  async createTeam(params: { orgId: string; name: string }): Promise<Team> {
-    const t = await this.prisma.team.create({ data: { orgId: params.orgId, name: params.name } });
+  async createTeam(params: { orgId: string; name: string; icon?: string }): Promise<Team> {
+    const max = await this.prisma.team.aggregate({ where: { orgId: params.orgId }, _max: { order: true } });
+    const t = await this.prisma.team.create({
+      data: {
+        orgId: params.orgId,
+        name: params.name,
+        icon: params.icon ?? null,
+        order: (max._max.order ?? -1) + 1,
+      },
+    });
     return mapTeam(t);
   }
 
-  async updateTeam(id: string, params: { name: string }): Promise<Team | undefined> {
+  async updateTeam(
+    id: string,
+    params: { name?: string; icon?: string | null },
+  ): Promise<Team | undefined> {
     try {
-      const t = await this.prisma.team.update({ where: { id }, data: { name: params.name } });
+      const t = await this.prisma.team.update({
+        where: { id },
+        data: {
+          name: params.name ?? undefined,
+          ...(params.icon !== undefined ? { icon: params.icon } : {}),
+        },
+      });
       return mapTeam(t);
     } catch {
       return undefined;
     }
+  }
+
+  async reorderTeams(orderedIds: string[]): Promise<Team[]> {
+    await this.prisma.$transaction(
+      orderedIds.map((id, i) => this.prisma.team.update({ where: { id }, data: { order: i } })),
+    );
+    return this.listTeams();
   }
 
   async deleteTeam(id: string): Promise<void> {

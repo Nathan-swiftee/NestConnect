@@ -129,24 +129,43 @@ export class MemoryStore extends Store {
   }
 
   async listTeams(): Promise<Team[]> {
-    return this.teams;
+    return [...this.teams].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }
 
   async listMembers(): Promise<Member[]> {
     return this.users.map((u) => ({ user: u, teamIds: this.membership[u.id] ?? [] }));
   }
 
-  async createTeam(params: { orgId: string; name: string }): Promise<Team> {
-    const team: Team = { id: `team_${++this.idSeq}`, orgId: params.orgId, name: params.name };
+  async createTeam(params: { orgId: string; name: string; icon?: string }): Promise<Team> {
+    const order = this.teams.reduce((m, t) => Math.max(m, t.order ?? 0), -1) + 1;
+    const team: Team = {
+      id: `team_${++this.idSeq}`,
+      orgId: params.orgId,
+      name: params.name,
+      icon: params.icon ?? null,
+      order,
+    };
     this.teams.push(team);
     return team;
   }
 
-  async updateTeam(id: string, params: { name: string }): Promise<Team | undefined> {
+  async updateTeam(
+    id: string,
+    params: { name?: string; icon?: string | null },
+  ): Promise<Team | undefined> {
     const team = this.teams.find((t) => t.id === id);
     if (!team) return undefined;
-    team.name = params.name;
+    if (params.name !== undefined) team.name = params.name;
+    if (params.icon !== undefined) team.icon = params.icon;
     return team;
+  }
+
+  async reorderTeams(orderedIds: string[]): Promise<Team[]> {
+    orderedIds.forEach((id, i) => {
+      const team = this.teams.find((t) => t.id === id);
+      if (team) team.order = i;
+    });
+    return this.listTeams();
   }
 
   async deleteTeam(id: string): Promise<void> {

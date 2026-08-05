@@ -83,10 +83,15 @@ export abstract class Store {
   /* ---- settings: teams & people ---- */
   abstract listTeams(): Promise<Team[]>;
   abstract listMembers(): Promise<Member[]>;
-  abstract createTeam(params: { orgId: string; name: string }): Promise<Team>;
-  abstract updateTeam(id: string, params: { name: string }): Promise<Team | undefined>;
+  abstract createTeam(params: { orgId: string; name: string; icon?: string }): Promise<Team>;
+  abstract updateTeam(
+    id: string,
+    params: { name?: string; icon?: string | null },
+  ): Promise<Team | undefined>;
   /** Delete a team, detaching its members, inbox routing and any assignments. */
   abstract deleteTeam(id: string): Promise<void>;
+  /** Persist a new team ordering; ids not present keep their relative order after. */
+  abstract reorderTeams(orderedIds: string[]): Promise<Team[]>;
   abstract createUser(params: {
     orgId: string;
     name: string;

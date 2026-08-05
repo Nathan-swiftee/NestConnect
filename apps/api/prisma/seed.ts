@@ -33,8 +33,8 @@ async function main() {
   }
 
   const teams = [
-    { id: "team_support", name: "Support team" },
-    { id: "team_sales", name: "Sales team" },
+    { id: "team_support", name: "Support team", icon: "headset", order: 0 },
+    { id: "team_sales", name: "Sales team", icon: "cart", order: 1 },
   ];
   for (const t of teams) {
     await prisma.team.upsert({ where: { id: t.id }, update: {}, create: { orgId: ORG, ...t } });

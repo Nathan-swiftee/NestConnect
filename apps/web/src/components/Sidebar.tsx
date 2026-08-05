@@ -1,7 +1,7 @@
-import { useLogout, useMe, useSound, useViews } from "../hooks";
+import { useLogout, useMe, useSound, useTeams, useViews } from "../hooks";
 import {
   InboxIcon,
-  TeamIcon,
+  TeamGlyph,
   ThemeIcon,
   SoundOnIcon,
   SoundOffIcon,
@@ -22,9 +22,11 @@ interface Props {
 export function Sidebar({ view, onSelectView, onClose, onOpenSettings }: Props) {
   const { data } = useViews();
   const { data: meData } = useMe();
+  const { data: teamList } = useTeams();
   const logout = useLogout();
   const sound = useSound();
   const me = meData?.user;
+  const teamIconFor = (key: string) => teamList?.find((tm) => `team:${tm.id}` === key)?.icon ?? null;
   if (!data) return <aside className="side" aria-label="Inboxes" />;
 
   const inbound = data.my.find((m) => m.key === "inbound");
@@ -83,7 +85,7 @@ export function Sidebar({ view, onSelectView, onClose, onOpenSettings }: Props) 
             onClick={() => onSelectView(t.key)}
           >
             <span className="navicon">
-              <TeamIcon />
+              <TeamGlyph icon={teamIconFor(t.key)} />
             </span>
             <span className="lbl">{t.title}</span>
             <span className="badge">{t.count}</span>

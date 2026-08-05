@@ -150,6 +150,17 @@ export function useDeleteTeam() {
   });
 }
 
+export function useReorderTeams() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderedIds: string[]) => api.reorderTeams(orderedIds),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
 export function useCreateUser() {
   const qc = useQueryClient();
   return useMutation({

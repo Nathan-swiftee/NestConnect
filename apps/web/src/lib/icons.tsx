@@ -41,6 +41,9 @@ export const PlusIcon = () => (
 export const ChevronDown = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="m6 9 6 6 6-6" /></svg>
 );
+export const ChevronUp = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="m6 15 6-6 6 6" /></svg>
+);
 export const SnoozeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M9 2h6" /></svg>
 );
@@ -156,4 +159,36 @@ export function channelMeta(type: ChannelType): ChannelMeta {
     case "email":
       return { color: "var(--email)", label: "Email", Glyph: EmailGlyph };
   }
+}
+
+/* ---- Team icon library (chosen in Settings › Teams) ---- */
+const G = (p: JSX.Element) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+    {p}
+  </svg>
+);
+export const TEAM_ICONS: Record<string, () => JSX.Element> = {
+  headset: () => G(<><path d="M4 13v-1a8 8 0 0 1 16 0v1" /><path d="M4 13a2 2 0 0 1 2 2v2a2 2 0 0 1-4 0v-2a2 2 0 0 1 2-2Zm16 0a2 2 0 0 1 2 2v2a2 2 0 0 1-4 0v-2a2 2 0 0 1 2-2Z" /><path d="M20 17v1a3 3 0 0 1-3 3h-3" /></>),
+  cart: () => G(<><circle cx="9" cy="20" r="1.4" /><circle cx="18" cy="20" r="1.4" /><path d="M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.2a1 1 0 0 0 1-.78L21 8H6" /></>),
+  truck: () => G(<><path d="M3 6h11v9H3zM14 9h4l3 3v3h-7z" /><circle cx="7" cy="18" r="1.6" /><circle cx="17.5" cy="18" r="1.6" /></>),
+  wrench: () => G(<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8 7.2 20l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.4 2.4-2.3-.6-.6-2.3 2.9-2.3Z" />),
+  briefcase: () => G(<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" /></>),
+  userplus: () => G(<><circle cx="9" cy="8" r="3.4" /><path d="M3.5 20a5.5 5.5 0 0 1 11 0M18 8v6M15 11h6" /></>),
+  users: () => G(<><circle cx="9" cy="8" r="3.2" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0M16 7.5a3 3 0 0 1 0 6M17.5 19a5 5 0 0 0-3-4.6" /></>),
+  star: () => G(<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.8 1-5.9L4.5 9.7l5.9-.9L12 3.5Z" />),
+  flag: () => G(<path d="M5 21V4M5 5h11l-2 3 2 3H5" />),
+  bolt: () => G(<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" />),
+  shield: () => G(<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z" />),
+  heart: () => G(<path d="M12 20S4 15 4 9.5A3.5 3.5 0 0 1 12 7a3.5 3.5 0 0 1 8 2.5C20 15 12 20 12 20Z" />),
+  tag: () => G(<><path d="M3 12V4h8l9 9-8 8-9-9Z" /><circle cx="7.5" cy="7.5" r="1.3" /></>),
+  box: () => G(<path d="M12 3 4 7v10l8 4 8-4V7l-8-4ZM4 7l8 4 8-4M12 21V11" />),
+  calendar: () => G(<><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 9h18M8 3v4M16 3v4" /></>),
+  chart: () => G(<path d="M4 20V4M4 20h16M9 16v-5M13 16V8M17 16v-3" />),
+  globe: () => G(<><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18" /></>),
+  phone: () => G(<path d="M6 3h3l1.5 5-2 1.5a12 12 0 0 0 5 5l1.5-2 5 1.5V18a2 2 0 0 1-2.2 2A16 16 0 0 1 4 6.2 2 2 0 0 1 6 3Z" />),
+};
+export const TEAM_ICON_KEYS = Object.keys(TEAM_ICONS);
+export function TeamGlyph({ icon }: { icon?: string | null }): JSX.Element {
+  const Ic = (icon && TEAM_ICONS[icon]) || TeamIcon;
+  return <Ic />;
 }

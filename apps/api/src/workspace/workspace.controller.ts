@@ -13,12 +13,14 @@ import {
   createInboxInputSchema,
   createTeamInputSchema,
   createUserInputSchema,
+  reorderTeamsInputSchema,
   updateInboxInputSchema,
   updateTeamInputSchema,
   updateUserInputSchema,
   type CreateInboxInput,
   type CreateTeamInput,
   type CreateUserInput,
+  type ReorderTeamsInput,
   type UpdateInboxInput,
   type UpdateTeamInput,
   type UpdateUserInput,
@@ -95,7 +97,16 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(createTeamInputSchema)) body: CreateTeamInput,
   ) {
     const me = await this.requireManager(userId);
-    return this.store.createTeam({ orgId: me.orgId, name: body.name });
+    return this.store.createTeam({ orgId: me.orgId, name: body.name, icon: body.icon });
+  }
+
+  @Post("settings/teams/reorder")
+  async reorderTeams(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(reorderTeamsInputSchema)) body: ReorderTeamsInput,
+  ) {
+    await this.requireManager(userId);
+    return this.store.reorderTeams(body.orderedIds);
   }
 
   @Patch("settings/teams/:id")
@@ -105,7 +116,7 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(updateTeamInputSchema)) body: UpdateTeamInput,
   ) {
     await this.requireManager(userId);
-    const team = await this.store.updateTeam(id, { name: body.name });
+    const team = await this.store.updateTeam(id, body);
     if (!team) throw new NotFoundException("Team not found");
     return team;
   }
