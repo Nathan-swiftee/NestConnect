@@ -56,7 +56,6 @@ async function main() {
 
   const inboxes = [
     { id: "inbox_wa", type: "whatsapp" as const, name: "+44 20 7946", handle: "+44 20 7946 0100", routing: "manual" as const, teams: ["team_support"] },
-    { id: "inbox_ivy", type: "whatsapp_group" as const, name: "The Ivy House", handle: "The Ivy House · group", routing: "manual" as const, teams: ["team_support"] },
     { id: "inbox_support", type: "email" as const, name: "support@swiftee.co.uk", handle: "support@swiftee.co.uk", routing: "round_robin" as const, teams: ["team_support"] },
     { id: "inbox_hello", type: "email" as const, name: "hello@swiftee.co.uk", handle: "hello@swiftee.co.uk", routing: "round_robin" as const, teams: ["team_sales"] },
   ];
@@ -75,6 +74,17 @@ async function main() {
     }
   }
 
+  // Legacy fix: a WhatsApp group used to get its own `whatsapp_group` inbox.
+  // Groups now live under their WhatsApp number, so move any conversations off
+  // a legacy group inbox onto the number and drop the standalone inbox. Runs
+  // every deploy; a no-op once migrated.
+  const legacyGroupInboxes = await prisma.inbox.findMany({ where: { orgId: ORG, type: "whatsapp_group" } });
+  for (const gi of legacyGroupInboxes) {
+    await prisma.conversation.updateMany({ where: { inboxId: gi.id }, data: { inboxId: "inbox_wa" } });
+    await prisma.inboxTeam.deleteMany({ where: { inboxId: gi.id } });
+    await prisma.inbox.delete({ where: { id: gi.id } });
+  }
+
   const labels = [
     { id: "lbl_vip", name: "VIP", color: "#0FA47A" },
     { id: "lbl_delivery", name: "Delivery", color: "#E68A00" },
@@ -90,7 +100,7 @@ async function main() {
   const seedConversations = [
     {
       contact: { id: "ct_ivy", displayName: "The Ivy House", company: "Venue · Bristol", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)", phone: "+44 117 496 0122", email: "ops@theivyhouse.co.uk" },
-      conv: { id: "conv_ivy", inboxId: "inbox_ivy", channel: "whatsapp_group" as const, subject: null as string | null, status: "open" as const, assigneeUserId: "usr_nathan", assignedTeamId: "team_support", priority: "high" as const, unread: true, preview: "James · Swiftee: 5pm works — re-slotting now 👍" },
+      conv: { id: "conv_ivy", inboxId: "inbox_wa", channel: "whatsapp_group" as const, subject: null as string | null, status: "open" as const, assigneeUserId: "usr_nathan", assignedTeamId: "team_support", priority: "high" as const, unread: true, preview: "James · Swiftee: 5pm works — re-slotting now 👍" },
       labels: ["lbl_vip", "lbl_delivery"],
       messages: [
         { direction: "in" as const, authorType: "contact" as const, authorName: "Priya (The Ivy House)", body: "Amazing. Could we push the linen drop to 5pm? Lunch service running.", internal: false },

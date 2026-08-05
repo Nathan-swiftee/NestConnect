@@ -321,7 +321,22 @@ export class MemoryStore extends Store {
       .map((t) => ({ key: `team:${t.id}`, title: t.name, count: count(`team:${t.id}`) }));
     const inboxes: ViewItem[] = this.inboxes
       .filter((i) => i.teamIds.some((t) => userTeams.includes(t)))
-      .map((i) => ({ key: `inbox:${i.id}`, title: i.name, count: count(`inbox:${i.id}`), channel: i.type, handle: i.handle }));
+      .map((i) => {
+        const groups =
+          i.type === "whatsapp"
+            ? this.conversations
+                .filter((c) => c.inboxId === i.id && c.channel === "whatsapp_group")
+                .map((c) => ({ id: c.id, title: c.contact.displayName }))
+            : [];
+        return {
+          key: `inbox:${i.id}`,
+          title: i.name,
+          count: count(`inbox:${i.id}`),
+          channel: i.type,
+          handle: i.handle,
+          groups: groups.length ? groups : undefined,
+        };
+      });
     return { my, shared: { teams, inboxes } };
   }
 

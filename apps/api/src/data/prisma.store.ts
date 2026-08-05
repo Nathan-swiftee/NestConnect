@@ -380,12 +380,22 @@ export class PrismaStore extends Store {
     });
     const inboxes: ViewItem[] = [];
     for (const i of inboxRows) {
+      let groups: { id: string; title: string }[] | undefined;
+      if (i.type === "whatsapp") {
+        const gs = await this.prisma.conversation.findMany({
+          where: { inboxId: i.id, channel: "whatsapp_group" },
+          include: { contact: true },
+          orderBy: { lastActivityAt: "desc" },
+        });
+        if (gs.length) groups = gs.map((g) => ({ id: g.id, title: g.contact.displayName }));
+      }
       inboxes.push({
         key: `inbox:${i.id}`,
         title: i.name,
         count: await count(`inbox:${i.id}`),
         channel: i.type as ChannelType,
         handle: i.handle,
+        groups,
       });
     }
 

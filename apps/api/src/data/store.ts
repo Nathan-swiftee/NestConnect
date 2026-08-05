@@ -22,6 +22,8 @@ export interface ViewItem {
   count: number;
   channel?: ChannelType;
   handle?: string;
+  /** For a WhatsApp number: the group conversations it hosts (nested in the sidebar). */
+  groups?: { id: string; title: string }[];
 }
 
 export interface SidebarViews {

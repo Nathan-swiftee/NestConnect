@@ -186,6 +186,13 @@ input,textarea{font:inherit}
 .subrow.active .mk{background:var(--brand)}
 .subrow .lbl{flex:1}
 .subrow .n{font-size:12px;color:var(--text-faint);font-weight:600}
+.subrow .navicon{display:grid;place-items:center}
+.subrow .navicon svg{width:14px;height:14px;display:block}
+/* disclosure caret for a WhatsApp number that hosts groups */
+.navchev{display:inline-grid;place-items:center;width:20px;height:20px;flex:0 0 20px;color:var(--text-faint);border-radius:50%;transition:transform .18s ease,background .14s,color .14s}
+.navchev:hover{background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text)}
+.navchev.open{transform:rotate(90deg)}
+.navchev svg{width:13px;height:13px}
 .newinbox{width:100%;margin-top:8px;display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:var(--r-12);border:1px dashed var(--border-strong);color:var(--brand-strong);font-weight:600;transition:background .14s,border-color .14s}
 .newinbox:hover{background:var(--brand-tint);border-color:var(--brand)}
 .newinbox svg{width:16px;height:16px}

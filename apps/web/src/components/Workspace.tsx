@@ -107,6 +107,7 @@ export function Workspace() {
           <Sidebar
             view={view}
             onSelectView={selectView}
+            onSelectConversation={(id) => { selectConversation(id); setDrawerOpen(false); }}
             onClose={isCompact ? () => setDrawerOpen(false) : undefined}
             onOpenSettings={() => { setSettingsOpen(true); setDrawerOpen(false); }}
           />

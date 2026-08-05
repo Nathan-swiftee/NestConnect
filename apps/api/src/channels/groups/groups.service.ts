@@ -27,9 +27,11 @@ export class GroupsService {
 
   /** Create an official WhatsApp group space (≤8 members) and route it. */
   async createGroup(input: CreateGroupInput): Promise<ConversationWithMessages> {
+    // A WhatsApp group is hosted BY a WhatsApp number (the business number is a
+    // member of the group) — not a channel of its own.
     const inbox = (await this.store.listInboxes()).find((i) => i.id === input.inboxId);
-    if (!inbox || inbox.type !== "whatsapp_group") {
-      throw new BadRequestException("inboxId must be a whatsapp_group inbox");
+    if (!inbox || inbox.type !== "whatsapp") {
+      throw new BadRequestException("inboxId must be a WhatsApp number");
     }
     if (input.members.length > GROUP_MAX_MEMBERS) {
       throw new BadRequestException(`A WhatsApp group allows at most ${GROUP_MAX_MEMBERS} members`);

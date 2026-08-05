@@ -25,6 +25,7 @@ export interface ViewItem {
   count: number;
   channel?: ChannelType;
   handle?: string;
+  groups?: { id: string; title: string }[];
 }
 export interface SidebarViews {
   my: ViewItem[];
