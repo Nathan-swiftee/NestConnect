@@ -6,6 +6,7 @@ import { Thread } from "./Thread";
 import { ContextPanel } from "./ContextPanel";
 import { CommandPalette } from "./CommandPalette";
 import { Settings } from "./Settings";
+import { Customers } from "./Customers";
 import { useConversations, useMediaQuery, useRealtime, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
 
@@ -22,6 +23,7 @@ export function Workspace() {
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [customersOpen, setCustomersOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   useRealtime(selectedId);
@@ -102,7 +104,10 @@ export function Workspace() {
     <>
       <div className="stage">
         <div className={"app" + (drawerOpen ? " drawer-open" : "")} data-pane={pane}>
-          <IconRail onOpenSettings={() => setSettingsOpen(true)} />
+          <IconRail
+            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenCustomers={() => setCustomersOpen(true)}
+          />
           {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />}
           <Sidebar
             view={view}
@@ -110,6 +115,7 @@ export function Workspace() {
             onSelectConversation={(id) => { selectConversation(id); setDrawerOpen(false); }}
             onClose={isCompact ? () => setDrawerOpen(false) : undefined}
             onOpenSettings={() => { setSettingsOpen(true); setDrawerOpen(false); }}
+            onOpenCustomers={() => { setCustomersOpen(true); setDrawerOpen(false); }}
           />
           <ConversationList
             view={view}
@@ -154,6 +160,17 @@ export function Workspace() {
       )}
 
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} onToast={notify} />}
+
+      {customersOpen && (
+        <Customers
+          onClose={() => setCustomersOpen(false)}
+          onToast={notify}
+          onOpenConversation={(id) => {
+            selectConversation(id);
+            setCustomersOpen(false);
+          }}
+        />
+      )}
 
       <div className={"toast" + (toast ? " show" : "")}>
         <span className="dot" />

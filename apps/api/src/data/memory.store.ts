@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import type {
   ChannelType,
   Contact,
+  ContactWithConversations,
   Conversation,
   ConversationStatus,
   ConversationWithMessages,
@@ -448,6 +449,7 @@ export class MemoryStore extends Store {
       orgId: params.orgId,
       displayName: params.displayName,
       company: params.company,
+      tags: [],
       avatarColor: params.avatarColor ?? AVATAR_PALETTE[this.contacts.length % AVATAR_PALETTE.length],
       [key]: params.value,
     } as Contact;
@@ -547,14 +549,72 @@ export class MemoryStore extends Store {
     return this.conversations.find((c) => c.channelRef === channelRef)?.id;
   }
 
-  async createContact(params: { orgId: string; displayName: string; avatarColor?: string }): Promise<Contact> {
+  async createContact(params: {
+    orgId: string;
+    displayName: string;
+    avatarColor?: string;
+    company?: string;
+    phone?: string;
+    email?: string;
+    tags?: string[];
+    ownerUserId?: string | null;
+    ownerTeamId?: string | null;
+  }): Promise<Contact> {
     const contact: Contact = {
       id: `ct_${++this.idSeq}`,
       orgId: params.orgId,
       displayName: params.displayName,
+      company: params.company,
+      phone: params.phone,
+      email: params.email,
+      tags: params.tags ?? [],
+      ownerUserId: params.ownerUserId ?? undefined,
+      ownerTeamId: params.ownerTeamId ?? undefined,
       avatarColor: params.avatarColor ?? AVATAR_PALETTE[this.contacts.length % AVATAR_PALETTE.length],
     };
     this.contacts.push(contact);
+    return contact;
+  }
+
+  async listContacts(): Promise<Contact[]> {
+    return [...this.contacts]
+      .map((c) => ({ ...c, tags: c.tags ?? [] }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+
+  async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {
+    const contact = this.contacts.find((c) => c.id === id);
+    if (!contact) return undefined;
+    const conversations = this.conversations
+      .filter((r) => r.contact.id === id)
+      .sort((a, b) => +new Date(b.lastActivityAt) - +new Date(a.lastActivityAt))
+      .map((r) => this.summary(r));
+    return { ...contact, tags: contact.tags ?? [], conversations };
+  }
+
+  async updateContact(
+    id: string,
+    params: {
+      displayName?: string;
+      company?: string;
+      phone?: string;
+      email?: string;
+      tags?: string[];
+      ownerUserId?: string | null;
+      ownerTeamId?: string | null;
+    },
+  ): Promise<Contact | undefined> {
+    const contact = this.contacts.find((c) => c.id === id);
+    if (!contact) return undefined;
+    if (params.displayName !== undefined) contact.displayName = params.displayName;
+    if (params.company !== undefined) contact.company = params.company || undefined;
+    if (params.phone !== undefined) contact.phone = params.phone || undefined;
+    if (params.email !== undefined) contact.email = params.email || undefined;
+    if (params.tags !== undefined) contact.tags = params.tags;
+    if (params.ownerUserId !== undefined) contact.ownerUserId = params.ownerUserId ?? undefined;
+    if (params.ownerTeamId !== undefined) contact.ownerTeamId = params.ownerTeamId ?? undefined;
+    // Keep the copy embedded in each conversation in sync so the UI updates too.
+    for (const r of this.conversations) if (r.contact.id === id) r.contact = { ...contact, tags: contact.tags ?? [] };
     return contact;
   }
 

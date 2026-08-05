@@ -160,6 +160,7 @@ model Contact {
   displayName String
   company     String?
   avatarColor String?
+  tags        String[] @default([])
   ownerUserId String?
   ownerTeamId String?
   createdAt   DateTime @default(now())

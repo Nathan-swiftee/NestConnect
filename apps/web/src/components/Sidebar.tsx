@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLogout, useMe, useSound, useTeams, useViews } from "../hooks";
 import {
   ChevronRight,
+  ContactsIcon,
   InboxIcon,
   TeamGlyph,
   ThemeIcon,
@@ -20,9 +21,10 @@ interface Props {
   onSelectConversation?: (id: string) => void;
   onClose?: () => void;
   onOpenSettings?: () => void;
+  onOpenCustomers?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings }: Props) {
+export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers }: Props) {
   const { data } = useViews();
   const { data: meData } = useMe();
   const { data: teamList } = useTeams();
@@ -162,6 +164,11 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           </div>
         </div>
         <div className="side__foot-actions">
+          {onOpenCustomers && (
+            <button className="iconbtn" title="Customers" onClick={onOpenCustomers}>
+              <ContactsIcon />
+            </button>
+          )}
           {onOpenSettings && (
             <button className="iconbtn" title="Settings" onClick={onOpenSettings}>
               <SettingsIcon />

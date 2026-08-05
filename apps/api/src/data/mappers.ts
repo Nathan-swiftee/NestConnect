@@ -78,6 +78,7 @@ export function mapContact(c: ContactWithIdentities): Contact {
     phone,
     email,
     avatarColor: c.avatarColor ?? undefined,
+    tags: c.tags ?? [],
     ownerUserId: c.ownerUserId ?? undefined,
     ownerTeamId: c.ownerTeamId ?? undefined,
   };

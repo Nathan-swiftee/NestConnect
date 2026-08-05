@@ -1,6 +1,7 @@
 import type {
   ChannelType,
   Contact,
+  ContactWithConversations,
   Conversation,
   ConversationStatus,
   ConversationWithMessages,
@@ -174,12 +175,34 @@ export abstract class Store {
 
   abstract findConversationByChannelRef(channelRef: string): Promise<string | undefined>;
 
-  /** Create a bare contact (e.g. the synthetic contact that represents a group). */
+  /** Create a contact (a group's synthetic contact, or a customer added by hand). */
   abstract createContact(params: {
     orgId: string;
     displayName: string;
     avatarColor?: string;
+    company?: string;
+    phone?: string;
+    email?: string;
+    tags?: string[];
+    ownerUserId?: string | null;
+    ownerTeamId?: string | null;
   }): Promise<Contact>;
+
+  /* ---- customers directory ---- */
+  abstract listContacts(): Promise<Contact[]>;
+  abstract getContactWithConversations(id: string): Promise<ContactWithConversations | undefined>;
+  abstract updateContact(
+    id: string,
+    params: {
+      displayName?: string;
+      company?: string;
+      phone?: string;
+      email?: string;
+      tags?: string[];
+      ownerUserId?: string | null;
+      ownerTeamId?: string | null;
+    },
+  ): Promise<Contact | undefined>;
 
   abstract createGroupConversation(params: {
     orgId: string;

@@ -1,0 +1,500 @@
+import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
+import type { Contact, Team } from "@ding/schemas";
+import {
+  useContact,
+  useContacts,
+  useCreateContact,
+  usePeople,
+  useTeams,
+  useUpdateContact,
+} from "../hooks";
+import { initials, relativeTime } from "../lib/format";
+import {
+  channelMeta,
+  EditIcon,
+  PhoneIcon,
+  PlusIcon,
+  RouteIcon,
+  SearchIcon,
+  XIcon,
+} from "../lib/icons";
+
+interface Props {
+  onClose: () => void;
+  onToast: (msg: string) => void;
+  onOpenConversation: (id: string) => void;
+}
+
+/** Free-form tag editor: removable pills, an add-input, and quick suggestions
+ *  drawn from tags already in use elsewhere. */
+function TagEditor({
+  tags,
+  suggestions,
+  onChange,
+}: {
+  tags: string[];
+  suggestions: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const add = (raw: string) => {
+    const t = raw.trim();
+    if (!t) return;
+    if (tags.some((x) => x.toLowerCase() === t.toLowerCase())) return;
+    onChange([...tags, t]);
+    setDraft("");
+  };
+  const remove = (t: string) => onChange(tags.filter((x) => x !== t));
+  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      add(draft);
+    } else if (e.key === "Backspace" && !draft && tags.length) {
+      remove(tags[tags.length - 1]);
+    }
+  };
+  const open = suggestions.filter((s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()));
+  return (
+    <div className="field">
+      <span>Tags</span>
+      <div className="tagedit">
+        {tags.map((t) => (
+          <span className="tagpill" key={t}>
+            {t}
+            <button type="button" onClick={() => remove(t)} aria-label={`Remove ${t}`}>
+              <XIcon />
+            </button>
+          </span>
+        ))}
+        <input
+          className="tagedit__in"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKey}
+          placeholder={tags.length ? "Add another…" : "Add a tag…"}
+        />
+      </div>
+      {open.length > 0 && (
+        <div className="tagsug">
+          {open.slice(0, 8).map((s) => (
+            <button type="button" className="tagsug__b" key={s} onClick={() => add(s)}>
+              <PlusIcon /> {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The team-routing + person-routing controls that pin a customer's new
+ *  conversations. Shared by the add form and the row editor. */
+function RoutingPicker({
+  teams,
+  people,
+  ownerTeamId,
+  ownerUserId,
+  onTeam,
+  onUser,
+}: {
+  teams: Team[];
+  people: { user: { id: string; name: string } }[];
+  ownerTeamId: string | null;
+  ownerUserId: string | null;
+  onTeam: (id: string | null) => void;
+  onUser: (id: string | null) => void;
+}) {
+  const auto = !ownerTeamId && !ownerUserId;
+  return (
+    <>
+      <div className="field">
+        <span>Auto-route new conversations to</span>
+        <div className="checks">
+          <label className={"check" + (auto ? " on" : "")}>
+            <input
+              type="radio"
+              checked={auto}
+              onChange={() => {
+                onTeam(null);
+                onUser(null);
+              }}
+            />
+            Automatic
+          </label>
+          {teams.map((t) => (
+            <label key={t.id} className={"check" + (ownerTeamId === t.id ? " on" : "")}>
+              <input
+                type="radio"
+                checked={ownerTeamId === t.id}
+                onChange={() => onTeam(ownerTeamId === t.id ? null : t.id)}
+              />
+              {t.name}
+            </label>
+          ))}
+        </div>
+      </div>
+      <label className="field">
+        <span>
+          Straight to a person <em>optional</em>
+        </span>
+        <select value={ownerUserId ?? ""} onChange={(e) => onUser(e.target.value || null)}>
+          <option value="">No one specific</option>
+          {people.map((p) => (
+            <option key={p.user.id} value={p.user.id}>
+              {p.user.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </>
+  );
+}
+
+function AddCustomer({
+  suggestions,
+  onDone,
+  onToast,
+}: {
+  suggestions: string[];
+  onDone: () => void;
+  onToast: (msg: string) => void;
+}) {
+  const teams = useTeams();
+  const people = usePeople();
+  const create = useCreateContact();
+  const [displayName, setName] = useState("");
+  const [company, setCompany] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [ownerTeamId, setOwnerTeamId] = useState<string | null>(null);
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(null);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const name = displayName.trim();
+    if (!name) return;
+    create.mutate(
+      {
+        displayName: name,
+        company: company.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        tags,
+        ownerTeamId,
+        ownerUserId,
+      },
+      {
+        onSuccess: () => {
+          onToast(`Added ${name}`);
+          onDone();
+        },
+        onError: () => onToast("Couldn't add customer"),
+      },
+    );
+  };
+
+  return (
+    <form className="connect" onSubmit={submit}>
+      <div className="connect__head">
+        <b>New customer</b>
+        <button className="btn-ghost sm" type="button" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+      <div className="setform__grid two">
+        <label className="field">
+          <span>Name</span>
+          <input value={displayName} autoFocus onChange={(e) => setName(e.target.value)} placeholder="The Ivy House" required />
+        </label>
+        <label className="field">
+          <span>
+            Company / label <em>optional</em>
+          </span>
+          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Venue · Bristol" />
+        </label>
+        <label className="field">
+          <span>
+            Phone <em>optional</em>
+          </span>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+44 117 496 0122" />
+        </label>
+        <label className="field">
+          <span>
+            Email <em>optional</em>
+          </span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ops@theivyhouse.co.uk" />
+        </label>
+      </div>
+      <TagEditor tags={tags} suggestions={suggestions} onChange={setTags} />
+      <RoutingPicker
+        teams={teams.data ?? []}
+        people={people.data ?? []}
+        ownerTeamId={ownerTeamId}
+        ownerUserId={ownerUserId}
+        onTeam={setOwnerTeamId}
+        onUser={setOwnerUserId}
+      />
+      <div className="setform__foot">
+        <button className="btn-ghost" type="button" onClick={onDone}>
+          Cancel
+        </button>
+        <button className="btn-primary" type="submit" disabled={create.isPending || !displayName.trim()}>
+          Add customer
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function CustomerEditor({
+  contact,
+  suggestions,
+  onDone,
+  onToast,
+  onOpenConversation,
+}: {
+  contact: Contact;
+  suggestions: string[];
+  onDone: () => void;
+  onToast: (msg: string) => void;
+  onOpenConversation: (id: string) => void;
+}) {
+  const teams = useTeams();
+  const people = usePeople();
+  const update = useUpdateContact();
+  const detail = useContact(contact.id);
+  const [displayName, setName] = useState(contact.displayName);
+  const [company, setCompany] = useState(contact.company ?? "");
+  const [phone, setPhone] = useState(contact.phone ?? "");
+  const [email, setEmail] = useState(contact.email ?? "");
+  const [tags, setTags] = useState<string[]>(contact.tags ?? []);
+  const [ownerTeamId, setOwnerTeamId] = useState<string | null>(contact.ownerTeamId ?? null);
+  const [ownerUserId, setOwnerUserId] = useState<string | null>(contact.ownerUserId ?? null);
+
+  const save = () => {
+    update.mutate(
+      {
+        id: contact.id,
+        input: {
+          displayName: displayName.trim() || contact.displayName,
+          company: company.trim(),
+          phone: phone.trim(),
+          email: email.trim(),
+          tags,
+          ownerTeamId,
+          ownerUserId,
+        },
+      },
+      {
+        onSuccess: () => {
+          onToast("Customer updated");
+          onDone();
+        },
+        onError: () => onToast("Couldn't update customer"),
+      },
+    );
+  };
+
+  const convos = detail.data?.conversations ?? [];
+
+  return (
+    <div className="editbox">
+      <div className="setform__grid two">
+        <label className="field">
+          <span>Name</span>
+          <input value={displayName} onChange={(e) => setName(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Company / label</span>
+          <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Venue · Bristol" />
+        </label>
+        <label className="field">
+          <span>Phone</span>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Add a number" />
+        </label>
+        <label className="field">
+          <span>Email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Add an address" />
+        </label>
+      </div>
+      <TagEditor tags={tags} suggestions={suggestions} onChange={setTags} />
+      <RoutingPicker
+        teams={teams.data ?? []}
+        people={people.data ?? []}
+        ownerTeamId={ownerTeamId}
+        ownerUserId={ownerUserId}
+        onTeam={setOwnerTeamId}
+        onUser={setOwnerUserId}
+      />
+
+      <div className="field">
+        <span>Conversations {convos.length > 0 && `· ${convos.length}`}</span>
+        {convos.length === 0 ? (
+          <p className="custconvs__empty">{detail.isLoading ? "Loading…" : "No conversations yet."}</p>
+        ) : (
+          <div className="custconvs">
+            {convos.map((c) => {
+              const cm = channelMeta(c.channel);
+              const Glyph = cm.Glyph;
+              return (
+                <button
+                  className="custconv"
+                  key={c.id}
+                  onClick={() => onOpenConversation(c.id)}
+                  title="Open conversation"
+                >
+                  <span className="custconv__ic" style={{ color: cm.color }}>
+                    <Glyph />
+                  </span>
+                  <span className="custconv__body">
+                    <b>{c.subject || cm.label}</b>
+                    <small>{c.preview || "No messages"}</small>
+                  </span>
+                  <span className={"custconv__st st-" + c.status}>{c.status}</span>
+                  <span className="custconv__t">{relativeTime(c.lastActivityAt)}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="setform__foot">
+        <button className="btn-ghost" type="button" onClick={onDone}>
+          Cancel
+        </button>
+        <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || !displayName.trim()}>
+          Save changes
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function Customers({ onClose, onToast, onOpenConversation }: Props) {
+  const contacts = useContacts();
+  const teams = useTeams();
+  const [q, setQ] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const teamName = (id: string) => teams.data?.find((t) => t.id === id)?.name ?? "team";
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const c of contacts.data ?? []) for (const t of c.tags ?? []) set.add(t);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [contacts.data]);
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const list = contacts.data ?? [];
+    if (!needle) return list;
+    return list.filter((c) =>
+      [c.displayName, c.company, c.phone, c.email, ...(c.tags ?? [])]
+        .filter(Boolean)
+        .some((v) => (v as string).toLowerCase().includes(needle)),
+    );
+  }, [contacts.data, q]);
+
+  return (
+    <div className="settings" role="dialog" aria-label="Customers">
+      <header className="settings__head">
+        <h1>Customers</h1>
+        <button className="settings__x" onClick={onClose} aria-label="Close customers" title="Close">
+          <XIcon />
+        </button>
+      </header>
+      <div className="settings__pane">
+        <div className="setpane">
+          <div className="setpane__head">
+            <div>
+              <h2>Customers</h2>
+              <p>Everyone who's messaged you, plus contacts you add by hand. Tag them and pin a customer to a team so their messages always land in the right place.</p>
+            </div>
+            {!adding && (
+              <button className="btn-primary" onClick={() => { setAdding(true); setEditingId(null); }}>
+                <PlusIcon /> Add customer
+              </button>
+            )}
+          </div>
+
+          <div className="custsearch">
+            <SearchIcon />
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, company, number, email or tag…" />
+          </div>
+
+          {adding && (
+            <AddCustomer suggestions={allTags} onDone={() => setAdding(false)} onToast={onToast} />
+          )}
+
+          <div className="setlist">
+            {filtered.map((c) => {
+              const editing = editingId === c.id;
+              const owner = c.ownerTeamId
+                ? { label: teamName(c.ownerTeamId), pinned: true }
+                : c.ownerUserId
+                  ? { label: "Direct", pinned: true }
+                  : { label: "Automatic", pinned: false };
+              return (
+                <div className="setmember" key={c.id}>
+                  <div className="setrow">
+                    <span className="av" style={{ background: c.avatarColor, width: 38, height: 38, fontSize: 13 }}>
+                      {initials(c.displayName)}
+                    </span>
+                    <div className="setrow__main">
+                      <b>{c.displayName}</b>
+                      <small>{c.company || c.phone || c.email || "No details yet"}</small>
+                    </div>
+                    <div className="custtags">
+                      {(c.tags ?? []).slice(0, 3).map((t) => (
+                        <span className="custtag" key={t}>{t}</span>
+                      ))}
+                      {(c.tags?.length ?? 0) > 3 && <span className="custtag more">+{(c.tags?.length ?? 0) - 3}</span>}
+                    </div>
+                    <span
+                      className={"routepill" + (owner.pinned ? " on" : "")}
+                      title={owner.pinned ? `Pinned to ${owner.label}` : "Follows channel routing"}
+                    >
+                      <RouteIcon /> {owner.label}
+                    </span>
+                    <div className="rowacts">
+                      <button
+                        className="iconbtn"
+                        title="Edit customer"
+                        onClick={() => { setEditingId(editing ? null : c.id); setAdding(false); }}
+                      >
+                        <EditIcon />
+                      </button>
+                    </div>
+                  </div>
+                  {editing && (
+                    <CustomerEditor
+                      contact={c}
+                      suggestions={allTags}
+                      onDone={() => setEditingId(null)}
+                      onToast={onToast}
+                      onOpenConversation={onOpenConversation}
+                    />
+                  )}
+                </div>
+              );
+            })}
+            {contacts.data && filtered.length === 0 && (
+              <div className="custempty">
+                {q ? (
+                  <p>No customers match “{q}”.</p>
+                ) : (
+                  <>
+                    <span className="custempty__ic"><PhoneIcon /></span>
+                    <p>No customers yet. They appear here automatically when someone messages you — or add one now.</p>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

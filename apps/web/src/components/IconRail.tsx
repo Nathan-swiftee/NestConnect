@@ -13,7 +13,13 @@ import {
   SoundOffIcon,
 } from "../lib/icons";
 
-export function IconRail({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function IconRail({
+  onOpenSettings,
+  onOpenCustomers,
+}: {
+  onOpenSettings: () => void;
+  onOpenCustomers: () => void;
+}) {
   const { data } = useMe();
   const me = data?.user;
   const logout = useLogout();
@@ -28,7 +34,7 @@ export function IconRail({ onOpenSettings }: { onOpenSettings: () => void }) {
       <button className="railbtn active" title="Inbox">
         <InboxIcon />
       </button>
-      <button className="railbtn" title="Contacts">
+      <button className="railbtn" title="Customers" onClick={onOpenCustomers}>
         <ContactsIcon />
       </button>
       <button className="railbtn" title="Insights">

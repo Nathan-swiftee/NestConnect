@@ -80,6 +80,8 @@ export const contactSchema = z.object({
   phone: z.string().optional(),
   email: z.string().optional(),
   avatarColor: z.string().optional(),
+  /** Free-form labels for organising customers (VIP, Wholesale, …). */
+  tags: z.array(z.string()).default([]),
   /** Owner drives per-customer auto-routing (a client always reaches "their" person/team). */
   ownerUserId: z.string().nullable().optional(),
   ownerTeamId: z.string().nullable().optional(),
@@ -273,6 +275,35 @@ export const updateUserInputSchema = z.object({
   teamIds: z.array(z.string()).optional(),
 });
 export type UpdateUserInput = z.infer<typeof updateUserInputSchema>;
+
+export const createContactInputSchema = z.object({
+  displayName: z.string().min(1),
+  company: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  /** Pin this customer to a team so their messages always route there. */
+  ownerTeamId: z.string().nullable().optional(),
+  ownerUserId: z.string().nullable().optional(),
+});
+export type CreateContactInput = z.infer<typeof createContactInputSchema>;
+
+export const updateContactInputSchema = z.object({
+  displayName: z.string().min(1).optional(),
+  company: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  ownerTeamId: z.string().nullable().optional(),
+  ownerUserId: z.string().nullable().optional(),
+});
+export type UpdateContactInput = z.infer<typeof updateContactInputSchema>;
+
+/** A contact with the conversations that belong to them (Customers › detail). */
+export const contactWithConversationsSchema = contactSchema.extend({
+  conversations: z.array(conversationSchema),
+});
+export type ContactWithConversations = z.infer<typeof contactWithConversationsSchema>;
 
 /** A user together with the teams they belong to (Settings › People). */
 export const memberSchema = z.object({

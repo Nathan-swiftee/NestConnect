@@ -1,9 +1,12 @@
 import type {
   AddParticipantInput,
   ChannelType,
+  Contact,
+  ContactWithConversations,
   Conversation,
   ConversationStatus,
   ConversationWithMessages,
+  CreateContactInput,
   CreateGroupInput,
   CreateInboxInput,
   CreateTeamInput,
@@ -13,6 +16,7 @@ import type {
   Message,
   Participant,
   Team,
+  UpdateContactInput,
   UpdateInboxInput,
   UpdateTeamInput,
   UpdateUserInput,
@@ -81,6 +85,11 @@ export const api = {
   createUser: (input: CreateUserInput) => post<User>("/settings/people", input),
   updateUser: (id: string, input: UpdateUserInput) => patch<User>(`/settings/people/${id}`, input),
   deleteUser: (id: string) => del<{ ok: boolean }>(`/settings/people/${id}`),
+  // customers (CRM)
+  contacts: () => get<Contact[]>("/contacts"),
+  contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),
+  createContact: (input: CreateContactInput) => post<Contact>("/contacts", input),
+  updateContact: (id: string, input: UpdateContactInput) => patch<Contact>(`/contacts/${id}`, input),
   // conversations
   conversations: (view: string) =>
     get<Conversation[]>(`/conversations?view=${encodeURIComponent(view)}`),

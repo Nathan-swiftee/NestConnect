@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import type {
   ChannelType,
   Contact,
+  ContactWithConversations,
   Conversation,
   ConversationStatus,
   ConversationWithMessages,
@@ -37,6 +38,15 @@ const convInclude = {
   contact: { include: { identities: true } },
   labels: { include: { label: true } },
 } satisfies Prisma.ConversationInclude;
+
+const AVATAR_PALETTE = [
+  "linear-gradient(135deg,#F97316,#DB2777)",
+  "linear-gradient(135deg,#0EA5E9,#2563EB)",
+  "linear-gradient(135deg,#10B981,#059669)",
+  "linear-gradient(135deg,#6366F1,#A855F7)",
+  "linear-gradient(135deg,#F59E0B,#EF4444)",
+  "linear-gradient(135deg,#14B8A6,#0EA5E9)",
+];
 
 /** Postgres-backed store (active when DATABASE_URL is set). */
 @Injectable()
@@ -657,12 +667,117 @@ export class PrismaStore extends Store {
     return c?.id;
   }
 
-  async createContact(params: { orgId: string; displayName: string; avatarColor?: string }): Promise<Contact> {
-    const c = await this.prisma.contact.create({
-      data: { orgId: params.orgId, displayName: params.displayName, avatarColor: params.avatarColor },
+  async createContact(params: {
+    orgId: string;
+    displayName: string;
+    avatarColor?: string;
+    company?: string;
+    phone?: string;
+    email?: string;
+    tags?: string[];
+    ownerUserId?: string | null;
+    ownerTeamId?: string | null;
+  }): Promise<Contact> {
+    const count = await this.prisma.contact.count({ where: { orgId: params.orgId } });
+    const created = await this.prisma.contact.create({
+      data: {
+        orgId: params.orgId,
+        displayName: params.displayName,
+        company: params.company ?? null,
+        avatarColor: params.avatarColor ?? AVATAR_PALETTE[count % AVATAR_PALETTE.length],
+        tags: params.tags ?? [],
+        ownerUserId: params.ownerUserId ?? null,
+        ownerTeamId: params.ownerTeamId ?? null,
+      },
+    });
+    await this.setIdentity(created.id, ["phone", "wa_id"], "phone", params.phone);
+    await this.setIdentity(created.id, ["email"], "email", params.email);
+    const full = await this.prisma.contact.findUnique({
+      where: { id: created.id },
       include: { identities: true },
     });
-    return mapContact(c);
+    return mapContact(full!);
+  }
+
+  /* ---- customers directory ---- */
+
+  /**
+   * Reconcile a single identity (phone/email) on a contact. `matchKinds` are the
+   * kinds that count as "the same slot" when looking for an existing row (phone
+   * matches a legacy wa_id too); `writeKind` is used only when creating a fresh
+   * one. `undefined` value = field not supplied (leave as-is); empty = clear it.
+   */
+  private async setIdentity(
+    contactId: string,
+    matchKinds: string[],
+    writeKind: string,
+    value: string | undefined,
+  ): Promise<void> {
+    if (value === undefined) return;
+    const existing = await this.prisma.contactIdentity.findFirst({
+      where: { contactId, kind: { in: matchKinds } },
+    });
+    const v = value.trim();
+    if (!v) {
+      if (existing) await this.prisma.contactIdentity.delete({ where: { id: existing.id } }).catch(() => {});
+      return;
+    }
+    try {
+      if (existing) {
+        if (existing.value !== v)
+          await this.prisma.contactIdentity.update({ where: { id: existing.id }, data: { value: v } });
+      } else {
+        await this.prisma.contactIdentity.create({ data: { contactId, kind: writeKind, value: v } });
+      }
+    } catch {
+      /* [kind,value] is globally unique — another contact already owns it; skip */
+    }
+  }
+
+  async listContacts(): Promise<Contact[]> {
+    const rows = await this.prisma.contact.findMany({
+      where: { orgId: ORG_ID },
+      include: { identities: true },
+    });
+    return rows.map(mapContact).sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+
+  async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {
+    const contact = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
+    if (!contact) return undefined;
+    const convs = await this.prisma.conversation.findMany({
+      where: { contactId: id },
+      include: convInclude,
+      orderBy: { lastActivityAt: "desc" },
+    });
+    return { ...mapContact(contact), conversations: convs.map(mapConversation) };
+  }
+
+  async updateContact(
+    id: string,
+    params: {
+      displayName?: string;
+      company?: string;
+      phone?: string;
+      email?: string;
+      tags?: string[];
+      ownerUserId?: string | null;
+      ownerTeamId?: string | null;
+    },
+  ): Promise<Contact | undefined> {
+    const existing = await this.prisma.contact.findUnique({ where: { id } });
+    if (!existing) return undefined;
+    const data: Prisma.ContactUpdateInput = {};
+    if (params.displayName !== undefined) data.displayName = params.displayName;
+    if (params.company !== undefined) data.company = params.company || null;
+    if (params.tags !== undefined) data.tags = params.tags;
+    if (params.ownerUserId !== undefined) data.ownerUserId = params.ownerUserId ?? null;
+    if (params.ownerTeamId !== undefined) data.ownerTeamId = params.ownerTeamId ?? null;
+    if (Object.keys(data).length) await this.prisma.contact.update({ where: { id }, data });
+    await this.setIdentity(id, ["phone", "wa_id"], "phone", params.phone);
+    await this.setIdentity(id, ["email"], "email", params.email);
+    const full = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
+    return full ? mapContact(full) : undefined;
   }
 
   async createGroupConversation(params: {

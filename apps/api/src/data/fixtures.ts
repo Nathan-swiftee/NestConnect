@@ -60,7 +60,10 @@ export function makeSeed() {
     { id: "inbox_hello", orgId: ORG_ID, type: "email", name: "hello@swiftee.co.uk", handle: "hello@swiftee.co.uk", teamIds: ["team_sales"], routingStrategy: "round_robin", unread: 0 },
   ];
 
-  const c = (contact: Contact) => contact;
+  const c = (contact: Omit<Contact, "tags"> & { tags?: string[] }): Contact => ({
+    tags: [],
+    ...contact,
+  });
   const contacts = {
     ivy: c({ id: "ct_ivy", orgId: ORG_ID, displayName: "The Ivy House", company: "Venue · Bristol", phone: "+44 117 496 0122", email: "ops@theivyhouse.co.uk", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)" }),
     north: c({ id: "ct_north", orgId: ORG_ID, displayName: "Northside Logistics", company: "Logistics · Leeds", phone: "+44 113 555 0148", email: "accounts@northside.io", avatarColor: "linear-gradient(135deg,#0EA5E9,#2563EB)" }),
@@ -72,9 +75,9 @@ export function makeSeed() {
 
   // Members of the demo WhatsApp group "The Ivy House" (client people + a Swiftee rep).
   const ivyMembers: Contact[] = [
-    { id: "ct_priya", orgId: ORG_ID, displayName: "Priya · Ivy House", phone: "+44 117 496 0122", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)" },
-    { id: "ct_marco", orgId: ORG_ID, displayName: "Marco · Ivy House", phone: "+44 117 496 0140", avatarColor: "linear-gradient(135deg,#8B5CF6,#6366F1)" },
-    { id: "ct_jamesg", orgId: ORG_ID, displayName: "James · Swiftee", phone: "+44 20 7946 0100", avatarColor: "linear-gradient(135deg,#0EA5E9,#22D3EE)" },
+    c({ id: "ct_priya", orgId: ORG_ID, displayName: "Priya · Ivy House", phone: "+44 117 496 0122", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)" }),
+    c({ id: "ct_marco", orgId: ORG_ID, displayName: "Marco · Ivy House", phone: "+44 117 496 0140", avatarColor: "linear-gradient(135deg,#8B5CF6,#6366F1)" }),
+    c({ id: "ct_jamesg", orgId: ORG_ID, displayName: "James · Swiftee", phone: "+44 20 7946 0100", avatarColor: "linear-gradient(135deg,#0EA5E9,#22D3EE)" }),
   ];
 
   let mid = 0;

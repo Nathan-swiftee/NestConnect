@@ -6,11 +6,13 @@ import {
   type AddParticipantInput,
   type Conversation,
   type ConversationStatus,
+  type CreateContactInput,
   type CreateGroupInput,
   type CreateInboxInput,
   type CreateTeamInput,
   type CreateUserInput,
   type Message,
+  type UpdateContactInput,
   type UpdateInboxInput,
   type UpdateTeamInput,
   type UpdateUserInput,
@@ -191,6 +193,37 @@ export function useDeleteUser() {
     },
   });
 }
+/* ---- customers (CRM) ---- */
+export const useContacts = () => useQuery({ queryKey: ["contacts"], queryFn: api.contacts });
+export const useContact = (id: string | null) =>
+  useQuery({
+    queryKey: ["contact", id],
+    queryFn: () => api.contact(id as string),
+    enabled: !!id,
+  });
+
+export function useCreateContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateContactInput) => api.createContact(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["contacts"] }),
+  });
+}
+
+export function useUpdateContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdateContactInput }) => api.updateContact(v.id, v.input),
+    onSuccess: (_c, v) => {
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["contact", v.id] });
+      // Owner/tag edits can change routing, so refresh conversation-derived views too.
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
 export const useConversations = (view: string) =>
   useQuery({ queryKey: ["conversations", view], queryFn: () => api.conversations(view) });
 export const useConversation = (id: string | null) =>
