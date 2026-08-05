@@ -1,13 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { GROUP_MAX_MEMBERS, type ChannelType } from "@ding/schemas";
-import { useAddParticipant, useConversation, useRemoveParticipant } from "../hooks";
+import { GROUP_MAX_MEMBERS, type ChannelType, type Contact } from "@ding/schemas";
+import {
+  useAddParticipant,
+  useConversation,
+  usePeople,
+  useRemoveParticipant,
+  useTeams,
+  useUpdateContact,
+} from "../hooks";
 import { initials, slaCountdown } from "../lib/format";
 import { channelMeta, PhoneIcon, MailIcon, ProfileIcon, XIcon, ChevronRight } from "../lib/icons";
-
-const TEAM_NAME: Record<string, string> = {
-  team_support: "Support team",
-  team_sales: "Sales team",
-};
 
 interface Props {
   conversationId: string | null;
@@ -15,8 +17,70 @@ interface Props {
   onClose?: () => void;
 }
 
+/** Pin a customer to a team/person so their future conversations auto-route.
+ *  Lives in the details panel so an agent can set it straight from a chat. */
+function RoutingBlock({ contact, isGroup, onToast }: { contact: Contact; isGroup: boolean; onToast: (m: string) => void }) {
+  const teams = useTeams();
+  const people = usePeople();
+  const update = useUpdateContact();
+  const [teamId, setTeamId] = useState(contact.ownerTeamId ?? "");
+  const [userId, setUserId] = useState(contact.ownerUserId ?? "");
+  useEffect(() => {
+    setTeamId(contact.ownerTeamId ?? "");
+    setUserId(contact.ownerUserId ?? "");
+  }, [contact.id, contact.ownerTeamId, contact.ownerUserId]);
+
+  const save = (patch: { ownerTeamId?: string | null; ownerUserId?: string | null }) =>
+    update.mutate(
+      { id: contact.id, input: patch },
+      { onSuccess: () => onToast("Routing updated"), onError: () => onToast("Couldn't update routing") },
+    );
+
+  const who = isGroup ? "this group" : contact.displayName;
+  return (
+    <div className="block">
+      <div className="t">Auto-routing</div>
+      <p className="routehint">New conversations from {who} go straight here.</p>
+      <label className="routesel">
+        <span>Team</span>
+        <select
+          value={teamId}
+          onChange={(e) => {
+            const v = e.target.value;
+            setTeamId(v);
+            save({ ownerTeamId: v || null });
+          }}
+        >
+          <option value="">Automatic (channel routing)</option>
+          {teams.data?.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="routesel">
+        <span>Person</span>
+        <select
+          value={userId}
+          onChange={(e) => {
+            const v = e.target.value;
+            setUserId(v);
+            save({ ownerUserId: v || null });
+          }}
+        >
+          <option value="">No one specific</option>
+          {people.data?.map((m) => (
+            <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
 export function ContextPanel({ conversationId, onToast, onClose }: Props) {
   const { data: conv } = useConversation(conversationId);
+  const teams = useTeams();
+  const teamName = (id: string) => teams.data?.find((t) => t.id === id)?.name ?? "—";
   const addParticipant = useAddParticipant(conversationId ?? "");
   const removeParticipant = useRemoveParticipant(conversationId ?? "");
   const [now, setNow] = useState(() => Date.now());
@@ -103,7 +167,7 @@ export function ContextPanel({ conversationId, onToast, onClose }: Props) {
           <div className="kv">
             <span className="k">Team</span>
             <span className="v">
-              {(conv.assignedTeamId && TEAM_NAME[conv.assignedTeamId]) || "—"}
+              {(conv.assignedTeamId && teamName(conv.assignedTeamId)) || "—"}
               {!conv.assigneeUserId ? " · up for grabs" : ""}
             </span>
           </div>
@@ -119,6 +183,8 @@ export function ContextPanel({ conversationId, onToast, onClose }: Props) {
             </span>
           </div>
         </div>
+
+        <RoutingBlock contact={conv.contact} isGroup={isGroup} onToast={onToast} />
 
         {conv.slaDueAt && (
           <div className="block">

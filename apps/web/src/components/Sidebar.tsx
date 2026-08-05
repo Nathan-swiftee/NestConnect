@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useLogout, useMe, useSound, useTeams, useViews } from "../hooks";
 import {
   ChevronRight,
@@ -34,6 +34,44 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const teamIconFor = (key: string) => teamList?.find((tm) => `team:${tm.id}` === key)?.icon ?? null;
   const toggle = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+
+  // Slide a single "capsule" highlight to the active view row (nav or sub),
+  // so switching inboxes/channels animates instead of hard-jumping.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const thumbRef = useRef<HTMLSpanElement>(null);
+  const firstMove = useRef(true);
+  useLayoutEffect(() => {
+    const scroll = scrollRef.current;
+    const thumb = thumbRef.current;
+    if (!scroll || !thumb) return;
+    const move = () => {
+      const active = scroll.querySelector<HTMLElement>(".navrow.active, .subrow.active");
+      if (!active) {
+        thumb.style.opacity = "0";
+        return;
+      }
+      const apply = () => {
+        thumb.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+        thumb.style.width = `${active.offsetWidth}px`;
+        thumb.style.height = `${active.offsetHeight}px`;
+        thumb.style.opacity = "1";
+      };
+      if (firstMove.current) {
+        // Place it without animating on first paint (no slide-from-origin flash).
+        thumb.style.transition = "none";
+        apply();
+        void thumb.offsetHeight; // force reflow so the next change transitions
+        thumb.style.transition = "";
+        firstMove.current = false;
+      } else {
+        apply();
+      }
+    };
+    move();
+    window.addEventListener("resize", move);
+    return () => window.removeEventListener("resize", move);
+  }, [view, data, collapsed, teamList]);
+
   if (!data) return <aside className="side" aria-label="Inboxes" />;
 
   const inbound = data.my.find((m) => m.key === "inbound");
@@ -52,7 +90,8 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           </button>
         )}
       </div>
-      <div className="side__scroll">
+      <div className="side__scroll" ref={scrollRef}>
+        <span className="navthumb" ref={thumbRef} aria-hidden="true" />
         <div className="sect-label">
           My space <span className="line" />
         </div>

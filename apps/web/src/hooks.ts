@@ -218,6 +218,7 @@ export function useUpdateContact() {
       qc.invalidateQueries({ queryKey: ["contacts"] });
       qc.invalidateQueries({ queryKey: ["contact", v.id] });
       // Owner/tag edits can change routing, so refresh conversation-derived views too.
+      qc.invalidateQueries({ queryKey: ["conversation"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
     },

@@ -123,12 +123,12 @@ input,textarea{font:inherit}
 .btn-ghost:active{transform:scale(.97)}
 
 /* soft, carved input field — no outlined rectangles */
-.field input,.field select,.setadd input,.setform input,.addmember input,.memrow input,.connect__creds input{
+.field input,.field select,.setadd input,.setform input,.addmember input,.memrow input,.connect__creds input,.routesel select{
   width:100%;padding:10px 13px;border:1px solid transparent;border-radius:var(--r-12);
   background:var(--surface-2);color:var(--text);font-size:14px;font-weight:500;outline:none;
   box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow .15s,background .15s,border-color .15s}
 .field input:focus,.field select:focus,.setadd input:focus,.setform input:focus,
-.addmember input:focus,.memrow input:focus,.connect__creds input:focus{
+.addmember input:focus,.memrow input:focus,.connect__creds input:focus,.routesel select:focus{
   border-color:var(--brand);background-color:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
 
 /* the shared floating-glass recipe — identical for every temporary surface */
@@ -159,16 +159,21 @@ input,textarea{font:inherit}
 .wordmark{font-size:19px;font-weight:750;letter-spacing:-.02em}
 .wordmark .dot{color:var(--brand)}
 .side__sub{font-size:11px;color:var(--text-faint);margin-left:auto;letter-spacing:.02em}
-.side__scroll{overflow-y:auto;padding:6px 10px 14px;flex:1;min-height:0}
+.side__scroll{overflow-y:auto;padding:6px 10px 14px;flex:1;min-height:0;position:relative}
+/* the single capsule highlight that slides between active view rows */
+.navthumb{position:absolute;top:0;left:0;z-index:0;border-radius:var(--r-12);background:var(--brand-tint);
+  box-shadow:inset 0 1px 0 var(--glass-hi),0 1px 1px rgba(13,21,18,.04),0 6px 16px -10px var(--brand-ring);
+  opacity:0;pointer-events:none;will-change:transform,width,height;
+  transition:transform .27s var(--ease),width .27s var(--ease),height .27s var(--ease)}
 .sect-label{display:flex;align-items:center;gap:8px;padding:14px 8px 6px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint)}
 .sect-label .line{flex:1;height:1px;background:var(--border)}
-.navrow{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-12);color:var(--text-muted);text-align:left;position:relative;
+.navrow{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-12);color:var(--text-muted);text-align:left;position:relative;z-index:1;
   transition:background .14s,color .14s}
 .navrow:hover{background:var(--surface-2);color:var(--text)}
-/* selected nav = a polished capsule sitting above the sidebar: top-edge
-   light + very soft depth, not a flat mint rectangle */
-.navrow.active{background:var(--brand-tint);color:var(--brand-strong);
-  box-shadow:inset 0 1px 0 var(--glass-hi),0 1px 1px rgba(13,21,18,.04),0 6px 16px -10px var(--brand-ring)}
+/* selected nav = a polished capsule that slides between rows (see .navthumb);
+   the active row itself just carries the tinted text/icon, no own background */
+.navrow.active{color:var(--brand-strong)}
+.navrow.active:hover{background:transparent}
 .navrow.active .navicon{color:var(--brand)}
 .navrow .navicon{width:18px;height:18px;flex:0 0 18px;display:grid;place-items:center;color:var(--text-faint)}
 .navrow .navicon svg{width:18px;height:18px}
@@ -180,9 +185,10 @@ input,textarea{font:inherit}
 .badge.warn{background:var(--amber);color:#fff}
 .sub{margin:2px 0 2px 30px;display:flex;flex-direction:column;gap:1px;animation:subIn .22s var(--ease)}
 @keyframes subIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
-.subrow{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:var(--r-8);color:var(--text-muted);text-align:left;font-size:13px;width:100%}
+.subrow{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:var(--r-8);color:var(--text-muted);text-align:left;font-size:13px;width:100%;position:relative;z-index:1}
 .subrow:hover{background:var(--surface-2);color:var(--text)}
-.subrow.active{color:var(--text);font-weight:600}
+.subrow.active{color:var(--brand-strong);font-weight:600}
+.subrow.active:hover{background:transparent}
 .subrow .mk{width:6px;height:6px;border-radius:50%;background:var(--border-strong);flex:0 0 6px}
 .subrow.active .mk{background:var(--brand)}
 .subrow .lbl{flex:1}
@@ -481,9 +487,9 @@ input,textarea{font:inherit}
 .iconpick__btn svg{width:20px;height:20px}
 
 /* selects: match the field system, custom chevron, no OS default look */
-.field select,.setform select,.addmember select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
+.field select,.setform select,.addmember select,.routesel select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586762' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px}
-:root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
+:root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select,:root[data-theme="dark"] .routesel select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
 
 /* settings — matte structural surface */
 .settings{position:fixed;inset:0;z-index:70;background:var(--bg);display:flex;flex-direction:column}
@@ -621,6 +627,12 @@ input,textarea{font:inherit}
 .custempty__ic{width:52px;height:52px;border-radius:var(--r-16);background:var(--surface-2);display:grid;place-items:center;color:var(--text-faint)}
 .custempty__ic svg{width:24px;height:24px}
 .custempty p{margin:0;font-size:13.5px;max-width:340px;line-height:1.45}
+
+/* auto-routing controls in the details panel */
+.routehint{font-size:12px;color:var(--text-faint);margin:1px 0 11px;line-height:1.45}
+.routesel{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint)}
+.routesel:last-child{margin-bottom:0}
+.routesel select{font-weight:600}
 
 @media (max-width:820px){
   .settings__head{padding-top:calc(15px + env(safe-area-inset-top))}
