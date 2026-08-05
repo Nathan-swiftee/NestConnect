@@ -166,15 +166,18 @@ input,textarea{font:inherit}
   opacity:0;pointer-events:none;will-change:transform,width,height;
   /* even glide (not the front-loaded chip easing, which reads as a jump on long slides) */
   transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1)}
+/* a subtler capsule that glides under the pointer on hover */
+.navhover{position:absolute;top:0;left:0;z-index:0;border-radius:var(--r-12);background:var(--surface-2);
+  opacity:0;pointer-events:none;will-change:transform,width,height;
+  transition:transform .2s cubic-bezier(.4,0,.2,1),width .2s cubic-bezier(.4,0,.2,1),height .2s cubic-bezier(.4,0,.2,1),opacity .16s ease}
 .sect-label{display:flex;align-items:center;gap:8px;padding:14px 8px 6px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint)}
 .sect-label .line{flex:1;height:1px;background:var(--border)}
 .navrow{width:100%;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--r-12);color:var(--text-muted);text-align:left;position:relative;z-index:1;
   transition:background .14s,color .14s}
-.navrow:hover{background:var(--surface-2);color:var(--text)}
+.navrow:hover{color:var(--text)}
 /* selected nav = a polished capsule that slides between rows (see .navthumb);
    the active row itself just carries the tinted text/icon, no own background */
 .navrow.active{color:var(--brand-strong)}
-.navrow.active:hover{background:transparent}
 .navrow.active .navicon{color:var(--brand)}
 .navrow .navicon{width:18px;height:18px;flex:0 0 18px;display:grid;place-items:center;color:var(--text-faint)}
 .navrow .navicon svg{width:18px;height:18px}
@@ -187,9 +190,8 @@ input,textarea{font:inherit}
 .sub{margin:2px 0 2px 30px;display:flex;flex-direction:column;gap:1px;animation:subIn .22s var(--ease)}
 @keyframes subIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .subrow{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:var(--r-8);color:var(--text-muted);text-align:left;font-size:13px;width:100%;position:relative;z-index:1}
-.subrow:hover{background:var(--surface-2);color:var(--text)}
+.subrow:hover{color:var(--text)}
 .subrow.active{color:var(--brand-strong);font-weight:600}
-.subrow.active:hover{background:transparent}
 .subrow .mk{width:6px;height:6px;border-radius:50%;background:var(--border-strong);flex:0 0 6px}
 .subrow.active .mk{background:var(--brand)}
 .subrow .lbl{flex:1}

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLogout, useMe, useSound, useTeams, useViews } from "../hooks";
 import {
   ChevronRight,
@@ -72,6 +72,31 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
     return () => window.removeEventListener("resize", move);
   }, [view, data, collapsed, teamList]);
 
+  // A second, subtler capsule that glides under the pointer as you hover across
+  // rows (snaps in on first entry so it doesn't streak across from nowhere).
+  const hoverRef = useRef<HTMLSpanElement>(null);
+  const hoverRow = useRef<HTMLElement | null>(null);
+  const onRowHover = (e: MouseEvent) => {
+    const row = (e.target as HTMLElement).closest?.(".navrow, .subrow") as HTMLElement | null;
+    const h = hoverRef.current;
+    if (!h || !row || row === hoverRow.current || !scrollRef.current?.contains(row)) return;
+    const firstEntry = hoverRow.current === null;
+    if (firstEntry) h.style.transition = "opacity .16s ease"; // snap position, fade in
+    h.style.transform = `translate(${row.offsetLeft}px, ${row.offsetTop}px)`;
+    h.style.width = `${row.offsetWidth}px`;
+    h.style.height = `${row.offsetHeight}px`;
+    h.style.opacity = "1";
+    if (firstEntry) {
+      void h.offsetHeight;
+      h.style.transition = "";
+    }
+    hoverRow.current = row;
+  };
+  const onRowsLeave = () => {
+    hoverRow.current = null;
+    if (hoverRef.current) hoverRef.current.style.opacity = "0";
+  };
+
   if (!data) return <aside className="side" aria-label="Inboxes" />;
 
   const inbound = data.my.find((m) => m.key === "inbound");
@@ -90,7 +115,8 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           </button>
         )}
       </div>
-      <div className="side__scroll" ref={scrollRef}>
+      <div className="side__scroll" ref={scrollRef} onMouseOver={onRowHover} onMouseLeave={onRowsLeave}>
+        <span className="navhover" ref={hoverRef} aria-hidden="true" />
         <span className="navthumb" ref={thumbRef} aria-hidden="true" />
         <div className="sect-label">
           My space <span className="line" />
