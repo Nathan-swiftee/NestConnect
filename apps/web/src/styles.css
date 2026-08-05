@@ -178,7 +178,8 @@ input,textarea{font:inherit}
 .navrow.active .badge{background:var(--brand-strong);color:#fff}
 .badge.on{background:var(--brand);color:#fff}
 .badge.warn{background:var(--amber);color:#fff}
-.sub{margin:2px 0 2px 30px;display:flex;flex-direction:column;gap:1px}
+.sub{margin:2px 0 2px 30px;display:flex;flex-direction:column;gap:1px;animation:subIn .22s var(--ease)}
+@keyframes subIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .subrow{display:flex;align-items:center;gap:9px;padding:6px 10px;border-radius:var(--r-8);color:var(--text-muted);text-align:left;font-size:13px;width:100%}
 .subrow:hover{background:var(--surface-2);color:var(--text)}
 .subrow.active{color:var(--text);font-weight:600}
@@ -216,7 +217,8 @@ input,textarea{font:inherit}
 .chip{position:relative;z-index:1;font-size:12px;font-weight:600;padding:6px 13px;border-radius:var(--r-full);color:var(--text-muted);background:transparent;border:0;white-space:nowrap;transition:color .15s ease .08s}
 .chip.active{color:var(--brand-strong)}
 .chip:hover:not(.active){color:var(--text)}
-.convs{overflow-y:auto;flex:1;min-height:0}
+.convs{overflow-y:auto;flex:1;min-height:0;animation:listIn .28s var(--ease)}
+@keyframes listIn{from{opacity:0;transform:translate3d(12px,2px,0)}to{opacity:1;transform:none}}
 /* keep scroll inside these panes — no chaining/rubber-band that drags the
    thread header or list header out of place on touch devices */
 .convs,.msgs,.side__scroll,.panel__scroll,.cmdk__list,.modal__body{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}

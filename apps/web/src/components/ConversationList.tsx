@@ -91,7 +91,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
         </div>
       </div>
 
-      <div className="convs">
+      <div className="convs" key={view}>
         {isLoading && <div className="empty">Loading…</div>}
         {!isLoading && shown.length === 0 && (
           <div className="empty">
