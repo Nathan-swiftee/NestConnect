@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useTeams } from "../hooks";
 import { relativeTime, initials } from "../lib/format";
 import { playSent, unlock } from "../lib/sound";
@@ -251,40 +251,47 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       )}
 
       <div className={"msgs" + (isClosed ? " is-closed" : "")}>
-        <div className="daysep">{dayLabel(conv.messages[0]?.createdAt)}</div>
-        {conv.messages.map((m) =>
-          m.internal ? (
-            <div key={m.id} className="note">
-              <div className="ic">
-                <NoteIcon />
-              </div>
-              <div className="body">
-                <div className="h">
-                  Internal note<span className="t">{relativeTime(m.createdAt)}</span>
+        {conv.messages.map((m, i) => {
+          const prev = conv.messages[i - 1];
+          const newDay =
+            !prev || new Date(prev.createdAt).toDateString() !== new Date(m.createdAt).toDateString();
+          return (
+            <Fragment key={m.id}>
+              {newDay && <div className="daysep">{dayLabel(m.createdAt)}</div>}
+              {m.internal ? (
+                <div className="note">
+                  <div className="ic">
+                    <NoteIcon />
+                  </div>
+                  <div className="body">
+                    <div className="h">
+                      Internal note<span className="t">{relativeTime(m.createdAt)}</span>
+                    </div>
+                    <div>{renderMention(m.body)}</div>
+                  </div>
                 </div>
-                <div>{renderMention(m.body)}</div>
-              </div>
-            </div>
-          ) : (
-            <div key={m.id} className={"msg " + (m.direction === "out" ? "out" : "in")}>
-              {m.direction === "in" && m.authorName && <div className="sender">{m.authorName}</div>}
-              <div className="bubble">
-                <span className="txt">
-                  {m.body}
-                  <span className="stampspace" aria-hidden="true" />
-                </span>
-                <span className="stamp">
-                  {relativeTime(m.createdAt)}
-                  {m.direction === "out" && (
-                    <span className={"tick" + (m.status === "read" ? " read" : "")}>
-                      {m.status === "read" || m.status === "delivered" ? <CheckDouble /> : <CheckSingle />}
+              ) : (
+                <div className={"msg " + (m.direction === "out" ? "out" : "in")}>
+                  {m.direction === "in" && m.authorName && <div className="sender">{m.authorName}</div>}
+                  <div className="bubble">
+                    <span className="txt">
+                      {m.body}
+                      <span className="stampspace" aria-hidden="true" />
                     </span>
-                  )}
-                </span>
-              </div>
-            </div>
-          ),
-        )}
+                    <span className="stamp">
+                      {relativeTime(m.createdAt)}
+                      {m.direction === "out" && (
+                        <span className={"tick" + (m.status === "read" ? " read" : "")}>
+                          {m.status === "read" || m.status === "delivered" ? <CheckDouble /> : <CheckSingle />}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </Fragment>
+          );
+        })}
         {conv.messages.length === 0 && (
           <div className="thread-empty">No messages yet — start the conversation.</div>
         )}
