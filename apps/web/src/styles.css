@@ -63,7 +63,7 @@
 :root[data-theme="light"]{--glass-hi:color-mix(in srgb,#fff 65%,transparent)}
 :root[data-theme="dark"]{--glass-hi:color-mix(in srgb,#fff 10%,transparent)}
 
-*{box-sizing:border-box}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 /* Rounded, contemporary line-icons everywhere. */
 svg{stroke-linecap:round;stroke-linejoin:round}
 html,body,#root{height:100%}
@@ -574,8 +574,10 @@ input,textarea{font:inherit}
 
 /* ≤1023: the inbox sidebar collapses to an off-canvas drawer (hamburger opens it). */
 @media (max-width:1023px){
-  .side{position:fixed;top:0;left:0;bottom:0;z-index:60;width:min(300px,86vw);transform:translateX(-100%);transition:transform .22s ease;box-shadow:var(--shadow-lg);background:color-mix(in srgb,var(--surface) 58%,transparent);backdrop-filter:saturate(180%) blur(30px);-webkit-backdrop-filter:saturate(180%) blur(30px)}
-  .app.drawer-open .side{transform:none}
+  /* Slide via `left` (not transform): on iOS a transform on the element
+     disables its own backdrop-filter, killing the frosted glass. */
+  .side{position:fixed;top:0;bottom:0;z-index:60;width:min(300px,86vw);left:calc(-1 * min(300px,86vw));transition:left .24s ease;box-shadow:var(--shadow-lg);background:color-mix(in srgb,var(--surface) 55%,transparent);backdrop-filter:saturate(180%) blur(30px);-webkit-backdrop-filter:saturate(180%) blur(30px)}
+  .app.drawer-open .side{left:0}
   .drawer-backdrop{z-index:55}
   .side__sub{display:none}
   .side__close{display:grid}
@@ -604,7 +606,10 @@ input,textarea{font:inherit}
   .thread{width:100%;flex:1 1 auto;min-width:0;container-type:normal}
   .thread__back{display:grid}
   .thread__head{padding:calc(10px + env(safe-area-inset-top)) 12px 10px;gap:8px}
-  .menu{top:calc(58px + env(safe-area-inset-top));right:12px;left:12px;min-width:0}
+  /* fixed (not absolute) so an overflow:hidden ancestor can't strip its blur on iOS */
+  .menu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:12px;min-width:0}
+  /* keep the day pill below the floating header instead of behind it */
+  .daysep{top:calc(70px + env(safe-area-inset-top))}
   /* header + composer float (position:absolute); only .msgs scrolls beneath them */
   .msgs{flex:1 1 auto}
   /* container query is off on mobile now, so hide the header labels here */
