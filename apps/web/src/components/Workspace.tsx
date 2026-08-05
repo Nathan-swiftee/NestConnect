@@ -22,8 +22,7 @@ export function Workspace() {
     () => typeof window === "undefined" || !window.matchMedia("(max-width: 1399px)").matches,
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [customersOpen, setCustomersOpen] = useState(false);
+  const [section, setSection] = useState<"inbox" | "customers" | "settings">("inbox");
   const [toast, setToast] = useState<string | null>(null);
 
   useRealtime(selectedId);
@@ -104,46 +103,58 @@ export function Workspace() {
     <>
       <div className="stage">
         <div className={"app" + (drawerOpen ? " drawer-open" : "")} data-pane={pane}>
-          <IconRail
-            onOpenSettings={() => setSettingsOpen(true)}
-            onOpenCustomers={() => setCustomersOpen(true)}
-          />
-          {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />}
-          <Sidebar
-            view={view}
-            onSelectView={selectView}
-            onSelectConversation={(id) => { selectConversation(id); setDrawerOpen(false); }}
-            onClose={isCompact ? () => setDrawerOpen(false) : undefined}
-            onOpenSettings={() => { setSettingsOpen(true); setDrawerOpen(false); }}
-            onOpenCustomers={() => { setCustomersOpen(true); setDrawerOpen(false); }}
-          />
-          <ConversationList
-            view={view}
-            title={meta.title}
-            count={meta.count}
-            selectedId={selectedId}
-            onSelect={selectConversation}
-            onOpenCmdk={() => setCmdkOpen(true)}
-            onOpenDrawer={() => setDrawerOpen(true)}
-          />
-          <Thread
-            conversationId={selectedId}
-            showPanel={showPanel}
-            onTogglePanel={() => setShowPanel((v) => !v)}
-            onToast={notify}
-            onBack={isMobile ? () => setMobilePane("list") : undefined}
-            onClosed={() => { if (isMobile) setMobilePane("list"); }}
-          />
-          {showPanel && (
+          <IconRail section={section} onSection={setSection} />
+
+          {section === "inbox" && (
             <>
-              {isPanelOverlay && <div className="panel-backdrop" onClick={() => setShowPanel(false)} />}
-              <ContextPanel
-                conversationId={selectedId}
-                onToast={notify}
-                onClose={isPanelOverlay ? () => setShowPanel(false) : undefined}
+              {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />}
+              <Sidebar
+                view={view}
+                onSelectView={selectView}
+                onSelectConversation={(id) => { selectConversation(id); setDrawerOpen(false); }}
+                onClose={isCompact ? () => setDrawerOpen(false) : undefined}
+                onOpenSettings={() => { setSection("settings"); setDrawerOpen(false); }}
+                onOpenCustomers={() => { setSection("customers"); setDrawerOpen(false); }}
               />
+              <ConversationList
+                view={view}
+                title={meta.title}
+                count={meta.count}
+                selectedId={selectedId}
+                onSelect={selectConversation}
+                onOpenCmdk={() => setCmdkOpen(true)}
+                onOpenDrawer={() => setDrawerOpen(true)}
+              />
+              <Thread
+                conversationId={selectedId}
+                showPanel={showPanel}
+                onTogglePanel={() => setShowPanel((v) => !v)}
+                onToast={notify}
+                onBack={isMobile ? () => setMobilePane("list") : undefined}
+                onClosed={() => { if (isMobile) setMobilePane("list"); }}
+              />
+              {showPanel && (
+                <>
+                  {isPanelOverlay && <div className="panel-backdrop" onClick={() => setShowPanel(false)} />}
+                  <ContextPanel
+                    conversationId={selectedId}
+                    onToast={notify}
+                    onClose={isPanelOverlay ? () => setShowPanel(false) : undefined}
+                  />
+                </>
+              )}
             </>
           )}
+
+          {section === "customers" && (
+            <Customers
+              onClose={() => setSection("inbox")}
+              onToast={notify}
+              onOpenConversation={(id) => { setSection("inbox"); selectConversation(id); }}
+            />
+          )}
+
+          {section === "settings" && <Settings onClose={() => setSection("inbox")} onToast={notify} />}
         </div>
       </div>
 
@@ -156,19 +167,6 @@ export function Workspace() {
             setCmdkOpen(false);
           }}
           onToast={notify}
-        />
-      )}
-
-      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} onToast={notify} />}
-
-      {customersOpen && (
-        <Customers
-          onClose={() => setCustomersOpen(false)}
-          onToast={notify}
-          onOpenConversation={(id) => {
-            selectConversation(id);
-            setCustomersOpen(false);
-          }}
         />
       )}
 

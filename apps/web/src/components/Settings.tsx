@@ -85,7 +85,7 @@ export function Settings({ onClose, onToast }: Props) {
   }, [tab]);
 
   return (
-    <div className="settings" role="dialog" aria-label="Settings">
+    <div className="settings" role="region" aria-label="Settings">
       <header className="settings__head">
         <h1>Settings</h1>
         <button className="settings__x" onClick={onClose} aria-label="Close settings" title="Close">

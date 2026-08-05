@@ -13,12 +13,14 @@ import {
   SoundOffIcon,
 } from "../lib/icons";
 
+type Section = "inbox" | "customers" | "settings";
+
 export function IconRail({
-  onOpenSettings,
-  onOpenCustomers,
+  section,
+  onSection,
 }: {
-  onOpenSettings: () => void;
-  onOpenCustomers: () => void;
+  section: Section;
+  onSection: (s: Section) => void;
 }) {
   const { data } = useMe();
   const me = data?.user;
@@ -31,16 +33,28 @@ export function IconRail({
       <div className="brandmark" title="Nest Connect">
         <Logo />
       </div>
-      <button className="railbtn active" title="Inbox">
+      <button
+        className={"railbtn" + (section === "inbox" ? " active" : "")}
+        title="Inbox"
+        onClick={() => onSection("inbox")}
+      >
         <InboxIcon />
       </button>
-      <button className="railbtn" title="Customers" onClick={onOpenCustomers}>
+      <button
+        className={"railbtn" + (section === "customers" ? " active" : "")}
+        title="Customers"
+        onClick={() => onSection("customers")}
+      >
         <ContactsIcon />
       </button>
       <button className="railbtn" title="Insights">
         <InsightsIcon />
       </button>
-      <button className="railbtn" title="Settings" onClick={onOpenSettings}>
+      <button
+        className={"railbtn" + (section === "settings" ? " active" : "")}
+        title="Settings"
+        onClick={() => onSection("settings")}
+      >
         <SettingsIcon />
       </button>
       <div className="spacer" />
@@ -72,7 +86,7 @@ export function IconRail({
                 <b>{me?.name}</b>
                 <small>{me?.email}</small>
               </div>
-              <button onClick={() => { setMenu(false); onOpenSettings(); }}>Settings</button>
+              <button onClick={() => { setMenu(false); onSection("settings"); }}>Settings</button>
               <button className="danger" onClick={() => logout.mutate()}>
                 Sign out
               </button>

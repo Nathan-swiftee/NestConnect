@@ -495,14 +495,16 @@ input,textarea{font:inherit}
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586762' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px}
 :root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select,:root[data-theme="dark"] .routesel select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
 
-/* settings — matte structural surface */
-.settings{position:fixed;inset:0;z-index:70;background:var(--bg);display:flex;flex-direction:column}
+/* settings & customers — an in-app page (fills the area beside the icon rail),
+   not a full-screen modal takeover */
+.settings{flex:1;min-width:0;min-height:0;background:var(--bg);display:flex;flex-direction:column;animation:overlayIn .2s ease}
 .settings__head{display:flex;align-items:center;justify-content:space-between;padding:15px 22px;border-bottom:1px solid var(--border);background:var(--surface)}
 .settings__head h1{margin:0;font-size:18px;font-weight:750;letter-spacing:-.01em}
 .settings__x{width:36px;height:36px;color:var(--text-muted)}
 .settings__x svg{width:18px;height:18px}
-.settings__body{flex:1;display:flex;min-height:0}
-.settings__tabs{position:relative;flex:0 0 196px;border-right:1px solid var(--border);background:var(--surface);padding:14px 12px;display:flex;flex-direction:column;gap:2px}
+.settings__body{flex:1;display:flex;flex-direction:column;min-height:0}
+/* tabs run horizontally across the top of the page (no slim left column) */
+.settings__tabs{position:relative;flex:0 0 auto;border-bottom:1px solid var(--border);background:var(--surface);padding:10px 16px;display:flex;flex-direction:row;gap:4px;overflow-x:auto}
 .settabs__thumb{position:absolute;top:0;left:0;border-radius:var(--r-12);background:var(--brand-tint);z-index:0;pointer-events:none;will-change:transform,width,height;
   box-shadow:inset 0 1px 0 var(--glass-hi),0 4px 12px -8px var(--brand-ring);
   transition:transform .24s var(--ease),width .24s var(--ease),height .24s var(--ease)}

@@ -398,7 +398,7 @@ export function Customers({ onClose, onToast, onOpenConversation }: Props) {
   }, [contacts.data, q]);
 
   return (
-    <div className="settings" role="dialog" aria-label="Customers">
+    <div className="settings" role="region" aria-label="Customers">
       <header className="settings__head">
         <h1>Customers</h1>
         <button className="settings__x" onClick={onClose} aria-label="Close customers" title="Close">
