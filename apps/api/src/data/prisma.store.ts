@@ -93,6 +93,61 @@ export class PrismaStore extends Store {
     return mapInbox(created);
   }
 
+  async updateInbox(
+    id: string,
+    params: {
+      name?: string;
+      teamIds?: string[];
+      routingStrategy?: RoutingStrategy;
+      channelConfig?: Record<string, string>;
+    },
+  ): Promise<Inbox | undefined> {
+    const existing = await this.prisma.inbox.findUnique({ where: { id } });
+    if (!existing) return undefined;
+    const mergedConfig =
+      params.channelConfig !== undefined
+        ? { ...((existing.channelConfig as Record<string, string> | null) ?? {}), ...params.channelConfig }
+        : undefined;
+    const updated = await this.prisma.inbox.update({
+      where: { id },
+      data: {
+        name: params.name ?? undefined,
+        routingStrategy: params.routingStrategy ?? undefined,
+        ...(mergedConfig !== undefined ? { channelConfig: mergedConfig } : {}),
+        ...(params.teamIds !== undefined
+          ? { teams: { deleteMany: {}, create: params.teamIds.map((teamId) => ({ teamId })) } }
+          : {}),
+      },
+      include: { teams: true },
+    });
+    return mapInbox(updated);
+  }
+
+  async deleteInbox(id: string): Promise<void> {
+    const convs = await this.prisma.conversation.findMany({ where: { inboxId: id }, select: { id: true } });
+    const convIds = convs.map((c) => c.id);
+    const msgs = convIds.length
+      ? await this.prisma.message.findMany({ where: { conversationId: { in: convIds } }, select: { id: true } })
+      : [];
+    const msgIds = msgs.map((m) => m.id);
+    // No DB-level cascade, so tear down children before the inbox, in FK order.
+    await this.prisma.$transaction([
+      ...(msgIds.length ? [this.prisma.attachment.deleteMany({ where: { messageId: { in: msgIds } } })] : []),
+      ...(convIds.length
+        ? [
+            this.prisma.message.deleteMany({ where: { conversationId: { in: convIds } } }),
+            this.prisma.participant.deleteMany({ where: { conversationId: { in: convIds } } }),
+            this.prisma.note.deleteMany({ where: { conversationId: { in: convIds } } }),
+            this.prisma.conversationLabel.deleteMany({ where: { conversationId: { in: convIds } } }),
+            this.prisma.assignmentEvent.deleteMany({ where: { conversationId: { in: convIds } } }),
+            this.prisma.conversation.deleteMany({ where: { inboxId: id } }),
+          ]
+        : []),
+      this.prisma.inboxTeam.deleteMany({ where: { inboxId: id } }),
+      this.prisma.inbox.delete({ where: { id } }),
+    ]);
+  }
+
   async listTeams(): Promise<Team[]> {
     const rows = await this.prisma.team.findMany({ where: { orgId: ORG_ID }, orderBy: { name: "asc" } });
     return rows.map(mapTeam);

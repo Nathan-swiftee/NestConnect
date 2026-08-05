@@ -1,15 +1,17 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import type { ChannelType, Role, RoutingStrategy } from "@ding/schemas";
+import type { ChannelType, Inbox, Role, RoutingStrategy } from "@ding/schemas";
 import {
   useCreateInbox,
   useCreateTeam,
   useCreateUser,
+  useDeleteInbox,
   useDeleteTeam,
   useDeleteUser,
   useInboxes,
   useMe,
   usePeople,
   useTeams,
+  useUpdateInbox,
   useUpdateTeam,
   useUpdateUser,
 } from "../hooks";
@@ -147,8 +149,18 @@ const CHANNEL_KINDS: ChannelKind[] = [
 function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
   const inboxes = useInboxes();
   const teams = useTeams();
+  const del = useDeleteInbox();
   const [connecting, setConnecting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const teamName = (id: string) => teams.data?.find((t) => t.id === id)?.name ?? id;
+
+  const remove = (id: string, name: string) => {
+    if (!window.confirm(`Delete “${name}”? This removes the channel and its conversations.`)) return;
+    del.mutate(id, {
+      onSuccess: () => { setEditingId(null); onToast(`Channel “${name}” deleted`); },
+      onError: () => onToast("Only admins & managers can delete channels"),
+    });
+  };
 
   return (
     <div className="setpane">
@@ -171,26 +183,153 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
           const cm = channelMeta(i.type);
           const Glyph = cm.Glyph;
           const connected = i.connected !== false;
+          const editing = editingId === i.id;
           return (
-            <div className="setrow" key={i.id}>
-              <span className="setrow__ic" style={{ color: cm.color }}>
-                <Glyph />
-              </span>
-              <div className="setrow__main">
-                <b>{i.name}</b>
-                <small>{i.handle}</small>
+            <div className="setmember" key={i.id}>
+              <div className="setrow">
+                <span className="setrow__ic" style={{ color: cm.color }}>
+                  <Glyph />
+                </span>
+                <div className="setrow__main">
+                  <b>{i.name}</b>
+                  <small>{i.handle}</small>
+                </div>
+                <div className="setrow__meta">
+                  <span className="setrow__routing">{i.teamIds.map(teamName).join(", ") || "Unrouted"}</span>
+                  <span className="setrow__tag">{i.routingStrategy.replace(/_/g, " ")}</span>
+                </div>
+                <span className={"connpill " + (connected ? "on" : "off")} title={connected ? "Integration live" : "Add credentials to go live"}>
+                  <span className="connpill__dot" />
+                  {connected ? "Connected" : "Setup needed"}
+                </span>
+                <div className="rowacts">
+                  <button className="iconbtn" title="Edit channel" onClick={() => setEditingId(editing ? null : i.id)}>
+                    <EditIcon />
+                  </button>
+                  <button className="iconbtn danger" title="Delete channel" onClick={() => remove(i.id, i.name)}>
+                    <TrashIcon />
+                  </button>
+                </div>
               </div>
-              <div className="setrow__meta">
-                <span className="setrow__routing">{i.teamIds.map(teamName).join(", ") || "Unrouted"}</span>
-                <span className="setrow__tag">{i.routingStrategy.replace(/_/g, " ")}</span>
-              </div>
-              <span className={"connpill " + (connected ? "on" : "off")} title={connected ? "Integration live" : "Add credentials to go live"}>
-                <span className="connpill__dot" />
-                {connected ? "Connected" : "Setup needed"}
-              </span>
+              {editing && (
+                <ChannelEditor
+                  inbox={i}
+                  onDone={() => setEditingId(null)}
+                  onDelete={() => remove(i.id, i.name)}
+                  onToast={onToast}
+                />
+              )}
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function ChannelEditor({
+  inbox,
+  onDone,
+  onDelete,
+  onToast,
+}: {
+  inbox: Inbox;
+  onDone: () => void;
+  onDelete: () => void;
+  onToast: (msg: string) => void;
+}) {
+  const teams = useTeams();
+  const update = useUpdateInbox();
+  const kind = CHANNEL_KINDS.find((k) => k.type === inbox.type);
+  const [name, setName] = useState(inbox.name);
+  const [teamIds, setTeamIds] = useState<string[]>(inbox.teamIds);
+  const [strategy, setStrategy] = useState<RoutingStrategy>(inbox.routingStrategy);
+  const [cfg, setCfg] = useState<Record<string, string>>({});
+
+  const setField = (k: string, v: string) => setCfg((c) => ({ ...c, [k]: v }));
+  const toggleTeam = (id: string) =>
+    setTeamIds((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
+  const valid = name.trim().length > 0 && teamIds.length > 0;
+
+  const save = () => {
+    const channelConfig: Record<string, string> = {};
+    for (const f of kind?.fields ?? []) {
+      const v = (cfg[f.key] ?? "").trim();
+      if (v) channelConfig[f.key] = v;
+    }
+    update.mutate(
+      {
+        id: inbox.id,
+        input: {
+          name: name.trim(),
+          teamIds,
+          routingStrategy: strategy,
+          ...(Object.keys(channelConfig).length ? { channelConfig } : {}),
+        },
+      },
+      {
+        onSuccess: () => { onToast("Channel updated"); onDone(); },
+        onError: () => onToast("Only admins & managers can edit channels"),
+      },
+    );
+  };
+
+  return (
+    <div className="editbox">
+      <div className="setform__grid two">
+        <label className="field">
+          <span>Display name</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={inbox.handle} />
+        </label>
+        <label className="field">
+          <span>Assignment</span>
+          <select value={strategy} onChange={(e) => setStrategy(e.target.value as RoutingStrategy)}>
+            {STRATEGIES.map((s) => (
+              <option key={s.value} value={s.value}>{s.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="field">
+        <span>Route to team(s)</span>
+        <div className="checks">
+          {teams.data?.map((t) => (
+            <label key={t.id} className={"check" + (teamIds.includes(t.id) ? " on" : "")}>
+              <input type="checkbox" checked={teamIds.includes(t.id)} onChange={() => toggleTeam(t.id)} />
+              {t.name}
+            </label>
+          ))}
+        </div>
+      </div>
+      {kind && (
+        <div className="connect__creds">
+          <div className="connect__credhead">Update credentials <em>— leave blank to keep current</em></div>
+          <div className="setform__grid two">
+            {kind.fields.map((f) => (
+              <label className="field" key={f.key}>
+                <span>{f.label}</span>
+                <input
+                  type={f.secret ? "password" : "text"}
+                  autoComplete="off"
+                  value={cfg[f.key] ?? ""}
+                  onChange={(e) => setField(f.key, e.target.value)}
+                  placeholder="••••••••"
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="setform__foot setform__foot--split">
+        <button className="btn-ghost btn-danger" type="button" onClick={onDelete}>
+          <TrashIcon /> Delete channel
+        </button>
+        <div className="setform__footactions">
+          <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
+          <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || !valid}>
+            Save changes
+          </button>
+        </div>
       </div>
     </div>
   );

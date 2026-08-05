@@ -228,6 +228,15 @@ export const createInboxInputSchema = z.object({
 });
 export type CreateInboxInput = z.infer<typeof createInboxInputSchema>;
 
+/** Edit an existing channel: rename, re-route, change strategy, or update creds. */
+export const updateInboxInputSchema = z.object({
+  name: z.string().min(1).optional(),
+  teamIds: z.array(z.string()).min(1).optional(),
+  routingStrategy: routingStrategySchema.optional(),
+  channelConfig: z.record(z.string()).optional(),
+});
+export type UpdateInboxInput = z.infer<typeof updateInboxInputSchema>;
+
 export const createTeamInputSchema = z.object({
   name: z.string().min(1),
 });

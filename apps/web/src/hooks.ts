@@ -11,6 +11,7 @@ import {
   type CreateTeamInput,
   type CreateUserInput,
   type Message,
+  type UpdateInboxInput,
   type UpdateTeamInput,
   type UpdateUserInput,
 } from "@ding/schemas";
@@ -50,6 +51,29 @@ export function useCreateInbox() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["views"] });
       qc.invalidateQueries({ queryKey: ["inboxes"] });
+    },
+  });
+}
+
+export function useUpdateInbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdateInboxInput }) => api.updateInbox(v.id, v.input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inboxes"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+export function useDeleteInbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteInbox(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["inboxes"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
     },
   });
 }

@@ -67,6 +67,18 @@ export abstract class Store {
     routingStrategy: RoutingStrategy;
     channelConfig?: Record<string, string>;
   }): Promise<Inbox>;
+  /** Edit a channel: rename, re-route, change strategy, merge new credentials. */
+  abstract updateInbox(
+    id: string,
+    params: {
+      name?: string;
+      teamIds?: string[];
+      routingStrategy?: RoutingStrategy;
+      channelConfig?: Record<string, string>;
+    },
+  ): Promise<Inbox | undefined>;
+  /** Delete a channel and the conversations that belong to it. */
+  abstract deleteInbox(id: string): Promise<void>;
 
   /* ---- settings: teams & people ---- */
   abstract listTeams(): Promise<Team[]>;

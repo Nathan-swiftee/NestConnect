@@ -13,6 +13,7 @@ import type {
   Message,
   Participant,
   Team,
+  UpdateInboxInput,
   UpdateTeamInput,
   UpdateUserInput,
   User,
@@ -67,6 +68,8 @@ export const api = {
   views: () => get<SidebarViews>("/views"),
   inboxes: () => get<Inbox[]>("/inboxes"),
   createInbox: (input: CreateInboxInput) => post<Inbox>("/inboxes", input),
+  updateInbox: (id: string, input: UpdateInboxInput) => patch<Inbox>(`/inboxes/${id}`, input),
+  deleteInbox: (id: string) => del<{ ok: boolean }>(`/inboxes/${id}`),
   // settings
   teams: () => get<Team[]>("/settings/teams"),
   people: () => get<Member[]>("/settings/people"),

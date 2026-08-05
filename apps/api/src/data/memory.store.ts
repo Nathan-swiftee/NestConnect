@@ -101,6 +101,33 @@ export class MemoryStore extends Store {
     return { ...inbox, connected: isInboxConnected(params.type, params.channelConfig ?? null) };
   }
 
+  async updateInbox(
+    id: string,
+    params: {
+      name?: string;
+      teamIds?: string[];
+      routingStrategy?: RoutingStrategy;
+      channelConfig?: Record<string, string>;
+    },
+  ): Promise<Inbox | undefined> {
+    const inbox = this.inboxes.find((i) => i.id === id);
+    if (!inbox) return undefined;
+    if (params.name !== undefined) inbox.name = params.name;
+    if (params.teamIds !== undefined) inbox.teamIds = params.teamIds;
+    if (params.routingStrategy !== undefined) inbox.routingStrategy = params.routingStrategy;
+    if (params.channelConfig !== undefined) {
+      const merged = { ...(this.inboxConfig.get(id) ?? {}), ...params.channelConfig };
+      this.inboxConfig.set(id, merged);
+    }
+    return { ...inbox, connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null) };
+  }
+
+  async deleteInbox(id: string): Promise<void> {
+    this.inboxes = this.inboxes.filter((i) => i.id !== id);
+    this.inboxConfig.delete(id);
+    this.conversations = this.conversations.filter((c) => c.inboxId !== id);
+  }
+
   async listTeams(): Promise<Team[]> {
     return this.teams;
   }

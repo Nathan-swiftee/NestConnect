@@ -498,6 +498,12 @@ input,textarea{font:inherit}
 .setform__grid{display:grid;grid-template-columns:1fr 1fr 140px;gap:12px}
 .setform__grid.two{grid-template-columns:1fr 1fr}
 .setform__foot{display:flex;justify-content:flex-end;gap:8px}
+.setform__foot--split{justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.setform__footactions{display:flex;gap:8px}
+.btn-ghost.btn-danger{display:inline-flex;align-items:center;gap:6px;color:var(--danger)}
+.btn-ghost.btn-danger:hover{background:var(--danger-tint);color:var(--danger)}
+.btn-ghost.btn-danger svg{width:15px;height:15px}
+.connect__credhead em{font-style:normal;text-transform:none;letter-spacing:0;font-weight:600}
 .field em{font-style:normal;font-weight:600;color:var(--text-faint);font-size:11px}
 
 /* row actions + status */

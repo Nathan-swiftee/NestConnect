@@ -13,11 +13,13 @@ import {
   createInboxInputSchema,
   createTeamInputSchema,
   createUserInputSchema,
+  updateInboxInputSchema,
   updateTeamInputSchema,
   updateUserInputSchema,
   type CreateInboxInput,
   type CreateTeamInput,
   type CreateUserInput,
+  type UpdateInboxInput,
   type UpdateTeamInput,
   type UpdateUserInput,
   type User,
@@ -66,6 +68,25 @@ export class WorkspaceController {
   ) {
     const me = await this.requireManager(userId);
     return this.store.createInbox({ orgId: me.orgId, ...body });
+  }
+
+  @Patch("inboxes/:id")
+  async updateInbox(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateInboxInputSchema)) body: UpdateInboxInput,
+  ) {
+    await this.requireManager(userId);
+    const inbox = await this.store.updateInbox(id, body);
+    if (!inbox) throw new NotFoundException("Channel not found");
+    return inbox;
+  }
+
+  @Delete("inboxes/:id")
+  async deleteInbox(@CurrentUserId() userId: string, @Param("id") id: string) {
+    await this.requireManager(userId);
+    await this.store.deleteInbox(id);
+    return { ok: true };
   }
 
   @Post("settings/teams")
