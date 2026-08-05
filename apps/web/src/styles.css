@@ -137,7 +137,7 @@ input,textarea{font:inherit}
 .search:focus-within{box-shadow:0 0 0 2px var(--brand-ring)}
 .search svg{width:15px;height:15px}
 .search input{border:0;background:none;outline:none;color:var(--text);width:100%;font-size:13px}
-.chips{margin-top:11px;display:inline-flex;position:relative;gap:2px;padding:3px;border-radius:999px;background:var(--glass-2);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:inset 0 0 0 1px var(--glass-brd);max-width:100%;overflow-x:auto;scrollbar-width:none}
+.chips{margin-top:11px;display:inline-flex;position:relative;gap:4px;padding:3px 0;max-width:100%;overflow-x:auto;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
 .chip{position:relative;z-index:1;font-size:12px;font-weight:600;padding:6px 13px;border-radius:999px;color:var(--text-muted);background:transparent;border:0;white-space:nowrap;transition:color .2s}
 .chip:hover{color:var(--text)}
@@ -191,7 +191,7 @@ input,textarea{font:inherit}
 .assignbtn:hover{background:var(--brand);color:#fff}
 .assignbtn .mini{width:20px;height:20px;border-radius:50%;color:#fff;display:grid;place-items:center;font-size:10px;font-weight:700}
 .assignbtn svg{width:14px;height:14px}
-.menu{position:absolute;top:64px;right:16px;background:color-mix(in srgb,var(--surface) 55%,transparent);backdrop-filter:saturate(180%) blur(28px);-webkit-backdrop-filter:saturate(180%) blur(28px);border:1px solid var(--glass-brd);border-radius:16px;box-shadow:var(--shadow-lg),inset 0 1px 0 var(--glass-hi);padding:6px;min-width:220px;z-index:24}
+.menu{position:absolute;top:64px;right:16px;background:color-mix(in srgb,var(--surface) 55%,transparent);backdrop-filter:saturate(180%) blur(30px);-webkit-backdrop-filter:saturate(180%) blur(30px);border:1px solid var(--glass-brd);border-radius:16px;box-shadow:var(--shadow-lg),inset 0 1px 0 var(--glass-hi);padding:6px;min-width:220px;z-index:24}
 .menu-backdrop{position:fixed;inset:0;z-index:23}
 .menu button{width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;text-align:left;font-size:13px;color:var(--text)}
 .menu button svg{width:17px;height:17px;flex:0 0 17px}
@@ -243,16 +243,16 @@ input,textarea{font:inherit}
 
 .composer{position:absolute;bottom:0;left:0;right:0;z-index:6;padding:12px 18px 16px;background:color-mix(in srgb,var(--surface) 58%,transparent);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-top:1px solid var(--glass-line);box-shadow:inset 0 1px 0 var(--glass-hi),0 -8px 24px -18px rgba(13,21,18,.5)}
 .compbar{display:flex;align-items:center;gap:10px;margin-bottom:9px}
-.compmode{position:relative;display:inline-flex;background:var(--glass-2);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);box-shadow:inset 0 0 0 1px var(--glass-brd);border-radius:999px;padding:3px;gap:2px;flex:0 0 auto}
+.compmode{position:relative;display:inline-flex;padding:3px 0;gap:6px;flex:0 0 auto}
 .modebtn{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:650;color:var(--text-muted);padding:6px 14px;border-radius:999px;transition:color .2s}
 .modebtn__ic{display:inline-grid;place-items:center}
 .modebtn__ic svg{width:14px;height:14px;display:block}
 .modebtn:hover{color:var(--text)}
 .modebtn.active{color:var(--brand-strong)}
-.modebtn.note.active{color:var(--amber)}
+.modebtn.modenote.active{color:var(--amber)}
 /* shared sliding thumb for segmented toggles (Reply|Note, filter chips) */
 .seg-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:999px;z-index:0;pointer-events:none;will-change:transform,width;transition:transform .3s cubic-bezier(.5,.05,.2,1),width .3s cubic-bezier(.5,.05,.2,1)}
-.compmode .seg-thumb{background:var(--surface);box-shadow:0 2px 8px -2px rgba(13,21,18,.22),inset 0 1px 0 var(--glass-hi)}
+.compmode .seg-thumb{background:var(--surface);box-shadow:0 3px 10px -3px rgba(13,21,18,.3),inset 0 0 0 1px var(--glass-brd)}
 .chips .seg-thumb{background:var(--text);box-shadow:0 3px 10px -3px rgba(13,21,18,.4)}
 .compctx{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .compinput{display:flex;align-items:flex-end;gap:8px;background:var(--glass-2);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border:1px solid var(--glass-brd);border-radius:24px;padding:6px 6px 6px 16px;box-shadow:inset 0 1px 0 var(--glass-hi)}
@@ -575,7 +575,7 @@ input,textarea{font:inherit}
 
 /* ≤1023: the inbox sidebar collapses to an off-canvas drawer (hamburger opens it). */
 @media (max-width:1023px){
-  .side{position:fixed;top:0;left:0;bottom:0;z-index:60;width:min(300px,86vw);transform:translateX(-100%);transition:transform .22s ease;box-shadow:var(--shadow-lg);background:color-mix(in srgb,var(--surface) 80%,transparent);backdrop-filter:saturate(180%) blur(26px);-webkit-backdrop-filter:saturate(180%) blur(26px)}
+  .side{position:fixed;top:0;left:0;bottom:0;z-index:60;width:min(300px,86vw);transform:translateX(-100%);transition:transform .22s ease;box-shadow:var(--shadow-lg);background:color-mix(in srgb,var(--surface) 58%,transparent);backdrop-filter:saturate(180%) blur(30px);-webkit-backdrop-filter:saturate(180%) blur(30px)}
   .app.drawer-open .side{transform:none}
   .drawer-backdrop{z-index:55}
   .side__sub{display:none}

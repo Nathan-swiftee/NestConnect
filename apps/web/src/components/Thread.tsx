@@ -324,7 +324,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 role="tab"
                 ref={noteBtnRef}
                 aria-selected={internal}
-                className={"modebtn note" + (internal ? " active" : "")}
+                className={"modebtn modenote" + (internal ? " active" : "")}
                 onClick={() => setInternal(true)}
               >
                 <span className="modebtn__ic">
