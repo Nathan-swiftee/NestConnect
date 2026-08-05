@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useTeams } from "../hooks";
 import { relativeTime, initials } from "../lib/format";
 import { playSent, unlock } from "../lib/sound";
 import {
@@ -22,8 +22,6 @@ import {
   CheckSingle,
   CheckDouble,
 } from "../lib/icons";
-
-const SALES_TEAM_ID = "team_sales";
 
 interface Props {
   conversationId: string | null;
@@ -58,6 +56,7 @@ function dayLabel(iso?: string): string {
 export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed }: Props) {
   const { data: conv } = useConversation(conversationId);
   const { data: me } = useMe();
+  const { data: teams } = useTeams();
   const send = useSendMessage();
   const assign = useAssign();
   const setStatus = useSetStatus();
@@ -121,10 +120,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setMenu(false);
     onToast("Assigned to you");
   };
-  const routeSales = () => {
-    assign.mutate({ id: conv.id, input: { assigneeUserId: null, assignedTeamId: SALES_TEAM_ID } });
+  const routeTeam = (teamId: string, name: string) => {
+    assign.mutate({ id: conv.id, input: { assigneeUserId: null, assignedTeamId: teamId } });
     setMenu(false);
-    onToast("Routed to Sales team");
+    onToast(`Routed to ${name}`);
   };
   const unassign = () => {
     assign.mutate({ id: conv.id, input: { assigneeUserId: null } });
@@ -215,16 +214,23 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         <>
           <div className="menu-backdrop" onClick={() => setMenu(false)} />
           <div className="menu" role="menu">
-            <button onClick={take}>
-              <ProfileIcon /> Assign to me
-            </button>
-            <button onClick={routeSales}>
-              <RouteIcon /> Route to Sales team
-            </button>
-            <div className="sep" />
-            <button onClick={unassign}>
-              <InboxIcon /> Move to Up for grabs
-            </button>
+            {conv.assigneeUserId !== me?.user.id && (
+              <button onClick={take}>
+                <ProfileIcon /> Assign to me
+              </button>
+            )}
+            {(teams ?? [])
+              .filter((t) => t.id !== conv.assignedTeamId)
+              .map((t) => (
+                <button key={t.id} onClick={() => routeTeam(t.id, t.name)}>
+                  <RouteIcon /> Route to {t.name}
+                </button>
+              ))}
+            {conv.assigneeUserId && (
+              <button onClick={unassign}>
+                <InboxIcon /> Move to Up for grabs
+              </button>
+            )}
             <div className="sep" />
             {isClosed ? (
               <button onClick={reopenConversation}>
