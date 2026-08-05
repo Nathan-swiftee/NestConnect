@@ -365,7 +365,10 @@ export class PrismaStore extends Store {
       { key: "snoozed", title: "Later", count: await count("snoozed") },
     ];
 
-    const teamRows = await this.prisma.team.findMany({ where: { id: { in: userTeams } } });
+    const teamRows = await this.prisma.team.findMany({
+      where: { id: { in: userTeams } },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+    });
     const teams: ViewItem[] = [];
     for (const t of teamRows) {
       teams.push({ key: `team:${t.id}`, title: t.name, count: await count(`team:${t.id}`) });

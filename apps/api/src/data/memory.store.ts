@@ -315,7 +315,8 @@ export class MemoryStore extends Store {
       { key: "mentions", title: "@ Mentions", count: count("mentions") },
       { key: "snoozed", title: "Later", count: count("snoozed") },
     ];
-    const teams: ViewItem[] = this.teams
+    const teams: ViewItem[] = [...this.teams]
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .filter((t) => userTeams.includes(t.id))
       .map((t) => ({ key: `team:${t.id}`, title: t.name, count: count(`team:${t.id}`) }));
     const inboxes: ViewItem[] = this.inboxes
