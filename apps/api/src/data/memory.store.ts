@@ -255,7 +255,7 @@ export class MemoryStore extends Store {
 
   private isUpForGrabs(rec: ConversationRecord, userTeams: string[]): boolean {
     if (rec.assigneeUserId) return false;
-    if (rec.status === "closed") return false;
+    if (rec.status === "closed" || rec.status === "snoozed") return false;
     const inbox = this.inbox(rec.inboxId);
     return !!inbox && inbox.teamIds.some((t) => userTeams.includes(t));
   }
@@ -273,10 +273,13 @@ export class MemoryStore extends Store {
     forCount = false,
   ): boolean {
     const active = rec.status === "open" || rec.status === "pending";
-    if (view === "mine") return rec.assigneeUserId === userId && (forCount ? active : true);
+    // Lists carry closed items (for the Closed filter) but never snoozed ones —
+    // those live only in "Later". Counts (badges) are active-only.
+    const inList = forCount ? active : rec.status !== "snoozed";
+    if (view === "mine") return rec.assigneeUserId === userId && inList;
     if (view === "grabs") return this.isUpForGrabs(rec, userTeams);
     if (view === "inbound")
-      return (rec.assigneeUserId === userId && (forCount ? active : true)) || this.isUpForGrabs(rec, userTeams);
+      return (rec.assigneeUserId === userId && inList) || this.isUpForGrabs(rec, userTeams);
     if (view === "snoozed") return rec.status === "snoozed";
     if (view === "mentions") {
       const token = this.mentionToken(userId);
@@ -284,9 +287,9 @@ export class MemoryStore extends Store {
     }
     if (view.startsWith("team:")) {
       const inbox = this.inbox(rec.inboxId);
-      return !!inbox && inbox.teamIds.includes(view.slice(5)) && (forCount ? active : true);
+      return !!inbox && inbox.teamIds.includes(view.slice(5)) && inList;
     }
-    if (view.startsWith("inbox:")) return rec.inboxId === view.slice(6) && (forCount ? active : true);
+    if (view.startsWith("inbox:")) return rec.inboxId === view.slice(6) && inList;
     return false;
   }
 
@@ -294,10 +297,25 @@ export class MemoryStore extends Store {
     const { messages: _messages, participants: _participants, ...rest } = rec;
     void _messages;
     void _participants;
-    return rest;
+    return { ...rest, snoozedUntil: rest.snoozedUntil ?? null };
+  }
+
+  /** Wake any snoozed conversation whose time has passed back into the queue.
+   *  Runs lazily on every list/views read, so "Later" empties on its own. */
+  private wakeExpiredSnoozes(): void {
+    const now = Date.now();
+    for (const r of this.conversations) {
+      if (r.status === "snoozed" && r.snoozedUntil && new Date(r.snoozedUntil).getTime() <= now) {
+        r.status = "open";
+        r.snoozedUntil = null;
+        r.unread = true;
+        r.lastActivityAt = new Date().toISOString();
+      }
+    }
   }
 
   async listConversations(view: string, userId: string): Promise<Conversation[]> {
+    this.wakeExpiredSnoozes();
     const userTeams = this.membership[userId] ?? [];
     return this.conversations
       .filter((r) => this.matchesView(r, view, userId, userTeams))
@@ -306,6 +324,7 @@ export class MemoryStore extends Store {
   }
 
   async views(userId: string): Promise<SidebarViews> {
+    this.wakeExpiredSnoozes();
     const userTeams = this.membership[userId] ?? [];
     const count = (view: string) =>
       this.conversations.filter((r) => this.matchesView(r, view, userId, userTeams, true)).length;
@@ -395,6 +414,17 @@ export class MemoryStore extends Store {
     rec.status = status;
     // Reopening surfaces the thread again; closing clears the unread flag.
     if (status === "closed") rec.unread = false;
+    if (status !== "snoozed") rec.snoozedUntil = null;
+    rec.lastActivityAt = new Date().toISOString();
+    return this.summary(rec);
+  }
+
+  async snooze(conversationId: string, until: string): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    rec.status = "snoozed";
+    rec.snoozedUntil = until;
+    rec.unread = false;
     rec.lastActivityAt = new Date().toISOString();
     return this.summary(rec);
   }

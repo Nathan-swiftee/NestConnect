@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
-import { useAssign, useConversations, useMe, useTeams } from "../hooks";
+import { useAssign, useConversations, useMe, useSnooze, useTeams } from "../hooks";
 import { channelMeta, BackIcon, ProfileIcon, RouteIcon, SnoozeIcon, SearchIcon } from "../lib/icons";
 
 interface Props {
@@ -21,6 +21,7 @@ interface Cmd {
 
 export function CommandPalette({ conversationId, onClose, onSelectConversation, onToast }: Props) {
   const assign = useAssign();
+  const snooze = useSnooze();
   const { data: me } = useMe();
   const { data: teams } = useTeams();
   const { data: convs } = useConversations("inbound");
@@ -76,9 +77,16 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
         {
           group: "This conversation",
           label: "Snooze until tomorrow",
-          sub: "Hide until 9:00",
+          sub: "Wakes at 9:00 AM",
           icon: <SnoozeIcon />,
-          run: () => onToast("Snoozed until tomorrow 9:00"),
+          run: () => {
+            if (!conversationId) return;
+            const d = new Date();
+            d.setDate(d.getDate() + 1);
+            d.setHours(9, 0, 0, 0);
+            snooze.mutate({ id: conversationId, until: d.toISOString() });
+            onToast("Snoozed · tomorrow 9 AM");
+          },
         },
       );
     }

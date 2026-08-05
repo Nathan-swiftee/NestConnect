@@ -7,7 +7,7 @@ import { ContextPanel } from "./ContextPanel";
 import { CommandPalette } from "./CommandPalette";
 import { Settings } from "./Settings";
 import { Customers } from "./Customers";
-import { useConversations, useMediaQuery, useRealtime, useViews } from "../hooks";
+import { useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
 
 export function Workspace() {
@@ -26,6 +26,7 @@ export function Workspace() {
   const [toast, setToast] = useState<string | null>(null);
 
   useRealtime(selectedId);
+  useSnoozeSweep();
   const views = useViews();
   const convos = useConversations(view);
 

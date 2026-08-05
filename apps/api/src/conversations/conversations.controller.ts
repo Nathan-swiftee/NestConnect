@@ -2,9 +2,11 @@ import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
   assignConversationInputSchema,
   sendMessageInputSchema,
+  snoozeInputSchema,
   updateStatusInputSchema,
   type AssignConversationInput,
   type SendMessageInput,
+  type SnoozeInput,
   type UpdateStatusInput,
 } from "@ding/schemas";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -49,5 +51,13 @@ export class ConversationsController {
     @Body(new ZodValidationPipe(updateStatusInputSchema)) body: UpdateStatusInput,
   ) {
     return this.conversations.setStatus(id, body);
+  }
+
+  @Post(":id/snooze")
+  snooze(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(snoozeInputSchema)) body: SnoozeInput,
+  ) {
+    return this.conversations.snooze(id, body.until);
   }
 }

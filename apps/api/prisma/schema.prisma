@@ -201,6 +201,7 @@ model Conversation {
   priority       Priority           @default(normal)
   unread         Boolean            @default(false)
   slaDueAt       DateTime?
+  snoozedUntil   DateTime?
   lastActivityAt DateTime           @default(now())
   seq            Int                @default(0)
   preview        String             @default("")

@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useConversations } from "../hooks";
-import { relativeTime, initials, slaCountdown } from "../lib/format";
-import { channelMeta, SearchIcon, MenuIcon, CmdIcon } from "../lib/icons";
+import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
+import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
 
 type Filter = "all" | "unread" | "groups" | "closed";
@@ -130,14 +130,23 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                   <p>{c.preview}</p>
                 </div>
                 <div className="conv__meta">
-                  <span className={"tag " + (owned ? "owner" : "grab")}>
-                    {owned ? "Yours" : "Up for grabs"}
-                  </span>
-                  {c.slaDueAt && (
-                    <span className="sla">
-                      <span className="d" />
-                      {slaCountdown(c.slaDueAt)}
+                  {c.status === "snoozed" && c.snoozedUntil ? (
+                    <span className="snoozepill" title={`Wakes ${new Date(c.snoozedUntil).toLocaleString()}`}>
+                      <SnoozeIcon />
+                      Snoozed · {timeUntil(c.snoozedUntil)} left
                     </span>
+                  ) : (
+                    <>
+                      <span className={"tag " + (owned ? "owner" : "grab")}>
+                        {owned ? "Yours" : "Up for grabs"}
+                      </span>
+                      {c.slaDueAt && (
+                        <span className="sla">
+                          <span className="d" />
+                          {slaCountdown(c.slaDueAt)}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

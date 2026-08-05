@@ -187,6 +187,8 @@ export const conversationSchema = z.object({
   labels: z.array(labelSchema).default([]),
   unread: z.boolean().default(false),
   slaDueAt: z.string().nullable().default(null),
+  /** When a snoozed conversation should wake back into the queue (ISO). */
+  snoozedUntil: z.string().nullable().default(null),
   lastActivityAt: z.string(),
   seq: z.number().int().nonnegative().default(0),
   preview: z.string().default(""),
@@ -222,6 +224,12 @@ export const updateStatusInputSchema = z.object({
   status: conversationStatusSchema,
 });
 export type UpdateStatusInput = z.infer<typeof updateStatusInputSchema>;
+
+/** Snooze a conversation until a given time (ISO); it wakes back into the queue then. */
+export const snoozeInputSchema = z.object({
+  until: z.string().datetime(),
+});
+export type SnoozeInput = z.infer<typeof snoozeInputSchema>;
 
 export const createInboxInputSchema = z.object({
   type: channelTypeSchema,

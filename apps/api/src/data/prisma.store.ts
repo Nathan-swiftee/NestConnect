@@ -325,7 +325,9 @@ export class PrismaStore extends Store {
   ): Prisma.ConversationWhereInput {
     const org = { orgId: ORG_ID };
     const active: Prisma.ConversationWhereInput = { status: { in: ["open", "pending"] } };
-    const activeOnly: Prisma.ConversationWhereInput = forCount ? active : {};
+    // Lists carry closed items (for the Closed filter) but never snoozed ones —
+    // those live only in "Later". Counts (badges) are active-only.
+    const activeOnly: Prisma.ConversationWhereInput = forCount ? active : { status: { not: "snoozed" } };
     const mine: Prisma.ConversationWhereInput = { ...org, ...activeOnly, assigneeUserId: userId };
     const grabs: Prisma.ConversationWhereInput = {
       ...org,
@@ -350,7 +352,16 @@ export class PrismaStore extends Store {
     return { id: "__none__" };
   }
 
+  /** Wake any snoozed conversation whose time has passed back into the queue. */
+  private async wakeExpiredSnoozes(): Promise<void> {
+    await this.prisma.conversation.updateMany({
+      where: { status: "snoozed", snoozedUntil: { lte: new Date() } },
+      data: { status: "open", snoozedUntil: null, unread: true },
+    });
+  }
+
   async listConversations(view: string, userId: string): Promise<Conversation[]> {
+    await this.wakeExpiredSnoozes();
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
     const rows = await this.prisma.conversation.findMany({
@@ -362,6 +373,7 @@ export class PrismaStore extends Store {
   }
 
   async views(userId: string): Promise<SidebarViews> {
+    await this.wakeExpiredSnoozes();
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
     const count = (view: string) =>
@@ -502,7 +514,21 @@ export class PrismaStore extends Store {
           status,
           lastActivityAt: new Date(),
           ...(status === "closed" ? { unread: false } : {}),
+          ...(status !== "snoozed" ? { snoozedUntil: null } : {}),
         },
+        include: convInclude,
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async snooze(conversationId: string, until: string): Promise<Conversation | undefined> {
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { status: "snoozed", snoozedUntil: new Date(until), unread: false, lastActivityAt: new Date() },
         include: convInclude,
       });
       return mapConversation(row);

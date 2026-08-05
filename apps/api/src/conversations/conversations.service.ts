@@ -62,4 +62,12 @@ export class ConversationsService {
     this.realtime.emitConversationUpdated(conv);
     return conv;
   }
+
+  async snooze(id: string, until: string): Promise<Conversation> {
+    const conv = await this.store.snooze(id, until);
+    if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
+    // Drops it from the active lists and into "Later" on every client live.
+    this.realtime.emitConversationUpdated(conv);
+    return conv;
+  }
 }

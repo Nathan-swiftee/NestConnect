@@ -102,6 +102,8 @@ export const api = {
   ) => post<Conversation>(`/conversations/${id}/assign`, input),
   setStatus: (id: string, status: ConversationStatus) =>
     post<Conversation>(`/conversations/${id}/status`, { status }),
+  snooze: (id: string, until: string) =>
+    post<Conversation>(`/conversations/${id}/snooze`, { until }),
   // groups
   createGroup: (input: CreateGroupInput) => post<ConversationWithMessages>("/groups", input),
   addParticipant: (conversationId: string, input: AddParticipantInput) =>

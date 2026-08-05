@@ -274,6 +274,31 @@ export function useSetStatus() {
   });
 }
 
+export function useSnooze() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; until: string }) => api.snooze(v.id, v.until),
+    onSuccess: (_conv, v) => {
+      qc.invalidateQueries({ queryKey: ["conversation", v.id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+/** Periodically refresh lists so snoozed conversations wake out of "Later" on
+ *  time and the countdowns tick, without needing a manual reload. */
+export function useSnoozeSweep() {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    }, 30_000);
+    return () => window.clearInterval(t);
+  }, [qc]);
+}
+
 /** Reactive `matchMedia` for responsive (mobile ⇄ desktop) layout switches. */
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(

@@ -18,7 +18,8 @@ export const ORG_ID = "org_swiftee";
 export const DEMO_USER_ID = "usr_nathan";
 
 /** A conversation plus its message history, as held in the store. */
-export type ConversationRecord = Conversation & {
+export type ConversationRecord = Omit<Conversation, "snoozedUntil"> & {
+  snoozedUntil?: string | null;
   messages: Message[];
   participants?: Participant[];
 };

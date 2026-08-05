@@ -130,6 +130,9 @@ export abstract class Store {
     status: ConversationStatus,
   ): Promise<Conversation | undefined>;
 
+  /** Snooze a conversation until `until` (ISO); it wakes back into the queue then. */
+  abstract snooze(conversationId: string, until: string): Promise<Conversation | undefined>;
+
   /** Record a provider-side id on an outbound message (for status reconciliation). */
   abstract setMessageChannelId(messageId: string, channelMsgId: string): Promise<void>;
 

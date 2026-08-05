@@ -17,6 +17,16 @@ export function initials(name: string): string {
   return (first + second).toUpperCase();
 }
 
+/** Compact "time from now" for a future timestamp (e.g. snooze wake): 9m, 2h, 1d. */
+export function timeUntil(iso: string, nowMs: number = Date.now()): string {
+  const m = Math.round((new Date(iso).getTime() - nowMs) / 60000);
+  if (m <= 0) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+}
+
 /** Countdown string for an SLA due timestamp; "overdue" once passed. */
 export function slaCountdown(dueIso: string, nowMs: number = Date.now()): string {
   const left = new Date(dueIso).getTime() - nowMs;

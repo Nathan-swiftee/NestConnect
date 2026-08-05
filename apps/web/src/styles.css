@@ -254,6 +254,13 @@ input,textarea{font:inherit}
 .tag.grab{background:var(--surface-2);color:var(--text-muted)}
 .sla{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums}
 .sla .d{width:6px;height:6px;border-radius:50%;background:var(--amber)}
+/* snoozed conversations show their wake countdown on the card */
+.snoozepill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px 3px 7px;border-radius:var(--r-full);background:var(--amber-tint);color:var(--amber);white-space:nowrap;font-variant-numeric:tabular-nums}
+.snoozepill svg{width:12px;height:12px}
+/* snooze duration menu, anchored under its header button */
+.snoozewrap{position:relative;display:inline-flex}
+.menu.snoozemenu{top:calc(100% + 8px);right:0;left:auto;min-width:204px}
+.menu__hd{padding:6px 10px 5px;font-size:10.5px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint)}
 .typing{display:inline-flex;align-items:center;gap:3px;color:var(--brand);font-weight:600;font-size:12.5px}
 .typing i{width:5px;height:5px;border-radius:50%;background:currentColor;animation:blink 1.2s infinite ease-in-out}
 .typing i:nth-child(2){animation-delay:.18s}.typing i:nth-child(3){animation-delay:.36s}
@@ -351,7 +358,7 @@ input,textarea{font:inherit}
 .modebtn.modenote.active{color:var(--amber)}
 /* shared sliding thumb for segmented toggles (Reply|Note, filter chips) —
    a physical capsule with a top-edge light */
-.seg-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-full);z-index:0;pointer-events:none;will-change:transform,width;transition:transform .24s var(--ease),width .24s var(--ease)}
+.seg-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-full);z-index:0;pointer-events:none;will-change:transform,width;transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1)}
 .compmode .seg-thumb{background:var(--surface);box-shadow:inset 0 1px 0 var(--glass-hi),0 2px 8px -3px rgba(13,21,18,.28),0 0 0 1px var(--glass-brd)}
 .chips .seg-thumb{background:var(--brand-tint);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 1px color-mix(in srgb,var(--brand) 20%,transparent)}
 /* subtle capsule that glides under the pointer on hover (behind the selected thumb) */
@@ -511,7 +518,7 @@ input,textarea{font:inherit}
 .settings__tabs{position:relative;flex:0 0 auto;border-bottom:1px solid var(--border);background:var(--surface);padding:10px 16px;display:flex;flex-direction:row;gap:4px;overflow-x:auto}
 .settabs__thumb{position:absolute;top:0;left:0;border-radius:var(--r-12);background:var(--brand-tint);z-index:0;pointer-events:none;will-change:transform,width,height;
   box-shadow:inset 0 1px 0 var(--glass-hi),0 4px 12px -8px var(--brand-ring);
-  transition:transform .24s var(--ease),width .24s var(--ease),height .24s var(--ease)}
+  transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1)}
 .settabs__hover{position:absolute;top:0;left:0;border-radius:var(--r-12);background:var(--surface-2);z-index:0;pointer-events:none;opacity:0;will-change:transform,width,height;
   transition:transform .2s cubic-bezier(.4,0,.2,1),width .2s cubic-bezier(.4,0,.2,1),height .2s cubic-bezier(.4,0,.2,1),opacity .16s ease}
 .settabs__btn{position:relative;z-index:1;text-align:left;padding:9px 13px;border-radius:var(--r-12);font-weight:600;font-size:14px;color:var(--text-muted);transition:color .15s ease .08s}

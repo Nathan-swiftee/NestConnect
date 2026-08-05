@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type { Message } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useTeams } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams } from "../hooks";
 import { relativeTime, initials } from "../lib/format";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
@@ -75,9 +75,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const send = useSendMessage();
   const assign = useAssign();
   const setStatus = useSetStatus();
+  const snooze = useSnooze();
 
   const [text, setText] = useState("");
   const [menu, setMenu] = useState(false);
+  const [snoozeMenu, setSnoozeMenu] = useState(false);
   const [internal, setInternal] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const replyBtnRef = useRef<HTMLButtonElement>(null);
@@ -161,6 +163,26 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const reopenConversation = () => {
     setStatus.mutate({ id: conv.id, status: "open" }, { onSuccess: () => onToast("Conversation reopened") });
   };
+  const doSnooze = (until: string, label: string) => {
+    setSnoozeMenu(false);
+    snooze.mutate(
+      { id: conv.id, until },
+      { onSuccess: () => { onToast(`Snoozed · ${label}`); onClosed?.(); } },
+    );
+  };
+  const inMin = (m: number) => new Date(Date.now() + m * 60_000).toISOString();
+  const tomorrow9am = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    return d.toISOString();
+  };
+  const snoozeOpts = [
+    { label: "10 minutes", short: "10 min", until: () => inMin(10) },
+    { label: "30 minutes", short: "30 min", until: () => inMin(30) },
+    { label: "1 hour", short: "1 hour", until: () => inMin(60) },
+    { label: "Tomorrow, 9 AM", short: "tomorrow 9 AM", until: tomorrow9am },
+  ];
 
   return (
     <main className="thread" aria-label="Conversation">
@@ -219,9 +241,28 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             )}
             <ChevronDown />
           </button>
-          <button className="iconbtn" title="Snooze" onClick={() => onToast("Snoozed until tomorrow 9:00")}>
-            <SnoozeIcon />
-          </button>
+          <div className="snoozewrap">
+            <button
+              className={"iconbtn" + (snoozeMenu ? " on" : "")}
+              title="Snooze"
+              onClick={() => { setSnoozeMenu((v) => !v); setMenu(false); }}
+            >
+              <SnoozeIcon />
+            </button>
+            {snoozeMenu && (
+              <>
+                <div className="menu-backdrop" onClick={() => setSnoozeMenu(false)} />
+                <div className="menu snoozemenu" role="menu">
+                  <div className="menu__hd">Snooze until</div>
+                  {snoozeOpts.map((o) => (
+                    <button key={o.short} onClick={() => doSnooze(o.until(), o.short)}>
+                      <SnoozeIcon /> {o.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button className="iconbtn hide-sm" title="Add label" onClick={() => onToast("Add label")}>
             <TagIcon />
           </button>
