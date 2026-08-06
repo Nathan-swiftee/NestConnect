@@ -176,7 +176,7 @@ export class PrismaStore extends Store {
     return rows.map((u) => ({ user: mapUser(u), teamIds: u.memberships.map((m) => m.teamId) }));
   }
 
-  async createTeam(params: { orgId: string; name: string; icon?: string }): Promise<Team> {
+  async createTeam(params: { orgId: string; name: string; icon?: string; slaMinutes?: number | null }): Promise<Team> {
     const max = await this.prisma.team.aggregate({ where: { orgId: params.orgId }, _max: { order: true } });
     const t = await this.prisma.team.create({
       data: {
@@ -184,6 +184,7 @@ export class PrismaStore extends Store {
         name: params.name,
         icon: params.icon ?? null,
         order: (max._max.order ?? -1) + 1,
+        slaMinutes: params.slaMinutes ?? null,
       },
     });
     return mapTeam(t);
@@ -191,7 +192,7 @@ export class PrismaStore extends Store {
 
   async updateTeam(
     id: string,
-    params: { name?: string; icon?: string | null },
+    params: { name?: string; icon?: string | null; slaMinutes?: number | null },
   ): Promise<Team | undefined> {
     try {
       const t = await this.prisma.team.update({
@@ -199,12 +200,18 @@ export class PrismaStore extends Store {
         data: {
           name: params.name ?? undefined,
           ...(params.icon !== undefined ? { icon: params.icon } : {}),
+          ...(params.slaMinutes !== undefined ? { slaMinutes: params.slaMinutes } : {}),
         },
       });
       return mapTeam(t);
     } catch {
       return undefined;
     }
+  }
+
+  async getTeam(id: string): Promise<Team | undefined> {
+    const t = await this.prisma.team.findUnique({ where: { id } });
+    return t ? mapTeam(t) : undefined;
   }
 
   async reorderTeams(orderedIds: string[]): Promise<Team[]> {
@@ -540,6 +547,19 @@ export class PrismaStore extends Store {
       const row = await this.prisma.conversation.update({
         where: { id: conversationId },
         data: { priority },
+        include: convInclude,
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async setSla(conversationId: string, dueAt: string | null): Promise<Conversation | undefined> {
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { slaDueAt: dueAt ? new Date(dueAt) : null },
         include: convInclude,
       });
       return mapConversation(row);

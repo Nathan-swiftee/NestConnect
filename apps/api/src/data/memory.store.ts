@@ -138,7 +138,7 @@ export class MemoryStore extends Store {
     return this.users.map((u) => ({ user: u, teamIds: this.membership[u.id] ?? [] }));
   }
 
-  async createTeam(params: { orgId: string; name: string; icon?: string }): Promise<Team> {
+  async createTeam(params: { orgId: string; name: string; icon?: string; slaMinutes?: number | null }): Promise<Team> {
     const order = this.teams.reduce((m, t) => Math.max(m, t.order ?? 0), -1) + 1;
     const team: Team = {
       id: `team_${++this.idSeq}`,
@@ -146,6 +146,7 @@ export class MemoryStore extends Store {
       name: params.name,
       icon: params.icon ?? null,
       order,
+      slaMinutes: params.slaMinutes ?? null,
     };
     this.teams.push(team);
     return team;
@@ -153,13 +154,18 @@ export class MemoryStore extends Store {
 
   async updateTeam(
     id: string,
-    params: { name?: string; icon?: string | null },
+    params: { name?: string; icon?: string | null; slaMinutes?: number | null },
   ): Promise<Team | undefined> {
     const team = this.teams.find((t) => t.id === id);
     if (!team) return undefined;
     if (params.name !== undefined) team.name = params.name;
     if (params.icon !== undefined) team.icon = params.icon;
+    if (params.slaMinutes !== undefined) team.slaMinutes = params.slaMinutes;
     return team;
+  }
+
+  async getTeam(id: string): Promise<Team | undefined> {
+    return this.teams.find((t) => t.id === id);
   }
 
   async reorderTeams(orderedIds: string[]): Promise<Team[]> {
@@ -430,6 +436,13 @@ export class MemoryStore extends Store {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;
     rec.priority = priority;
+    return this.summary(rec);
+  }
+
+  async setSla(conversationId: string, dueAt: string | null): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    rec.slaDueAt = dueAt;
     return this.summary(rec);
   }
 

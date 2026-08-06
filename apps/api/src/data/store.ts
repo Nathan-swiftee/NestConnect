@@ -89,11 +89,13 @@ export abstract class Store {
   /* ---- settings: teams & people ---- */
   abstract listTeams(): Promise<Team[]>;
   abstract listMembers(): Promise<Member[]>;
-  abstract createTeam(params: { orgId: string; name: string; icon?: string }): Promise<Team>;
+  abstract createTeam(params: { orgId: string; name: string; icon?: string; slaMinutes?: number | null }): Promise<Team>;
   abstract updateTeam(
     id: string,
-    params: { name?: string; icon?: string | null },
+    params: { name?: string; icon?: string | null; slaMinutes?: number | null },
   ): Promise<Team | undefined>;
+  /** Fetch a single team by id (used to resolve its SLA target). */
+  abstract getTeam(id: string): Promise<Team | undefined>;
   /** Delete a team, detaching its members, inbox routing and any assignments. */
   abstract deleteTeam(id: string): Promise<void>;
   /** Persist a new team ordering; ids not present keep their relative order after. */
@@ -137,6 +139,12 @@ export abstract class Store {
   abstract setPriority(
     conversationId: string,
     priority: Priority,
+  ): Promise<Conversation | undefined>;
+
+  /** Set (or clear) a conversation's first-response SLA due time (ISO or null). */
+  abstract setSla(
+    conversationId: string,
+    dueAt: string | null,
   ): Promise<Conversation | undefined>;
 
   /** Snooze a conversation until `until` (ISO); it wakes back into the queue then. */

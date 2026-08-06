@@ -45,11 +45,15 @@ async function main() {
   }
 
   const teams = [
-    { id: "team_support", name: "Support team", icon: "headset", order: 0 },
-    { id: "team_sales", name: "Sales team", icon: "cart", order: 1 },
+    { id: "team_support", name: "Support team", icon: "headset", order: 0, slaMinutes: 60 },
+    { id: "team_sales", name: "Sales team", icon: "cart", order: 1, slaMinutes: 240 },
   ];
   for (const t of teams) {
-    await prisma.team.upsert({ where: { id: t.id }, update: {}, create: { orgId: ORG, ...t } });
+    await prisma.team.upsert({
+      where: { id: t.id },
+      update: { slaMinutes: t.slaMinutes },
+      create: { orgId: ORG, ...t },
+    });
   }
 
   const memberships = [

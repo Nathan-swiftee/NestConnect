@@ -69,6 +69,8 @@ export const teamSchema = z.object({
   icon: z.string().nullable().optional(),
   /** Sort position in Settings and the sidebar (ascending). */
   order: z.number().int().default(0),
+  /** First-response SLA target in minutes; null = no SLA for this team. */
+  slaMinutes: z.number().int().positive().nullable().optional(),
 });
 export type Team = z.infer<typeof teamSchema>;
 
@@ -260,12 +262,14 @@ export type UpdateInboxInput = z.infer<typeof updateInboxInputSchema>;
 export const createTeamInputSchema = z.object({
   name: z.string().min(1),
   icon: z.string().optional(),
+  slaMinutes: z.number().int().positive().nullable().optional(),
 });
 export type CreateTeamInput = z.infer<typeof createTeamInputSchema>;
 
 export const updateTeamInputSchema = z.object({
   name: z.string().min(1).optional(),
   icon: z.string().nullable().optional(),
+  slaMinutes: z.number().int().positive().nullable().optional(),
 });
 export type UpdateTeamInput = z.infer<typeof updateTeamInputSchema>;
 

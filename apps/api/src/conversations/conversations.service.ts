@@ -42,6 +42,9 @@ export class ConversationsService {
 
     // Dispatch real (non-internal) replies out through the channel provider.
     if (!input.internal) {
+      // An agent reply meets the first-response SLA — stop the clock.
+      const cleared = await this.store.setSla(id, null);
+      if (cleared) this.realtime.emitConversationUpdated(cleared);
       const conv = await this.store.getConversation(id);
       if (conv) void this.dispatcher.dispatchOutbound(conv, message);
     }

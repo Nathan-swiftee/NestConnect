@@ -49,7 +49,7 @@ export function mapUser(u: Prisma.UserGetPayload<object>): User {
 }
 
 export function mapTeam(t: Prisma.TeamGetPayload<object>): Team {
-  return { id: t.id, orgId: t.orgId, name: t.name, icon: t.icon ?? null, order: t.order };
+  return { id: t.id, orgId: t.orgId, name: t.name, icon: t.icon ?? null, order: t.order, slaMinutes: t.slaMinutes ?? null };
 }
 
 export function mapInbox(i: InboxWithTeams): Inbox {

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { useConversations } from "../hooks";
+import { useConversations, useTeams } from "../hooks";
 import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
@@ -18,6 +18,8 @@ interface Props {
 
 export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onOpenDrawer }: Props) {
   const { data, isLoading } = useConversations(view);
+  const teams = useTeams();
+  const teamName = (id?: string | null) => (id ? teams.data?.find((t) => t.id === id)?.name : undefined);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
 
@@ -147,12 +149,23 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                       <span className={"tag " + (owned ? "owner" : "grab")}>
                         {owned ? "Yours" : "Queue"}
                       </span>
-                      {c.slaDueAt && (
-                        <span className="sla">
-                          <span className="d" />
-                          {slaCountdown(c.slaDueAt)}
+                      {teamName(c.assignedTeamId) && (
+                        <span className="teamtag" title={`Routed to ${teamName(c.assignedTeamId)}`}>
+                          {teamName(c.assignedTeamId)}
                         </span>
                       )}
+                      {c.slaDueAt &&
+                        (new Date(c.slaDueAt).getTime() <= Date.now() ? (
+                          <span className="sla breach" title="First-response SLA breached">
+                            <span className="d" />
+                            Overdue
+                          </span>
+                        ) : (
+                          <span className="sla" title="Time left to first response">
+                            <span className="d" />
+                            {slaCountdown(c.slaDueAt)}
+                          </span>
+                        ))}
                     </>
                   )}
                 </div>

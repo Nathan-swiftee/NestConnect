@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { GROUP_MAX_MEMBERS } from "@ding/schemas";
+import { GROUP_MAX_MEMBERS, type Conversation } from "@ding/schemas";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoutingService } from "./routing.service";
@@ -64,6 +64,7 @@ export class IngestService {
       const decision = await this.routing.route(inbox, contact);
       const assigned = await this.store.assign(conv.id, decision);
       if (assigned) conv = assigned;
+      await this.applyTeamSla(conv);
       this.realtime.emitConversationAssigned(conv, "auto-routing");
       this.logger.log(
         `New WhatsApp conversation ${conv.id} from ${input.from} → ` +
@@ -148,6 +149,7 @@ export class IngestService {
       if (created) {
         const decision = await this.routing.route(inbox, contact);
         const assigned = await this.store.assign(conversationId, decision);
+        if (assigned) await this.applyTeamSla(assigned);
         this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
         this.logger.log(
           `New email conversation ${conversationId} from ${input.from} → ` +
@@ -164,5 +166,14 @@ export class IngestService {
     if (message) this.realtime.emitMessageCreated(conversationId, message);
 
     return { conversationId, created };
+  }
+
+  /** A new conversation inherits its routed team's first-response SLA target. */
+  private async applyTeamSla(conv: Conversation): Promise<void> {
+    if (!conv.assignedTeamId || conv.slaDueAt) return;
+    const team = await this.store.getTeam(conv.assignedTeamId);
+    if (!team?.slaMinutes) return;
+    const due = new Date(Date.now() + team.slaMinutes * 60_000).toISOString();
+    await this.store.setSla(conv.id, due);
   }
 }

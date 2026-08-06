@@ -106,6 +106,7 @@ model Team {
   name            String
   icon            String?
   order           Int             @default(0)
+  slaMinutes      Int?
   routingStrategy RoutingStrategy @default(manual)
 
   org           Organization   @relation(fields: [orgId], references: [id])

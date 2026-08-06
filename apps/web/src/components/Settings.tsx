@@ -516,6 +516,28 @@ function ConnectChannel({ onDone, onToast }: { onDone: () => void; onToast: (msg
 /* Teams                                                               */
 /* ------------------------------------------------------------------ */
 
+/** First-response SLA presets offered per team (stored as minutes). */
+const SLA_OPTIONS: { label: string; minutes: number | null }[] = [
+  { label: "No SLA", minutes: null },
+  { label: "15 minutes", minutes: 15 },
+  { label: "30 minutes", minutes: 30 },
+  { label: "1 hour", minutes: 60 },
+  { label: "2 hours", minutes: 120 },
+  { label: "4 hours", minutes: 240 },
+  { label: "8 hours", minutes: 480 },
+  { label: "1 day", minutes: 1440 },
+];
+
+/** Short human label for an SLA target, e.g. 90 → "1h 30m". */
+export function slaLabel(minutes?: number | null): string | null {
+  if (!minutes) return null;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
 function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
   const teams = useTeams();
   const people = usePeople();
@@ -527,6 +549,7 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const [draftIcon, setDraftIcon] = useState<string | null>(null);
+  const [draftSla, setDraftSla] = useState<number | null>(null);
   const ordered = teams.data ?? [];
   const memberCount = (teamId: string) => (people.data ?? []).filter((m) => m.teamIds.includes(teamId)).length;
 
@@ -543,12 +566,17 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
     );
   };
 
-  const startEdit = (t: Team) => { setEditingId(t.id); setDraftName(t.name); setDraftIcon(t.icon ?? null); };
+  const startEdit = (t: Team) => {
+    setEditingId(t.id);
+    setDraftName(t.name);
+    setDraftIcon(t.icon ?? null);
+    setDraftSla(t.slaMinutes ?? null);
+  };
   const saveEdit = (id: string) => {
     const n = draftName.trim();
     if (!n) return;
     update.mutate(
-      { id, input: { name: n, icon: draftIcon } },
+      { id, input: { name: n, icon: draftIcon, slaMinutes: draftSla } },
       {
         onSuccess: () => { setEditingId(null); onToast("Team updated"); },
         onError: () => onToast("Couldn't update team"),
@@ -596,7 +624,10 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
                 </span>
                 <div className="setrow__main">
                   <b>{t.name}</b>
-                  <small>{n} member{n === 1 ? "" : "s"}</small>
+                  <small>
+                    {n} member{n === 1 ? "" : "s"}
+                    {slaLabel(t.slaMinutes) ? ` · SLA ${slaLabel(t.slaMinutes)}` : ""}
+                  </small>
                 </div>
                 <div className="rowacts">
                   <button className="iconbtn" title="Move up" disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)}>
@@ -647,6 +678,18 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
                       })}
                     </div>
                   </div>
+                  <label className="field">
+                    <span>First-response SLA</span>
+                    <select
+                      value={draftSla ?? ""}
+                      onChange={(e) => setDraftSla(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      {SLA_OPTIONS.map((o) => (
+                        <option key={o.label} value={o.minutes ?? ""}>{o.label}</option>
+                      ))}
+                    </select>
+                    <small className="fieldhint">New conversations routed to this team get a “respond within” timer; it clears on your first reply.</small>
+                  </label>
                   <div className="setform__foot">
                     <button className="btn-ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
                     <button className="btn-primary" type="button" onClick={() => saveEdit(t.id)} disabled={update.isPending || !draftName.trim()}>
