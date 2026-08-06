@@ -12,6 +12,18 @@ const ORG = "org_swiftee";
 // Dev password shared by all seeded users. Change via AUTH_DEV_PASSWORD.
 const passwordHash = bcrypt.hashSync(process.env.AUTH_DEV_PASSWORD ?? "ding1234", 8);
 
+// Demo timestamps relative to real "now" so the seeded thread stays fresh and
+// its date dividers roll over (2 days ago / Yesterday / Today) like WhatsApp.
+// The message seed below re-runs on every deploy, so these stay current.
+const now = Date.now();
+const mins = (m: number) => new Date(now - m * 60_000);
+const dayAt = (d: number, hh: number, mm: number) => {
+  const t = new Date(now);
+  t.setHours(hh, mm, 0, 0);
+  t.setDate(t.getDate() - d);
+  return t;
+};
+
 async function main() {
   await prisma.organization.upsert({
     where: { id: ORG },
@@ -100,28 +112,32 @@ async function main() {
   const seedConversations = [
     {
       contact: { id: "ct_ivy", displayName: "The Ivy House", company: "Venue · Bristol", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)", phone: "+44 117 496 0122", email: "ops@theivyhouse.co.uk" },
-      conv: { id: "conv_ivy", inboxId: "inbox_wa", channel: "whatsapp_group" as const, subject: null as string | null, status: "open" as const, assigneeUserId: "usr_nathan", assignedTeamId: "team_support", priority: "high" as const, unread: true, preview: "James · Swiftee: 5pm works — re-slotting now 👍" },
+      conv: { id: "conv_ivy", inboxId: "inbox_wa", channel: "whatsapp_group" as const, subject: null as string | null, status: "open" as const, assigneeUserId: "usr_nathan", assignedTeamId: "team_support", priority: "high" as const, unread: true, slaDueAt: mins(-72), preview: "James · Swiftee: 5pm works — re-slotting now 👍" },
       labels: ["lbl_vip", "lbl_delivery"],
+      // Spans 2 days ago → yesterday → today so the date dividers roll over.
       messages: [
-        { direction: "in" as const, authorType: "contact" as const, authorName: "Priya (The Ivy House)", body: "Amazing. Could we push the linen drop to 5pm? Lunch service running.", internal: false },
-        { direction: "out" as const, authorType: "user" as const, authorName: "James", authorUserId: "usr_james", body: "@nathan can the Bristol route take a 5pm slot for the Ivy House?", internal: true },
-        { direction: "in" as const, authorType: "contact" as const, authorName: "James · Swiftee", body: "Yep, 5pm works — I'll re-slot the route now. 👍", internal: false },
+        { direction: "in" as const, authorType: "contact" as const, authorName: "Priya (The Ivy House)", body: "Morning! Are we still on for the linen drop this week?", internal: false, createdAt: dayAt(2, 9, 2) },
+        { direction: "out" as const, authorType: "user" as const, authorName: "Nathan A", authorUserId: "usr_nathan", body: "Morning Priya 👋 Yes — you're booked in. I'll confirm the slot shortly.", internal: false, createdAt: dayAt(2, 9, 8) },
+        { direction: "in" as const, authorType: "contact" as const, authorName: "Priya (The Ivy House)", body: "Amazing. One change — could we push it to 5pm? We've got a lunch service running.", internal: false, createdAt: dayAt(1, 13, 20) },
+        { direction: "out" as const, authorType: "user" as const, authorName: "James", authorUserId: "usr_james", body: "@nathan can the Bristol route take a 5pm slot for the Ivy House? Lunch clash their end.", internal: true, createdAt: dayAt(1, 13, 24) },
+        { direction: "in" as const, authorType: "contact" as const, authorName: "James · Swiftee", body: "Yep, 5pm works — I'll re-slot the route now. 👍", internal: false, createdAt: mins(35) },
       ],
     },
     {
       contact: { id: "ct_north", displayName: "Northside Logistics", company: "Logistics · Leeds", avatarColor: "linear-gradient(135deg,#0EA5E9,#2563EB)", phone: "+44 113 555 0148", email: "accounts@northside.io" },
-      conv: { id: "conv_north", inboxId: "inbox_wa", channel: "whatsapp" as const, subject: null as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, preview: "Invoice #4471 — is this the right VAT rate?" },
+      conv: { id: "conv_north", inboxId: "inbox_wa", channel: "whatsapp" as const, subject: null as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, slaDueAt: mins(40), preview: "Invoice #4471 — is this the right VAT rate?" },
       labels: ["lbl_billing"],
       messages: [
-        { direction: "in" as const, authorType: "contact" as const, authorName: "Northside Logistics", body: "Hi team — is the VAT rate on invoice #4471 right? We're zero-rated on transport.", internal: false },
+        { direction: "in" as const, authorType: "contact" as const, authorName: "Northside Logistics", body: "Hi team — is the VAT rate on invoice #4471 right? We're zero-rated on transport.", internal: false, createdAt: dayAt(1, 16, 12) },
+        { direction: "in" as const, authorType: "contact" as const, authorName: "Northside Logistics", body: "No rush, just before month end 🙏", internal: false, createdAt: mins(180) },
       ],
     },
     {
       contact: { id: "ct_tide", displayName: "Tide & Co.", company: "Wholesale · Cardiff", avatarColor: "linear-gradient(135deg,#14B8A6,#0EA5E9)", phone: "+44 29 2055 0166", email: "team@tideandco.com" },
-      conv: { id: "conv_tide", inboxId: "inbox_support", channel: "email" as const, subject: "New supplier onboarding" as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, preview: "New supplier onboarding — a few questions" },
+      conv: { id: "conv_tide", inboxId: "inbox_support", channel: "email" as const, subject: "New supplier onboarding" as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, slaDueAt: mins(165), preview: "New supplier onboarding — a few questions" },
       labels: ["lbl_onboarding"],
       messages: [
-        { direction: "in" as const, authorType: "contact" as const, authorName: "Tide & Co.", body: "Hello! We're getting set up as a new supplier and had a few questions about delivery windows.", internal: false },
+        { direction: "in" as const, authorType: "contact" as const, authorName: "Tide & Co.", body: "Hello! We're getting set up as a new supplier and had a few questions about delivery windows.", internal: false, createdAt: mins(92) },
       ],
     },
   ];
@@ -145,9 +161,26 @@ async function main() {
       },
     });
 
+    const newest = s.messages.reduce(
+      (a, m) => (m.createdAt > a ? m.createdAt : a),
+      s.messages[0].createdAt,
+    );
+
     await prisma.conversation.upsert({
       where: { id: s.conv.id },
-      update: {},
+      // Refresh the shell on every deploy so the demo's dates and SLA stay
+      // current instead of frozen at whenever the DB was first seeded.
+      update: {
+        status: s.conv.status,
+        assigneeUserId: s.conv.assigneeUserId,
+        assignedTeamId: s.conv.assignedTeamId,
+        priority: s.conv.priority,
+        unread: s.conv.unread,
+        preview: s.conv.preview,
+        slaDueAt: s.conv.slaDueAt,
+        lastActivityAt: newest,
+        seq: s.messages.length,
+      },
       create: {
         id: s.conv.id,
         orgId: ORG,
@@ -161,21 +194,29 @@ async function main() {
         priority: s.conv.priority,
         unread: s.conv.unread,
         preview: s.conv.preview,
+        slaDueAt: s.conv.slaDueAt,
+        lastActivityAt: newest,
         seq: s.messages.length,
         labels: { create: s.labels.map((labelId) => ({ labelId })) },
-        messages: {
-          create: s.messages.map((m, idx) => ({
-            seq: idx + 1,
-            direction: m.direction,
-            authorType: m.authorType,
-            authorName: m.authorName,
-            authorUserId: "authorUserId" in m ? (m.authorUserId as string) : null,
-            body: m.body,
-            internal: m.internal,
-            status: m.direction === "out" ? "read" : "delivered",
-          })),
-        },
       },
+    });
+
+    // Rebuild the demo history each run so the seeded timestamps track real
+    // "now" (2 days ago / yesterday / today) rather than the first-seed date.
+    await prisma.message.deleteMany({ where: { conversationId: s.conv.id } });
+    await prisma.message.createMany({
+      data: s.messages.map((m, idx) => ({
+        conversationId: s.conv.id,
+        seq: idx + 1,
+        direction: m.direction,
+        authorType: m.authorType,
+        authorName: m.authorName,
+        authorUserId: "authorUserId" in m ? (m.authorUserId as string) : null,
+        body: m.body,
+        internal: m.internal,
+        status: m.direction === "out" ? ("read" as const) : ("delivered" as const),
+        createdAt: m.createdAt,
+      })),
     });
   }
 

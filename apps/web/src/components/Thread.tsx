@@ -50,9 +50,11 @@ function dayLabel(iso?: string): string {
   if (!iso) return "Today";
   const d = new Date(iso);
   const now = new Date();
-  return d.toDateString() === now.toDateString()
-    ? "Today"
-    : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  if (d.toDateString() === now.toDateString()) return "Today";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 }
 
 /** Split messages into consecutive same-day groups so each day's sticky pill

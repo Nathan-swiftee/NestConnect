@@ -24,8 +24,17 @@ export type ConversationRecord = Omit<Conversation, "snoozedUntil"> & {
   participants?: Participant[];
 };
 
-const now = new Date("2026-08-03T14:20:00.000Z");
+const now = new Date();
 const mins = (m: number) => new Date(now.getTime() - m * 60_000).toISOString();
+// A timestamp on the calendar day `d` days before today at local hh:mm, so the
+// flagship demo thread visibly spans "2 days ago / Yesterday / Today" and the
+// date dividers roll over the way WhatsApp's do.
+const dayAt = (d: number, hh: number, mm: number) => {
+  const t = new Date(now);
+  t.setHours(hh, mm, 0, 0);
+  t.setDate(t.getDate() - d);
+  return t.toISOString();
+};
 
 const LABEL = {
   vip: { id: "lbl_vip", name: "VIP", color: "#0FA47A" },
@@ -90,7 +99,7 @@ export function makeSeed() {
     authorName: string,
     body: string,
     minsAgo: number,
-    opts: { internal?: boolean; status?: Message["status"] } = {},
+    opts: { internal?: boolean; status?: Message["status"]; at?: string } = {},
   ): Message => ({
     id: `msg_${++mid}`,
     conversationId,
@@ -101,7 +110,7 @@ export function makeSeed() {
     body,
     status: opts.status ?? (direction === "out" ? "read" : "delivered"),
     internal: opts.internal ?? false,
-    createdAt: mins(minsAgo),
+    createdAt: opts.at ?? mins(minsAgo),
   });
 
   const conversations: ConversationRecord[] = [
@@ -111,20 +120,20 @@ export function makeSeed() {
       contact: contacts.ivy, subject: "The Ivy House", status: "open", assigneeUserId: DEMO_USER_ID, assignedTeamId: "team_support",
       priority: "high", labels: [LABEL.vip, LABEL.delivery], unread: true,
       participants: ivyMembers.map((m, i) => ({ id: `part_ivy_${i + 1}`, conversationId: "conv_ivy", contact: m, role: (i === 2 ? "admin" : "member") as "admin" | "member", joinedAt: mins(600) })),
-      slaDueAt: mins(-72), lastActivityAt: mins(1), seq: 5, preview: "Priya: Can we push the delivery to 5pm?",
+      slaDueAt: mins(-72), lastActivityAt: mins(35), seq: 5, preview: "James · Swiftee: 5pm works — re-slotting now 👍",
       messages: [
-        msg("conv_ivy", 1, "in", "contact", "Priya (The Ivy House)", "Morning! Are we still on for the linen drop today?", 320),
-        msg("conv_ivy", 2, "out", "user", "Nathan A", "Morning Priya 👋 Yes — the van's loaded, ETA around 2pm.", 318),
-        msg("conv_ivy", 3, "in", "contact", "Priya (The Ivy House)", "Amazing. One change — could we push it to 5pm? We've got a lunch service running.", 60),
-        msg("conv_ivy", 4, "out", "user", "James", "@nathan can the Bristol route take a 5pm slot for the Ivy House? Lunch clash their end.", 58, { internal: true }),
-        msg("conv_ivy", 5, "in", "contact", "James · Swiftee", "Yep, 5pm works — I'll re-slot the route now. 👍", 1),
+        msg("conv_ivy", 1, "in", "contact", "Priya (The Ivy House)", "Morning! Are we still on for the linen drop this week?", 0, { at: dayAt(2, 9, 2) }),
+        msg("conv_ivy", 2, "out", "user", "Nathan A", "Morning Priya 👋 Yes — you're booked in. I'll confirm the slot shortly.", 0, { at: dayAt(2, 9, 8) }),
+        msg("conv_ivy", 3, "in", "contact", "Priya (The Ivy House)", "Amazing. One change — could we push it to 5pm? We've got a lunch service running.", 0, { at: dayAt(1, 13, 20) }),
+        msg("conv_ivy", 4, "out", "user", "James", "@nathan can the Bristol route take a 5pm slot for the Ivy House? Lunch clash their end.", 0, { internal: true, at: dayAt(1, 13, 24) }),
+        msg("conv_ivy", 5, "in", "contact", "James · Swiftee", "Yep, 5pm works — I'll re-slot the route now. 👍", 35),
       ],
     },
     {
       id: "conv_north", orgId: ORG_ID, inboxId: "inbox_wa", channel: "whatsapp",
       contact: contacts.north, status: "open", assigneeUserId: null, assignedTeamId: "team_support",
       priority: "normal", labels: [LABEL.billing], unread: true,
-      slaDueAt: mins(-220), lastActivityAt: mins(3), seq: 2, preview: "Invoice #4471 — is this the right VAT rate?",
+      slaDueAt: mins(40), lastActivityAt: mins(3), seq: 2, preview: "Invoice #4471 — is this the right VAT rate?",
       messages: [
         msg("conv_north", 1, "in", "contact", "Northside Logistics", "Hi team — quick one on invoice #4471, is the VAT rate right? Looks like 20% but we're zero-rated on transport.", 4),
         msg("conv_north", 2, "in", "contact", "Northside Logistics", "No rush, just before month end 🙏", 3),
@@ -162,7 +171,7 @@ export function makeSeed() {
       id: "conv_tide", orgId: ORG_ID, inboxId: "inbox_support", channel: "email",
       contact: contacts.tide, subject: "New supplier onboarding", status: "open", assigneeUserId: null, assignedTeamId: "team_support",
       priority: "normal", labels: [LABEL.onboarding], unread: true,
-      slaDueAt: mins(-300), lastActivityAt: mins(92), seq: 1, preview: "New supplier onboarding — a few questions",
+      slaDueAt: mins(165), lastActivityAt: mins(92), seq: 1, preview: "New supplier onboarding — a few questions",
       messages: [
         msg("conv_tide", 1, "in", "contact", "Tide & Co.", "Hello! We're getting set up as a new supplier and had a few questions about delivery windows and cut-off times.", 92),
       ],
