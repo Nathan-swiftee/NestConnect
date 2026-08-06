@@ -10,6 +10,14 @@ export function relativeTime(iso: string): string {
   return `${d}d`;
 }
 
+/** WhatsApp-style clock time shown on each message bubble, e.g. "10:53" / "9:05". */
+export function clockTime(iso: string): string {
+  const d = new Date(iso);
+  const h = d.getHours();
+  const m = d.getMinutes();
+  return `${h}:${m < 10 ? "0" : ""}${m}`;
+}
+
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   const first = parts[0]?.[0] ?? "";

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
 import type { Message } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams } from "../hooks";
-import { relativeTime, initials } from "../lib/format";
+import { relativeTime, clockTime, initials } from "../lib/format";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
 import {
@@ -333,7 +333,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                       <span className="stampspace" aria-hidden="true" />
                     </span>
                     <span className="stamp">
-                      {relativeTime(m.createdAt)}
+                      {clockTime(m.createdAt)}
                       {m.direction === "out" && (
                         <span className={"tick" + (m.status === "read" ? " read" : "")}>
                           {m.status === "read" || m.status === "delivered" ? <CheckDouble /> : <CheckSingle />}
