@@ -257,6 +257,14 @@ input,textarea{font:inherit}
 /* snoozed conversations show their wake countdown on the card */
 .snoozepill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px 3px 7px;border-radius:var(--r-full);background:var(--amber-tint);color:var(--amber);white-space:nowrap;font-variant-numeric:tabular-nums}
 .snoozepill svg{width:12px;height:12px}
+/* once the wake time passes it's "due" — a solid amber alert */
+.snoozepill.due{background:var(--amber);color:#fff;box-shadow:0 2px 8px -3px color-mix(in srgb,var(--amber) 70%,transparent)}
+/* "Later" flags an animated amber bell when snoozed items come due */
+.duebell{width:15px;height:15px;flex:0 0 15px;display:grid;place-items:center;color:var(--amber);animation:duePulse 1.5s ease-in-out infinite}
+.duebell svg{width:14px;height:14px}
+.subrow.has-due .lbl{color:var(--amber);font-weight:650}
+.subrow .n.warn{color:var(--amber);font-weight:750}
+@keyframes duePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.82)}}
 /* snooze duration menu, anchored under its header button */
 .snoozewrap{position:relative;display:inline-flex}
 .menu.snoozemenu{top:calc(100% + 8px);right:0;left:auto;min-width:204px}

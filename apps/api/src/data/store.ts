@@ -25,6 +25,8 @@ export interface ViewItem {
   handle?: string;
   /** For a WhatsApp number: the group conversations it hosts (nested in the sidebar). */
   groups?: { id: string; title: string }[];
+  /** For "Later": how many snoozed items are now due (wake time passed). */
+  due?: number;
 }
 
 export interface SidebarViews {

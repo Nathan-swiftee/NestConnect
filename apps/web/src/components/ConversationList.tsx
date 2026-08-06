@@ -131,10 +131,17 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                 </div>
                 <div className="conv__meta">
                   {c.status === "snoozed" && c.snoozedUntil ? (
-                    <span className="snoozepill" title={`Wakes ${new Date(c.snoozedUntil).toLocaleString()}`}>
-                      <SnoozeIcon />
-                      Snoozed · {timeUntil(c.snoozedUntil)} left
-                    </span>
+                    new Date(c.snoozedUntil).getTime() <= Date.now() ? (
+                      <span className="snoozepill due" title={`Due since ${new Date(c.snoozedUntil).toLocaleString()}`}>
+                        <SnoozeIcon />
+                        Due now
+                      </span>
+                    ) : (
+                      <span className="snoozepill" title={`Wakes ${new Date(c.snoozedUntil).toLocaleString()}`}>
+                        <SnoozeIcon />
+                        Snoozed · {timeUntil(c.snoozedUntil)} left
+                      </span>
+                    )
                   ) : (
                     <>
                       <span className={"tag " + (owned ? "owner" : "grab")}>

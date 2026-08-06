@@ -300,22 +300,15 @@ export class MemoryStore extends Store {
     return { ...rest, snoozedUntil: rest.snoozedUntil ?? null };
   }
 
-  /** Wake any snoozed conversation whose time has passed back into the queue.
-   *  Runs lazily on every list/views read, so "Later" empties on its own. */
-  private wakeExpiredSnoozes(): void {
+  /** How many snoozed conversations are now due (wake time passed). */
+  private dueSnoozeCount(): number {
     const now = Date.now();
-    for (const r of this.conversations) {
-      if (r.status === "snoozed" && r.snoozedUntil && new Date(r.snoozedUntil).getTime() <= now) {
-        r.status = "open";
-        r.snoozedUntil = null;
-        r.unread = true;
-        r.lastActivityAt = new Date().toISOString();
-      }
-    }
+    return this.conversations.filter(
+      (r) => r.status === "snoozed" && r.snoozedUntil && new Date(r.snoozedUntil).getTime() <= now,
+    ).length;
   }
 
   async listConversations(view: string, userId: string): Promise<Conversation[]> {
-    this.wakeExpiredSnoozes();
     const userTeams = this.membership[userId] ?? [];
     return this.conversations
       .filter((r) => this.matchesView(r, view, userId, userTeams))
@@ -324,7 +317,6 @@ export class MemoryStore extends Store {
   }
 
   async views(userId: string): Promise<SidebarViews> {
-    this.wakeExpiredSnoozes();
     const userTeams = this.membership[userId] ?? [];
     const count = (view: string) =>
       this.conversations.filter((r) => this.matchesView(r, view, userId, userTeams, true)).length;
@@ -333,7 +325,7 @@ export class MemoryStore extends Store {
       { key: "mine", title: "Mine", count: count("mine") },
       { key: "grabs", title: "Up for grabs", count: count("grabs") },
       { key: "mentions", title: "@ Mentions", count: count("mentions") },
-      { key: "snoozed", title: "Later", count: count("snoozed") },
+      { key: "snoozed", title: "Later", count: count("snoozed"), due: this.dueSnoozeCount() },
     ];
     const teams: ViewItem[] = [...this.teams]
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -390,6 +382,11 @@ export class MemoryStore extends Store {
     rec.unread = false;
     if (!input.internal) {
       rec.preview = input.body;
+      // Replying to a snoozed conversation wakes it back into the active queue.
+      if (rec.status === "snoozed") {
+        rec.status = "open";
+        rec.snoozedUntil = null;
+      }
       // Replying to an unclaimed chat takes ownership of it.
       if (!rec.assigneeUserId && rec.status !== "closed") rec.assigneeUserId = author.id;
     }
@@ -551,10 +548,12 @@ export class MemoryStore extends Store {
     rec.lastActivityAt = message.createdAt;
     rec.unread = true;
     rec.preview = input.body;
-    // A new customer message on a closed chat reopens it back into the queue.
-    if (rec.status === "closed") {
+    // A new customer message on a closed or snoozed chat wakes it back up.
+    if (rec.status === "closed" || rec.status === "snoozed") {
+      const wasClosed = rec.status === "closed";
       rec.status = "open";
-      rec.assigneeUserId = null;
+      rec.snoozedUntil = null;
+      if (wasClosed) rec.assigneeUserId = null;
     }
     return message;
   }

@@ -4,6 +4,7 @@ import {
   ChevronRight,
   ContactsIcon,
   InboxIcon,
+  SnoozeIcon,
   TeamGlyph,
   ThemeIcon,
   SoundOnIcon,
@@ -134,17 +135,27 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           </button>
         )}
         <div className="sub">
-          {subs.map((s) => (
-            <button
-              key={s.key}
-              className={"subrow" + (view === s.key ? " active" : "")}
-              onClick={() => onSelectView(s.key)}
-            >
-              <span className="mk" />
-              <span className="lbl">{s.title}</span>
-              <span className="n">{s.count}</span>
-            </button>
-          ))}
+          {subs.map((s) => {
+            const due = s.key === "snoozed" && (s.due ?? 0) > 0;
+            return (
+              <button
+                key={s.key}
+                className={"subrow" + (view === s.key ? " active" : "") + (due ? " has-due" : "")}
+                onClick={() => onSelectView(s.key)}
+                title={due ? `${s.due} due to wake` : undefined}
+              >
+                {due ? (
+                  <span className="duebell" aria-label="Something is due">
+                    <SnoozeIcon />
+                  </span>
+                ) : (
+                  <span className="mk" />
+                )}
+                <span className="lbl">{s.title}</span>
+                <span className={"n" + (due ? " warn" : "")}>{s.count}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div className="sect-label">

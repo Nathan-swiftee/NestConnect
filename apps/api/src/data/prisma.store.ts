@@ -352,16 +352,7 @@ export class PrismaStore extends Store {
     return { id: "__none__" };
   }
 
-  /** Wake any snoozed conversation whose time has passed back into the queue. */
-  private async wakeExpiredSnoozes(): Promise<void> {
-    await this.prisma.conversation.updateMany({
-      where: { status: "snoozed", snoozedUntil: { lte: new Date() } },
-      data: { status: "open", snoozedUntil: null, unread: true },
-    });
-  }
-
   async listConversations(view: string, userId: string): Promise<Conversation[]> {
-    await this.wakeExpiredSnoozes();
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
     const rows = await this.prisma.conversation.findMany({
@@ -373,18 +364,21 @@ export class PrismaStore extends Store {
   }
 
   async views(userId: string): Promise<SidebarViews> {
-    await this.wakeExpiredSnoozes();
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
     const count = (view: string) =>
       this.prisma.conversation.count({ where: this.buildWhere(view, userId, userTeams, token, true) });
+    const dueSnoozed = () =>
+      this.prisma.conversation.count({
+        where: { orgId: ORG_ID, status: "snoozed", snoozedUntil: { lte: new Date() } },
+      });
 
     const my: ViewItem[] = [
       { key: "inbound", title: "My Inbound", count: await count("inbound") },
       { key: "mine", title: "Mine", count: await count("mine") },
       { key: "grabs", title: "Up for grabs", count: await count("grabs") },
       { key: "mentions", title: "@ Mentions", count: await count("mentions") },
-      { key: "snoozed", title: "Later", count: await count("snoozed") },
+      { key: "snoozed", title: "Later", count: await count("snoozed"), due: await dueSnoozed() },
     ];
 
     const teamRows = await this.prisma.team.findMany({
@@ -446,6 +440,8 @@ export class PrismaStore extends Store {
     const seq = conv.seq + 1;
     // Replying to an unclaimed chat takes ownership of it.
     const assignOnReply = !input.internal && !conv.assigneeUserId && conv.status !== "closed";
+    // Replying to a snoozed conversation wakes it back into the active queue.
+    const wakeSnooze = !input.internal && conv.status === "snoozed";
     const [message] = await this.prisma.$transaction([
       this.prisma.message.create({
         data: {
@@ -467,6 +463,7 @@ export class PrismaStore extends Store {
           lastActivityAt: new Date(),
           unread: false,
           ...(input.internal ? {} : { preview: input.body }),
+          ...(wakeSnooze ? { status: "open", snoozedUntil: null } : {}),
           ...(assignOnReply ? { assigneeUserId: author.id } : {}),
         },
       }),
@@ -647,8 +644,9 @@ export class PrismaStore extends Store {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
     if (!conv) return undefined;
     const seq = conv.seq + 1;
-    // A new customer message on a closed chat reopens it back into the queue.
-    const reopen = conv.status === "closed";
+    // A new customer message on a closed or snoozed chat wakes it back up.
+    const wasClosed = conv.status === "closed";
+    const reopen = wasClosed || conv.status === "snoozed";
     const [message] = await this.prisma.$transaction([
       this.prisma.message.create({
         data: {
@@ -669,7 +667,7 @@ export class PrismaStore extends Store {
           lastActivityAt: new Date(),
           unread: true,
           preview: input.body,
-          ...(reopen ? { status: "open", assigneeUserId: null } : {}),
+          ...(reopen ? { status: "open", snoozedUntil: null, ...(wasClosed ? { assigneeUserId: null } : {}) } : {}),
         },
       }),
     ]);

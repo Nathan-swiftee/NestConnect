@@ -30,6 +30,8 @@ export interface ViewItem {
   channel?: ChannelType;
   handle?: string;
   groups?: { id: string; title: string }[];
+  /** For "Later": how many snoozed items are now due (wake time passed). */
+  due?: number;
 }
 export interface SidebarViews {
   my: ViewItem[];
