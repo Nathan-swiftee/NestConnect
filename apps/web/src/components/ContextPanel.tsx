@@ -419,11 +419,11 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
           </>
         ) : (
           <>
+            <AssignmentBlock conv={conv} teamName={teamName} />
             <CustomerTags contact={conv.contact} onToast={onToast} />
             <RecentConversations contactId={conv.contact.id} currentId={conv.id} onOpen={onOpenConversation} />
             <ChannelsBlock contact={conv.contact} activeChannel={conv.channel} />
             <RoutingBlock contact={conv.contact} isGroup={false} onToast={onToast} />
-            <AssignmentBlock conv={conv} teamName={teamName} />
             {conv.slaDueAt && <SlaBlock iso={conv.slaDueAt} now={now} />}
             <LabelsBlock labels={conv.labels} />
           </>
