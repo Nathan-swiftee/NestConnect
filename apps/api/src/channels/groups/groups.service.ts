@@ -38,6 +38,7 @@ export class GroupsService {
     }
 
     const { groupId, inviteLink } = await this.provider.createGroup(
+      inbox.id,
       input.name,
       input.members.map((m) => m.phone),
     );
@@ -86,7 +87,7 @@ export class GroupsService {
     if ((await this.store.countParticipants(conversationId)) >= GROUP_MAX_MEMBERS) {
       throw new BadRequestException(`A WhatsApp group allows at most ${GROUP_MAX_MEMBERS} members`);
     }
-    if (conv.channelRef) await this.provider.addParticipant(conv.channelRef, input.phone);
+    if (conv.channelRef) await this.provider.addParticipant(conv.inboxId, conv.channelRef, input.phone);
 
     const contact = await this.store.upsertContactByIdentity({
       orgId: conv.orgId,
@@ -104,7 +105,7 @@ export class GroupsService {
     if (!conv || conv.channel !== "whatsapp_group") throw new NotFoundException("Group not found");
     const target = conv.participants.find((p) => p.contact.id === contactId);
     if (conv.channelRef && target?.contact.phone) {
-      await this.provider.removeParticipant(conv.channelRef, target.contact.phone);
+      await this.provider.removeParticipant(conv.inboxId, conv.channelRef, target.contact.phone);
     }
     await this.store.removeParticipant(conversationId, contactId);
     await this.emitUpdated(conversationId);
