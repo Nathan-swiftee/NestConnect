@@ -826,6 +826,9 @@ input,textarea{font:inherit}
   .thread__head{padding:calc(10px + env(safe-area-inset-top)) 12px 10px;gap:8px}
   /* fixed so it isn't clipped by the scroll region on iOS */
   .menu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:12px;min-width:0}
+  /* the snooze menu drops from the top like the others (its desktop top:100%
+     would sit below the viewport once the menu is position:fixed) */
+  .menu.snoozemenu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:12px;min-width:0}
   /* header, messages and composer are in normal flow — the header/composer
      carry the safe-area insets, and .msgs is a plain flex-scroll region. */
   .assignbtn .lbl,.resolvebtn .lbl,.thread__head .who-presence{display:none}

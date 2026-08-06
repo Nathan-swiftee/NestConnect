@@ -223,7 +223,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               <span className="lbl">Resolve</span>
             </button>
           )}
-          <button className="assignbtn" onClick={() => setMenu((v) => !v)}>
+          <button className="assignbtn" onClick={() => { setMenu((v) => !v); setSnoozeMenu(false); }}>
             {owned ? (
               <>
                 <span className="mini" style={{ background: me?.user.avatarColor }}>
