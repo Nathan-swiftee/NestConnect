@@ -4,7 +4,7 @@ import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
 
-type Filter = "all" | "unread" | "groups" | "closed";
+type Filter = "all" | "unread" | "unassigned" | "groups" | "closed";
 
 interface Props {
   view: string;
@@ -30,6 +30,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
     // Closed lives only under its own filter; every other filter hides it.
     if (filter === "closed" ? !closed : closed) return false;
     if (filter === "unread" && !c.unread) return false;
+    if (filter === "unassigned" && c.assigneeUserId) return false;
     if (filter === "groups" && c.channel !== "whatsapp_group") return false;
     if (query && !`${c.contact.displayName} ${c.preview} ${c.subject ?? ""}`.toLowerCase().includes(query))
       return false;
@@ -39,6 +40,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "unread", label: "Unread" },
+    { key: "unassigned", label: "Unassigned" },
     ...(hasGroups ? [{ key: "groups" as Filter, label: "Groups" }] : []),
     { key: "closed", label: "Closed" },
   ];
@@ -104,7 +106,9 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
               ? "No group chats here."
               : filter === "closed"
                 ? "No closed conversations."
-                : "Nothing here — inbox zero."}
+                : filter === "unassigned"
+                  ? "Nothing unassigned — all picked up."
+                  : "Nothing here — inbox zero."}
           </div>
         )}
         {shown.map((c) => {
