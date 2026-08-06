@@ -111,7 +111,7 @@ async function main() {
   // A representative set of contacts + conversations + messages.
   const seedConversations = [
     {
-      contact: { id: "ct_ivy", displayName: "The Ivy House", company: "Venue · Bristol", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)", phone: "+44 117 496 0122", email: "ops@theivyhouse.co.uk" },
+      contact: { id: "ct_ivy", displayName: "The Ivy House", company: "Venue · Bristol", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)", phone: "+44 117 496 0122", email: "ops@theivyhouse.co.uk", tags: ["Key account", "Events"] },
       conv: { id: "conv_ivy", inboxId: "inbox_wa", channel: "whatsapp_group" as const, subject: null as string | null, status: "open" as const, assigneeUserId: "usr_nathan", assignedTeamId: "team_support", priority: "high" as const, unread: true, slaDueAt: mins(-72), preview: "James · Swiftee: 5pm works — re-slotting now 👍" },
       labels: ["lbl_vip", "lbl_delivery"],
       // Spans 2 days ago → yesterday → today so the date dividers roll over.
@@ -124,7 +124,7 @@ async function main() {
       ],
     },
     {
-      contact: { id: "ct_north", displayName: "Northside Logistics", company: "Logistics · Leeds", avatarColor: "linear-gradient(135deg,#0EA5E9,#2563EB)", phone: "+44 113 555 0148", email: "accounts@northside.io" },
+      contact: { id: "ct_north", displayName: "Northside Logistics", company: "Logistics · Leeds", avatarColor: "linear-gradient(135deg,#0EA5E9,#2563EB)", phone: "+44 113 555 0148", email: "accounts@northside.io", tags: ["Wholesale", "Net-30"] },
       conv: { id: "conv_north", inboxId: "inbox_wa", channel: "whatsapp" as const, subject: null as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, slaDueAt: mins(40), preview: "Invoice #4471 — is this the right VAT rate?" },
       labels: ["lbl_billing"],
       messages: [
@@ -133,7 +133,7 @@ async function main() {
       ],
     },
     {
-      contact: { id: "ct_tide", displayName: "Tide & Co.", company: "Wholesale · Cardiff", avatarColor: "linear-gradient(135deg,#14B8A6,#0EA5E9)", phone: "+44 29 2055 0166", email: "team@tideandco.com" },
+      contact: { id: "ct_tide", displayName: "Tide & Co.", company: "Wholesale · Cardiff", avatarColor: "linear-gradient(135deg,#14B8A6,#0EA5E9)", phone: "+44 29 2055 0166", email: "team@tideandco.com", tags: ["Wholesale", "New lead"] },
       conv: { id: "conv_tide", inboxId: "inbox_support", channel: "email" as const, subject: "New supplier onboarding" as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, slaDueAt: mins(165), preview: "New supplier onboarding — a few questions" },
       labels: ["lbl_onboarding"],
       messages: [
@@ -145,13 +145,14 @@ async function main() {
   for (const s of seedConversations) {
     await prisma.contact.upsert({
       where: { id: s.contact.id },
-      update: {},
+      update: { tags: s.contact.tags ?? [] },
       create: {
         id: s.contact.id,
         orgId: ORG,
         displayName: s.contact.displayName,
         company: s.contact.company,
         avatarColor: s.contact.avatarColor,
+        tags: s.contact.tags ?? [],
         identities: {
           create: [
             { kind: "phone", value: s.contact.phone },

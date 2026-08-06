@@ -98,7 +98,7 @@ input,textarea{font:inherit}
    Every icon-only control is a perfect circle, centred, with the same
    quiet hover and a physical press-compress. */
 .iconbtn,.railbtn,.thread__back,.list__burger,.side__close,.settings__x,
-.modal__x,.panel__mhead button,.cust .quick button,.compinput .tool,
+.modal__x,.panel__mhead button,.cust .quick .qbtn,.compinput .tool,
 .rowacts .iconbtn,.member .rm,.memrow .rm{
   border-radius:var(--r-full);display:grid;place-items:center;
   color:var(--text-muted);transition:background .15s,color .15s,transform .12s var(--ease)}
@@ -106,7 +106,7 @@ input,textarea{font:inherit}
 .side__close:hover,.settings__x:hover,.modal__x:hover,.panel__mhead button:hover,
 .compinput .tool:hover{background:color-mix(in srgb,var(--text) 7%,transparent);color:var(--text)}
 .iconbtn:active,.railbtn:active,.thread__back:active,.list__burger:active,
-.side__close:active,.settings__x:active,.modal__x:active,.cust .quick button:active,
+.side__close:active,.settings__x:active,.modal__x:active,.cust .quick .qbtn:active,
 .compinput .tool:active,.rowacts .iconbtn:active{transform:scale(.9)}
 
 /* buttons: primary gently raised, secondary translucent, both compress on press */
@@ -403,9 +403,28 @@ input,textarea{font:inherit}
 .cust h3{margin:0;font-size:16px;font-weight:750}
 .cust .co{font-size:12.5px;color:var(--text-muted)}
 .cust .quick{display:flex;gap:8px;margin-top:10px}
-.cust .quick button{width:40px;height:40px;background:var(--surface-2);color:var(--text-muted)}
-.cust .quick button:hover{background:var(--brand-tint);color:var(--brand-strong)}
+.cust .quick .qbtn{width:40px;height:40px;background:var(--surface-2);color:var(--text-muted)}
+.cust .quick .qbtn:hover{background:var(--brand-tint);color:var(--brand-strong)}
+.cust .quick .qbtn:disabled{opacity:.4;cursor:default;pointer-events:none}
 .cust .quick svg{width:17px;height:17px}
+/* count badge beside a panel section title */
+.block .t .count{margin-left:7px;font-size:11px}
+/* details-panel tag editor sits on the panel surface, so lift it a touch */
+.panel .tagedit{background:var(--surface-2)}
+.panel .tagedit:focus-within{background:var(--surface)}
+/* current thread highlighted in the customer's recent-conversation list */
+.custconv.is-active{border-color:var(--brand);background:var(--brand-tint);cursor:default}
+.custconv.is-active .custconv__st{background:var(--brand);color:#fff}
+/* available-channel rows: reachable contact points for this customer */
+.chanrows{display:flex;flex-direction:column;gap:6px}
+.chanrow{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r-12);background:var(--surface-2);width:100%;text-align:left;color:var(--text);text-decoration:none;transition:background .14s}
+.chanrow:hover{background:var(--brand-tint)}
+.chanrow__ic{width:28px;height:28px;flex:0 0 28px;border-radius:var(--r-8);display:grid;place-items:center;color:#fff}
+.chanrow__ic svg{width:15px;height:15px}
+.chanrow__m{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.chanrow__m b{font-size:13px;font-weight:650}
+.chanrow__m small{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chanrow__badge{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:var(--r-full);background:color-mix(in srgb,var(--wa) 16%,transparent);color:var(--wa)}
 .block{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:10px}
 .block > .t{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint)}
 .kv{display:flex;align-items:center;gap:10px}

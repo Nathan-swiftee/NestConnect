@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { Contact, Team } from "@ding/schemas";
 import {
   useContact,
@@ -9,6 +9,7 @@ import {
   useUpdateContact,
 } from "../hooks";
 import { initials, relativeTime } from "../lib/format";
+import { TagEditor } from "./TagEditor";
 import {
   channelMeta,
   EditIcon,
@@ -23,68 +24,8 @@ interface Props {
   onClose: () => void;
   onToast: (msg: string) => void;
   onOpenConversation: (id: string) => void;
-}
-
-/** Free-form tag editor: removable pills, an add-input, and quick suggestions
- *  drawn from tags already in use elsewhere. */
-function TagEditor({
-  tags,
-  suggestions,
-  onChange,
-}: {
-  tags: string[];
-  suggestions: string[];
-  onChange: (next: string[]) => void;
-}) {
-  const [draft, setDraft] = useState("");
-  const add = (raw: string) => {
-    const t = raw.trim();
-    if (!t) return;
-    if (tags.some((x) => x.toLowerCase() === t.toLowerCase())) return;
-    onChange([...tags, t]);
-    setDraft("");
-  };
-  const remove = (t: string) => onChange(tags.filter((x) => x !== t));
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault();
-      add(draft);
-    } else if (e.key === "Backspace" && !draft && tags.length) {
-      remove(tags[tags.length - 1]);
-    }
-  };
-  const open = suggestions.filter((s) => !tags.some((t) => t.toLowerCase() === s.toLowerCase()));
-  return (
-    <div className="field">
-      <span>Tags</span>
-      <div className="tagedit">
-        {tags.map((t) => (
-          <span className="tagpill" key={t}>
-            {t}
-            <button type="button" onClick={() => remove(t)} aria-label={`Remove ${t}`}>
-              <XIcon />
-            </button>
-          </span>
-        ))}
-        <input
-          className="tagedit__in"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={onKey}
-          placeholder={tags.length ? "Add another…" : "Add a tag…"}
-        />
-      </div>
-      {open.length > 0 && (
-        <div className="tagsug">
-          {open.slice(0, 8).map((s) => (
-            <button type="button" className="tagsug__b" key={s} onClick={() => add(s)}>
-              <PlusIcon /> {s}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  /** When opened from a chat's "profile" action, expand this customer's row. */
+  focusContactId?: string | null;
 }
 
 /** The team-routing + person-routing controls that pin a customer's new
@@ -372,12 +313,22 @@ function CustomerEditor({
   );
 }
 
-export function Customers({ onClose, onToast, onOpenConversation }: Props) {
+export function Customers({ onClose, onToast, onOpenConversation, focusContactId }: Props) {
   const contacts = useContacts();
   const teams = useTeams();
   const [q, setQ] = useState("");
   const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(focusContactId ?? null);
+  const focusRef = useRef<HTMLDivElement | null>(null);
+
+  // Opened from a chat's "profile" action: expand and scroll to that customer.
+  useEffect(() => {
+    if (!focusContactId) return;
+    setEditingId(focusContactId);
+    setAdding(false);
+    const t = window.setTimeout(() => focusRef.current?.scrollIntoView({ block: "center" }), 60);
+    return () => window.clearTimeout(t);
+  }, [focusContactId]);
 
   const teamName = (id: string) => teams.data?.find((t) => t.id === id)?.name ?? "team";
   const allTags = useMemo(() => {
@@ -437,7 +388,7 @@ export function Customers({ onClose, onToast, onOpenConversation }: Props) {
                   ? { label: "Direct", pinned: true }
                   : { label: "Automatic", pinned: false };
               return (
-                <div className="setmember" key={c.id}>
+                <div className="setmember" key={c.id} ref={c.id === focusContactId ? focusRef : undefined}>
                   <div className="setrow">
                     <span className="av" style={{ background: c.avatarColor, width: 38, height: 38, fontSize: 13 }}>
                       {initials(c.displayName)}

@@ -23,6 +23,7 @@ export function Workspace() {
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [section, setSection] = useState<"inbox" | "customers" | "settings">("inbox");
+  const [focusContact, setFocusContact] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   useRealtime(selectedId);
@@ -104,7 +105,7 @@ export function Workspace() {
     <>
       <div className="stage">
         <div className={"app" + (drawerOpen ? " drawer-open" : "")} data-pane={pane}>
-          <IconRail section={section} onSection={setSection} />
+          <IconRail section={section} onSection={(s) => { setSection(s); setFocusContact(null); }} />
 
           {section === "inbox" && (
             <>
@@ -141,6 +142,8 @@ export function Workspace() {
                     conversationId={selectedId}
                     onToast={notify}
                     onClose={isPanelOverlay ? () => setShowPanel(false) : undefined}
+                    onOpenConversation={selectConversation}
+                    onOpenProfile={(cid) => { setFocusContact(cid); setSection("customers"); }}
                   />
                 </>
               )}
@@ -149,9 +152,10 @@ export function Workspace() {
 
           {section === "customers" && (
             <Customers
-              onClose={() => setSection("inbox")}
+              onClose={() => { setSection("inbox"); setFocusContact(null); }}
               onToast={notify}
-              onOpenConversation={(id) => { setSection("inbox"); selectConversation(id); }}
+              onOpenConversation={(id) => { setSection("inbox"); setFocusContact(null); selectConversation(id); }}
+              focusContactId={focusContact}
             />
           )}
 

@@ -75,12 +75,12 @@ export function makeSeed() {
     ...contact,
   });
   const contacts = {
-    ivy: c({ id: "ct_ivy", orgId: ORG_ID, displayName: "The Ivy House", company: "Venue · Bristol", phone: "+44 117 496 0122", email: "ops@theivyhouse.co.uk", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)" }),
-    north: c({ id: "ct_north", orgId: ORG_ID, displayName: "Northside Logistics", company: "Logistics · Leeds", phone: "+44 113 555 0148", email: "accounts@northside.io", avatarColor: "linear-gradient(135deg,#0EA5E9,#2563EB)" }),
-    bloom: c({ id: "ct_bloom", orgId: ORG_ID, displayName: "Bloom Florists", company: "Retail · Manchester", phone: "+44 161 555 0193", email: "hello@bloomflorists.co.uk", avatarColor: "linear-gradient(135deg,#10B981,#059669)" }),
-    harbour: c({ id: "ct_harbour", orgId: ORG_ID, displayName: "Harbour Hotel", company: "Hospitality · Bristol", phone: "+44 117 555 0176", email: "front@harbourhotel.co.uk", avatarColor: "linear-gradient(135deg,#6366F1,#A855F7)" }),
-    acme: c({ id: "ct_acme", orgId: ORG_ID, displayName: "Acme Café", company: "Café · Bath", phone: "+44 1225 555 0110", email: "ana@acmecafe.co.uk", avatarColor: "linear-gradient(135deg,#F59E0B,#EF4444)" }),
-    tide: c({ id: "ct_tide", orgId: ORG_ID, displayName: "Tide & Co.", company: "Wholesale · Cardiff", phone: "+44 29 2055 0166", email: "team@tideandco.com", avatarColor: "linear-gradient(135deg,#14B8A6,#0EA5E9)" }),
+    ivy: c({ id: "ct_ivy", orgId: ORG_ID, displayName: "The Ivy House", company: "Venue · Bristol", phone: "+44 117 496 0122", email: "ops@theivyhouse.co.uk", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)", tags: ["Key account", "Events"] }),
+    north: c({ id: "ct_north", orgId: ORG_ID, displayName: "Northside Logistics", company: "Logistics · Leeds", phone: "+44 113 555 0148", email: "accounts@northside.io", avatarColor: "linear-gradient(135deg,#0EA5E9,#2563EB)", tags: ["Wholesale", "Net-30"] }),
+    bloom: c({ id: "ct_bloom", orgId: ORG_ID, displayName: "Bloom Florists", company: "Retail · Manchester", phone: "+44 161 555 0193", email: "hello@bloomflorists.co.uk", avatarColor: "linear-gradient(135deg,#10B981,#059669)", tags: ["Retail"] }),
+    harbour: c({ id: "ct_harbour", orgId: ORG_ID, displayName: "Harbour Hotel", company: "Hospitality · Bristol", phone: "+44 117 555 0176", email: "front@harbourhotel.co.uk", avatarColor: "linear-gradient(135deg,#6366F1,#A855F7)", tags: ["Hospitality"] }),
+    acme: c({ id: "ct_acme", orgId: ORG_ID, displayName: "Acme Café", company: "Café · Bath", phone: "+44 1225 555 0110", email: "ana@acmecafe.co.uk", avatarColor: "linear-gradient(135deg,#F59E0B,#EF4444)", tags: ["Café"] }),
+    tide: c({ id: "ct_tide", orgId: ORG_ID, displayName: "Tide & Co.", company: "Wholesale · Cardiff", phone: "+44 29 2055 0166", email: "team@tideandco.com", avatarColor: "linear-gradient(135deg,#14B8A6,#0EA5E9)", tags: ["Wholesale", "New lead"] }),
   };
 
   // Members of the demo WhatsApp group "The Ivy House" (client people + a Swiftee rep).
