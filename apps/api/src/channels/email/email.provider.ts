@@ -21,11 +21,6 @@ export class EmailProvider extends ChannelProvider {
     return Boolean(env.email.postmarkToken);
   }
 
-  // Email has no reliable read receipts — leave status at "sent".
-  get simulatesStatus(): boolean {
-    return false;
-  }
-
   supports(channel: ChannelType, ctx?: SupportsContext): boolean {
     // Gmail-connected inboxes are served by the Gmail provider, not Postmark.
     return channel === "email" && ctx?.provider !== "gmail";

@@ -6,6 +6,12 @@ export interface SendResult {
   ok: boolean;
   channelMsgId?: string;
   error?: string;
+  /**
+   * True when the send was mocked (no live credentials), so the dispatcher can
+   * fake delivered/read ticks. Real sends leave this false and let the channel's
+   * own status webhooks move the ticks.
+   */
+  simulated?: boolean;
 }
 
 /** Optional context a provider can use (email threading, subjects). */
@@ -41,7 +47,5 @@ export abstract class ChannelProvider {
    * providers that share a channel divide it by inbox (Gmail vs generic email).
    */
   abstract supports(channel: ChannelType, ctx?: SupportsContext): boolean;
-  /** True in mock mode: the provider fakes delivered/read so ticks progress. */
-  abstract get simulatesStatus(): boolean;
   abstract sendText(params: SendParams): Promise<SendResult>;
 }

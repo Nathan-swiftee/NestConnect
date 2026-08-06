@@ -27,11 +27,6 @@ export class GmailProvider extends ChannelProvider {
     super();
   }
 
-  // Gmail gives no read receipts, so leave the message at "sent".
-  get simulatesStatus(): boolean {
-    return false;
-  }
-
   supports(channel: ChannelType, ctx?: SupportsContext): boolean {
     return channel === "email" && ctx?.provider === "gmail";
   }

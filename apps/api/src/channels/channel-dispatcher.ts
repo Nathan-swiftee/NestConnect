@@ -56,7 +56,7 @@ export class ChannelDispatcher {
       await this.transition(result.channelMsgId, "failed", 0);
       return;
     }
-    if (provider.simulatesStatus && result.channelMsgId) {
+    if (result.simulated && result.channelMsgId) {
       void this.transition(result.channelMsgId, "delivered", 1200);
       void this.transition(result.channelMsgId, "read", 2600);
     }

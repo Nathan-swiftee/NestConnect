@@ -17,6 +17,8 @@ import { GoogleOAuthService } from "./google/google-oauth.service";
 import { GoogleController } from "./google/google.controller";
 import { GmailProvider } from "./google/gmail.provider";
 import { GmailSyncService } from "./google/gmail-sync.service";
+import { MetaOAuthService } from "./meta/meta-oauth.service";
+import { MetaController } from "./meta/meta.controller";
 import { IntegrationsController } from "../settings/integrations.controller";
 
 @Module({
@@ -26,6 +28,7 @@ import { IntegrationsController } from "../settings/integrations.controller";
     EmailController,
     GroupsController,
     GoogleController,
+    MetaController,
     IntegrationsController,
   ],
   providers: [
@@ -49,6 +52,7 @@ import { IntegrationsController } from "../settings/integrations.controller";
     GroupsService,
     GoogleOAuthService,
     GmailSyncService,
+    MetaOAuthService,
     ChannelDispatcher,
   ],
   exports: [ChannelDispatcher],

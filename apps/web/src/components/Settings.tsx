@@ -380,29 +380,32 @@ function ConnectChannel({ onDone, onToast }: { onDone: () => void; onToast: (msg
   const toggleTeam = (id: string) =>
     setTeamIds((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
 
-  // Gmail skips the manual credential form entirely: it runs Google's consent
-  // flow in a popup, which lands on our callback and creates the inbox itself.
-  const connectGmail = () => {
-    const popup = window.open(
-      "/api/channels/google/oauth/start",
-      "gmail-oauth",
-      "width=520,height=680,menubar=no,toolbar=no",
-    );
-    if (!popup) onToast("Allow pop-ups for this site to connect Gmail");
+  // Gmail & WhatsApp skip the manual credential form entirely: they run the
+  // provider's consent flow in a popup, which lands on our callback and creates
+  // the inbox itself.
+  const connectOAuth = (path: string, label: string) => {
+    const popup = window.open(path, "channel-oauth", "width=560,height=720,menubar=no,toolbar=no");
+    if (!popup) onToast(`Allow pop-ups for this site to connect ${label}`);
   };
+  const connectGmail = () => connectOAuth("/api/channels/google/oauth/start", "Gmail");
+  const connectWhatsApp = () => connectOAuth("/api/channels/meta/oauth/start", "WhatsApp");
 
   // The popup posts its result back to this window when it finishes.
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      const data = e.data as { source?: string; ok?: boolean; email?: string; error?: string } | null;
+      const data = e.data as
+        | { source?: string; ok?: boolean; provider?: string; email?: string; number?: string; error?: string }
+        | null;
       if (!data || data.source !== "ding-oauth") return; // ignore unrelated messages
       if (data.ok) {
         qc.invalidateQueries({ queryKey: ["inboxes"] });
         qc.invalidateQueries({ queryKey: ["views"] });
-        onToast(`Gmail connected (${data.email ?? ""})`);
+        const who = data.provider === "whatsapp" ? "WhatsApp" : "Gmail";
+        const detail = data.number ?? data.email ?? "";
+        onToast(`${who} connected${detail ? ` (${detail})` : ""}`);
         onDone();
       } else {
-        onToast(data.error || "Couldn't connect Gmail");
+        onToast(data.error || "Couldn't connect the channel");
       }
     };
     window.addEventListener("message", onMessage);
@@ -469,6 +472,16 @@ function ConnectChannel({ onDone, onToast }: { onDone: () => void; onToast: (msg
             </span>
             <b>Gmail</b>
             <small>Connect with Google — one click, no tokens to copy.</small>
+          </button>
+          <button className="kindcard" onClick={connectWhatsApp}>
+            <span className="kindcard__ic" style={{ color: channelMeta("whatsapp").color }}>
+              {(() => {
+                const G = channelMeta("whatsapp").Glyph;
+                return <G />;
+              })()}
+            </span>
+            <b>WhatsApp</b>
+            <small>Connect with Facebook — one click via Meta, no tokens to copy.</small>
           </button>
         </div>
       </div>
@@ -942,21 +955,32 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
   const update = useUpdateIntegrations();
   const google = integrations.data?.google;
   const configured = Boolean(google?.configured);
+  const meta = integrations.data?.meta;
+  const metaConfigured = Boolean(meta?.configured);
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [pubsubTopic, setPubsubTopic] = useState("");
+  const [metaAppId, setMetaAppId] = useState("");
+  const [metaAppSecret, setMetaAppSecret] = useState("");
+  const [metaConfigId, setMetaConfigId] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Prefill the Client ID + Pub/Sub topic from the stored values once they load.
+  // Prefill non-secret values from the stored settings once they load.
   useEffect(() => {
     if (google?.clientId !== undefined) setClientId(google.clientId);
   }, [google?.clientId]);
   useEffect(() => {
     if (google?.pubsubTopic !== undefined) setPubsubTopic(google.pubsubTopic);
   }, [google?.pubsubTopic]);
+  useEffect(() => {
+    if (meta?.appId !== undefined) setMetaAppId(meta.appId);
+  }, [meta?.appId]);
+  useEffect(() => {
+    if (meta?.configId !== undefined) setMetaConfigId(meta.configId);
+  }, [meta?.configId]);
 
-  const save = () => {
+  const saveGoogle = () => {
     const input: {
       googleClientId?: string;
       googleClientSecret?: string;
@@ -978,6 +1002,26 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
       onSuccess: () => {
         setClientSecret("");
         onToast("Google settings saved");
+      },
+      onError: () => onToast("Only admins & managers can change setup"),
+    });
+  };
+
+  const saveMeta = () => {
+    const input: { metaAppId?: string; metaAppSecret?: string; metaConfigId?: string } = {};
+    const id = metaAppId.trim();
+    const secret = metaAppSecret.trim();
+    if (id) input.metaAppId = id;
+    if (secret) input.metaAppSecret = secret; // only send the secret when set
+    if (metaConfigId.trim() !== (meta?.configId ?? "")) input.metaConfigId = metaConfigId.trim();
+    if (input.metaAppId === undefined && input.metaAppSecret === undefined && input.metaConfigId === undefined) {
+      onToast("Enter an App ID and Secret to save");
+      return;
+    }
+    update.mutate(input, {
+      onSuccess: () => {
+        setMetaAppSecret("");
+        onToast("Meta settings saved");
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
@@ -1087,7 +1131,91 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
         </div>
 
         <div className="setform__foot">
-          <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || integrations.isLoading}>
+          <button className="btn-primary" type="button" onClick={saveGoogle} disabled={update.isPending || integrations.isLoading}>
+            Save
+          </button>
+        </div>
+      </div>
+
+      <div className="setupcard">
+        <div className="setupcard__head">
+          <span className="setrow__ic" style={{ color: channelMeta("whatsapp").color }}>
+            {(() => {
+              const G = channelMeta("whatsapp").Glyph;
+              return <G />;
+            })()}
+          </span>
+          <div className="setrow__main">
+            <b>Meta / WhatsApp</b>
+            <small>The Meta app behind “Connect with Facebook” for WhatsApp.</small>
+          </div>
+          <span
+            className={"connpill " + (metaConfigured ? "on" : "off")}
+            title={metaConfigured ? "Ready to connect WhatsApp numbers" : "Add an App ID and Secret to enable"}
+          >
+            <span className="connpill__dot" />
+            {metaConfigured ? "Connected app configured" : "Not configured"}
+          </span>
+        </div>
+
+        <p className="fieldhint">
+          These are the app-level credentials from your Meta app (App ID + Secret). People then connect their
+          WhatsApp Business number with one click via Meta Business Suite.
+        </p>
+
+        <div className="setform__grid two">
+          <label className="field">
+            <span>App ID</span>
+            <input
+              value={metaAppId}
+              autoComplete="off"
+              onChange={(e) => setMetaAppId(e.target.value)}
+              placeholder="1234567890123456"
+            />
+          </label>
+          <label className="field">
+            <span>App Secret</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={metaAppSecret}
+              onChange={(e) => setMetaAppSecret(e.target.value)}
+              placeholder={metaConfigured ? "••••• (hidden)" : "app secret"}
+            />
+          </label>
+        </div>
+
+        <div className="field">
+          <span>Redirect URI</span>
+          <div className="copyrow">
+            <input readOnly value={meta?.redirectUri ?? ""} onFocus={(e) => e.target.select()} />
+            <button className="btn-ghost" type="button" onClick={() => copy(meta?.redirectUri, "meta-redirect", "Redirect URI")}>
+              {copiedKey === "meta-redirect" ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <small className="fieldhint">Add this exact URL under Facebook Login → Valid OAuth Redirect URIs.</small>
+        </div>
+
+        <div className="setupcard__sub">
+          <b>Guided onboarding (optional)</b>
+          <small>
+            Paste your WhatsApp Embedded Signup configuration id to turn the popup into Meta’s guided number
+            onboarding. Leave blank to connect an existing number via standard login.
+          </small>
+        </div>
+
+        <div className="field">
+          <span>Embedded Signup config id</span>
+          <input
+            value={metaConfigId}
+            autoComplete="off"
+            onChange={(e) => setMetaConfigId(e.target.value)}
+            placeholder="Optional — e.g. 987654321098765"
+          />
+        </div>
+
+        <div className="setform__foot">
+          <button className="btn-primary" type="button" onClick={saveMeta} disabled={update.isPending || integrations.isLoading}>
             Save
           </button>
         </div>

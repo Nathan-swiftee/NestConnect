@@ -374,17 +374,27 @@ export const integrationSettingsSchema = z.object({
     /** The URL to register as the Pub/Sub push subscription endpoint. */
     pushEndpoint: z.string(),
   }),
+  meta: z.object({
+    appId: z.string(),
+    configured: z.boolean(),
+    /** Optional Embedded Signup config id for the guided WhatsApp onboarding. */
+    configId: z.string(),
+    /** The exact URL to list as a Valid OAuth Redirect URI in the Meta app. */
+    redirectUri: z.string(),
+  }),
 });
 export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
 
-/** Update the Google OAuth app credentials. The client id/secret are written
- *  only when a non-empty value is supplied (so the secret can be left blank to
- *  keep it); the Pub/Sub topic is written whenever provided, including empty to
- *  clear it. */
+/** Update the app-level integration credentials. Secrets are written only when
+ *  a non-empty value is supplied (so they can be left blank to keep the stored
+ *  one); non-secret ids/config are written whenever provided, empty to clear. */
 export const updateIntegrationSettingsInputSchema = z.object({
   googleClientId: z.string().optional(),
   googleClientSecret: z.string().optional(),
   googlePubsubTopic: z.string().optional(),
+  metaAppId: z.string().optional(),
+  metaAppSecret: z.string().optional(),
+  metaConfigId: z.string().optional(),
 });
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
 
