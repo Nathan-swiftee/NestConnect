@@ -1,10 +1,28 @@
-import { Controller, Get, Query, Req, Res } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
+} from "@nestjs/common";
 import type { Request, Response } from "express";
+import { env } from "../../config/env";
 import { Public } from "../../auth/public.decorator";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { Store } from "../../data/store";
-import { GoogleOAuthService } from "./google-oauth.service";
+import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
+import { GmailSyncService } from "./gmail-sync.service";
 import { googleRedirectUri } from "./redirect-uri";
+
+/** Pub/Sub push delivery envelope (base64 `data` carries the Gmail notice). */
+interface PubSubPushBody {
+  message?: { data?: string; messageId?: string };
+  subscription?: string;
+}
 
 /** The message the popup posts back to the opener window. */
 interface OAuthMessage {
@@ -20,6 +38,7 @@ export class GoogleController {
   constructor(
     private readonly google: GoogleOAuthService,
     private readonly store: Store,
+    private readonly gmailSync: GmailSyncService,
   ) {}
 
   /**
@@ -78,23 +97,45 @@ export class GoogleController {
       );
       const email = await this.google.getEmail(accessToken);
 
-      const teams = await this.store.listTeams();
       const tokenExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
-      await this.store.createInbox({
-        orgId,
-        type: "email",
-        name: email,
-        handle: email,
-        teamIds: teams.map((t) => t.id),
-        routingStrategy: "round_robin",
-        channelConfig: {
-          provider: "gmail",
-          email,
-          providerToken: accessToken,
-          refreshToken: refreshToken ?? "",
-          tokenExpiry,
-        },
-      });
+      const channelConfig: Record<string, string> = {
+        [GMAIL_CONFIG.provider]: "gmail",
+        [GMAIL_CONFIG.email]: email,
+        [GMAIL_CONFIG.accessToken]: accessToken,
+        [GMAIL_CONFIG.tokenExpiry]: tokenExpiry,
+      };
+      // Google only returns a refresh token on first consent — keep the old one
+      // (already stored) rather than overwriting it with an empty value.
+      if (refreshToken) channelConfig[GMAIL_CONFIG.refreshToken] = refreshToken;
+
+      // Reconnecting the same address refreshes the existing channel's tokens
+      // instead of creating a duplicate inbox.
+      const existing = (await this.store.listInboxes()).find(
+        (i) => i.type === "email" && i.handle.toLowerCase() === email.toLowerCase(),
+      );
+      let inbox;
+      if (existing) {
+        inbox = (await this.store.updateInbox(existing.id, { channelConfig })) ?? existing;
+      } else {
+        const teams = await this.store.listTeams();
+        inbox = await this.store.createInbox({
+          orgId,
+          type: "email",
+          name: email,
+          handle: email,
+          teamIds: teams.map((t) => t.id),
+          routingStrategy: "round_robin",
+          channelConfig,
+        });
+      }
+
+      // Record the history cursor now so the first poll only picks up mail that
+      // arrives after connect — no full-mailbox backfill — and arm push if the
+      // org has a Pub/Sub topic configured. (Real mode only.)
+      if (!this.google.isMock) {
+        await this.gmailSync.establishBaseline(inbox, accessToken);
+        await this.gmailSync.armWatch(inbox, accessToken);
+      }
 
       this.sendResult(res, { source: "ding-oauth", ok: true, provider: "gmail", email });
     } catch (err) {
@@ -104,6 +145,36 @@ export class GoogleController {
         error: err instanceof Error ? err.message : "Google connection failed",
       });
     }
+  }
+
+  /**
+   * Gmail push notifications, delivered by Google Cloud Pub/Sub. The payload
+   * carries the affected mailbox address; we ack immediately and sync it in the
+   * background so Pub/Sub doesn't retry. Optionally guarded by a shared ?token=.
+   */
+  @Public()
+  @Post("push")
+  @HttpCode(200)
+  async push(
+    @Body() body: PubSubPushBody,
+    @Query("token") token?: string,
+  ): Promise<{ ok: boolean }> {
+    if (env.gmail.pushToken && token !== env.gmail.pushToken) {
+      throw new UnauthorizedException("Invalid push token");
+    }
+    const data = body?.message?.data;
+    if (!data) return { ok: true }; // subscription verification / empty control message
+    let notice: { emailAddress?: string; historyId?: string };
+    try {
+      notice = JSON.parse(Buffer.from(data, "base64").toString("utf8"));
+    } catch {
+      return { ok: true }; // malformed — ack so Pub/Sub stops retrying
+    }
+    if (notice.emailAddress) {
+      // Fire-and-forget: ack fast, sync out of band.
+      void this.gmailSync.syncInboxByEmail(notice.emailAddress).catch(() => undefined);
+    }
+    return { ok: true };
   }
 
   /** Render the tiny HTML page that posts the result to the opener and closes. */

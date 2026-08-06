@@ -7,8 +7,17 @@ import type { Request } from "express";
  * it's the URL the user registers in their Google Cloud OAuth client.
  */
 export function googleRedirectUri(req: Request): string {
+  return `${baseUrl(req)}/api/channels/google/oauth/callback`;
+}
+
+/** The URL to register as the Gmail push (Pub/Sub) subscription endpoint. */
+export function googlePushEndpoint(req: Request): string {
+  return `${baseUrl(req)}/api/channels/google/push`;
+}
+
+function baseUrl(req: Request): string {
   const proto =
     (req.headers["x-forwarded-proto"] as string | undefined) || (req.secure ? "https" : "http");
   const host = req.get("host");
-  return `${proto}://${host}/api/channels/google/oauth/callback`;
+  return `${proto}://${host}`;
 }

@@ -132,6 +132,16 @@ export class MemoryStore extends Store {
     this.conversations = this.conversations.filter((c) => c.inboxId !== id);
   }
 
+  async getInbox(id: string): Promise<Inbox | undefined> {
+    const inbox = this.inboxes.find((i) => i.id === id);
+    if (!inbox) return undefined;
+    return { ...inbox, connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null) };
+  }
+
+  async getInboxConfig(id: string): Promise<Record<string, string> | undefined> {
+    return this.inboxConfig.get(id);
+  }
+
   async getAppSetting(orgId: string, key: string): Promise<string | undefined> {
     return this.appSettings.get(`${orgId}::${key}`);
   }

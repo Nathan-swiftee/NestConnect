@@ -1,7 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { ChannelType } from "@ding/schemas";
 import { env } from "../../config/env";
-import { ChannelProvider, type SendParams, type SendResult } from "../channel-provider";
+import {
+  ChannelProvider,
+  type SendParams,
+  type SendResult,
+  type SupportsContext,
+} from "../channel-provider";
 
 /**
  * Email sender. Runs in mock mode until POSTMARK_TOKEN is set. We mint our own
@@ -21,8 +26,9 @@ export class EmailProvider extends ChannelProvider {
     return false;
   }
 
-  supports(channel: ChannelType): boolean {
-    return channel === "email";
+  supports(channel: ChannelType, ctx?: SupportsContext): boolean {
+    // Gmail-connected inboxes are served by the Gmail provider, not Postmark.
+    return channel === "email" && ctx?.provider !== "gmail";
   }
 
   async sendText(params: SendParams): Promise<SendResult> {

@@ -44,6 +44,12 @@ export const env = {
     // Optional shared secret; when set, inbound webhooks must pass ?token=.
     inboundToken: process.env.EMAIL_INBOUND_TOKEN ?? "",
   },
+  gmail: {
+    // Inbound polling cadence in seconds; 0 disables the poller (push-only).
+    pollSeconds: Number(process.env.GMAIL_POLL_SECONDS ?? 60),
+    // Optional shared secret; when set, the Pub/Sub push webhook must pass ?token=.
+    pushToken: process.env.GMAIL_PUSH_TOKEN ?? "",
+  },
   get usingDatabase() {
     return this.databaseUrl.length > 0;
   },

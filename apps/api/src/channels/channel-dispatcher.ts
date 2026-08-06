@@ -20,7 +20,13 @@ export class ChannelDispatcher {
   ) {}
 
   async dispatchOutbound(conversation: ConversationWithMessages, message: Message): Promise<void> {
-    const provider = this.providers.find((p) => p.supports(conversation.channel));
+    // Email is served by more than one provider (Gmail vs generic), chosen by
+    // the inbox's connected provider. Other channels ignore the context.
+    const ctx =
+      conversation.channel === "email"
+        ? { provider: (await this.store.getInboxConfig(conversation.inboxId))?.provider }
+        : undefined;
+    const provider = this.providers.find((p) => p.supports(conversation.channel, ctx));
     if (!provider) return; // channel not wired for sending yet
 
     const to = conversation.channel === "email" ? conversation.contact.email : conversation.contact.phone;

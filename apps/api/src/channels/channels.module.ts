@@ -15,6 +15,8 @@ import { GroupsService } from "./groups/groups.service";
 import { GroupsController } from "./groups/groups.controller";
 import { GoogleOAuthService } from "./google/google-oauth.service";
 import { GoogleController } from "./google/google.controller";
+import { GmailProvider } from "./google/gmail.provider";
+import { GmailSyncService } from "./google/gmail-sync.service";
 import { IntegrationsController } from "../settings/integrations.controller";
 
 @Module({
@@ -30,10 +32,15 @@ import { IntegrationsController } from "../settings/integrations.controller";
     WhatsAppCloudProvider,
     WhatsAppGroupsProvider,
     EmailProvider,
+    GmailProvider,
     {
       provide: CHANNEL_PROVIDERS,
-      useFactory: (wa: WhatsAppCloudProvider, email: EmailProvider) => [wa, email],
-      inject: [WhatsAppCloudProvider, EmailProvider],
+      useFactory: (
+        wa: WhatsAppCloudProvider,
+        email: EmailProvider,
+        gmailProvider: GmailProvider,
+      ) => [wa, gmailProvider, email],
+      inject: [WhatsAppCloudProvider, EmailProvider, GmailProvider],
     },
     RoutingService,
     IngestService,
@@ -41,6 +48,7 @@ import { IntegrationsController } from "../settings/integrations.controller";
     EmailService,
     GroupsService,
     GoogleOAuthService,
+    GmailSyncService,
     ChannelDispatcher,
   ],
   exports: [ChannelDispatcher],

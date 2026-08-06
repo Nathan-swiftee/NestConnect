@@ -159,6 +159,19 @@ export class PrismaStore extends Store {
     ]);
   }
 
+  async getInbox(id: string): Promise<Inbox | undefined> {
+    const row = await this.prisma.inbox.findUnique({ where: { id }, include: { teams: true } });
+    return row ? mapInbox(row) : undefined;
+  }
+
+  async getInboxConfig(id: string): Promise<Record<string, string> | undefined> {
+    const row = await this.prisma.inbox.findUnique({
+      where: { id },
+      select: { channelConfig: true },
+    });
+    return (row?.channelConfig as Record<string, string> | null) ?? undefined;
+  }
+
   async getAppSetting(orgId: string, key: string): Promise<string | undefined> {
     const row = await this.prisma.appSetting.findUnique({
       where: { orgId_key: { orgId, key } },

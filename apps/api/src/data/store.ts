@@ -85,6 +85,10 @@ export abstract class Store {
   ): Promise<Inbox | undefined>;
   /** Delete a channel and the conversations that belong to it. */
   abstract deleteInbox(id: string): Promise<void>;
+  /** A single inbox by id (includes orgId/type; channelConfig stays backend-only). */
+  abstract getInbox(id: string): Promise<Inbox | undefined>;
+  /** The raw integration credentials for an inbox (backend-only — tokens etc.). */
+  abstract getInboxConfig(id: string): Promise<Record<string, string> | undefined>;
 
   /* ---- app-level settings (org-scoped key/value) ---- */
   /** Read an org-scoped app setting (e.g. the Google OAuth client id/secret). */

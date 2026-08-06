@@ -21,8 +21,9 @@ import {
   GoogleOAuthService,
   GOOGLE_CLIENT_ID_KEY,
   GOOGLE_CLIENT_SECRET_KEY,
+  GOOGLE_PUBSUB_TOPIC_KEY,
 } from "../channels/google/google-oauth.service";
-import { googleRedirectUri } from "../channels/google/redirect-uri";
+import { googlePushEndpoint, googleRedirectUri } from "../channels/google/redirect-uri";
 
 /** App-level integration settings (Settings › Setup). Currently: the org's
  *  Google OAuth app credentials that power the "Connect with Google" flow. */
@@ -53,17 +54,28 @@ export class IntegrationsController {
     if (clientId) await this.store.setAppSetting(me.orgId, GOOGLE_CLIENT_ID_KEY, clientId);
     const clientSecret = body.googleClientSecret?.trim();
     if (clientSecret) await this.store.setAppSetting(me.orgId, GOOGLE_CLIENT_SECRET_KEY, clientSecret);
+    // The Pub/Sub topic is written whenever supplied, including empty to clear it.
+    if (body.googlePubsubTopic !== undefined) {
+      await this.store.setAppSetting(me.orgId, GOOGLE_PUBSUB_TOPIC_KEY, body.googlePubsubTopic.trim());
+    }
     return this.snapshot(me.orgId, req);
   }
 
   /** Build the GET/PATCH response. The client secret is never included. */
   private async snapshot(orgId: string, req: Request): Promise<IntegrationSettings> {
-    const [clientId, configured] = await Promise.all([
+    const [clientId, configured, pubsubTopic] = await Promise.all([
       this.google.clientId(orgId),
       this.google.configured(orgId),
+      this.store.getAppSetting(orgId, GOOGLE_PUBSUB_TOPIC_KEY),
     ]);
     return {
-      google: { clientId, configured, redirectUri: googleRedirectUri(req) },
+      google: {
+        clientId,
+        configured,
+        redirectUri: googleRedirectUri(req),
+        pubsubTopic: pubsubTopic ?? "",
+        pushEndpoint: googlePushEndpoint(req),
+      },
     };
   }
 

@@ -945,39 +945,51 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [pubsubTopic, setPubsubTopic] = useState("");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Prefill the Client ID from the stored value once it loads.
+  // Prefill the Client ID + Pub/Sub topic from the stored values once they load.
   useEffect(() => {
     if (google?.clientId !== undefined) setClientId(google.clientId);
   }, [google?.clientId]);
+  useEffect(() => {
+    if (google?.pubsubTopic !== undefined) setPubsubTopic(google.pubsubTopic);
+  }, [google?.pubsubTopic]);
 
   const save = () => {
-    const input: { googleClientId?: string; googleClientSecret?: string } = {};
+    const input: {
+      googleClientId?: string;
+      googleClientSecret?: string;
+      googlePubsubTopic?: string;
+    } = {};
     const id = clientId.trim();
     const secret = clientSecret.trim();
     if (id) input.googleClientId = id;
     if (secret) input.googleClientSecret = secret; // only send the secret when set
-    if (!input.googleClientId && !input.googleClientSecret) {
+    // Send the topic only when it changed (empty clears it → polling-only).
+    if (pubsubTopic.trim() !== (google?.pubsubTopic ?? "")) {
+      input.googlePubsubTopic = pubsubTopic.trim();
+    }
+    if (input.googleClientId === undefined && input.googleClientSecret === undefined && input.googlePubsubTopic === undefined) {
       onToast("Enter a Client ID and Secret to save");
       return;
     }
     update.mutate(input, {
       onSuccess: () => {
         setClientSecret("");
-        onToast("Google credentials saved");
+        onToast("Google settings saved");
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
   };
 
-  const copyRedirect = async () => {
-    if (!google?.redirectUri) return;
+  const copy = async (value: string | undefined, key: string, label: string) => {
+    if (!value) return;
     try {
-      await navigator.clipboard.writeText(google.redirectUri);
-      setCopied(true);
-      onToast("Redirect URI copied");
-      window.setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(value);
+      setCopiedKey(key);
+      onToast(`${label} copied`);
+      window.setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1500);
     } catch {
       onToast("Couldn't copy — select the URL and copy manually");
     }
@@ -1037,11 +1049,41 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
           <span>Redirect URI</span>
           <div className="copyrow">
             <input readOnly value={google?.redirectUri ?? ""} onFocus={(e) => e.target.select()} />
-            <button className="btn-ghost" type="button" onClick={copyRedirect}>
-              {copied ? "Copied" : "Copy"}
+            <button className="btn-ghost" type="button" onClick={() => copy(google?.redirectUri, "redirect", "Redirect URI")}>
+              {copiedKey === "redirect" ? "Copied" : "Copy"}
             </button>
           </div>
           <small className="fieldhint">Add this exact URL to your Google Cloud OAuth client’s Authorized redirect URIs.</small>
+        </div>
+
+        <div className="setupcard__sub">
+          <b>Real-time delivery (optional)</b>
+          <small>
+            Gmail is checked every minute by default. For near-instant delivery, create a Google Cloud Pub/Sub
+            topic, add the push endpoint below as its subscription, then paste the topic name here. Leave blank to
+            keep polling.
+          </small>
+        </div>
+
+        <div className="field">
+          <span>Pub/Sub topic</span>
+          <input
+            value={pubsubTopic}
+            autoComplete="off"
+            onChange={(e) => setPubsubTopic(e.target.value)}
+            placeholder="projects/your-project/topics/gmail-push"
+          />
+        </div>
+
+        <div className="field">
+          <span>Push endpoint</span>
+          <div className="copyrow">
+            <input readOnly value={google?.pushEndpoint ?? ""} onFocus={(e) => e.target.select()} />
+            <button className="btn-ghost" type="button" onClick={() => copy(google?.pushEndpoint, "push", "Push endpoint")}>
+              {copiedKey === "push" ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <small className="fieldhint">Register this as your Pub/Sub push subscription’s endpoint URL.</small>
         </div>
 
         <div className="setform__foot">

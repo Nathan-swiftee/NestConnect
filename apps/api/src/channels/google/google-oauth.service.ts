@@ -1,11 +1,30 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import jwt from "jsonwebtoken";
+import type { Inbox } from "@ding/schemas";
 import { env } from "../../config/env";
 import { Store } from "../../data/store";
 
 /** AppSetting keys holding the org's Google OAuth app credentials. */
 export const GOOGLE_CLIENT_ID_KEY = "google_client_id";
 export const GOOGLE_CLIENT_SECRET_KEY = "google_client_secret";
+/** AppSetting: the Pub/Sub topic Gmail push notifications publish to (optional). */
+export const GOOGLE_PUBSUB_TOPIC_KEY = "google_pubsub_topic";
+
+/** channelConfig keys on a connected Gmail inbox. */
+export const GMAIL_CONFIG = {
+  provider: "provider",
+  email: "email",
+  accessToken: "providerToken",
+  refreshToken: "refreshToken",
+  tokenExpiry: "tokenExpiry",
+  /** Gmail history cursor for incremental inbound sync. */
+  historyId: "historyId",
+  /** ms-epoch string when the current users.watch push subscription expires. */
+  watchExpiry: "watchExpiry",
+} as const;
+
+/** Refresh an access token this many ms before it actually expires. */
+const TOKEN_REFRESH_BUFFER_MS = 60_000;
 
 /** Scopes requested during the Gmail consent flow (connect only for now). */
 const GMAIL_SCOPES = [
@@ -37,11 +56,18 @@ export interface TokenSet {
  */
 @Injectable()
 export class GoogleOAuthService {
+  private readonly logger = new Logger(GoogleOAuthService.name);
+
   constructor(private readonly store: Store) {}
 
   /** True in local/dev mock mode — Google is never actually contacted. */
   private get mock(): boolean {
     return process.env.GOOGLE_OAUTH_MOCK === "true";
+  }
+
+  /** Public view of mock mode, so the Gmail provider/sync can short-circuit too. */
+  get isMock(): boolean {
+    return this.mock;
   }
 
   private async credentials(orgId: string): Promise<{ clientId: string; clientSecret: string }> {
@@ -158,5 +184,63 @@ export class GoogleOAuthService {
     const json = (await res.json()) as { email?: string };
     if (!json.email) throw new Error("Google userinfo response missing email");
     return json.email;
+  }
+
+  /** Exchange a stored refresh token for a fresh access token. */
+  async refreshAccessToken(
+    orgId: string,
+    refreshToken: string,
+  ): Promise<{ accessToken: string; expiresIn: number }> {
+    if (this.mock) return { accessToken: "mock-access-token", expiresIn: 3600 };
+    const { clientId, clientSecret } = await this.credentials(orgId);
+    const body = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    });
+    let res: Awaited<ReturnType<typeof fetch>>;
+    try {
+      res = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body,
+      });
+    } catch (err) {
+      throw new Error(`Google token refresh failed: ${String(err)}`);
+    }
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      throw new Error(`Google token refresh failed (${res.status}): ${detail}`);
+    }
+    const json = (await res.json()) as { access_token?: string; expires_in?: number };
+    if (!json.access_token) throw new Error("Google refresh response missing access_token");
+    return { accessToken: json.access_token, expiresIn: json.expires_in ?? 3600 };
+  }
+
+  /**
+   * A currently-valid access token for a connected Gmail inbox. Uses the stored
+   * token while it's fresh; otherwise refreshes it and persists the new token +
+   * expiry back onto the inbox's channelConfig.
+   */
+  async accessTokenForInbox(inbox: Inbox, config: Record<string, string>): Promise<string> {
+    if (this.mock) return "mock-access-token";
+    const stored = config[GMAIL_CONFIG.accessToken];
+    const expiryIso = config[GMAIL_CONFIG.tokenExpiry];
+    const expiresAt = expiryIso ? Date.parse(expiryIso) : 0;
+    if (stored && expiresAt && Date.now() < expiresAt - TOKEN_REFRESH_BUFFER_MS) {
+      return stored;
+    }
+    const refreshToken = config[GMAIL_CONFIG.refreshToken];
+    if (!refreshToken) {
+      throw new Error(`Gmail inbox ${inbox.id} has no refresh token — reconnect the channel`);
+    }
+    const { accessToken, expiresIn } = await this.refreshAccessToken(inbox.orgId, refreshToken);
+    const tokenExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
+    await this.store.updateInbox(inbox.id, {
+      channelConfig: { [GMAIL_CONFIG.accessToken]: accessToken, [GMAIL_CONFIG.tokenExpiry]: tokenExpiry },
+    });
+    this.logger.log(`Refreshed Gmail access token for inbox ${inbox.id}`);
+    return accessToken;
   }
 }

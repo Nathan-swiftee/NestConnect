@@ -369,15 +369,22 @@ export const integrationSettingsSchema = z.object({
     clientId: z.string(),
     configured: z.boolean(),
     redirectUri: z.string(),
+    /** Optional Pub/Sub topic for Gmail push; empty means polling-only. */
+    pubsubTopic: z.string(),
+    /** The URL to register as the Pub/Sub push subscription endpoint. */
+    pushEndpoint: z.string(),
   }),
 });
 export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
 
-/** Update the Google OAuth app credentials. A field is written only when a
- *  non-empty value is supplied, so the secret can be left blank to keep it. */
+/** Update the Google OAuth app credentials. The client id/secret are written
+ *  only when a non-empty value is supplied (so the secret can be left blank to
+ *  keep it); the Pub/Sub topic is written whenever provided, including empty to
+ *  clear it. */
 export const updateIntegrationSettingsInputSchema = z.object({
   googleClientId: z.string().optional(),
   googleClientSecret: z.string().optional(),
+  googlePubsubTopic: z.string().optional(),
 });
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
 
