@@ -116,7 +116,7 @@ async function main() {
   const seedConversations = [
     {
       contact: { id: "ct_ivy", displayName: "The Ivy House", company: "Venue · Bristol", avatarColor: "linear-gradient(135deg,#F97316,#DB2777)", phone: "+44 117 496 0122", email: "ops@theivyhouse.co.uk", tags: ["Key account", "Events"] },
-      conv: { id: "conv_ivy", inboxId: "inbox_wa", channel: "whatsapp_group" as const, subject: null as string | null, status: "open" as const, assigneeUserId: "usr_nathan", assignedTeamId: "team_support", priority: "high" as const, unread: true, slaDueAt: mins(-72), preview: "James · Swiftee: 5pm works — re-slotting now 👍" },
+      conv: { id: "conv_ivy", inboxId: "inbox_wa", channel: "whatsapp_group" as const, subject: null as string | null, status: "open" as const, assigneeUserId: "usr_nathan", assignedTeamId: "team_support", priority: "high" as const, unread: true, unreadCount: 2, slaDueAt: mins(-72), preview: "James · Swiftee: 5pm works — re-slotting now 👍" },
       labels: ["lbl_vip", "lbl_delivery"],
       // Spans 2 days ago → yesterday → today so the date dividers roll over.
       messages: [
@@ -129,7 +129,7 @@ async function main() {
     },
     {
       contact: { id: "ct_north", displayName: "Northside Logistics", company: "Logistics · Leeds", avatarColor: "linear-gradient(135deg,#0EA5E9,#2563EB)", phone: "+44 113 555 0148", email: "accounts@northside.io", tags: ["Wholesale", "Net-30"] },
-      conv: { id: "conv_north", inboxId: "inbox_wa", channel: "whatsapp" as const, subject: null as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, slaDueAt: mins(40), preview: "Invoice #4471 — is this the right VAT rate?" },
+      conv: { id: "conv_north", inboxId: "inbox_wa", channel: "whatsapp" as const, subject: null as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, unreadCount: 3, slaDueAt: mins(40), preview: "Invoice #4471 — is this the right VAT rate?" },
       labels: ["lbl_billing"],
       messages: [
         { direction: "in" as const, authorType: "contact" as const, authorName: "Northside Logistics", body: "Hi team — is the VAT rate on invoice #4471 right? We're zero-rated on transport.", internal: false, createdAt: dayAt(1, 16, 12) },
@@ -138,7 +138,7 @@ async function main() {
     },
     {
       contact: { id: "ct_tide", displayName: "Tide & Co.", company: "Wholesale · Cardiff", avatarColor: "linear-gradient(135deg,#14B8A6,#0EA5E9)", phone: "+44 29 2055 0166", email: "team@tideandco.com", tags: ["Wholesale", "New lead"] },
-      conv: { id: "conv_tide", inboxId: "inbox_support", channel: "email" as const, subject: "New supplier onboarding" as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, slaDueAt: mins(165), preview: "New supplier onboarding — a few questions" },
+      conv: { id: "conv_tide", inboxId: "inbox_support", channel: "email" as const, subject: "New supplier onboarding" as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, unreadCount: 1, slaDueAt: mins(165), preview: "New supplier onboarding — a few questions" },
       labels: ["lbl_onboarding"],
       messages: [
         { direction: "in" as const, authorType: "contact" as const, authorName: "Tide & Co.", body: "Hello! We're getting set up as a new supplier and had a few questions about delivery windows.", internal: false, createdAt: mins(92) },
@@ -181,6 +181,7 @@ async function main() {
         assignedTeamId: s.conv.assignedTeamId,
         priority: s.conv.priority,
         unread: s.conv.unread,
+        unreadCount: s.conv.unreadCount ?? 0,
         preview: s.conv.preview,
         slaDueAt: s.conv.slaDueAt,
         lastActivityAt: newest,
@@ -198,6 +199,7 @@ async function main() {
         assignedTeamId: s.conv.assignedTeamId,
         priority: s.conv.priority,
         unread: s.conv.unread,
+        unreadCount: s.conv.unreadCount ?? 0,
         preview: s.conv.preview,
         slaDueAt: s.conv.slaDueAt,
         lastActivityAt: newest,

@@ -41,13 +41,25 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const showUnassigned = view !== "mine";
   // A team inbox already scopes to one team, so the per-card team label is redundant there.
   const showTeamTag = !view.startsWith("team:");
-  const filters: { key: Filter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "unread", label: "Unread" },
+  // Per-filter counts (WhatsApp-style) — computed from the view's data, ignoring search.
+  const active = (data ?? []).filter((c) => c.status !== "closed");
+  const countFor = (key: Filter): number =>
+    key === "all"
+      ? active.length
+      : key === "unread"
+        ? active.filter((c) => c.unread).length
+        : key === "unassigned"
+          ? active.filter((c) => !c.assigneeUserId).length
+          : key === "groups"
+            ? active.filter((c) => c.channel === "whatsapp_group").length
+            : (data ?? []).filter((c) => c.status === "closed").length;
+  const filters: { key: Filter; label: string; count: number }[] = [
+    { key: "all" as Filter, label: "All" },
+    { key: "unread" as Filter, label: "Unread" },
     ...(showUnassigned ? [{ key: "unassigned" as Filter, label: "Unassigned" }] : []),
     ...(hasGroups ? [{ key: "groups" as Filter, label: "Groups" }] : []),
-    { key: "closed", label: "Closed" },
-  ];
+    { key: "closed" as Filter, label: "Closed" },
+  ].map((f) => ({ ...f, count: countFor(f.key) }));
 
   // Fall back to All if the active filter isn't available in the current view/data.
   useEffect(() => {
@@ -104,6 +116,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
               onClick={() => setFilter(f.key)}
             >
               {f.label}
+              {f.count > 0 && <span className="chipcount">{f.count}</span>}
             </button>
           ))}
         </div>
@@ -145,6 +158,11 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                 </div>
                 <div className="conv__prev">
                   <p>{c.preview}</p>
+                  {c.unread && c.unreadCount > 0 && (
+                    <span className="unreadbubble" title={`${c.unreadCount} unread`}>
+                      {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                    </span>
+                  )}
                 </div>
                 <div className="conv__meta">
                   {c.status === "snoozed" && c.snoozedUntil ? (

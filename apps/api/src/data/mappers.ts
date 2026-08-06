@@ -126,6 +126,7 @@ export function mapConversation(c: ConversationSummaryRow): Conversation {
     priority: c.priority as Priority,
     labels: c.labels.map((cl) => ({ id: cl.label.id, name: cl.label.name, color: cl.label.color })),
     unread: c.unread,
+    unreadCount: c.unreadCount ?? 0,
     slaDueAt: c.slaDueAt ? c.slaDueAt.toISOString() : null,
     snoozedUntil: c.snoozedUntil ? c.snoozedUntil.toISOString() : null,
     lastActivityAt: c.lastActivityAt.toISOString(),

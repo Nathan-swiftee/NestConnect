@@ -201,6 +201,7 @@ model Conversation {
   assignedTeamId String?
   priority       Priority           @default(normal)
   unread         Boolean            @default(false)
+  unreadCount    Int                @default(0)
   slaDueAt       DateTime?
   snoozedUntil   DateTime?
   lastActivityAt DateTime           @default(now())

@@ -188,6 +188,8 @@ export const conversationSchema = z.object({
   priority: prioritySchema.default("normal"),
   labels: z.array(labelSchema).default([]),
   unread: z.boolean().default(false),
+  /** Number of unread inbound messages (for the WhatsApp-style count badge). */
+  unreadCount: z.number().int().nonnegative().default(0),
   slaDueAt: z.string().nullable().default(null),
   /** When a snoozed conversation should wake back into the queue (ISO). */
   snoozedUntil: z.string().nullable().default(null),

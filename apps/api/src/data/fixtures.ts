@@ -18,8 +18,9 @@ export const ORG_ID = "org_swiftee";
 export const DEMO_USER_ID = "usr_nathan";
 
 /** A conversation plus its message history, as held in the store. */
-export type ConversationRecord = Omit<Conversation, "snoozedUntil"> & {
+export type ConversationRecord = Omit<Conversation, "snoozedUntil" | "unreadCount"> & {
   snoozedUntil?: string | null;
+  unreadCount?: number;
   messages: Message[];
   participants?: Participant[];
 };
@@ -118,7 +119,7 @@ export function makeSeed() {
       id: "conv_ivy", orgId: ORG_ID, inboxId: "inbox_wa", channel: "whatsapp_group",
       channelRef: "group_ivy_demo", inviteLink: "https://chat.whatsapp.com/NCivyhouse01",
       contact: contacts.ivy, subject: "The Ivy House", status: "open", assigneeUserId: DEMO_USER_ID, assignedTeamId: "team_support",
-      priority: "high", labels: [LABEL.vip, LABEL.delivery], unread: true,
+      priority: "high", labels: [LABEL.vip, LABEL.delivery], unread: true, unreadCount: 2,
       participants: ivyMembers.map((m, i) => ({ id: `part_ivy_${i + 1}`, conversationId: "conv_ivy", contact: m, role: (i === 2 ? "admin" : "member") as "admin" | "member", joinedAt: mins(600) })),
       slaDueAt: mins(-72), lastActivityAt: mins(35), seq: 5, preview: "James · Swiftee: 5pm works — re-slotting now 👍",
       messages: [
@@ -132,7 +133,7 @@ export function makeSeed() {
     {
       id: "conv_north", orgId: ORG_ID, inboxId: "inbox_wa", channel: "whatsapp",
       contact: contacts.north, status: "open", assigneeUserId: null, assignedTeamId: "team_support",
-      priority: "normal", labels: [LABEL.billing], unread: true,
+      priority: "normal", labels: [LABEL.billing], unread: true, unreadCount: 3,
       slaDueAt: mins(40), lastActivityAt: mins(3), seq: 2, preview: "Invoice #4471 — is this the right VAT rate?",
       messages: [
         msg("conv_north", 1, "in", "contact", "Northside Logistics", "Hi team — quick one on invoice #4471, is the VAT rate right? Looks like 20% but we're zero-rated on transport.", 4),
@@ -170,7 +171,7 @@ export function makeSeed() {
     {
       id: "conv_tide", orgId: ORG_ID, inboxId: "inbox_support", channel: "email",
       contact: contacts.tide, subject: "New supplier onboarding", status: "open", assigneeUserId: null, assignedTeamId: "team_support",
-      priority: "normal", labels: [LABEL.onboarding], unread: true,
+      priority: "normal", labels: [LABEL.onboarding], unread: true, unreadCount: 1,
       slaDueAt: mins(165), lastActivityAt: mins(92), seq: 1, preview: "New supplier onboarding — a few questions",
       messages: [
         msg("conv_tide", 1, "in", "contact", "Tide & Co.", "Hello! We're getting set up as a new supplier and had a few questions about delivery windows and cut-off times.", 92),

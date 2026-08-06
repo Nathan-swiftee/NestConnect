@@ -313,7 +313,7 @@ export class MemoryStore extends Store {
     const { messages: _messages, participants: _participants, ...rest } = rec;
     void _messages;
     void _participants;
-    return { ...rest, snoozedUntil: rest.snoozedUntil ?? null };
+    return { ...rest, snoozedUntil: rest.snoozedUntil ?? null, unreadCount: rest.unreadCount ?? 0 };
   }
 
   /** How many snoozed conversations are now due (wake time passed). */
@@ -396,6 +396,7 @@ export class MemoryStore extends Store {
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
     rec.unread = false;
+    rec.unreadCount = 0;
     if (!input.internal) {
       rec.preview = input.body;
       // Replying to a snoozed conversation wakes it back into the active queue.
@@ -426,7 +427,7 @@ export class MemoryStore extends Store {
     if (!rec) return undefined;
     rec.status = status;
     // Reopening surfaces the thread again; closing clears the unread flag.
-    if (status === "closed") rec.unread = false;
+    if (status === "closed") { rec.unread = false; rec.unreadCount = 0; }
     if (status !== "snoozed") rec.snoozedUntil = null;
     rec.lastActivityAt = new Date().toISOString();
     return this.summary(rec);
@@ -452,6 +453,7 @@ export class MemoryStore extends Store {
     rec.status = "snoozed";
     rec.snoozedUntil = until;
     rec.unread = false;
+    rec.unreadCount = 0;
     rec.lastActivityAt = new Date().toISOString();
     return this.summary(rec);
   }
@@ -577,6 +579,7 @@ export class MemoryStore extends Store {
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
     rec.unread = true;
+    rec.unreadCount = (rec.unreadCount ?? 0) + 1;
     rec.preview = input.body;
     // A new customer message on a closed or snoozed chat wakes it back up.
     if (rec.status === "closed" || rec.status === "snoozed") {

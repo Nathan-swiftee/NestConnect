@@ -483,6 +483,7 @@ export class PrismaStore extends Store {
           seq,
           lastActivityAt: new Date(),
           unread: false,
+          unreadCount: 0,
           ...(input.internal ? {} : { preview: input.body }),
           ...(wakeSnooze ? { status: "open", snoozedUntil: null } : {}),
           ...(assignOnReply ? { assigneeUserId: author.id } : {}),
@@ -531,7 +532,7 @@ export class PrismaStore extends Store {
         data: {
           status,
           lastActivityAt: new Date(),
-          ...(status === "closed" ? { unread: false } : {}),
+          ...(status === "closed" ? { unread: false, unreadCount: 0 } : {}),
           ...(status !== "snoozed" ? { snoozedUntil: null } : {}),
         },
         include: convInclude,
@@ -572,7 +573,7 @@ export class PrismaStore extends Store {
     try {
       const row = await this.prisma.conversation.update({
         where: { id: conversationId },
-        data: { status: "snoozed", snoozedUntil: new Date(until), unread: false, lastActivityAt: new Date() },
+        data: { status: "snoozed", snoozedUntil: new Date(until), unread: false, unreadCount: 0, lastActivityAt: new Date() },
         include: convInclude,
       });
       return mapConversation(row);
@@ -713,6 +714,7 @@ export class PrismaStore extends Store {
           seq,
           lastActivityAt: new Date(),
           unread: true,
+          unreadCount: { increment: 1 },
           preview: input.body,
           ...(reopen ? { status: "open", snoozedUntil: null, ...(wasClosed ? { assigneeUserId: null } : {}) } : {}),
         },
