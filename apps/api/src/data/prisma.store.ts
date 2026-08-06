@@ -333,7 +333,11 @@ export class PrismaStore extends Store {
       ...org,
       ...active,
       assigneeUserId: null,
-      inbox: { teams: { some: { teamId: { in: userTeams } } } },
+      // routed to one of my teams, or unrouted on a channel that points at them
+      OR: [
+        { assignedTeamId: { in: userTeams } },
+        { assignedTeamId: null, inbox: { teams: { some: { teamId: { in: userTeams } } } } },
+      ],
     };
     if (view === "mine") return mine;
     if (view === "grabs") return grabs;
@@ -346,7 +350,16 @@ export class PrismaStore extends Store {
       };
     }
     if (view.startsWith("team:")) {
-      return { ...org, ...activeOnly, inbox: { teams: { some: { teamId: view.slice(5) } } } };
+      const teamId = view.slice(5);
+      // Routed to this team, or unrouted on a channel that points at it.
+      return {
+        ...org,
+        ...activeOnly,
+        OR: [
+          { assignedTeamId: teamId },
+          { assignedTeamId: null, inbox: { teams: { some: { teamId } } } },
+        ],
+      };
     }
     if (view.startsWith("inbox:")) return { ...org, ...activeOnly, inboxId: view.slice(6) };
     return { id: "__none__" };

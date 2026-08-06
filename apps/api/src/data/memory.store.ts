@@ -256,6 +256,9 @@ export class MemoryStore extends Store {
   private isUpForGrabs(rec: ConversationRecord, userTeams: string[]): boolean {
     if (rec.assigneeUserId) return false;
     if (rec.status === "closed" || rec.status === "snoozed") return false;
+    // A conversation explicitly routed to a team is grabbable only by that team;
+    // otherwise it falls to the team(s) its inbox routes to.
+    if (rec.assignedTeamId) return userTeams.includes(rec.assignedTeamId);
     const inbox = this.inbox(rec.inboxId);
     return !!inbox && inbox.teamIds.some((t) => userTeams.includes(t));
   }
@@ -286,8 +289,14 @@ export class MemoryStore extends Store {
       return rec.messages.some((m) => m.internal && m.body.toLowerCase().includes(token));
     }
     if (view.startsWith("team:")) {
+      const teamId = view.slice(5);
+      // A team's inbox = conversations routed to it (assignedTeamId), plus the
+      // unrouted ones whose channel points at the team.
       const inbox = this.inbox(rec.inboxId);
-      return !!inbox && inbox.teamIds.includes(view.slice(5)) && inList;
+      const belongs = rec.assignedTeamId
+        ? rec.assignedTeamId === teamId
+        : !!inbox && inbox.teamIds.includes(teamId);
+      return belongs && inList;
     }
     if (view.startsWith("inbox:")) return rec.inboxId === view.slice(6) && inList;
     return false;
