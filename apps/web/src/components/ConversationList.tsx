@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useConversations, useTeams } from "../hooks";
 import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon } from "../lib/icons";
@@ -37,13 +37,22 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
     return true;
   });
 
+  // "Mine" is already assignee-filtered, so an Unassigned filter is redundant there.
+  const showUnassigned = view !== "mine";
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "unread", label: "Unread" },
-    { key: "unassigned", label: "Unassigned" },
+    ...(showUnassigned ? [{ key: "unassigned" as Filter, label: "Unassigned" }] : []),
     ...(hasGroups ? [{ key: "groups" as Filter, label: "Groups" }] : []),
     { key: "closed", label: "Closed" },
   ];
+
+  // Fall back to All if the active filter isn't available in the current view/data.
+  useEffect(() => {
+    if ((filter === "unassigned" && !showUnassigned) || (filter === "groups" && !hasGroups)) {
+      setFilter("all");
+    }
+  }, [filter, showUnassigned, hasGroups]);
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const thumbRef = useRef<HTMLSpanElement>(null);
   const { containerRef: chipsRef, thumbRef: chipHoverRef, hoverProps } = useHoverGlide<HTMLDivElement>(".chip", "x");
