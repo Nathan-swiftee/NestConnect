@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import type {
+  Attachment,
   ChannelType,
   Contact,
   Conversation,
@@ -7,6 +8,7 @@ import type {
   Inbox,
   Message,
   MessageStatus,
+  MessageType,
   Participant,
   ParticipantRole,
   Priority,
@@ -27,11 +29,56 @@ type ConversationFullRow = Prisma.ConversationGetPayload<{
   include: {
     contact: { include: { identities: true } };
     labels: { include: { label: true } };
-    messages: true;
+    messages: { include: { attachments: true } };
     participants: { include: { contact: { include: { identities: true } } } };
   };
 }>;
-type MessageRow = Prisma.MessageGetPayload<object>;
+type MessageRow = Prisma.MessageGetPayload<{ include: { attachments: true } }>;
+type AttachmentRow = Prisma.AttachmentGetPayload<object>;
+
+/** Same-origin URL the client uses to stream/download the file. */
+export function mediaUrl(attachmentId: string): string {
+  return `/api/media/${attachmentId}`;
+}
+
+/** A list preview for a media message that carries no text caption. */
+export function previewForType(type?: MessageType): string {
+  switch (type) {
+    case "image": return "📷 Photo";
+    case "video": return "🎥 Video";
+    case "voice": return "🎤 Voice message";
+    case "audio": return "🎵 Audio";
+    case "document": return "📄 Document";
+    case "sticker": return "Sticker";
+    case "location": return "📍 Location";
+    case "contact": return "👤 Contact";
+    default: return "";
+  }
+}
+
+export function mapAttachment(a: AttachmentRow): Attachment {
+  let waveform: number[] | undefined;
+  if (a.waveform) {
+    try {
+      const parsed = JSON.parse(a.waveform);
+      if (Array.isArray(parsed)) waveform = parsed as number[];
+    } catch {
+      /* ignore malformed waveform */
+    }
+  }
+  return {
+    id: a.id,
+    kind: a.kind as Attachment["kind"],
+    mime: a.mime,
+    size: a.size,
+    filename: a.filename,
+    url: mediaUrl(a.id),
+    durationMs: a.durationMs ?? undefined,
+    width: a.width ?? undefined,
+    height: a.height ?? undefined,
+    waveform,
+  };
+}
 type ParticipantRow = Prisma.ParticipantGetPayload<{
   include: { contact: { include: { identities: true } } };
 }>;
@@ -96,6 +143,8 @@ export function mapMessage(m: MessageRow): Message {
     status: m.status as MessageStatus,
     internal: m.internal,
     channelMsgId: m.channelMsgId ?? undefined,
+    messageType: (m.messageType as MessageType) ?? "text",
+    attachments: (m.attachments ?? []).map(mapAttachment),
     createdAt: m.createdAt.toISOString(),
   };
 }

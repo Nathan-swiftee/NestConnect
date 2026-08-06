@@ -17,6 +17,47 @@ import type {
 export const ORG_ID = "org_swiftee";
 export const DEMO_USER_ID = "usr_nathan";
 
+/* ---- demo media (data-URI backed, so it renders with no object storage) ---- */
+const DEMO_PHOTO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#0284c7"/></linearGradient></defs><rect width="480" height="360" fill="url(#g)"/><rect x="26" y="26" width="428" height="308" rx="16" fill="#ffffff" opacity="0.10"/><text x="50%" y="50%" font-family="system-ui,Arial" font-size="26" fill="#ffffff" text-anchor="middle" opacity="0.94">Linen pallet — 6 stacks</text></svg>`;
+const DEMO_PHOTO_URL = `data:image/svg+xml;base64,${Buffer.from(DEMO_PHOTO_SVG).toString("base64")}`;
+
+/** A short silent WAV so the voice-note player has something real to play. */
+function silentWav(ms: number): string {
+  const rate = 8000;
+  const n = Math.floor((rate * ms) / 1000);
+  const buf = Buffer.alloc(44 + n);
+  buf.write("RIFF", 0);
+  buf.writeUInt32LE(36 + n, 4);
+  buf.write("WAVE", 8);
+  buf.write("fmt ", 12);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(rate, 24);
+  buf.writeUInt32LE(rate, 28);
+  buf.writeUInt16LE(1, 32);
+  buf.writeUInt16LE(8, 34);
+  buf.write("data", 36);
+  buf.writeUInt32LE(n, 40);
+  buf.fill(128, 44);
+  return `data:audio/wav;base64,${buf.toString("base64")}`;
+}
+const DEMO_VOICE_URL = silentWav(3200);
+const DEMO_WAVEFORM = Array.from({ length: 34 }, (_, i) => Number((0.28 + 0.6 * Math.abs(Math.sin(i * 0.7))).toFixed(2)));
+const DEMO_DOC_URL = `data:text/plain;base64,${Buffer.from(
+  "Swiftee — Purchase Order 4471\nThe Ivy House\n6× linen pallet, 5pm slot.\n",
+).toString("base64")}`;
+
+const DEMO_IMAGE_ATT: Message["attachments"] = [
+  { id: "att_demo_img", kind: "image", mime: "image/svg+xml", size: 18234, filename: "linen-pallet.png", url: DEMO_PHOTO_URL, width: 480, height: 360 },
+];
+const DEMO_VOICE_ATT: Message["attachments"] = [
+  { id: "att_demo_voice", kind: "voice", mime: "audio/wav", size: 41230, filename: "voice-message.ogg", url: DEMO_VOICE_URL, durationMs: 3200, waveform: DEMO_WAVEFORM },
+];
+const DEMO_DOC_ATT: Message["attachments"] = [
+  { id: "att_demo_doc", kind: "document", mime: "text/plain", size: 248123, filename: "Purchase-Order-4471.txt", url: DEMO_DOC_URL },
+];
+
 /** A conversation plus its message history, as held in the store. */
 export type ConversationRecord = Omit<Conversation, "snoozedUntil" | "unreadCount"> & {
   snoozedUntil?: string | null;
@@ -100,7 +141,13 @@ export function makeSeed() {
     authorName: string,
     body: string,
     minsAgo: number,
-    opts: { internal?: boolean; status?: Message["status"]; at?: string } = {},
+    opts: {
+      internal?: boolean;
+      status?: Message["status"];
+      at?: string;
+      messageType?: Message["messageType"];
+      attachments?: Message["attachments"];
+    } = {},
   ): Message => ({
     id: `msg_${++mid}`,
     conversationId,
@@ -111,6 +158,8 @@ export function makeSeed() {
     body,
     status: opts.status ?? (direction === "out" ? "read" : "delivered"),
     internal: opts.internal ?? false,
+    messageType: opts.messageType ?? "text",
+    attachments: opts.attachments ?? [],
     createdAt: opts.at ?? mins(minsAgo),
   });
 
@@ -128,6 +177,9 @@ export function makeSeed() {
         msg("conv_ivy", 3, "in", "contact", "Priya (The Ivy House)", "Amazing. One change — could we push it to 5pm? We've got a lunch service running.", 0, { at: dayAt(1, 13, 20) }),
         msg("conv_ivy", 4, "out", "user", "James", "@nathan can the Bristol route take a 5pm slot for the Ivy House? Lunch clash their end.", 0, { internal: true, at: dayAt(1, 13, 24) }),
         msg("conv_ivy", 5, "in", "contact", "James · Swiftee", "Yep, 5pm works — I'll re-slot the route now. 👍", 35),
+        msg("conv_ivy", 6, "in", "contact", "Priya (The Ivy House)", "Here's the pallet we need matched 👇", 30, { messageType: "image", attachments: DEMO_IMAGE_ATT }),
+        msg("conv_ivy", 7, "in", "contact", "Priya (The Ivy House)", "", 29, { messageType: "voice", attachments: DEMO_VOICE_ATT }),
+        msg("conv_ivy", 8, "in", "contact", "Priya (The Ivy House)", "And the PO for your records", 28, { messageType: "document", attachments: DEMO_DOC_ATT }),
       ],
     },
     {

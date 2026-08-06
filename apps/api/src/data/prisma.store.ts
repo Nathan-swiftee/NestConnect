@@ -31,9 +31,17 @@ import {
   mapParticipant,
   mapTeam,
   mapUser,
+  previewForType,
 } from "./mappers";
 import { PrismaService } from "./prisma.service";
-import { Store, type AppendInboundInput, type SidebarViews, type ViewItem } from "./store";
+import {
+  Store,
+  type AppendInboundInput,
+  type AttachmentInput,
+  type SidebarViews,
+  type StoredAttachmentRef,
+  type ViewItem,
+} from "./store";
 
 const convInclude = {
   contact: { include: { identities: true } },
@@ -472,7 +480,7 @@ export class PrismaStore extends Store {
       where: { id },
       include: {
         ...convInclude,
-        messages: true,
+        messages: { include: { attachments: true } },
         participants: { include: { contact: { include: { identities: true } } } },
       },
     });
@@ -504,6 +512,7 @@ export class PrismaStore extends Store {
           status: "sent",
           internal: input.internal,
         },
+        include: { attachments: true },
       }),
       this.prisma.conversation.update({
         where: { id: conversationId },
@@ -734,7 +743,12 @@ export class PrismaStore extends Store {
           body: input.body,
           status: "delivered",
           channelMsgId: input.channelMsgId,
+          messageType: input.messageType ?? "text",
+          ...(input.attachments?.length
+            ? { attachments: { create: input.attachments.map(toAttachmentCreate) } }
+            : {}),
         },
+        include: { attachments: true },
       }),
       this.prisma.conversation.update({
         where: { id: conversationId },
@@ -743,12 +757,17 @@ export class PrismaStore extends Store {
           lastActivityAt: new Date(),
           unread: true,
           unreadCount: { increment: 1 },
-          preview: input.body,
+          preview: input.body || previewForType(input.messageType),
           ...(reopen ? { status: "open", snoozedUntil: null, ...(wasClosed ? { assigneeUserId: null } : {}) } : {}),
         },
       }),
     ]);
     return mapMessage(message);
+  }
+
+  async getAttachment(id: string): Promise<StoredAttachmentRef | undefined> {
+    const a = await this.prisma.attachment.findUnique({ where: { id } });
+    return a ? { storageKey: a.r2Key, mime: a.mime, filename: a.filename } : undefined;
   }
 
   async updateMessageStatusByChannelId(
@@ -757,7 +776,11 @@ export class PrismaStore extends Store {
   ): Promise<{ conversationId: string; message: Message } | undefined> {
     const msg = await this.prisma.message.findFirst({ where: { channelMsgId } });
     if (!msg) return undefined;
-    const updated = await this.prisma.message.update({ where: { id: msg.id }, data: { status } });
+    const updated = await this.prisma.message.update({
+      where: { id: msg.id },
+      data: { status },
+      include: { attachments: true },
+    });
     return { conversationId: updated.conversationId, message: mapMessage(updated) };
   }
 
@@ -945,3 +968,19 @@ export class PrismaStore extends Store {
     await this.prisma.participant.deleteMany({ where: { conversationId, contactId } });
   }
 }
+
+/** AttachmentInput → Prisma nested-create row (storage key stored as r2Key). */
+function toAttachmentCreate(a: AttachmentInput): Prisma.AttachmentCreateWithoutMessageInput {
+  return {
+    r2Key: a.storageKey,
+    mime: a.mime,
+    size: a.size,
+    filename: a.filename,
+    kind: a.kind,
+    durationMs: a.durationMs ?? null,
+    width: a.width ?? null,
+    height: a.height ?? null,
+    waveform: a.waveform ? JSON.stringify(a.waveform) : null,
+  };
+}
+

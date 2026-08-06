@@ -251,6 +251,8 @@ model Message {
   status         MessageStatus    @default(sent)
   internal       Boolean          @default(false)
   channelMsgId   String?
+  // text | image | video | audio | voice | document | sticker | location | contact
+  messageType    String           @default("text")
   createdAt      DateTime         @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id])
@@ -261,14 +263,24 @@ model Message {
 }
 
 model Attachment {
-  id        String @id @default(cuid())
-  messageId String
-  r2Key     String
-  mime      String
-  size      Int
-  filename  String
+  id         String  @id @default(cuid())
+  messageId  String
+  // Storage object key (R2/S3 key or local path).
+  r2Key      String
+  mime       String
+  size       Int
+  filename   String
+  // image | video | audio | voice | document | sticker | file
+  kind       String  @default("file")
+  // Audio/video length in ms; image intrinsic size; voice waveform peaks (JSON).
+  durationMs Int?
+  width      Int?
+  height     Int?
+  waveform   String?
 
   message Message @relation(fields: [messageId], references: [id])
+
+  @@index([messageId])
 }
 
 model Note {

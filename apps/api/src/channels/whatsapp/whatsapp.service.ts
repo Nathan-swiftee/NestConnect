@@ -1,9 +1,21 @@
-import { Injectable } from "@nestjs/common";
-import type { MessageStatus } from "@ding/schemas";
-import { Store } from "../../data/store";
+import { Injectable, Logger } from "@nestjs/common";
+import type { AttachmentKind, MessageStatus, MessageType } from "@ding/schemas";
+import { env } from "../../config/env";
+import { Store, type AttachmentInput } from "../../data/store";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
+import { MediaService } from "../../storage/media.service";
 import { IngestService } from "../ingest.service";
 import { GroupsService } from "../groups/groups.service";
+
+/** A WhatsApp media object as it appears on an inbound message. */
+interface WaMedia {
+  id: string;
+  mime_type?: string;
+  sha256?: string;
+  caption?: string;
+  filename?: string;
+  voice?: boolean;
+}
 
 /* Minimal shape of the Meta WhatsApp Cloud API webhook payload we consume. */
 export interface WhatsAppWebhookBody {
@@ -16,7 +28,18 @@ export interface WhatsAppWebhookBody {
         metadata?: { phone_number_id?: string; display_phone_number?: string; group_id?: string };
         group_id?: string;
         contacts?: Array<{ wa_id?: string; profile?: { name?: string } }>;
-        messages?: Array<{ from: string; id: string; type?: string; group_id?: string; text?: { body?: string } }>;
+        messages?: Array<{
+          from: string;
+          id: string;
+          type?: string;
+          group_id?: string;
+          text?: { body?: string };
+          image?: WaMedia;
+          video?: WaMedia;
+          audio?: WaMedia;
+          document?: WaMedia;
+          sticker?: WaMedia;
+        }>;
         statuses?: Array<{ id: string; status?: string; recipient_id?: string }>;
         participants?: Array<{ wa_id?: string; user?: string; action?: string; profile?: { name?: string } }>;
       };
@@ -26,11 +49,14 @@ export interface WhatsAppWebhookBody {
 
 @Injectable()
 export class WhatsAppService {
+  private readonly logger = new Logger(WhatsAppService.name);
+
   constructor(
     private readonly ingest: IngestService,
     private readonly groups: GroupsService,
     private readonly store: Store,
     private readonly realtime: RealtimeGateway,
+    private readonly media: MediaService,
   ) {}
 
   async handleWebhook(body: WhatsAppWebhookBody): Promise<{ messages: number; statuses: number; groupEvents: number }> {
@@ -63,8 +89,8 @@ export class WhatsAppService {
         }
 
         for (const msg of value.messages ?? []) {
-          const text = msg.text?.body ?? (msg.type ? `[${msg.type} message]` : "");
           const groupId = valueGroupId ?? msg.group_id;
+          const { text, messageType, attachments } = await this.resolveInbound(msg, phoneNumberId);
           const res = groupId
             ? await this.ingest.ingestWhatsAppGroup({
                 groupId,
@@ -72,6 +98,8 @@ export class WhatsAppService {
                 name: nameOf(msg.from),
                 text,
                 channelMsgId: msg.id,
+                messageType,
+                attachments,
               })
             : await this.ingest.ingestWhatsApp({
                 phoneNumberId,
@@ -79,6 +107,8 @@ export class WhatsAppService {
                 name: nameOf(msg.from),
                 text,
                 channelMsgId: msg.id,
+                messageType,
+                attachments,
               });
           if (res) messages += 1;
         }
@@ -97,7 +127,84 @@ export class WhatsAppService {
     return { messages, statuses, groupEvents };
   }
 
+  /**
+   * Turn an inbound message into body text + type + any stored attachment.
+   * Media is downloaded from Meta with the number's token and stored; if that
+   * isn't possible (no token / mock / error) we fall back to a text placeholder
+   * so the message still lands.
+   */
+  private async resolveInbound(
+    msg: { type?: string; text?: { body?: string }; image?: WaMedia; video?: WaMedia; audio?: WaMedia; document?: WaMedia; sticker?: WaMedia },
+    phoneNumberId: string,
+  ): Promise<{ text: string; messageType: MessageType; attachments?: AttachmentInput[] }> {
+    const found = extractMedia(msg);
+    if (!found) {
+      const text = msg.text?.body ?? (msg.type && msg.type !== "text" ? `[${msg.type} message]` : "");
+      return { text, messageType: "text" };
+    }
+    const { media, kind, type } = found;
+    const token = await this.tokenFor(phoneNumberId);
+    let attachment: AttachmentInput | null = null;
+    if (token) {
+      const url = await this.resolveMediaUrl(media.id, token);
+      if (url) {
+        attachment = await this.media.downloadAndStore(url, {
+          authToken: token,
+          mime: media.mime_type,
+          kind,
+          filename: media.filename,
+        });
+      }
+    }
+    if (attachment) {
+      return { text: media.caption ?? "", messageType: type, attachments: [attachment] };
+    }
+    this.logger.warn(`WhatsApp media ${media.id} not stored — placeholder used`);
+    return { text: media.caption || `[${msg.type} message]`, messageType: "text" };
+  }
+
+  /** Resolve a media id to its (short-lived, token-protected) download URL. */
+  private async resolveMediaUrl(mediaId: string, token: string): Promise<string | null> {
+    try {
+      const res = await fetch(`https://graph.facebook.com/${env.whatsapp.apiVersion}/${mediaId}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as { url?: string };
+      return json.url ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** The receiving number's access token (per-inbox, else the global env one). */
+  private async tokenFor(phoneNumberId: string): Promise<string | null> {
+    const inbox = await this.store.getInboxByWhatsAppPhoneId(phoneNumberId);
+    if (inbox) {
+      const cfg = await this.store.getInboxConfig(inbox.id);
+      if (cfg?.accessToken) return cfg.accessToken;
+    }
+    return env.whatsapp.token || null;
+  }
+
   private mapStatus(s?: string): MessageStatus | undefined {
     return s === "sent" || s === "delivered" || s === "read" || s === "failed" ? s : undefined;
   }
+}
+
+/** Pull the media object off an inbound message, with its kind + message type. */
+function extractMedia(msg: {
+  image?: WaMedia;
+  video?: WaMedia;
+  audio?: WaMedia;
+  document?: WaMedia;
+  sticker?: WaMedia;
+}): { media: WaMedia; kind: AttachmentKind; type: MessageType } | null {
+  if (msg.image) return { media: msg.image, kind: "image", type: "image" };
+  if (msg.sticker) return { media: msg.sticker, kind: "sticker", type: "sticker" };
+  if (msg.video) return { media: msg.video, kind: "video", type: "video" };
+  if (msg.audio)
+    return { media: msg.audio, kind: msg.audio.voice ? "voice" : "audio", type: msg.audio.voice ? "voice" : "audio" };
+  if (msg.document) return { media: msg.document, kind: "document", type: "document" };
+  return null;
 }

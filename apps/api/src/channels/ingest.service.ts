@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { GROUP_MAX_MEMBERS, type Conversation } from "@ding/schemas";
-import { Store } from "../data/store";
+import { GROUP_MAX_MEMBERS, type Conversation, type MessageType } from "@ding/schemas";
+import { Store, type AttachmentInput } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoutingService } from "./routing.service";
 
@@ -10,6 +10,8 @@ export interface WhatsAppInbound {
   name?: string;
   text: string;
   channelMsgId?: string;
+  messageType?: MessageType;
+  attachments?: AttachmentInput[];
 }
 
 export interface EmailInbound {
@@ -20,6 +22,8 @@ export interface EmailInbound {
   text: string;
   messageId?: string;
   references?: string[]; // In-Reply-To + References header ids, for threading
+  messageType?: MessageType;
+  attachments?: AttachmentInput[];
 }
 
 /**
@@ -76,6 +80,8 @@ export class IngestService {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.channelMsgId,
+      messageType: input.messageType,
+      attachments: input.attachments,
     });
     if (message) this.realtime.emitMessageCreated(conv.id, message);
 
@@ -89,6 +95,8 @@ export class IngestService {
     name?: string;
     text: string;
     channelMsgId?: string;
+    messageType?: MessageType;
+    attachments?: AttachmentInput[];
   }): Promise<{ conversationId: string; created: boolean } | undefined> {
     const conversationId = await this.store.findConversationByChannelRef(input.groupId);
     if (!conversationId) {
@@ -111,6 +119,8 @@ export class IngestService {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.channelMsgId,
+      messageType: input.messageType,
+      attachments: input.attachments,
     });
     if (message) this.realtime.emitMessageCreated(conversationId, message);
     return { conversationId, created: false };
@@ -162,6 +172,8 @@ export class IngestService {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.messageId,
+      messageType: input.messageType,
+      attachments: input.attachments,
     });
     if (message) this.realtime.emitMessageCreated(conversationId, message);
 

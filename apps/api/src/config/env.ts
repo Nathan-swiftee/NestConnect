@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { resolve, join } from "node:path";
+import { tmpdir } from "node:os";
 import { config } from "dotenv";
 
 // Load env from the repo root (dev runs each app from its own dir), then any
@@ -49,6 +50,13 @@ export const env = {
     pollSeconds: Number(process.env.GMAIL_POLL_SECONDS ?? 60),
     // Optional shared secret; when set, the Pub/Sub push webhook must pass ?token=.
     pushToken: process.env.GMAIL_PUSH_TOKEN ?? "",
+  },
+  media: {
+    // Where downloaded media is stored on the local-disk driver. Ephemeral on
+    // Railway; production durability comes from an object store (R2/S3) later.
+    dir: process.env.MEDIA_DIR ?? join(tmpdir(), "nest-media"),
+    // Hard cap on a single media file we'll download/store (bytes). Default 100MB.
+    maxBytes: Number(process.env.MEDIA_MAX_BYTES ?? 100 * 1024 * 1024),
   },
   get usingDatabase() {
     return this.databaseUrl.length > 0;

@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import bcrypt from "bcryptjs";
 import type {
+  Attachment,
   ChannelType,
   Contact,
   ContactWithConversations,
@@ -21,8 +22,16 @@ import type {
 } from "@ding/schemas";
 import { isInboxConnected } from "@ding/schemas";
 import { env } from "../config/env";
+import { previewForType } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
-import { Store, type AppendInboundInput, type SidebarViews, type ViewItem } from "./store";
+import {
+  Store,
+  type AppendInboundInput,
+  type AttachmentInput,
+  type SidebarViews,
+  type StoredAttachmentRef,
+  type ViewItem,
+} from "./store";
 
 const AVATAR_PALETTE = [
   "linear-gradient(135deg,#F97316,#DB2777)",
@@ -47,6 +56,8 @@ export class MemoryStore extends Store {
   private inboxConfig = new Map<string, Record<string, string>>();
   /** Org-scoped app settings, keyed by `${orgId}::${key}` (e.g. Google OAuth creds). */
   private appSettings = new Map<string, string>();
+  /** Backend-only attachment storage refs, keyed by attachment id (for serving). */
+  private mediaRefs = new Map<string, StoredAttachmentRef>();
   private idSeq = 10_000;
 
   constructor() {
@@ -411,6 +422,8 @@ export class MemoryStore extends Store {
       body: input.body,
       status: "sent",
       internal: input.internal,
+      messageType: "text",
+      attachments: [],
       createdAt: new Date().toISOString(),
     };
     rec.messages.push(message);
@@ -594,13 +607,15 @@ export class MemoryStore extends Store {
       status: "delivered",
       internal: false,
       channelMsgId: input.channelMsgId,
+      messageType: input.messageType ?? "text",
+      attachments: this.storeAttachments(input.attachments),
       createdAt: new Date().toISOString(),
     };
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
     rec.unread = true;
     rec.unreadCount = (rec.unreadCount ?? 0) + 1;
-    rec.preview = input.body;
+    rec.preview = input.body || previewForType(input.messageType);
     // A new customer message on a closed or snoozed chat wakes it back up.
     if (rec.status === "closed" || rec.status === "snoozed") {
       const wasClosed = rec.status === "closed";
@@ -609,6 +624,31 @@ export class MemoryStore extends Store {
       if (wasClosed) rec.assigneeUserId = null;
     }
     return message;
+  }
+
+  async getAttachment(id: string): Promise<StoredAttachmentRef | undefined> {
+    return this.mediaRefs.get(id);
+  }
+
+  /** Persist attachment refs (for serving) and return the client-facing shape. */
+  private storeAttachments(inputs?: AttachmentInput[]): Attachment[] {
+    if (!inputs?.length) return [];
+    return inputs.map((a) => {
+      const id = `att_${++this.idSeq}`;
+      this.mediaRefs.set(id, { storageKey: a.storageKey, mime: a.mime, filename: a.filename });
+      return {
+        id,
+        kind: a.kind,
+        mime: a.mime,
+        size: a.size,
+        filename: a.filename,
+        url: `/api/media/${id}`,
+        durationMs: a.durationMs,
+        width: a.width,
+        height: a.height,
+        waveform: a.waveform,
+      };
+    });
   }
 
   async updateMessageStatusByChannelId(

@@ -9,12 +9,14 @@ import { ChannelsModule } from "./channels/channels.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { ContactsModule } from "./contacts/contacts.module";
+import { StorageModule } from "./storage/storage.module";
 import { HealthController } from "./health/health.controller";
 
 const imports: ModuleMetadata["imports"] = [
   DataModule,
   AuthModule,
   RealtimeModule,
+  StorageModule,
   ChannelsModule,
   ConversationsModule,
   WorkspaceModule,

@@ -138,6 +138,48 @@ export const labelSchema = z.object({
 });
 export type Label = z.infer<typeof labelSchema>;
 
+/** What a message carries. "text" is the default; the rest imply attachments. */
+export const messageTypeSchema = z.enum([
+  "text",
+  "image",
+  "video",
+  "audio",
+  "voice",
+  "document",
+  "sticker",
+  "location",
+  "contact",
+]);
+export type MessageType = z.infer<typeof messageTypeSchema>;
+
+export const attachmentKindSchema = z.enum([
+  "image",
+  "video",
+  "audio",
+  "voice",
+  "document",
+  "sticker",
+  "file",
+]);
+export type AttachmentKind = z.infer<typeof attachmentKindSchema>;
+
+/** A stored media file on a message. `url` is a same-origin served/download link;
+ *  the underlying storage key never reaches the client. */
+export const attachmentSchema = z.object({
+  id: z.string(),
+  kind: attachmentKindSchema,
+  mime: z.string(),
+  size: z.number().int().nonnegative(),
+  filename: z.string(),
+  url: z.string(),
+  /** Audio/video duration (ms), image intrinsic size, voice waveform peaks (0..1). */
+  durationMs: z.number().int().nonnegative().optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  waveform: z.array(z.number()).optional(),
+});
+export type Attachment = z.infer<typeof attachmentSchema>;
+
 export const messageSchema = z.object({
   id: z.string(),
   conversationId: z.string(),
@@ -151,6 +193,10 @@ export const messageSchema = z.object({
   internal: z.boolean().default(false),
   /** Provider-side id (e.g. WhatsApp wamid) for reconciling delivery/read status. */
   channelMsgId: z.string().nullable().optional(),
+  /** What the message carries; "text" unless it has media. */
+  messageType: messageTypeSchema.default("text"),
+  /** Media files attached to the message (images, files, voice notes, …). */
+  attachments: z.array(attachmentSchema).default([]),
   createdAt: z.string(), // ISO-8601
 });
 export type Message = z.infer<typeof messageSchema>;

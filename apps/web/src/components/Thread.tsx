@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
-import type { Message } from "@ding/schemas";
+import type { Message, Attachment } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams } from "../hooks";
-import { relativeTime, clockTime, initials } from "../lib/format";
+import { relativeTime, clockTime, initials, formatBytes, formatDuration } from "../lib/format";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
 import {
@@ -23,6 +23,11 @@ import {
   BoltIcon,
   CheckSingle,
   CheckDouble,
+  PlayIcon,
+  PauseIcon,
+  DocIcon,
+  DownloadIcon,
+  XIcon,
 } from "../lib/icons";
 
 interface Props {
@@ -43,6 +48,177 @@ function renderMention(body: string): JSX.Element[] {
     ) : (
       <span key={i}>{part}</span>
     ),
+  );
+}
+
+/** Compact WhatsApp-style player for audio + voice notes. One <audio> element
+ *  driven by state/refs: round play/pause, a seekable waveform (or progress
+ *  bar), and an m:ss readout. */
+function AudioPlayer({ att }: { att: Attachment }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0);
+  const fallback = (att.durationMs ?? 0) / 1000;
+  const [dur, setDur] = useState(fallback);
+  const total = dur > 0 ? dur : fallback;
+  const pct = total > 0 ? Math.min(1, cur / total) : 0;
+  const wave = att.waveform && att.waveform.length ? att.waveform : null;
+
+  const toggle = () => {
+    const a = ref.current;
+    if (!a) return;
+    if (a.paused) a.play().catch(() => {});
+    else a.pause();
+  };
+  // elapsed once engaged; total duration while idle at the start
+  const shown = playing || cur > 0 ? cur : total;
+
+  return (
+    <div className={"att voice" + (att.kind === "voice" ? " voice--note" : "")}>
+      <button type="button" className="voice__btn" onClick={toggle} aria-label={playing ? "Pause" : "Play"}>
+        {playing ? <PauseIcon /> : <PlayIcon />}
+      </button>
+      <div className="voice__body">
+        <div
+          className="voice__track"
+          role="slider"
+          aria-label="Seek"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(pct * 100)}
+          tabIndex={0}
+          onClick={(e) => {
+            const a = ref.current;
+            if (!a || total <= 0) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+            a.currentTime = ratio * total;
+            setCur(a.currentTime);
+          }}
+          onKeyDown={(e) => {
+            const a = ref.current;
+            if (!a || total <= 0) return;
+            if (e.key === "ArrowRight") { a.currentTime = Math.min(total, a.currentTime + 5); setCur(a.currentTime); }
+            else if (e.key === "ArrowLeft") { a.currentTime = Math.max(0, a.currentTime - 5); setCur(a.currentTime); }
+          }}
+        >
+          {wave ? (
+            <div className="voice__wave" aria-hidden="true">
+              {wave.map((v, i) => (
+                <span
+                  key={i}
+                  className={"voice__wbar" + ((i + 0.5) / wave.length <= pct ? " on" : "")}
+                  style={{ height: `${Math.round(Math.max(0.08, Math.min(1, v)) * 100)}%` }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="voice__bar" aria-hidden="true">
+              <div className="voice__fill" style={{ width: `${pct * 100}%` }} />
+            </div>
+          )}
+        </div>
+        <div className="voice__time tnum">{formatDuration(shown * 1000)}</div>
+      </div>
+      <audio
+        ref={ref}
+        src={att.url}
+        preload="metadata"
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => { setPlaying(false); setCur(0); }}
+        onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
+        onLoadedMetadata={(e) => {
+          const d = e.currentTarget.duration;
+          if (Number.isFinite(d) && d > 0) setDur(d);
+        }}
+      />
+    </div>
+  );
+}
+
+/** One attachment, rendered by kind. `onImage` opens the lightbox. */
+function AttachmentView({ att, onImage }: { att: Attachment; onImage: (url: string) => void }) {
+  if (att.kind === "audio" || att.kind === "voice") return <AudioPlayer att={att} />;
+
+  if (att.kind === "video") {
+    return <video className="att att-video" src={att.url} controls preload="metadata" />;
+  }
+
+  if (att.kind === "image" || att.kind === "sticker") {
+    const sticker = att.kind === "sticker";
+    return (
+      <img
+        className={"att att-img" + (sticker ? " att-img--sticker" : "")}
+        src={att.url}
+        alt={att.filename || (sticker ? "Sticker" : "Image")}
+        loading="lazy"
+        width={att.width || undefined}
+        height={att.height || undefined}
+        role="button"
+        tabIndex={0}
+        onClick={() => onImage(att.url)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onImage(att.url); }
+        }}
+      />
+    );
+  }
+
+  // document / file
+  const ext = att.filename.includes(".")
+    ? att.filename.split(".").pop()!.toUpperCase()
+    : (att.mime.split("/").pop() ?? "file").toUpperCase();
+  return (
+    <a className="att att-file" href={att.url} download={att.filename} title={att.filename}>
+      <span className="att-file__ic"><DocIcon /></span>
+      <span className="att-file__meta">
+        <span className="att-file__name">{att.filename || "Download"}</span>
+        <span className="att-file__sub tnum">{formatBytes(att.size)} · {ext}</span>
+      </span>
+      <span className="att-file__dl" aria-hidden="true"><DownloadIcon /></span>
+    </a>
+  );
+}
+
+/** A single customer/agent message bubble, with any media rendered above an
+ *  optional caption. Text-only messages keep their original markup exactly. */
+function MessageBubble({ m, onImage }: { m: Message; onImage: (url: string) => void }) {
+  const out = m.direction === "out";
+  const atts = m.attachments ?? [];
+  const hasMedia = atts.length > 0;
+  const hasCaption = !!m.body && m.body.trim().length > 0;
+  const single = atts.length === 1 ? atts[0] : null;
+  const stickerOnly = !!single && single.kind === "sticker" && !hasCaption;
+  // a lone image/video with no caption carries the floating timestamp chip
+  const overlay = !!single && !hasCaption && (single.kind === "image" || single.kind === "video");
+  // other media with no caption gets the timestamp on its own row underneath
+  const blockStamp = hasMedia && !hasCaption && !overlay;
+  const fallback = m.messageType === "location" ? "Location shared" : m.messageType === "contact" ? "Contact shared" : "";
+  const showText = hasCaption || !hasMedia;
+  const bodyText = hasCaption ? m.body : hasMedia ? "" : m.body || fallback;
+
+  return (
+    <div className={"msg " + (out ? "out" : "in")}>
+      {!out && m.authorName && <div className="sender">{m.authorName}</div>}
+      <div className={"bubble" + (hasMedia ? " has-media" : "") + (stickerOnly ? " bubble--plain" : "")}>
+        {hasMedia && atts.map((a) => <AttachmentView key={a.id} att={a} onImage={onImage} />)}
+        {showText && (
+          <span className="txt">
+            {bodyText}
+            <span className="stampspace" aria-hidden="true" />
+          </span>
+        )}
+        <span className={"stamp" + (overlay ? " stamp--over" : blockStamp ? " stamp--block" : "")}>
+          {clockTime(m.createdAt)}
+          {out && (
+            <span className={"tick" + (m.status === "read" ? " read" : "")}>
+              {m.status === "read" || m.status === "delivered" ? <CheckDouble /> : <CheckSingle />}
+            </span>
+          )}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -83,6 +259,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [menu, setMenu] = useState(false);
   const [snoozeMenu, setSnoozeMenu] = useState(false);
   const [internal, setInternal] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
@@ -92,6 +269,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conv?.messages.length, conversationId]);
+
+  // Close the image lightbox on Esc while it's open.
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightbox(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   // Slide the Reply|Note thumb under the active tab. Written to the DOM directly
   // (no state → no extra render) so the slide starts on the same frame as the click.
@@ -327,23 +514,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   </div>
                 </div>
               ) : (
-                <div key={m.id} className={"msg " + (m.direction === "out" ? "out" : "in")}>
-                  {m.direction === "in" && m.authorName && <div className="sender">{m.authorName}</div>}
-                  <div className="bubble">
-                    <span className="txt">
-                      {m.body}
-                      <span className="stampspace" aria-hidden="true" />
-                    </span>
-                    <span className="stamp">
-                      {clockTime(m.createdAt)}
-                      {m.direction === "out" && (
-                        <span className={"tick" + (m.status === "read" ? " read" : "")}>
-                          {m.status === "read" || m.status === "delivered" ? <CheckDouble /> : <CheckSingle />}
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                </div>
+                <MessageBubble key={m.id} m={m} onImage={setLightbox} />
               ),
             )}
           </section>
@@ -435,6 +606,21 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               <SendIcon />
             </button>
           </div>
+        </div>
+      )}
+
+      {lightbox && (
+        <div
+          className="lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image preview"
+          onClick={() => setLightbox(null)}
+        >
+          <img className="lightbox__img" src={lightbox} alt="" />
+          <button className="lightbox__close" onClick={() => setLightbox(null)} aria-label="Close preview">
+            <XIcon />
+          </button>
         </div>
       )}
     </main>

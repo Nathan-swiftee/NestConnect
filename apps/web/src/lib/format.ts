@@ -35,6 +35,25 @@ export function timeUntil(iso: string, nowMs: number = Date.now()): string {
   return `${Math.round(h / 24)}d`;
 }
 
+/** Bytes → human-readable size for file cards, e.g. "812 KB", "2.4 MB". */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 KB";
+  if (bytes < 1024) return `${bytes} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb < 10 ? kb.toFixed(1) : Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+/** Milliseconds → "m:ss" clock for audio / voice players (e.g. 0:07, 1:32). */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+
 /** Countdown string for an SLA due timestamp; "overdue" once passed. */
 export function slaCountdown(dueIso: string, nowMs: number = Date.now()): string {
   const left = new Date(dueIso).getTime() - nowMs;

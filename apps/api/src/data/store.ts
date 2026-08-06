@@ -1,4 +1,5 @@
 import type {
+  AttachmentKind,
   ChannelType,
   Contact,
   ContactWithConversations,
@@ -9,6 +10,7 @@ import type {
   Member,
   Message,
   MessageStatus,
+  MessageType,
   Participant,
   ParticipantRole,
   Priority,
@@ -42,10 +44,32 @@ export interface InboundContact {
   displayName: string;
 }
 
+/** A media file to store on a message (the storage key is already written). */
+export interface AttachmentInput {
+  storageKey: string;
+  kind: AttachmentKind;
+  mime: string;
+  size: number;
+  filename: string;
+  durationMs?: number;
+  width?: number;
+  height?: number;
+  waveform?: number[];
+}
+
 export interface AppendInboundInput {
   authorName?: string;
   body: string;
   channelMsgId?: string;
+  messageType?: MessageType;
+  attachments?: AttachmentInput[];
+}
+
+/** What the media-serving endpoint needs to stream a stored file. */
+export interface StoredAttachmentRef {
+  storageKey: string;
+  mime: string;
+  filename: string;
 }
 
 /**
@@ -195,6 +219,9 @@ export abstract class Store {
     conversationId: string,
     input: AppendInboundInput,
   ): Promise<Message | undefined>;
+
+  /** Backend-only: the storage key + mime of an attachment, for serving media. */
+  abstract getAttachment(id: string): Promise<StoredAttachmentRef | undefined>;
 
   abstract updateMessageStatusByChannelId(
     channelMsgId: string,

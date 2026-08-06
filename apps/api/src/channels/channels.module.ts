@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { RealtimeModule } from "../realtime/realtime.module";
+import { StorageModule } from "../storage/storage.module";
 import { CHANNEL_PROVIDERS } from "./channel-provider";
 import { ChannelDispatcher } from "./channel-dispatcher";
 import { IngestService } from "./ingest.service";
@@ -22,7 +23,7 @@ import { MetaController } from "./meta/meta.controller";
 import { IntegrationsController } from "../settings/integrations.controller";
 
 @Module({
-  imports: [RealtimeModule],
+  imports: [RealtimeModule, StorageModule],
   controllers: [
     WhatsAppController,
     EmailController,
