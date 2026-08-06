@@ -39,6 +39,8 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
 
   // "Mine" is already assignee-filtered, so an Unassigned filter is redundant there.
   const showUnassigned = view !== "mine";
+  // A team inbox already scopes to one team, so the per-card team label is redundant there.
+  const showTeamTag = !view.startsWith("team:");
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "unread", label: "Unread" },
@@ -162,7 +164,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                       <span className={"tag " + (owned ? "owner" : "grab")}>
                         {owned ? "Yours" : "Queue"}
                       </span>
-                      {teamName(c.assignedTeamId) && (
+                      {showTeamTag && teamName(c.assignedTeamId) && (
                         <span className="teamtag" title={`Routed to ${teamName(c.assignedTeamId)}`}>
                           {teamName(c.assignedTeamId)}
                         </span>
