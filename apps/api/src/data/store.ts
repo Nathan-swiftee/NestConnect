@@ -11,6 +11,7 @@ import type {
   MessageStatus,
   Participant,
   ParticipantRole,
+  Priority,
   Role,
   RoutingStrategy,
   Team,
@@ -130,6 +131,12 @@ export abstract class Store {
   abstract setStatus(
     conversationId: string,
     status: ConversationStatus,
+  ): Promise<Conversation | undefined>;
+
+  /** Set a conversation's priority (low/normal/high/urgent). */
+  abstract setPriority(
+    conversationId: string,
+    priority: Priority,
   ): Promise<Conversation | undefined>;
 
   /** Snooze a conversation until `until` (ISO); it wakes back into the queue then. */

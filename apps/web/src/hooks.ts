@@ -6,6 +6,7 @@ import {
   type AddParticipantInput,
   type Conversation,
   type ConversationStatus,
+  type Priority,
   type CreateContactInput,
   type CreateGroupInput,
   type CreateInboxInput,
@@ -266,6 +267,18 @@ export function useSetStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: string; status: ConversationStatus }) => api.setStatus(v.id, v.status),
+    onSuccess: (_conv, v) => {
+      qc.invalidateQueries({ queryKey: ["conversation", v.id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+export function useSetPriority() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; priority: Priority }) => api.setPriority(v.id, v.priority),
     onSuccess: (_conv, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });

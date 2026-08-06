@@ -5,6 +5,7 @@ import type {
   ConversationWithMessages,
   Message,
   SendMessageInput,
+  UpdatePriorityInput,
   UpdateStatusInput,
 } from "@ding/schemas";
 import { Store } from "../data/store";
@@ -59,6 +60,13 @@ export class ConversationsService {
     const conv = await this.store.setStatus(id, input.status);
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     // Broadcast so every client drops (or restores) it from the active lists live.
+    this.realtime.emitConversationUpdated(conv);
+    return conv;
+  }
+
+  async setPriority(id: string, input: UpdatePriorityInput): Promise<Conversation> {
+    const conv = await this.store.setPriority(id, input.priority);
+    if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     this.realtime.emitConversationUpdated(conv);
     return conv;
   }

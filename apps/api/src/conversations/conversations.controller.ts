@@ -3,10 +3,12 @@ import {
   assignConversationInputSchema,
   sendMessageInputSchema,
   snoozeInputSchema,
+  updatePriorityInputSchema,
   updateStatusInputSchema,
   type AssignConversationInput,
   type SendMessageInput,
   type SnoozeInput,
+  type UpdatePriorityInput,
   type UpdateStatusInput,
 } from "@ding/schemas";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -59,5 +61,13 @@ export class ConversationsController {
     @Body(new ZodValidationPipe(snoozeInputSchema)) body: SnoozeInput,
   ) {
     return this.conversations.snooze(id, body.until);
+  }
+
+  @Post(":id/priority")
+  setPriority(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updatePriorityInputSchema)) body: UpdatePriorityInput,
+  ) {
+    return this.conversations.setPriority(id, body);
   }
 }

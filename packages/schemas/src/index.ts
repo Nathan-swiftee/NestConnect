@@ -225,6 +225,12 @@ export const updateStatusInputSchema = z.object({
 });
 export type UpdateStatusInput = z.infer<typeof updateStatusInputSchema>;
 
+/** Set a conversation's priority. */
+export const updatePriorityInputSchema = z.object({
+  priority: prioritySchema,
+});
+export type UpdatePriorityInput = z.infer<typeof updatePriorityInputSchema>;
+
 /** Snooze a conversation until a given time (ISO); it wakes back into the queue then. */
 export const snoozeInputSchema = z.object({
   until: z.string().datetime(),

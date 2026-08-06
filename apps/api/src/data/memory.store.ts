@@ -13,6 +13,7 @@ import type {
   MessageStatus,
   Participant,
   ParticipantRole,
+  Priority,
   Role,
   RoutingStrategy,
   Team,
@@ -422,6 +423,13 @@ export class MemoryStore extends Store {
     if (status === "closed") rec.unread = false;
     if (status !== "snoozed") rec.snoozedUntil = null;
     rec.lastActivityAt = new Date().toISOString();
+    return this.summary(rec);
+  }
+
+  async setPriority(conversationId: string, priority: Priority): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    rec.priority = priority;
     return this.summary(rec);
   }
 

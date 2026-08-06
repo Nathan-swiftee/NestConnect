@@ -5,6 +5,7 @@ import type {
   ContactWithConversations,
   Conversation,
   ConversationStatus,
+  Priority,
   ConversationWithMessages,
   CreateContactInput,
   CreateGroupInput,
@@ -104,6 +105,8 @@ export const api = {
   ) => post<Conversation>(`/conversations/${id}/assign`, input),
   setStatus: (id: string, status: ConversationStatus) =>
     post<Conversation>(`/conversations/${id}/status`, { status }),
+  setPriority: (id: string, priority: Priority) =>
+    post<Conversation>(`/conversations/${id}/priority`, { priority }),
   snooze: (id: string, until: string) =>
     post<Conversation>(`/conversations/${id}/snooze`, { until }),
   // groups

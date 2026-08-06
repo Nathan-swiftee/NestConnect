@@ -14,6 +14,7 @@ import type {
   MessageStatus,
   Participant,
   ParticipantRole,
+  Priority,
   Role,
   RoutingStrategy,
   Team,
@@ -526,6 +527,19 @@ export class PrismaStore extends Store {
           ...(status === "closed" ? { unread: false } : {}),
           ...(status !== "snoozed" ? { snoozedUntil: null } : {}),
         },
+        include: convInclude,
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async setPriority(conversationId: string, priority: Priority): Promise<Conversation | undefined> {
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { priority },
         include: convInclude,
       });
       return mapConversation(row);

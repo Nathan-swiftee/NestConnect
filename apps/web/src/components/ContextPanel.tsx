@@ -4,6 +4,7 @@ import {
   type ChannelType,
   type Contact,
   type Conversation,
+  type Priority,
 } from "@ding/schemas";
 import {
   useAddParticipant,
@@ -12,12 +13,13 @@ import {
   useConversation,
   usePeople,
   useRemoveParticipant,
+  useSetPriority,
   useTeams,
   useUpdateContact,
 } from "../hooks";
 import { initials, relativeTime, slaCountdown } from "../lib/format";
 import { TagEditor } from "./TagEditor";
-import { channelMeta, PhoneIcon, MailIcon, ProfileIcon, XIcon } from "../lib/icons";
+import { channelMeta, CheckIcon, ChevronDown, PhoneIcon, MailIcon, ProfileIcon, XIcon } from "../lib/icons";
 
 interface Props {
   conversationId: string | null;
@@ -156,8 +158,74 @@ function ChannelsBlock({ contact, activeChannel }: { contact: Contact; activeCha
   );
 }
 
-function AssignmentBlock({ conv, teamName }: { conv: Conversation; teamName: (id: string) => string }) {
-  const highPriority = conv.priority === "high" || conv.priority === "urgent";
+/** Colour + label for each priority level, used by the pill and its menu. */
+const PRIO: Record<Priority, { label: string; dot: string; bg: string; fg: string }> = {
+  urgent: { label: "Urgent", dot: "var(--danger)", bg: "var(--danger-tint)", fg: "var(--danger)" },
+  high: { label: "High", dot: "#E68A00", bg: "var(--amber-tint)", fg: "#B36B00" },
+  normal: { label: "Normal", dot: "var(--text-muted)", bg: "var(--surface-2)", fg: "var(--text-muted)" },
+  low: { label: "Low", dot: "var(--text-faint)", bg: "var(--surface-2)", fg: "var(--text-faint)" },
+};
+const PRIO_ORDER: Priority[] = ["urgent", "high", "normal", "low"];
+
+/** The priority pill, now a dropdown to set the conversation's priority. */
+function PriorityControl({ conv, onToast }: { conv: Conversation; onToast: (m: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const setPriority = useSetPriority();
+  const cur = PRIO[conv.priority];
+  const pick = (v: Priority) => {
+    setOpen(false);
+    if (v === conv.priority) return;
+    setPriority.mutate(
+      { id: conv.id, priority: v },
+      { onSuccess: () => onToast(`Priority set to ${PRIO[v].label.toLowerCase()}`), onError: () => onToast("Couldn't set priority") },
+    );
+  };
+  return (
+    <span className="prioctl">
+      <button
+        type="button"
+        className="prio prio-btn"
+        style={{ background: cur.bg, color: cur.fg }}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {cur.label}
+        <ChevronDown />
+      </button>
+      {open && (
+        <>
+          <div className="prio-scrim" onClick={() => setOpen(false)} />
+          <div className="priomenu" role="menu">
+            {PRIO_ORDER.map((v) => (
+              <button
+                key={v}
+                type="button"
+                role="menuitem"
+                className={"priomenu__it" + (conv.priority === v ? " on" : "")}
+                onClick={() => pick(v)}
+              >
+                <span className="pdot" style={{ background: PRIO[v].dot }} />
+                {PRIO[v].label}
+                {conv.priority === v && <CheckIcon />}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </span>
+  );
+}
+
+function AssignmentBlock({
+  conv,
+  teamName,
+  onToast,
+}: {
+  conv: Conversation;
+  teamName: (id: string) => string;
+  onToast: (m: string) => void;
+}) {
   return (
     <Block title="Assignment">
       <div className="kv">
@@ -174,12 +242,7 @@ function AssignmentBlock({ conv, teamName }: { conv: Conversation; teamName: (id
       <div className="kv">
         <span className="k">Priority</span>
         <span className="v">
-          <span
-            className="prio"
-            style={highPriority ? undefined : { background: "var(--surface-2)", color: "var(--text-muted)" }}
-          >
-            {conv.priority}
-          </span>
+          <PriorityControl conv={conv} onToast={onToast} />
         </span>
       </div>
     </Block>
@@ -369,7 +432,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
 
         {isGroup ? (
           <>
-            <AssignmentBlock conv={conv} teamName={teamName} />
+            <AssignmentBlock conv={conv} teamName={teamName} onToast={onToast} />
             <RoutingBlock contact={conv.contact} isGroup onToast={onToast} />
             {conv.slaDueAt && <SlaBlock iso={conv.slaDueAt} now={now} />}
             <LabelsBlock labels={conv.labels} />
@@ -419,7 +482,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
           </>
         ) : (
           <>
-            <AssignmentBlock conv={conv} teamName={teamName} />
+            <AssignmentBlock conv={conv} teamName={teamName} onToast={onToast} />
             <CustomerTags contact={conv.contact} onToast={onToast} />
             <RecentConversations contactId={conv.contact.id} currentId={conv.id} onOpen={onOpenConversation} />
             <ChannelsBlock contact={conv.contact} activeChannel={conv.channel} />
