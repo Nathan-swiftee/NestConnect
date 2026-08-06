@@ -41,8 +41,9 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
     return true;
   });
 
-  // "Mine" is already assignee-filtered, so an Unassigned filter is redundant there.
-  const showUnassigned = view !== "mine";
+  // "Mine" is all-assigned-to-me and "Queue" is all-unassigned, so an Unassigned
+  // filter is redundant in both.
+  const showUnassigned = view !== "mine" && view !== "grabs";
   // A team inbox already scopes to one team, so the per-card team label is redundant there.
   const showTeamTag = !view.startsWith("team:");
   // Per-filter counts (WhatsApp-style) — computed from the view's data, ignoring search.
