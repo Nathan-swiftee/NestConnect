@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClientEvent,
@@ -354,6 +354,30 @@ export function useSound(): { on: boolean; toggle: () => void } {
  * Live sync: server events invalidate the relevant queries so lists, counts and
  * the open thread refresh instantly — across every connected client/tab.
  */
+/**
+ * On-demand refresh (pull-to-refresh / refresh button): pull any new Gmail now,
+ * then refetch the lists. Best-effort — a failed Gmail sync (or no Gmail inbox)
+ * still refreshes the conversation lists. `refreshing` drives the spinner.
+ */
+export function useRefresh() {
+  const qc = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await api.syncGmail().catch(() => undefined);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["conversations"] }),
+        qc.invalidateQueries({ queryKey: ["conversation"] }),
+        qc.invalidateQueries({ queryKey: ["views"] }),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [qc]);
+  return { refresh, refreshing };
+}
+
 export function useRealtime(openConversationId: string | null) {
   const qc = useQueryClient();
 

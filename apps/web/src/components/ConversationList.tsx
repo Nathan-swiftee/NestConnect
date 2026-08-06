@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useConversations, useTeams } from "../hooks";
+import { useConversations, useRefresh, useTeams } from "../hooks";
 import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
-import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon } from "../lib/icons";
+import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
+import { usePullToRefresh } from "../lib/usePullToRefresh";
 
 type Filter = "all" | "unread" | "unassigned" | "groups" | "closed";
 
@@ -22,6 +23,9 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const teamName = (id?: string | null) => (id ? teams.data?.find((t) => t.id === id)?.name : undefined);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
+  const { refresh, refreshing } = useRefresh();
+  const convsRef = useRef<HTMLDivElement>(null);
+  const { pull, armed, handlers } = usePullToRefresh(convsRef, refresh, refreshing);
 
   const query = q.trim().toLowerCase();
   const hasGroups = (data ?? []).some((c) => c.channel === "whatsapp_group");
@@ -89,6 +93,15 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
           </button>
           <h1>{title}</h1>
           <span className="badge">{count}</span>
+          <button
+            className={"list__refresh" + (refreshing ? " spinning" : "")}
+            onClick={() => refresh()}
+            disabled={refreshing}
+            title="Refresh — fetch new messages"
+            aria-label="Refresh"
+          >
+            <RefreshIcon />
+          </button>
           <button className="kbd" onClick={onOpenCmdk} title="Command menu" aria-label="Command menu">
             <CmdIcon />
             <span>K</span>
@@ -122,7 +135,16 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
         </div>
       </div>
 
-      <div className="convs" key={view}>
+      <div className="convs" key={view} ref={convsRef} {...handlers}>
+        <div
+          className={"ptr" + (refreshing ? " loading" : armed ? " armed" : "")}
+          style={{ height: refreshing ? 38 : pull, opacity: refreshing ? 1 : Math.min(1, pull / 42) }}
+          aria-hidden={!refreshing && pull === 0}
+        >
+          <span className="ptr__spin">
+            <RefreshIcon />
+          </span>
+        </div>
         {isLoading && <div className="empty">Loading…</div>}
         {!isLoading && shown.length === 0 && (
           <div className="empty">

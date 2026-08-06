@@ -177,6 +177,18 @@ export class GoogleController {
     return { ok: true };
   }
 
+  /**
+   * On-demand Gmail sync — the "pull to refresh" path. Pulls any new mail now
+   * so the caller can refetch and see it immediately. No-op in mock mode / when
+   * no Gmail inbox is connected. Authed (not public).
+   */
+  @Post("sync")
+  @HttpCode(200)
+  async sync(): Promise<{ ok: boolean; synced: number }> {
+    const synced = await this.gmailSync.syncAll();
+    return { ok: true, synced };
+  }
+
   /** Render the tiny HTML page that posts the result to the opener and closes. */
   private sendResult(res: Response, message: OAuthMessage): void {
     const payload = JSON.stringify(message).replace(/</g, "\\u003c");

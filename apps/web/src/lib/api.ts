@@ -94,6 +94,8 @@ export const api = {
   getIntegrations: () => get<IntegrationSettings>("/settings/integrations"),
   updateIntegrations: (input: UpdateIntegrationSettingsInput) =>
     patch<IntegrationSettings>("/settings/integrations", input),
+  // pull-to-refresh: fetch any new Gmail on demand
+  syncGmail: () => post<{ ok: boolean; synced: number }>("/channels/google/sync", {}),
   // customers (CRM)
   contacts: () => get<Contact[]>("/contacts"),
   contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),

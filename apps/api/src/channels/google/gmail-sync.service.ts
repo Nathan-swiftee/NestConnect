@@ -49,27 +49,40 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
       return;
     }
     if (env.gmail.pollSeconds <= 0) {
-      this.logger.log("Gmail polling disabled (GMAIL_POLL_SECONDS=0)");
+      this.logger.log("Gmail background polling disabled (GMAIL_POLL_SECONDS=0)");
       return;
     }
-    this.timer = setInterval(() => void this.syncAll(), env.gmail.pollSeconds * 1000);
+    // The background timer is a safety net only: it skips inboxes that have an
+    // active push subscription, since those arrive instantly via the webhook.
+    this.timer = setInterval(
+      () => void this.syncAll({ skipPushCovered: true }),
+      env.gmail.pollSeconds * 1000,
+    );
     // Don't keep the process alive just for the poll timer.
     this.timer.unref?.();
-    this.logger.log(`Gmail polling every ${env.gmail.pollSeconds}s`);
+    this.logger.log(`Gmail background poll every ${env.gmail.pollSeconds}s (skips push-covered inboxes)`);
   }
 
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** Poll every connected Gmail inbox once. Guards against overlapping runs. */
-  async syncAll(): Promise<void> {
-    if (this.running) return;
+  /**
+   * Sync every connected Gmail inbox once. Guards against overlapping runs.
+   * A manual refresh syncs all inboxes; the background timer passes
+   * `skipPushCovered` so inboxes served by push aren't polled needlessly.
+   */
+  async syncAll(opts?: { skipPushCovered?: boolean }): Promise<number> {
+    if (this.google.isMock) return 0; // no real Gmail to pull in mock mode
+    if (this.running) return 0;
     this.running = true;
+    let synced = 0;
     try {
       for (const { inbox, config } of await this.gmailInboxes()) {
+        if (opts?.skipPushCovered && this.hasActiveWatch(config)) continue; // push covers it
         try {
           await this.syncInbox(inbox, config);
+          synced++;
         } catch (err) {
           this.logger.warn(`Gmail sync failed for ${inbox.handle}: ${message(err)}`);
         }
@@ -77,10 +90,17 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     } finally {
       this.running = false;
     }
+    return synced;
+  }
+
+  /** True while the inbox has a live Gmail push subscription (watch). */
+  private hasActiveWatch(config: Record<string, string>): boolean {
+    return Number(config[GMAIL_CONFIG.watchExpiry] ?? 0) > Date.now();
   }
 
   /** Sync a single inbox by connected address (used by the push webhook). */
   async syncInboxByEmail(emailAddress: string): Promise<void> {
+    if (this.google.isMock) return;
     const want = emailAddress.trim().toLowerCase();
     const match = (await this.gmailInboxes()).find(
       ({ inbox, config }) =>

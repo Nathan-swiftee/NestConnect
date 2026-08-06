@@ -213,8 +213,16 @@ input,textarea{font:inherit}
 .list__title{display:flex;align-items:center;gap:9px}
 .list__title h1{margin:0;font-size:16px;font-weight:700;letter-spacing:-.01em}
 .list__title .badge{background:var(--brand-tint);color:var(--brand-strong)}
-.list__title .kbd{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--text-faint);background:var(--surface-2);border-radius:var(--r-8);padding:4px 8px;transition:color .14s}
+.list__title .kbd{font-family:var(--mono);font-size:11px;color:var(--text-faint);background:var(--surface-2);border-radius:var(--r-8);padding:4px 8px;transition:color .14s}
 .list__title .kbd:hover{color:var(--text)}
+/* manual refresh — pull any new mail now (pairs with pull-to-refresh) */
+.list__refresh{margin-left:auto;width:30px;height:30px;display:inline-grid;place-items:center;border-radius:var(--r-full);color:var(--text-faint);background:var(--surface-2);transition:color .14s,background .14s}
+.list__refresh:hover{color:var(--text)}
+.list__refresh:disabled{cursor:default}
+.list__refresh svg{width:15px;height:15px}
+.list__refresh.spinning{color:var(--brand-strong)}
+.list__refresh.spinning svg{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 /* search — soft, carved into the surface, no harsh border */
 .search{margin-top:11px;display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-full);padding:10px 16px;color:var(--text-faint);
   box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow .15s,border-color .15s}
@@ -230,6 +238,12 @@ input,textarea{font:inherit}
 .chip.active .chipcount{background:var(--brand-strong);color:#fff}
 .chip:hover:not(.active){color:var(--text)}
 .convs{overflow-y:auto;flex:1;min-height:0;animation:listIn .28s var(--ease)}
+/* pull-to-refresh indicator (mobile) — grows with the pull, spins while loading */
+.ptr{overflow:hidden;display:flex;align-items:flex-end;justify-content:center;pointer-events:none}
+.ptr__spin{display:grid;place-items:center;width:30px;height:30px;margin-bottom:6px;border-radius:var(--r-full);background:var(--surface);box-shadow:0 2px 8px rgba(13,21,18,.14);color:var(--text-muted);transition:transform .18s var(--ease),color .18s}
+.ptr__spin svg{width:16px;height:16px}
+.ptr.armed .ptr__spin{transform:rotate(180deg);color:var(--brand-strong)}
+.ptr.loading .ptr__spin svg{animation:spin .8s linear infinite}
 @keyframes listIn{from{opacity:0;transform:translate3d(12px,2px,0)}to{opacity:1;transform:none}}
 /* keep scroll inside these panes — no chaining/rubber-band that drags the
    thread header or list header out of place on touch devices */
