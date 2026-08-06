@@ -86,6 +86,12 @@ export abstract class Store {
   /** Delete a channel and the conversations that belong to it. */
   abstract deleteInbox(id: string): Promise<void>;
 
+  /* ---- app-level settings (org-scoped key/value) ---- */
+  /** Read an org-scoped app setting (e.g. the Google OAuth client id/secret). */
+  abstract getAppSetting(orgId: string, key: string): Promise<string | undefined>;
+  /** Create or update an org-scoped app setting. */
+  abstract setAppSetting(orgId: string, key: string, value: string): Promise<void>;
+
   /* ---- settings: teams & people ---- */
   abstract listTeams(): Promise<Team[]>;
   abstract listMembers(): Promise<Member[]>;

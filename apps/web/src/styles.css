@@ -657,6 +657,13 @@ input,textarea{font:inherit}
 .connect__credhead{font-size:11px;font-weight:750;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint);margin-bottom:10px}
 .connect__creds .field input{background:var(--surface)}
 
+/* ---- Setup (integration credentials) ---- */
+.setupcard{border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface);padding:16px;display:flex;flex-direction:column;gap:14px}
+.setupcard__head{display:flex;align-items:center;gap:12px}
+.copyrow{display:flex;gap:8px;align-items:stretch}
+.copyrow input{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px}
+.copyrow .btn-ghost{flex:0 0 auto;white-space:nowrap}
+
 /* ---- Customers (CRM) ---- */
 .custsearch{display:flex;align-items:center;gap:9px;background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-full);padding:10px 16px;margin-bottom:16px;color:var(--text-faint);transition:border-color .14s,background .14s}
 .custsearch:focus-within{border-color:var(--brand);background:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}

@@ -355,3 +355,13 @@ model AuditLog {
 
   @@index([orgId, createdAt])
 }
+
+// Org-scoped app-level settings (e.g. the Google OAuth app client id/secret set
+// in Settings › Setup). A plain key/value store keyed by (orgId, key).
+model AppSetting {
+  orgId String
+  key   String
+  value String
+
+  @@id([orgId, key])
+}

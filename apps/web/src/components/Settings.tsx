@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import type { ChannelType, Inbox, Role, RoutingStrategy, Team } from "@ding/schemas";
 import {
@@ -9,11 +10,13 @@ import {
   useDeleteTeam,
   useDeleteUser,
   useInboxes,
+  useIntegrations,
   useMe,
   usePeople,
   useReorderTeams,
   useTeams,
   useUpdateInbox,
+  useUpdateIntegrations,
   useUpdateTeam,
   useUpdateUser,
 } from "../hooks";
@@ -23,6 +26,7 @@ import {
   ChevronDown,
   ChevronUp,
   EditIcon,
+  GmailGlyph,
   PlusIcon,
   TeamGlyph,
   TEAM_ICON_KEYS,
@@ -31,7 +35,7 @@ import {
   XIcon,
 } from "../lib/icons";
 
-type Tab = "channels" | "teams" | "people";
+type Tab = "channels" | "teams" | "people" | "setup";
 
 interface Props {
   onClose: () => void;
@@ -42,6 +46,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "channels", label: "Channels" },
   { key: "teams", label: "Teams" },
   { key: "people", label: "People" },
+  { key: "setup", label: "Setup" },
 ];
 
 const ROLES: { value: Role; label: string }[] = [
@@ -115,6 +120,7 @@ export function Settings({ onClose, onToast }: Props) {
           {tab === "channels" && <ChannelsPane onToast={onToast} />}
           {tab === "teams" && <TeamsPane onToast={onToast} />}
           {tab === "people" && <PeoplePane onToast={onToast} />}
+          {tab === "setup" && <SetupPane onToast={onToast} />}
         </div>
       </div>
     </div>
@@ -362,6 +368,7 @@ function ChannelEditor({
 function ConnectChannel({ onDone, onToast }: { onDone: () => void; onToast: (msg: string) => void }) {
   const teams = useTeams();
   const create = useCreateInbox();
+  const qc = useQueryClient();
   const [kind, setKind] = useState<ChannelKind | null>(null);
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
@@ -372,6 +379,35 @@ function ConnectChannel({ onDone, onToast }: { onDone: () => void; onToast: (msg
   const setField = (k: string, v: string) => setCfg((c) => ({ ...c, [k]: v }));
   const toggleTeam = (id: string) =>
     setTeamIds((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
+
+  // Gmail skips the manual credential form entirely: it runs Google's consent
+  // flow in a popup, which lands on our callback and creates the inbox itself.
+  const connectGmail = () => {
+    const popup = window.open(
+      "/api/channels/google/oauth/start",
+      "gmail-oauth",
+      "width=520,height=680,menubar=no,toolbar=no",
+    );
+    if (!popup) onToast("Allow pop-ups for this site to connect Gmail");
+  };
+
+  // The popup posts its result back to this window when it finishes.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as { source?: string; ok?: boolean; email?: string; error?: string } | null;
+      if (!data || data.source !== "ding-oauth") return; // ignore unrelated messages
+      if (data.ok) {
+        qc.invalidateQueries({ queryKey: ["inboxes"] });
+        qc.invalidateQueries({ queryKey: ["views"] });
+        onToast(`Gmail connected (${data.email ?? ""})`);
+        onDone();
+      } else {
+        onToast(data.error || "Couldn't connect Gmail");
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [qc, onToast, onDone]);
 
   const requiredOk = kind
     ? kind.fields.filter((f) => !f.optional).every((f) => (cfg[f.key] ?? "").trim().length > 0)
@@ -427,6 +463,13 @@ function ConnectChannel({ onDone, onToast }: { onDone: () => void; onToast: (msg
               </button>
             );
           })}
+          <button className="kindcard" onClick={connectGmail}>
+            <span className="kindcard__ic" style={{ color: "#EA4335" }}>
+              <GmailGlyph />
+            </span>
+            <b>Gmail</b>
+            <small>Connect with Google — one click, no tokens to copy.</small>
+          </button>
         </div>
       </div>
     );
@@ -885,6 +928,127 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Setup — app-level integration credentials                          */
+/* ------------------------------------------------------------------ */
+
+function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
+  const integrations = useIntegrations();
+  const update = useUpdateIntegrations();
+  const google = integrations.data?.google;
+  const configured = Boolean(google?.configured);
+
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  // Prefill the Client ID from the stored value once it loads.
+  useEffect(() => {
+    if (google?.clientId !== undefined) setClientId(google.clientId);
+  }, [google?.clientId]);
+
+  const save = () => {
+    const input: { googleClientId?: string; googleClientSecret?: string } = {};
+    const id = clientId.trim();
+    const secret = clientSecret.trim();
+    if (id) input.googleClientId = id;
+    if (secret) input.googleClientSecret = secret; // only send the secret when set
+    if (!input.googleClientId && !input.googleClientSecret) {
+      onToast("Enter a Client ID and Secret to save");
+      return;
+    }
+    update.mutate(input, {
+      onSuccess: () => {
+        setClientSecret("");
+        onToast("Google credentials saved");
+      },
+      onError: () => onToast("Only admins & managers can change setup"),
+    });
+  };
+
+  const copyRedirect = async () => {
+    if (!google?.redirectUri) return;
+    try {
+      await navigator.clipboard.writeText(google.redirectUri);
+      setCopied(true);
+      onToast("Redirect URI copied");
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      onToast("Couldn't copy — select the URL and copy manually");
+    }
+  };
+
+  return (
+    <div className="setpane">
+      <div className="setpane__head">
+        <div>
+          <h2>Setup</h2>
+          <p>App-level credentials that power one-click channel connections, set once for the whole workspace.</p>
+        </div>
+      </div>
+
+      <div className="setupcard">
+        <div className="setupcard__head">
+          <span className="setrow__ic" style={{ color: "#EA4335" }}>
+            <GmailGlyph />
+          </span>
+          <div className="setrow__main">
+            <b>Google / Gmail</b>
+            <small>The OAuth 2.0 client behind “Connect with Google”.</small>
+          </div>
+          <span className={"connpill " + (configured ? "on" : "off")} title={configured ? "Ready to connect Gmail accounts" : "Add a Client ID and Secret to enable"}>
+            <span className="connpill__dot" />
+            {configured ? "Connected app configured" : "Not configured"}
+          </span>
+        </div>
+
+        <p className="fieldhint">
+          These are the app-level Google OAuth credentials from your Google Cloud project’s OAuth 2.0 Client ID. People then connect their own Gmail with one click.
+        </p>
+
+        <div className="setform__grid two">
+          <label className="field">
+            <span>Client ID</span>
+            <input
+              value={clientId}
+              autoComplete="off"
+              onChange={(e) => setClientId(e.target.value)}
+              placeholder="1029384756-abc123.apps.googleusercontent.com"
+            />
+          </label>
+          <label className="field">
+            <span>Client Secret</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={clientSecret}
+              onChange={(e) => setClientSecret(e.target.value)}
+              placeholder={configured ? "••••• (hidden)" : "GOCSPX-…"}
+            />
+          </label>
+        </div>
+
+        <div className="field">
+          <span>Redirect URI</span>
+          <div className="copyrow">
+            <input readOnly value={google?.redirectUri ?? ""} onFocus={(e) => e.target.select()} />
+            <button className="btn-ghost" type="button" onClick={copyRedirect}>
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <small className="fieldhint">Add this exact URL to your Google Cloud OAuth client’s Authorized redirect URIs.</small>
+        </div>
+
+        <div className="setform__foot">
+          <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || integrations.isLoading}>
+            Save
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -13,10 +13,19 @@ import { EmailController } from "./email/email.controller";
 import { EmailService } from "./email/email.service";
 import { GroupsService } from "./groups/groups.service";
 import { GroupsController } from "./groups/groups.controller";
+import { GoogleOAuthService } from "./google/google-oauth.service";
+import { GoogleController } from "./google/google.controller";
+import { IntegrationsController } from "../settings/integrations.controller";
 
 @Module({
   imports: [RealtimeModule],
-  controllers: [WhatsAppController, EmailController, GroupsController],
+  controllers: [
+    WhatsAppController,
+    EmailController,
+    GroupsController,
+    GoogleController,
+    IntegrationsController,
+  ],
   providers: [
     WhatsAppCloudProvider,
     WhatsAppGroupsProvider,
@@ -31,6 +40,7 @@ import { GroupsController } from "./groups/groups.controller";
     WhatsAppService,
     EmailService,
     GroupsService,
+    GoogleOAuthService,
     ChannelDispatcher,
   ],
   exports: [ChannelDispatcher],

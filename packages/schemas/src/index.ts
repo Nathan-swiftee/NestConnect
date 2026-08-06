@@ -355,6 +355,33 @@ export const addParticipantInputSchema = groupMemberInputSchema;
 export type AddParticipantInput = z.infer<typeof addParticipantInputSchema>;
 
 /* ------------------------------------------------------------------ */
+/* Integration settings (Settings › Setup)                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * App-level integration settings surfaced to the client. The Google block
+ * describes the org's OAuth app: the (non-secret) client id, whether it's fully
+ * configured (id + secret present), and the exact redirect URI to register with
+ * Google. The client secret is write-only — it is never returned.
+ */
+export const integrationSettingsSchema = z.object({
+  google: z.object({
+    clientId: z.string(),
+    configured: z.boolean(),
+    redirectUri: z.string(),
+  }),
+});
+export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
+
+/** Update the Google OAuth app credentials. A field is written only when a
+ *  non-empty value is supplied, so the secret can be left blank to keep it. */
+export const updateIntegrationSettingsInputSchema = z.object({
+  googleClientId: z.string().optional(),
+  googleClientSecret: z.string().optional(),
+});
+export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
+
+/* ------------------------------------------------------------------ */
 /* Realtime event contract (Socket.IO)                                 */
 /* ------------------------------------------------------------------ */
 

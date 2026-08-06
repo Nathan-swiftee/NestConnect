@@ -45,6 +45,8 @@ export class MemoryStore extends Store {
   private passwords: Map<string, string>;
   /** Per-inbox provider credentials, kept server-side only (never serialised). */
   private inboxConfig = new Map<string, Record<string, string>>();
+  /** Org-scoped app settings, keyed by `${orgId}::${key}` (e.g. Google OAuth creds). */
+  private appSettings = new Map<string, string>();
   private idSeq = 10_000;
 
   constructor() {
@@ -128,6 +130,14 @@ export class MemoryStore extends Store {
     this.inboxes = this.inboxes.filter((i) => i.id !== id);
     this.inboxConfig.delete(id);
     this.conversations = this.conversations.filter((c) => c.inboxId !== id);
+  }
+
+  async getAppSetting(orgId: string, key: string): Promise<string | undefined> {
+    return this.appSettings.get(`${orgId}::${key}`);
+  }
+
+  async setAppSetting(orgId: string, key: string, value: string): Promise<void> {
+    this.appSettings.set(`${orgId}::${key}`, value);
   }
 
   async listTeams(): Promise<Team[]> {

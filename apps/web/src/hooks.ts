@@ -15,6 +15,7 @@ import {
   type Message,
   type UpdateContactInput,
   type UpdateInboxInput,
+  type UpdateIntegrationSettingsInput,
   type UpdateTeamInput,
   type UpdateUserInput,
 } from "@ding/schemas";
@@ -113,6 +114,21 @@ export const useViews = () => useQuery({ queryKey: ["views"], queryFn: api.views
 export const useInboxes = () => useQuery({ queryKey: ["inboxes"], queryFn: api.inboxes });
 export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: api.teams });
 export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
+
+/* ---- integrations (Settings › Setup) ---- */
+export const useIntegrations = () =>
+  useQuery({ queryKey: ["integrations"], queryFn: api.getIntegrations });
+
+export function useUpdateIntegrations() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateIntegrationSettingsInput) => api.updateIntegrations(input),
+    onSuccess: (data) => {
+      qc.setQueryData(["integrations"], data);
+      qc.invalidateQueries({ queryKey: ["integrations"] });
+    },
+  });
+}
 
 export function useCreateTeam() {
   const qc = useQueryClient();

@@ -13,12 +13,14 @@ import type {
   CreateTeamInput,
   CreateUserInput,
   Inbox,
+  IntegrationSettings,
   Member,
   Message,
   Participant,
   Team,
   UpdateContactInput,
   UpdateInboxInput,
+  UpdateIntegrationSettingsInput,
   UpdateTeamInput,
   UpdateUserInput,
   User,
@@ -88,6 +90,10 @@ export const api = {
   createUser: (input: CreateUserInput) => post<User>("/settings/people", input),
   updateUser: (id: string, input: UpdateUserInput) => patch<User>(`/settings/people/${id}`, input),
   deleteUser: (id: string) => del<{ ok: boolean }>(`/settings/people/${id}`),
+  // integrations (Settings › Setup)
+  getIntegrations: () => get<IntegrationSettings>("/settings/integrations"),
+  updateIntegrations: (input: UpdateIntegrationSettingsInput) =>
+    patch<IntegrationSettings>("/settings/integrations", input),
   // customers (CRM)
   contacts: () => get<Contact[]>("/contacts"),
   contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),

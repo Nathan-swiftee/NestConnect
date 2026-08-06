@@ -144,6 +144,13 @@ const EmailGlyph = () => (
   </svg>
 );
 
+/** Gmail envelope (the tell-tale "M" valley). Colour it via the parent (Gmail red). */
+export const GmailGlyph = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor">
+    <path d="M4 5h1.4L12 9.9 18.6 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2.6v-8.2L12 14 6.6 9.8V19H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+  </svg>
+);
+
 export interface ChannelMeta {
   color: string;
   label: string;

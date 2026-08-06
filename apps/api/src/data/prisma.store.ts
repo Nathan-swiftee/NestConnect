@@ -159,6 +159,21 @@ export class PrismaStore extends Store {
     ]);
   }
 
+  async getAppSetting(orgId: string, key: string): Promise<string | undefined> {
+    const row = await this.prisma.appSetting.findUnique({
+      where: { orgId_key: { orgId, key } },
+    });
+    return row?.value ?? undefined;
+  }
+
+  async setAppSetting(orgId: string, key: string, value: string): Promise<void> {
+    await this.prisma.appSetting.upsert({
+      where: { orgId_key: { orgId, key } },
+      create: { orgId, key, value },
+      update: { value },
+    });
+  }
+
   async listTeams(): Promise<Team[]> {
     const rows = await this.prisma.team.findMany({
       where: { orgId: ORG_ID },
