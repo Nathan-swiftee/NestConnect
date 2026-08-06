@@ -11,7 +11,7 @@ export interface RoutingDecision {
  * Decides who a newly-created conversation goes to.
  *   1. Per-customer owner (a client always reaches "their" person/team)
  *   2. Otherwise the inbox's owning team + its strategy:
- *      - manual        → stays unassigned ("up for grabs")
+ *      - manual        → stays unassigned (in the "Queue")
  *      - round_robin / load_balanced / most_idle → assign an available agent
  * (The latter three share a simple rotation in Phase 1; refine per strategy later.)
  */

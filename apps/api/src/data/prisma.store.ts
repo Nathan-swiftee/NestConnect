@@ -376,7 +376,7 @@ export class PrismaStore extends Store {
     const my: ViewItem[] = [
       { key: "inbound", title: "My Inbound", count: await count("inbound") },
       { key: "mine", title: "Mine", count: await count("mine") },
-      { key: "grabs", title: "Up for grabs", count: await count("grabs") },
+      { key: "grabs", title: "Queue", count: await count("grabs") },
       { key: "mentions", title: "@ Mentions", count: await count("mentions") },
       { key: "snoozed", title: "Later", count: await count("snoozed"), due: await dueSnoozed() },
     ];

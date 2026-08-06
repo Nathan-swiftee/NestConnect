@@ -323,7 +323,7 @@ export class MemoryStore extends Store {
     const my: ViewItem[] = [
       { key: "inbound", title: "My Inbound", count: count("inbound") },
       { key: "mine", title: "Mine", count: count("mine") },
-      { key: "grabs", title: "Up for grabs", count: count("grabs") },
+      { key: "grabs", title: "Queue", count: count("grabs") },
       { key: "mentions", title: "@ Mentions", count: count("mentions") },
       { key: "snoozed", title: "Later", count: count("snoozed"), due: this.dueSnoozeCount() },
     ];

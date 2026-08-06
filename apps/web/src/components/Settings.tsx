@@ -51,7 +51,7 @@ const ROLES: { value: Role; label: string }[] = [
 ];
 
 const STRATEGIES: { value: RoutingStrategy; label: string }[] = [
-  { value: "manual", label: "Up for grabs (manual)" },
+  { value: "manual", label: "Queue (manual)" },
   { value: "round_robin", label: "Round robin" },
   { value: "load_balanced", label: "Load balanced" },
   { value: "most_idle", label: "Most idle" },

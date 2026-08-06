@@ -67,7 +67,7 @@ export class IngestService {
       this.realtime.emitConversationAssigned(conv, "auto-routing");
       this.logger.log(
         `New WhatsApp conversation ${conv.id} from ${input.from} → ` +
-          `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (up for grabs)`}`,
+          `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
       );
     }
 
@@ -151,7 +151,7 @@ export class IngestService {
         this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
         this.logger.log(
           `New email conversation ${conversationId} from ${input.from} → ` +
-            `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (up for grabs)`}`,
+            `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
         );
       }
     }

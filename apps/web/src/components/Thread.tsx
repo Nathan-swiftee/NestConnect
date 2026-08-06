@@ -151,7 +151,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const unassign = () => {
     assign.mutate({ id: conv.id, input: { assigneeUserId: null } });
     setMenu(false);
-    onToast("Moved to Up for grabs");
+    onToast("Sent back to queue");
   };
   const closeConversation = () => {
     setMenu(false);
@@ -290,7 +290,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               ))}
             {conv.assigneeUserId && (
               <button onClick={unassign}>
-                <InboxIcon /> Move to Up for grabs
+                <InboxIcon /> Send back to queue
               </button>
             )}
             <div className="sep" />

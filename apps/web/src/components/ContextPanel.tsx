@@ -168,7 +168,7 @@ export function ContextPanel({ conversationId, onToast, onClose }: Props) {
             <span className="k">Team</span>
             <span className="v">
               {(conv.assignedTeamId && teamName(conv.assignedTeamId)) || "—"}
-              {!conv.assigneeUserId ? " · up for grabs" : ""}
+              {!conv.assigneeUserId ? " · in queue" : ""}
             </span>
           </div>
           <div className="kv">

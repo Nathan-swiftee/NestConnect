@@ -145,7 +145,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                   ) : (
                     <>
                       <span className={"tag " + (owned ? "owner" : "grab")}>
-                        {owned ? "Yours" : "Up for grabs"}
+                        {owned ? "Yours" : "Queue"}
                       </span>
                       {c.slaDueAt && (
                         <span className="sla">
