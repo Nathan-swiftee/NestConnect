@@ -257,6 +257,13 @@ function encodeHeader(value: string): string {
   return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
 }
 
+/** A file to attach to an outbound Gmail message. */
+export interface MimeAttachment {
+  filename: string;
+  mime: string;
+  bytes: Buffer;
+}
+
 export interface BuildMimeInput {
   from: string;
   fromName?: string;
@@ -267,9 +274,19 @@ export interface BuildMimeInput {
   messageId: string;
   inReplyTo?: string;
   references?: string;
+  attachments?: MimeAttachment[];
 }
 
-/** Build a base64url-encoded RFC 2822 text/plain message for Gmail's `raw`. */
+/** Base64 a buffer and hard-wrap at 76 chars per RFC 2045. */
+function b64Wrap(buf: Buffer): string {
+  return buf.toString("base64").replace(/(.{76})/g, "$1\r\n");
+}
+
+/**
+ * Build a base64url-encoded RFC 2822 message for Gmail's `raw`. A plain
+ * text/plain message when there are no attachments; a multipart/mixed message
+ * (text part + one base64 part per file) when there are.
+ */
 export function buildMime(input: BuildMimeInput): string {
   const fromHeader = input.fromName
     ? `${encodeHeader(input.fromName)} <${input.from}>`
@@ -282,14 +299,39 @@ export function buildMime(input: BuildMimeInput): string {
     `Subject: ${encodeHeader(input.subject)}`,
     `Message-ID: ${input.messageId}`,
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: base64",
   ];
   if (input.inReplyTo) headers.push(`In-Reply-To: ${input.inReplyTo}`);
   if (input.references) headers.push(`References: ${input.references}`);
 
-  // Base64 the body and wrap at 76 chars per RFC 2045.
-  const b64 = Buffer.from(input.body, "utf8").toString("base64").replace(/(.{76})/g, "$1\r\n");
-  const mime = `${headers.join("\r\n")}\r\n\r\n${b64}`;
+  const attachments = input.attachments ?? [];
+  let mime: string;
+  if (!attachments.length) {
+    headers.push('Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64");
+    mime = `${headers.join("\r\n")}\r\n\r\n${b64Wrap(Buffer.from(input.body, "utf8"))}`;
+  } else {
+    // A boundary that can't appear in base64 payloads; unique per message.
+    const boundary = `=_ding_${input.messageId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
+    headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+    const parts: string[] = [
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      b64Wrap(Buffer.from(input.body, "utf8")),
+    ];
+    for (const att of attachments) {
+      const name = encodeHeader(att.filename);
+      parts.push(
+        `--${boundary}`,
+        `Content-Type: ${att.mime}; name="${name}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${name}"`,
+        "",
+        b64Wrap(att.bytes),
+      );
+    }
+    parts.push(`--${boundary}--`);
+    mime = `${headers.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`;
+  }
   return Buffer.from(mime, "utf8").toString("base64url");
 }

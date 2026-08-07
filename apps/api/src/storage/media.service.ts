@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { AttachmentKind } from "@ding/schemas";
 import { env } from "../config/env";
-import type { AttachmentInput } from "../data/store";
+import { Store, type AttachmentInput } from "../data/store";
 import { StorageService } from "./storage.service";
 
 interface MediaMeta {
@@ -20,7 +20,19 @@ interface MediaMeta {
 export class MediaService {
   private readonly logger = new Logger(MediaService.name);
 
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly dataStore: Store,
+  ) {}
+
+  /** Load a stored attachment's bytes by id (for outbound delivery). */
+  async load(attachmentId: string): Promise<{ bytes: Buffer; mime: string; filename: string } | null> {
+    const ref = await this.dataStore.getAttachment(attachmentId);
+    if (!ref) return null;
+    const bytes = await this.storage.get(ref.storageKey);
+    if (!bytes) return null;
+    return { bytes, mime: ref.mime, filename: ref.filename };
+  }
 
   /** Download a media URL and store it. Returns null on any failure. */
   async downloadAndStore(

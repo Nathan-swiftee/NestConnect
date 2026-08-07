@@ -1,8 +1,14 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { ConversationWithMessages, Message, MessageStatus } from "@ding/schemas";
 import { Store } from "../data/store";
+import { MediaService } from "../storage/media.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
-import { CHANNEL_PROVIDERS, ChannelProvider, type SendContext } from "./channel-provider";
+import {
+  CHANNEL_PROVIDERS,
+  ChannelProvider,
+  type OutboundMedia,
+  type SendContext,
+} from "./channel-provider";
 
 /**
  * Sends outbound messages through the right channel provider and reconciles
@@ -16,6 +22,7 @@ export class ChannelDispatcher {
   constructor(
     @Inject(CHANNEL_PROVIDERS) private readonly providers: ChannelProvider[],
     private readonly store: Store,
+    private readonly media: MediaService,
     private readonly realtime: RealtimeGateway,
   ) {}
 
@@ -47,7 +54,8 @@ export class ChannelDispatcher {
       };
     }
 
-    const result = await provider.sendText({ to, body: message.body, conversation, context });
+    const media = await this.resolveMedia(message);
+    const result = await provider.sendText({ to, body: message.body, conversation, context, media });
     if (result.channelMsgId) {
       await this.store.setMessageChannelId(message.id, result.channelMsgId);
     }
@@ -60,6 +68,27 @@ export class ChannelDispatcher {
       void this.transition(result.channelMsgId, "delivered", 1200);
       void this.transition(result.channelMsgId, "read", 2600);
     }
+  }
+
+  /** Turn a message's attachments into ready-to-send media (bytes loaded from storage). */
+  private async resolveMedia(message: Message): Promise<OutboundMedia[] | undefined> {
+    if (!message.attachments?.length) return undefined;
+    const out: OutboundMedia[] = [];
+    for (const att of message.attachments) {
+      const loaded = await this.media.load(att.id);
+      if (!loaded) {
+        this.logger.warn(`Outbound attachment ${att.id} could not be loaded — skipping`);
+        continue;
+      }
+      out.push({
+        kind: att.kind,
+        mime: att.mime,
+        filename: att.filename,
+        bytes: loaded.bytes,
+        durationMs: att.durationMs,
+      });
+    }
+    return out.length ? out : undefined;
   }
 
   private transition(channelMsgId: string | undefined, status: MessageStatus, delay: number): Promise<void> {

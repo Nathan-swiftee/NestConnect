@@ -41,6 +41,11 @@ export class EmailProvider extends ChannelProvider {
         headers.push({ Name: "In-Reply-To", Value: params.context.inReplyTo });
         headers.push({ Name: "References", Value: params.context.inReplyTo });
       }
+      const attachments = (params.media ?? []).map((m) => ({
+        Name: m.filename,
+        Content: m.bytes.toString("base64"),
+        ContentType: m.mime,
+      }));
       const res = await fetch("https://api.postmarkapp.com/email", {
         method: "POST",
         headers: {
@@ -55,6 +60,7 @@ export class EmailProvider extends ChannelProvider {
           TextBody: params.body,
           MessageStream: "outbound",
           Headers: headers,
+          ...(attachments.length ? { Attachments: attachments } : {}),
         }),
       });
       const json = (await res.json()) as { ErrorCode?: number; Message?: string };

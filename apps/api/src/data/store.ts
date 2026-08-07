@@ -1,4 +1,5 @@
 import type {
+  Attachment,
   AttachmentKind,
   ChannelType,
   Contact,
@@ -153,9 +154,12 @@ export abstract class Store {
 
   abstract addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean },
+    input: { body: string; internal: boolean; attachmentIds?: string[] },
     author: User,
   ): Promise<Message | undefined>;
+
+  /** Stage an uploaded file as an attachment not yet tied to a message. */
+  abstract createUploadAttachment(orgId: string, input: AttachmentInput): Promise<Attachment>;
 
   abstract assign(
     conversationId: string,

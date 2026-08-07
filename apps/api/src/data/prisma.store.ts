@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import bcrypt from "bcryptjs";
 import type { Prisma } from "@prisma/client";
 import type {
+  Attachment,
   ChannelType,
   Contact,
   ContactWithConversations,
@@ -23,6 +24,7 @@ import type {
 import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 import {
+  mapAttachment,
   mapContact,
   mapConversation,
   mapConversationWithMessages,
@@ -31,6 +33,7 @@ import {
   mapParticipant,
   mapTeam,
   mapUser,
+  messageTypeForKind,
   previewForType,
 } from "./mappers";
 import { PrismaService } from "./prisma.service";
@@ -489,12 +492,20 @@ export class PrismaStore extends Store {
 
   async addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean },
+    input: { body: string; internal: boolean; attachmentIds?: string[] },
     author: User,
   ): Promise<Message | undefined> {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
     if (!conv) return undefined;
     const seq = conv.seq + 1;
+    // Claim staged uploads (attached in the composer, not yet tied to a message).
+    const staged = input.attachmentIds?.length
+      ? await this.prisma.attachment.findMany({
+          where: { id: { in: input.attachmentIds }, messageId: null },
+        })
+      : [];
+    const messageType = staged.length ? messageTypeForKind(staged[0].kind) : "text";
+    const preview = input.body || previewForType(messageType);
     // Replying to an unclaimed chat takes ownership of it.
     const assignOnReply = !input.internal && !conv.assigneeUserId && conv.status !== "closed";
     // Replying to a snoozed conversation wakes it back into the active queue.
@@ -511,6 +522,8 @@ export class PrismaStore extends Store {
           body: input.body,
           status: "sent",
           internal: input.internal,
+          messageType,
+          ...(staged.length ? { attachments: { connect: staged.map((a) => ({ id: a.id })) } } : {}),
         },
         include: { attachments: true },
       }),
@@ -521,13 +534,18 @@ export class PrismaStore extends Store {
           lastActivityAt: new Date(),
           unread: false,
           unreadCount: 0,
-          ...(input.internal ? {} : { preview: input.body }),
+          ...(input.internal ? {} : { preview }),
           ...(wakeSnooze ? { status: "open", snoozedUntil: null } : {}),
           ...(assignOnReply ? { assigneeUserId: author.id } : {}),
         },
       }),
     ]);
     return mapMessage(message);
+  }
+
+  async createUploadAttachment(_orgId: string, input: AttachmentInput): Promise<Attachment> {
+    const row = await this.prisma.attachment.create({ data: toAttachmentCreate(input) });
+    return mapAttachment(row);
   }
 
   async assign(

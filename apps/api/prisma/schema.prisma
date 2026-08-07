@@ -263,22 +263,24 @@ model Message {
 }
 
 model Attachment {
-  id         String  @id @default(cuid())
-  messageId  String
+  id         String   @id @default(cuid())
+  // Null while an upload is staged (not yet attached to a sent message).
+  messageId  String?
   // Storage object key (R2/S3 key or local path).
   r2Key      String
   mime       String
   size       Int
   filename   String
   // image | video | audio | voice | document | sticker | file
-  kind       String  @default("file")
+  kind       String   @default("file")
   // Audio/video length in ms; image intrinsic size; voice waveform peaks (JSON).
   durationMs Int?
   width      Int?
   height     Int?
   waveform   String?
+  createdAt  DateTime @default(now())
 
-  message Message @relation(fields: [messageId], references: [id])
+  message Message? @relation(fields: [messageId], references: [id])
 
   @@index([messageId])
 }

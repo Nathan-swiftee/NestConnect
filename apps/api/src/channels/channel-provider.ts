@@ -1,4 +1,4 @@
-import type { ChannelType, Conversation } from "@ding/schemas";
+import type { AttachmentKind, ChannelType, Conversation } from "@ding/schemas";
 
 export const CHANNEL_PROVIDERS = "CHANNEL_PROVIDERS";
 
@@ -21,11 +21,22 @@ export interface SendContext {
   toName?: string;
 }
 
+/** A resolved outbound media file (bytes in hand), handed to a provider to send. */
+export interface OutboundMedia {
+  kind: AttachmentKind;
+  mime: string;
+  filename: string;
+  bytes: Buffer;
+  durationMs?: number;
+}
+
 export interface SendParams {
   to: string;
   body: string;
   conversation: Conversation;
   context?: SendContext;
+  /** Media to deliver alongside (or instead of) the text body. */
+  media?: OutboundMedia[];
 }
 
 /**

@@ -22,7 +22,7 @@ import type {
 } from "@ding/schemas";
 import { isInboxConnected } from "@ding/schemas";
 import { env } from "../config/env";
-import { previewForType } from "./mappers";
+import { messageTypeForKind, previewForType } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
@@ -58,6 +58,8 @@ export class MemoryStore extends Store {
   private appSettings = new Map<string, string>();
   /** Backend-only attachment storage refs, keyed by attachment id (for serving). */
   private mediaRefs = new Map<string, StoredAttachmentRef>();
+  /** Uploaded-but-not-yet-sent attachments (composer staging), keyed by id. */
+  private pendingUploads = new Map<string, Attachment>();
   private idSeq = 10_000;
 
   constructor() {
@@ -407,11 +409,14 @@ export class MemoryStore extends Store {
 
   async addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean },
+    input: { body: string; internal: boolean; attachmentIds?: string[] },
     author: User,
   ): Promise<Message | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;
+    // Claim staged uploads (attached in the composer, not yet tied to a message).
+    const attachments = this.takePendingAttachments(input.attachmentIds);
+    const messageType = attachments.length ? messageTypeForKind(attachments[0].kind) : "text";
     const message: Message = {
       id: `msg_live_${++this.idSeq}`,
       conversationId,
@@ -422,8 +427,8 @@ export class MemoryStore extends Store {
       body: input.body,
       status: "sent",
       internal: input.internal,
-      messageType: "text",
-      attachments: [],
+      messageType,
+      attachments,
       createdAt: new Date().toISOString(),
     };
     rec.messages.push(message);
@@ -431,7 +436,7 @@ export class MemoryStore extends Store {
     rec.unread = false;
     rec.unreadCount = 0;
     if (!input.internal) {
-      rec.preview = input.body;
+      rec.preview = input.body || previewForType(messageType);
       // Replying to a snoozed conversation wakes it back into the active queue.
       if (rec.status === "snoozed") {
         rec.status = "open";
@@ -441,6 +446,39 @@ export class MemoryStore extends Store {
       if (!rec.assigneeUserId && rec.status !== "closed") rec.assigneeUserId = author.id;
     }
     return message;
+  }
+
+  async createUploadAttachment(_orgId: string, input: AttachmentInput): Promise<Attachment> {
+    const id = `att_${++this.idSeq}`;
+    this.mediaRefs.set(id, { storageKey: input.storageKey, mime: input.mime, filename: input.filename });
+    const att: Attachment = {
+      id,
+      kind: input.kind,
+      mime: input.mime,
+      size: input.size,
+      filename: input.filename,
+      url: `/api/media/${id}`,
+      durationMs: input.durationMs,
+      width: input.width,
+      height: input.height,
+      waveform: input.waveform,
+    };
+    this.pendingUploads.set(id, att);
+    return att;
+  }
+
+  /** Pull staged uploads out of the pending map (they now belong to a message). */
+  private takePendingAttachments(ids?: string[]): Attachment[] {
+    if (!ids?.length) return [];
+    const out: Attachment[] = [];
+    for (const id of ids) {
+      const att = this.pendingUploads.get(id);
+      if (att) {
+        out.push(att);
+        this.pendingUploads.delete(id);
+      }
+    }
+    return out;
   }
 
   async assign(

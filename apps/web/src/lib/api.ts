@@ -1,5 +1,6 @@
 import type {
   AddParticipantInput,
+  Attachment,
   ChannelType,
   Contact,
   ContactWithConversations,
@@ -105,8 +106,26 @@ export const api = {
   conversations: (view: string) =>
     get<Conversation[]>(`/conversations?view=${encodeURIComponent(view)}`),
   conversation: (id: string) => get<ConversationWithMessages>(`/conversations/${id}`),
-  sendMessage: (id: string, body: string, internal = false) =>
-    post<Message>(`/conversations/${id}/messages`, { body, internal }),
+  // Stage a composer upload; the returned attachment id is referenced on send.
+  uploadMedia: (
+    file: File | Blob,
+    meta?: { filename?: string; kind?: string; durationMs?: number; width?: number; height?: number; waveform?: number[] },
+  ) => {
+    const form = new FormData();
+    form.append("file", file, meta?.filename ?? (file instanceof File ? file.name : "file"));
+    if (meta?.kind) form.append("kind", meta.kind);
+    if (meta?.durationMs != null) form.append("durationMs", String(Math.round(meta.durationMs)));
+    if (meta?.width != null) form.append("width", String(Math.round(meta.width)));
+    if (meta?.height != null) form.append("height", String(Math.round(meta.height)));
+    if (meta?.waveform) form.append("waveform", JSON.stringify(meta.waveform));
+    return request<Attachment>("/media", { method: "POST", body: form });
+  },
+  sendMessage: (id: string, body: string, internal = false, attachmentIds?: string[]) =>
+    post<Message>(`/conversations/${id}/messages`, {
+      body,
+      internal,
+      ...(attachmentIds?.length ? { attachmentIds } : {}),
+    }),
   assign: (
     id: string,
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },

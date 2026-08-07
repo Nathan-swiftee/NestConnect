@@ -257,10 +257,18 @@ export type ConversationWithMessages = z.infer<typeof conversationWithMessagesSc
 /* API request payloads                                                */
 /* ------------------------------------------------------------------ */
 
-export const sendMessageInputSchema = z.object({
-  body: z.string().min(1),
-  internal: z.boolean().default(false),
-});
+export const sendMessageInputSchema = z
+  .object({
+    body: z.string().default(""),
+    internal: z.boolean().default(false),
+    /** Ids of previously-uploaded attachments to send with this message. */
+    attachmentIds: z.array(z.string()).optional(),
+  })
+  // Must carry something — text or at least one attachment.
+  .refine((v) => v.body.trim().length > 0 || (v.attachmentIds?.length ?? 0) > 0, {
+    message: "Message needs text or an attachment",
+    path: ["body"],
+  });
 export type SendMessageInput = z.infer<typeof sendMessageInputSchema>;
 
 export const assignConversationInputSchema = z.object({

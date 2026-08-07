@@ -41,9 +41,15 @@ export class GmailProvider extends ChannelProvider {
     const domain = fromAddress.split("@")[1] || env.email.domain;
     const messageId = `<ding.${params.conversation.id}.${Date.now()}@${domain}>`;
     const subject = this.replySubject(params.context?.subject);
+    const attachments = (params.media ?? []).map((m) => ({
+      filename: m.filename,
+      mime: m.mime,
+      bytes: m.bytes,
+    }));
 
     if (this.google.isMock) {
-      this.logger.log(`[mock] Gmail send → ${params.to} · "${subject}"`);
+      const extra = attachments.length ? ` (+${attachments.length} attachment)` : "";
+      this.logger.log(`[mock] Gmail send → ${params.to} · "${subject}"${extra}`);
       return { ok: true, channelMsgId: messageId };
     }
 
@@ -62,6 +68,7 @@ export class GmailProvider extends ChannelProvider {
         inReplyTo: params.context?.inReplyTo,
         // A reply's References should chain the message it answers.
         references: params.context?.inReplyTo,
+        attachments,
       });
       await gmail.send(accessToken, raw);
       return { ok: true, channelMsgId: messageId };

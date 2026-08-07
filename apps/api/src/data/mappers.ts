@@ -41,6 +41,20 @@ export function mediaUrl(attachmentId: string): string {
   return `/api/media/${attachmentId}`;
 }
 
+/** The message type implied by an attachment's kind (for outbound media). */
+export function messageTypeForKind(kind: string): MessageType {
+  switch (kind) {
+    case "image":
+    case "video":
+    case "audio":
+    case "voice":
+    case "sticker":
+      return kind;
+    default:
+      return "document";
+  }
+}
+
 /** A list preview for a media message that carries no text caption. */
 export function previewForType(type?: MessageType): string {
   switch (type) {
