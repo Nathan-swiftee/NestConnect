@@ -775,6 +775,13 @@ input,textarea{font:inherit}
 .chanrow__m b{font-size:13px;font-weight:650}
 .chanrow__m small{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chanrow__badge{flex:0 0 auto;font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:var(--r-full);background:color-mix(in srgb,var(--wa) 16%,transparent);color:var(--wa)}
+/* Channels are now switch buttons: reset chrome, dim the current one, show a ›. */
+.chanrow{border:0;cursor:pointer;font:inherit}
+.chanrow:disabled{cursor:default}
+.chanrow--active,.chanrow--active:hover{background:var(--surface-2)}
+.chanrow__go{flex:0 0 auto;color:var(--text-faint);display:grid;place-items:center;transition:transform .12s var(--ease)}
+.chanrow:hover .chanrow__go{transform:translateX(2px);color:var(--text-muted)}
+.chanrow__go svg{width:16px;height:16px}
 .block{border-top:1px solid var(--border);padding-top:16px;display:flex;flex-direction:column;gap:10px}
 .block > .t{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint)}
 .kv{display:flex;align-items:center;gap:10px}

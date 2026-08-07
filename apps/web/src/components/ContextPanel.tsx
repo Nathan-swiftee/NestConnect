@@ -17,9 +17,11 @@ import {
   useTeams,
   useUpdateContact,
 } from "../hooks";
+import { useQueryClient } from "@tanstack/react-query";
 import { initials, relativeTime, slaCountdown } from "../lib/format";
+import { api } from "../lib/api";
 import { TagEditor } from "./TagEditor";
-import { channelMeta, CheckIcon, ChevronDown, PhoneIcon, MailIcon, ProfileIcon, XIcon } from "../lib/icons";
+import { channelMeta, CheckIcon, ChevronDown, ChevronRight, PhoneIcon, MailIcon, ProfileIcon, XIcon } from "../lib/icons";
 
 interface Props {
   conversationId: string | null;
@@ -122,9 +124,19 @@ function RecentConversations({
   );
 }
 
-/** The channels this customer can be reached on, from their contact details. */
-function ChannelsBlock({ contact, activeChannel }: { contact: Contact; activeChannel: ChannelType }) {
-  const rows: { type: ChannelType; value: string }[] = [];
+/** The channels this customer can be reached on. Each is a switch: clicking one
+ *  opens their thread on that channel (starting one if there isn't yet). */
+function ChannelsBlock({
+  contact,
+  activeChannel,
+  onSwitch,
+}: {
+  contact: Contact;
+  activeChannel: ChannelType;
+  onSwitch: (channel: "whatsapp" | "email") => Promise<void>;
+}) {
+  const [pending, setPending] = useState<string | null>(null);
+  const rows: { type: "whatsapp" | "email"; value: string }[] = [];
   if (contact.phone) rows.push({ type: "whatsapp", value: contact.phone });
   if (contact.email) rows.push({ type: "email", value: contact.email });
 
@@ -138,9 +150,27 @@ function ChannelsBlock({ contact, activeChannel }: { contact: Contact; activeCha
             const cm = channelMeta(r.type);
             const Glyph = cm.Glyph;
             const active = activeChannel === r.type;
-            const href = r.type === "email" ? `mailto:${r.value}` : `tel:${r.value}`;
+            const busy = pending === r.type;
             return (
-              <a className="chanrow" key={r.type} href={href}>
+              <button
+                type="button"
+                className={"chanrow" + (active ? " chanrow--active" : "")}
+                key={r.type}
+                disabled={active || busy}
+                title={active ? "Current channel" : `Message on ${cm.label}`}
+                onClick={
+                  active
+                    ? undefined
+                    : async () => {
+                        setPending(r.type);
+                        try {
+                          await onSwitch(r.type);
+                        } finally {
+                          setPending(null);
+                        }
+                      }
+                }
+              >
                 <span className="chanrow__ic" style={{ background: cm.color }}>
                   <Glyph />
                 </span>
@@ -148,8 +178,14 @@ function ChannelsBlock({ contact, activeChannel }: { contact: Contact; activeCha
                   <b>{cm.label}</b>
                   <small>{r.value}</small>
                 </span>
-                {active && <span className="chanrow__badge">Active</span>}
-              </a>
+                {active ? (
+                  <span className="chanrow__badge">Active</span>
+                ) : busy ? (
+                  <span className="chanrow__badge">Opening…</span>
+                ) : (
+                  <span className="chanrow__go" aria-hidden="true"><ChevronRight /></span>
+                )}
+              </button>
             );
           })}
         </div>
@@ -339,6 +375,7 @@ function RoutingBlock({ contact, isGroup, onToast }: { contact: Contact; isGroup
 
 export function ContextPanel({ conversationId, onToast, onClose, onOpenConversation, onOpenProfile }: Props) {
   const { data: conv } = useConversation(conversationId);
+  const qc = useQueryClient();
   const teams = useTeams();
   const teamName = (id: string) => teams.data?.find((t) => t.id === id)?.name ?? "—";
   const addParticipant = useAddParticipant(conversationId ?? "");
@@ -380,6 +417,23 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
     if (conv.inviteLink) {
       navigator.clipboard?.writeText(conv.inviteLink);
       onToast("Invite link copied");
+    }
+  };
+
+  // Move this customer to another channel: open their thread there (starting one
+  // if needed) and jump to it. Closing the panel reveals the thread on mobile.
+  const switchChannel = async (channel: "whatsapp" | "email") => {
+    try {
+      const { conversationId } = await api.reachContact(conv.contact.id, channel);
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["conversations"] }),
+        qc.invalidateQueries({ queryKey: ["views"] }),
+      ]);
+      onOpenConversation?.(conversationId);
+      onClose?.();
+    } catch {
+      const need = channel === "email" ? "an email address" : "a phone number";
+      onToast(`Couldn't open ${channelMeta(channel).label} — check the customer has ${need} and a connected inbox.`);
     }
   };
 
@@ -485,7 +539,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
             <AssignmentBlock conv={conv} teamName={teamName} onToast={onToast} />
             <CustomerTags contact={conv.contact} onToast={onToast} />
             <RecentConversations contactId={conv.contact.id} currentId={conv.id} onOpen={onOpenConversation} />
-            <ChannelsBlock contact={conv.contact} activeChannel={conv.channel} />
+            <ChannelsBlock contact={conv.contact} activeChannel={conv.channel} onSwitch={switchChannel} />
             <RoutingBlock contact={conv.contact} isGroup={false} onToast={onToast} />
             {conv.slaDueAt && <SlaBlock iso={conv.slaDueAt} now={now} />}
             <LabelsBlock labels={conv.labels} />

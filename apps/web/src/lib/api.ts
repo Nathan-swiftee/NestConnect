@@ -105,6 +105,9 @@ export const api = {
   contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),
   createContact: (input: CreateContactInput) => post<Contact>("/contacts", input),
   updateContact: (id: string, input: UpdateContactInput) => patch<Contact>(`/contacts/${id}`, input),
+  // Open (or start) this customer's conversation on another channel.
+  reachContact: (contactId: string, channel: "whatsapp" | "email") =>
+    post<{ conversationId: string; created: boolean }>(`/contacts/${contactId}/reach`, { channel }),
   // conversations
   conversations: (view: string) =>
     get<Conversation[]>(`/conversations?view=${encodeURIComponent(view)}`),

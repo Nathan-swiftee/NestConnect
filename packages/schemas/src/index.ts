@@ -374,6 +374,12 @@ export const reactionInputSchema = z.object({
 });
 export type ReactionInput = z.infer<typeof reactionInputSchema>;
 
+/** Reach a customer on a channel — opens their thread there, or starts one. */
+export const reachInputSchema = z.object({
+  channel: z.enum(["whatsapp", "email"]),
+});
+export type ReachInput = z.infer<typeof reachInputSchema>;
+
 export const assignConversationInputSchema = z.object({
   assigneeUserId: z.string().nullable().optional(),
   assignedTeamId: z.string().nullable().optional(),
