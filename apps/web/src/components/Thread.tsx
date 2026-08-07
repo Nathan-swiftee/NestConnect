@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
 import type { Message, Attachment } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams } from "../hooks";
+import { api } from "../lib/api";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration } from "../lib/format";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
@@ -28,6 +30,10 @@ import {
   DocIcon,
   DownloadIcon,
   XIcon,
+  MicIcon,
+  StopIcon,
+  TrashIcon,
+  RefreshIcon,
 } from "../lib/icons";
 
 interface Props {
@@ -246,6 +252,185 @@ function groupMessagesByDay(messages: Message[]): { key: string; label: string; 
   return groups;
 }
 
+/* ─── Composer media staging ────────────────────────────────────────────
+   Files picked / dropped / pasted and voice recordings are staged locally,
+   uploaded straight away, then referenced by id on send. */
+type StagedKind = "image" | "video" | "voice" | "document" | "audio";
+type StagedStatus = "uploading" | "done" | "error";
+
+type Staged = {
+  localId: string;
+  file: File | Blob;
+  name: string;
+  previewUrl?: string;
+  kind: StagedKind;
+  status: StagedStatus;
+  attachment?: Attachment;
+  durationMs?: number;
+  waveform?: number[];
+};
+
+const IMAGE_EXT = ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "heic", "heif", "avif"];
+const VIDEO_EXT = ["mp4", "mov", "webm", "mkv", "avi", "m4v"];
+const AUDIO_EXT = ["mp3", "ogg", "oga", "wav", "m4a", "aac", "opus", "flac"];
+
+/** Classify a picked/dropped/pasted file into a staged media kind. */
+function kindOfFile(file: File | Blob, name: string): StagedKind {
+  const mime = file.type || "";
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
+  if (IMAGE_EXT.includes(ext)) return "image";
+  if (VIDEO_EXT.includes(ext)) return "video";
+  if (AUDIO_EXT.includes(ext)) return "audio";
+  return "document";
+}
+
+/** Intrinsic pixel size of an image blob (best-effort; resolves {} on failure). */
+function imageSize(file: File | Blob): Promise<{ width?: number; height?: number }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.naturalWidth || undefined, height: img.naturalHeight || undefined });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({});
+    };
+    img.src = url;
+  });
+}
+
+/** Best supported MediaRecorder mime for a voice note (WhatsApp prefers ogg/opus). */
+function pickAudioMime(): string {
+  const rec = typeof MediaRecorder !== "undefined" ? MediaRecorder : undefined;
+  if (!rec?.isTypeSupported) return "";
+  for (const c of ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm"]) {
+    if (rec.isTypeSupported(c)) return c;
+  }
+  return "";
+}
+
+/** Decode a recorded blob → duration + ~40-bucket peak waveform (0..1). */
+async function analyzeAudio(
+  blob: Blob,
+  fallbackMs: number,
+): Promise<{ durationMs: number; waveform?: number[] }> {
+  try {
+    const Ctx =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return { durationMs: fallbackMs };
+    const ctx = new Ctx();
+    try {
+      const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+      const durationMs = Math.round(audio.duration * 1000) || fallbackMs;
+      const data = audio.getChannelData(0);
+      const buckets = 40;
+      const size = Math.max(1, Math.floor(data.length / buckets));
+      const peaks: number[] = [];
+      let max = 0;
+      for (let b = 0; b < buckets; b++) {
+        let peak = 0;
+        const start = b * size;
+        for (let i = 0; i < size && start + i < data.length; i++) {
+          const v = Math.abs(data[start + i]);
+          if (v > peak) peak = v;
+        }
+        peaks.push(peak);
+        if (peak > max) max = peak;
+      }
+      const waveform = max > 0 ? peaks.map((p) => Math.min(1, p / max)) : undefined;
+      return { durationMs, waveform };
+    } finally {
+      void ctx.close();
+    }
+  } catch {
+    return { durationMs: fallbackMs };
+  }
+}
+
+/** One staged-attachment chip: image thumbnail, voice note, or file card. */
+function StagedChip({
+  s,
+  onRemove,
+  onRetry,
+}: {
+  s: Staged;
+  onRemove: () => void;
+  onRetry: () => void;
+}) {
+  const uploading = s.status === "uploading";
+  const err = s.status === "error";
+  const size = s.attachment?.size ?? s.file.size;
+  const spin = <span className="comp-att__spin" aria-hidden="true" />;
+
+  let inner: JSX.Element;
+  if (s.kind === "image" && s.previewUrl) {
+    inner = (
+      <div className="comp-att__thumb">
+        <img src={s.previewUrl} alt={s.name} />
+        {uploading && <span className="comp-att__load" aria-hidden="true">{spin}</span>}
+      </div>
+    );
+  } else if (s.kind === "voice") {
+    inner = (
+      <div className="comp-att__voice">
+        <span className="comp-att__ic">{uploading ? spin : <MicIcon />}</span>
+        {s.waveform && s.waveform.length > 0 && (
+          <span className="comp-att__wave" aria-hidden="true">
+            {s.waveform.slice(0, 28).map((v, i) => (
+              <span key={i} style={{ height: `${Math.round(Math.max(0.12, Math.min(1, v)) * 100)}%` }} />
+            ))}
+          </span>
+        )}
+        <span className="comp-att__dur tnum">{formatDuration(s.durationMs ?? 0)}</span>
+      </div>
+    );
+  } else {
+    inner = (
+      <div className="comp-att__file">
+        <span className="comp-att__ic">{uploading ? spin : <DocIcon />}</span>
+        <span className="comp-att__meta">
+          <span className="comp-att__name" title={s.name}>
+            {s.name}
+          </span>
+          <span className="comp-att__sub tnum">{err ? "Upload failed" : formatBytes(size)}</span>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={"comp-att comp-att--" + s.kind + (err ? " comp-att--error" : "")}>
+      {inner}
+      {err && (
+        <button
+          type="button"
+          className="comp-att__err"
+          onClick={onRetry}
+          title="Upload failed — retry"
+          aria-label="Retry upload"
+        >
+          <RefreshIcon />
+        </button>
+      )}
+      <button
+        type="button"
+        className="comp-att__x"
+        onClick={onRemove}
+        title="Remove"
+        aria-label={"Remove " + s.name}
+      >
+        <XIcon />
+      </button>
+    </div>
+  );
+}
+
 export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed }: Props) {
   const { data: conv } = useConversation(conversationId);
   const { data: me } = useMe();
@@ -265,6 +450,21 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const noteBtnRef = useRef<HTMLButtonElement>(null);
   const modeThumbRef = useRef<HTMLSpanElement>(null);
   const { containerRef: modeRef, thumbRef: modeHoverRef, hoverProps: modeHover } = useHoverGlide<HTMLDivElement>(".modebtn", "x");
+
+  // ─── Composer media state ───
+  const [staged, setStaged] = useState<Staged[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recSecs, setRecSecs] = useState(0);
+  const stagedRef = useRef<Staged[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recStreamRef = useRef<MediaStream | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recTimerRef = useRef<number | null>(null);
+  const recStartRef = useRef(0);
+  const recCancelRef = useRef(false);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -290,6 +490,52 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       thumb.style.width = `${btn.offsetWidth}px`;
     }
   }, [internal, conversationId, conv?.status]);
+
+  // Mirror staged items into a ref so teardown can revoke URLs without re-binding.
+  useEffect(() => {
+    stagedRef.current = staged;
+  }, [staged]);
+
+  // Release object URLs, the mic stream and timers when the thread unmounts.
+  useEffect(() => {
+    return () => {
+      stagedRef.current.forEach((s) => s.previewUrl && URL.revokeObjectURL(s.previewUrl));
+      recStreamRef.current?.getTracks().forEach((t) => t.stop());
+      if (recTimerRef.current != null) window.clearInterval(recTimerRef.current);
+      const rec = mediaRecorderRef.current;
+      if (rec && rec.state !== "inactive") {
+        recCancelRef.current = true;
+        try {
+          rec.stop();
+        } catch {
+          /* already stopped */
+        }
+      }
+    };
+  }, []);
+
+  // Switching conversations abandons any half-composed media + recording, so an
+  // attachment can never be sent to the wrong thread.
+  useEffect(() => {
+    stagedRef.current.forEach((s) => s.previewUrl && URL.revokeObjectURL(s.previewUrl));
+    setStaged([]);
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state !== "inactive") {
+      recCancelRef.current = true;
+      try {
+        rec.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    recStreamRef.current?.getTracks().forEach((t) => t.stop());
+    recStreamRef.current = null;
+    if (recTimerRef.current != null) {
+      window.clearInterval(recTimerRef.current);
+      recTimerRef.current = null;
+    }
+    setRecording(false);
+  }, [conversationId]);
 
   if (!conversationId) {
     return (
@@ -317,14 +563,221 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       ? "group · active now"
       : "online · last seen just now";
 
+  const readyAtts = staged.filter((s) => s.status === "done" && s.attachment);
+  const uploadingAtts = staged.some((s) => s.status === "uploading");
+  const canSend = (text.trim().length > 0 || readyAtts.length > 0) && !uploadingAtts;
+  const canRecord = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+
+  const clearStaged = () => {
+    setStaged((cur) => {
+      cur.forEach((s) => s.previewUrl && URL.revokeObjectURL(s.previewUrl));
+      return [];
+    });
+  };
+
   const handleSend = () => {
+    if (!canSend) return;
     const body = text.trim();
-    if (!body) return;
     unlock();
-    send.mutate({ id: conv.id, body, internal });
+    const attachmentIds = readyAtts.map((s) => s.attachment!.id);
+    send.mutate({
+      id: conv.id,
+      body,
+      internal,
+      attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+    });
     if (!internal) playSent();
     setText("");
+    clearStaged();
     setInternal(false);
+  };
+
+  const uploadStaged = async (item: Staged) => {
+    try {
+      const meta: {
+        filename: string;
+        kind?: string;
+        durationMs?: number;
+        width?: number;
+        height?: number;
+        waveform?: number[];
+      } = { filename: item.name };
+      if (item.kind === "image") {
+        const { width, height } = await imageSize(item.file);
+        meta.kind = "image";
+        if (width) meta.width = width;
+        if (height) meta.height = height;
+      } else if (item.kind === "voice") {
+        meta.kind = "voice";
+        if (item.durationMs != null) meta.durationMs = item.durationMs;
+        if (item.waveform) meta.waveform = item.waveform;
+      }
+      const attachment = await api.uploadMedia(item.file, meta);
+      setStaged((cur) =>
+        cur.map<Staged>((x) => (x.localId === item.localId ? { ...x, status: "done", attachment } : x)),
+      );
+    } catch {
+      setStaged((cur) =>
+        cur.map<Staged>((x) => (x.localId === item.localId ? { ...x, status: "error" } : x)),
+      );
+      onToast("Couldn’t upload " + item.name);
+    }
+  };
+
+  const addFiles = (files: File[]) => {
+    for (const file of files) {
+      const name = file.name || "file";
+      const kind = kindOfFile(file, name);
+      const item: Staged = {
+        localId: crypto.randomUUID(),
+        file,
+        name,
+        previewUrl: kind === "image" ? URL.createObjectURL(file) : undefined,
+        kind,
+        status: "uploading",
+      };
+      setStaged((cur) => [...cur, item]);
+      void uploadStaged(item);
+    }
+  };
+
+  const removeStaged = (localId: string) => {
+    setStaged((cur) => {
+      const item = cur.find((x) => x.localId === localId);
+      if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      return cur.filter((x) => x.localId !== localId);
+    });
+  };
+
+  const retryStaged = (localId: string) => {
+    const item = stagedRef.current.find((x) => x.localId === localId);
+    if (!item) return;
+    setStaged((cur) => cur.map<Staged>((x) => (x.localId === localId ? { ...x, status: "uploading" } : x)));
+    void uploadStaged({ ...item, status: "uploading" });
+  };
+
+  const teardownRec = () => {
+    recStreamRef.current?.getTracks().forEach((t) => t.stop());
+    recStreamRef.current = null;
+    if (recTimerRef.current != null) {
+      window.clearInterval(recTimerRef.current);
+      recTimerRef.current = null;
+    }
+  };
+
+  const finishRecording = async () => {
+    const rec = mediaRecorderRef.current;
+    const mime = rec?.mimeType || "audio/webm";
+    const chunks = recChunksRef.current;
+    const elapsedMs = Date.now() - recStartRef.current;
+    mediaRecorderRef.current = null;
+    recChunksRef.current = [];
+    teardownRec();
+    if (recCancelRef.current || chunks.length === 0) return;
+    const blob = new Blob(chunks, { type: mime });
+    const { durationMs, waveform } = await analyzeAudio(blob, elapsedMs);
+    const ext = mime.includes("ogg") ? "ogg" : "webm";
+    const item: Staged = {
+      localId: crypto.randomUUID(),
+      file: blob,
+      name: "voice-message." + ext,
+      kind: "voice",
+      status: "uploading",
+      durationMs,
+      waveform,
+    };
+    setStaged((cur) => [...cur, item]);
+    void uploadStaged(item);
+  };
+
+  const startRecording = async () => {
+    if (recording || mediaRecorderRef.current) return;
+    if (!canRecord) {
+      onToast("Recording isn’t supported here");
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      onToast("Microphone permission denied");
+      return;
+    }
+    recStreamRef.current = stream;
+    recCancelRef.current = false;
+    recChunksRef.current = [];
+    const mime = pickAudioMime();
+    const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    mediaRecorderRef.current = rec;
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) recChunksRef.current.push(e.data);
+    };
+    rec.onstop = () => {
+      void finishRecording();
+    };
+    rec.start();
+    recStartRef.current = Date.now();
+    setRecSecs(0);
+    setRecording(true);
+    recTimerRef.current = window.setInterval(() => {
+      setRecSecs(Math.floor((Date.now() - recStartRef.current) / 1000));
+    }, 250);
+  };
+
+  const stopRecording = () => {
+    const rec = mediaRecorderRef.current;
+    setRecording(false);
+    if (rec && rec.state !== "inactive") rec.stop();
+    else teardownRec();
+  };
+
+  const cancelRecording = () => {
+    recCancelRef.current = true;
+    const rec = mediaRecorderRef.current;
+    setRecording(false);
+    if (rec && rec.state !== "inactive") rec.stop();
+    else teardownRec();
+  };
+
+  const onComposerDragOver = (e: RDragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+  };
+  const onComposerDragEnter = (e: RDragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  };
+  const onComposerDragLeave = (e: RDragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragging(false);
+  };
+  const onComposerDrop = (e: RDragEvent<HTMLDivElement>) => {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) addFiles(files);
+  };
+  const onTextareaPaste = (e: RClipboardEvent<HTMLTextAreaElement>) => {
+    const files: File[] = [];
+    for (const item of Array.from(e.clipboardData.items)) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      e.preventDefault();
+      addFiles(files);
+    }
+  };
+  const onFileInputChange = (e: RChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length) addFiles(files);
+    e.target.value = "";
   };
 
   const take = () => {
@@ -536,7 +989,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </button>
         </div>
       ) : (
-        <div className="composer">
+        <div
+          className="composer"
+          onDragEnter={onComposerDragEnter}
+          onDragOver={onComposerDragOver}
+          onDragLeave={onComposerDragLeave}
+          onDrop={onComposerDrop}
+        >
           <div className="compbar">
             <div className="compmode" role="tablist" ref={modeRef} {...modeHover}>
               <span className="seg-hover" ref={modeHoverRef} />
@@ -578,34 +1037,103 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     : "WhatsApp · within 24h window"}
             </span>
           </div>
-          <div className="compinput">
-            <button className="tool" title="Emoji">
-              <EmojiIcon />
-            </button>
-            <textarea
-              value={text}
-              rows={1}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
+          {staged.length > 0 && (
+            <div className="comp-atts">
+              {staged.map((s) => (
+                <StagedChip
+                  key={s.localId}
+                  s={s}
+                  onRemove={() => removeStaged(s.localId)}
+                  onRetry={() => retryStaged(s.localId)}
+                />
+              ))}
+            </div>
+          )}
+          {recording ? (
+            <div className="comp-rec" role="group" aria-label="Recording voice message">
+              <button
+                type="button"
+                className="comp-rec__cancel"
+                onClick={cancelRecording}
+                title="Cancel"
+                aria-label="Cancel recording"
+              >
+                <TrashIcon />
+              </button>
+              <span className="comp-rec__dot" aria-hidden="true" />
+              <span className="comp-rec__time tnum">{formatDuration(recSecs * 1000)}</span>
+              <span className="comp-rec__hint">Recording…</span>
+              <button
+                type="button"
+                className="comp-rec__stop"
+                onClick={stopRecording}
+                title="Stop and attach"
+                aria-label="Stop and attach recording"
+              >
+                <StopIcon />
+              </button>
+            </div>
+          ) : (
+            <div className="compinput">
+              <button className="tool" title="Emoji" aria-label="Emoji">
+                <EmojiIcon />
+              </button>
+              <textarea
+                value={text}
+                rows={1}
+                onChange={(e) => setText(e.target.value)}
+                onPaste={onTextareaPaste}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder={
+                  internal ? "Write an internal note… use @name to mention" : `Message ${conv.contact.displayName}…`
                 }
-              }}
-              placeholder={
-                internal ? "Write an internal note… use @name to mention" : `Message ${conv.contact.displayName}…`
-              }
-            />
-            <button className="tool" title="Template" onClick={() => onToast("Template picker")}>
-              <BoltIcon />
-            </button>
-            <button className="tool hide-sm" title="Attach">
-              <AttachIcon />
-            </button>
-            <button className="send" onClick={handleSend} disabled={!text.trim()}>
-              <SendIcon />
-            </button>
-          </div>
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                hidden
+                accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+                onChange={onFileInputChange}
+              />
+              <button className="tool" title="Template" onClick={() => onToast("Template picker")} aria-label="Templates">
+                <BoltIcon />
+              </button>
+              {canRecord && (
+                <button
+                  className="tool"
+                  title="Record voice message"
+                  aria-label="Record voice message"
+                  onClick={startRecording}
+                >
+                  <MicIcon />
+                </button>
+              )}
+              <button
+                className="tool"
+                title="Attach"
+                aria-label="Attach files"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <AttachIcon />
+              </button>
+              <button className="send" onClick={handleSend} disabled={!canSend} title="Send" aria-label="Send">
+                <SendIcon />
+              </button>
+            </div>
+          )}
+          {dragging && (
+            <div className="comp-drop" aria-hidden="true">
+              <span>
+                <AttachIcon /> Drop to attach
+              </span>
+            </div>
+          )}
         </div>
       )}
 

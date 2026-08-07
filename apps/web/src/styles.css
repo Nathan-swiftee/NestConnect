@@ -500,6 +500,76 @@ input,textarea{font:inherit}
 .send:disabled{opacity:.5;cursor:default;box-shadow:none}
 .send svg{width:18px;height:18px}
 
+/* ─── Composer: staged attachments (previews) ───────────────────────
+   A wrapping strip of chips above the input: image thumbs, voice notes,
+   file cards — each with a corner ✕ and an upload spinner / error state. */
+.comp-atts{display:flex;flex-wrap:wrap;gap:12px;padding:8px 8px 0;margin-bottom:9px;max-height:168px;overflow-y:auto}
+.comp-att{position:relative;display:flex;align-items:center;background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--r-12);animation:subIn .18s var(--ease)}
+.comp-att--error{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger)}
+/* image thumbnail chip */
+.comp-att--image{width:60px;height:60px;padding:0}
+.comp-att__thumb{position:relative;width:100%;height:100%;border-radius:var(--r-12);overflow:hidden}
+.comp-att__thumb img{width:100%;height:100%;object-fit:cover;display:block}
+/* file / video / audio chip */
+.comp-att__file{display:flex;align-items:center;gap:9px;padding:8px 10px;min-width:150px;max-width:220px}
+.comp-att__ic{flex:0 0 30px;width:30px;height:30px;border-radius:var(--r-8);display:grid;place-items:center;
+  background:color-mix(in srgb,var(--brand) 12%,transparent);color:var(--brand-strong)}
+.comp-att__ic svg{width:17px;height:17px}
+.comp-att__meta{min-width:0;flex:1 1 auto;display:flex;flex-direction:column;gap:1px}
+.comp-att__name{font-size:12.5px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.comp-att__sub{font-size:11px;color:var(--text-muted)}
+/* voice chip */
+.comp-att__voice{display:flex;align-items:center;gap:9px;padding:7px 13px 7px 9px}
+.comp-att__voice .comp-att__ic{background:color-mix(in srgb,var(--wa) 16%,transparent);color:var(--wa)}
+.comp-att__wave{display:flex;align-items:center;gap:2px;height:22px;width:74px}
+.comp-att__wave span{flex:1 1 0;min-width:2px;min-height:2px;border-radius:2px;
+  background:color-mix(in srgb,var(--wa) 55%,transparent)}
+.comp-att__dur{font-size:11.5px;font-weight:650;color:var(--text-muted)}
+/* remove (✕) — corner button */
+.comp-att__x{position:absolute;top:-6px;right:-6px;z-index:3;width:20px;height:20px;border-radius:var(--r-full);
+  background:var(--text);color:var(--surface);display:grid;place-items:center;box-shadow:var(--shadow);
+  transition:transform .12s var(--ease),background .15s,color .15s}
+.comp-att__x svg{width:12px;height:12px;stroke-width:2.6}
+.comp-att__x:hover{background:var(--danger);color:#fff}
+.comp-att__x:active{transform:scale(.85)}
+/* upload spinner (in icon slot / over thumb) + error retry overlay */
+.comp-att__spin{width:18px;height:18px;border-radius:50%;border:2px solid color-mix(in srgb,var(--text) 20%,transparent);
+  border-top-color:var(--brand);animation:spin .7s linear infinite}
+.comp-att__load{position:absolute;inset:0;z-index:1;display:grid;place-items:center;background:rgba(0,0,0,.34)}
+.comp-att__load .comp-att__spin{border-color:rgba(255,255,255,.4);border-top-color:#fff}
+.comp-att__err{position:absolute;inset:0;z-index:2;display:grid;place-items:center;border-radius:inherit;
+  background:color-mix(in srgb,var(--danger) 18%,transparent);color:var(--danger)}
+.comp-att__err svg{width:18px;height:18px}
+.comp-att__err:hover{background:color-mix(in srgb,var(--danger) 28%,transparent)}
+
+/* ─── Composer: voice recording row (replaces the input while recording) ── */
+.comp-rec{display:flex;align-items:center;gap:12px;padding:8px 8px 8px 15px;border-radius:var(--r-24);
+  background:var(--surface-2);border:1px solid color-mix(in srgb,var(--danger) 40%,transparent);animation:subIn .18s var(--ease)}
+.comp-rec__dot{flex:0 0 auto;width:11px;height:11px;border-radius:50%;background:var(--danger);
+  animation:recPulse 1.2s ease-in-out infinite}
+.comp-rec__time{font-size:14px;font-weight:700;color:var(--text)}
+.comp-rec__hint{margin-right:auto;font-size:12.5px;font-weight:600;color:var(--text-muted)}
+.comp-rec__cancel,.comp-rec__stop{flex:0 0 38px;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+  transition:transform .12s var(--ease),background .15s,filter .15s,color .15s}
+.comp-rec__cancel{background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text-muted)}
+.comp-rec__cancel:hover{background:color-mix(in srgb,var(--text) 13%,transparent);color:var(--text)}
+.comp-rec__cancel svg{width:18px;height:18px}
+.comp-rec__stop{color:#fff;background:linear-gradient(160deg,color-mix(in srgb,var(--danger) 88%,#fff),var(--danger));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 6px 16px -6px color-mix(in srgb,var(--danger) 55%,transparent)}
+.comp-rec__stop:hover{filter:brightness(1.06)}
+.comp-rec__stop svg{width:15px;height:15px}
+.comp-rec__cancel:active,.comp-rec__stop:active{transform:scale(.92)}
+@keyframes recPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.78)}}
+
+/* ─── Composer: drag-to-attach overlay ─────────────────────────────────── */
+.comp-drop{position:absolute;inset:6px;z-index:8;display:grid;place-items:center;border-radius:var(--r-20);
+  pointer-events:none;animation:overlayIn .12s ease;color:var(--brand-strong);font-weight:700;font-size:13.5px;
+  background:color-mix(in srgb,var(--brand-tint) 90%,transparent);
+  border:2px dashed color-mix(in srgb,var(--brand) 55%,transparent)}
+.comp-drop span{display:inline-flex;align-items:center;gap:8px}
+.comp-drop svg{width:20px;height:20px}
+
 /* context panel — matte structural surface */
 .panel{width:300px;flex:0 0 300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
 .panel__scroll{overflow-y:auto;padding:20px 18px;display:flex;flex-direction:column;gap:18px}

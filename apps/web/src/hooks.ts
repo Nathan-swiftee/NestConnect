@@ -254,8 +254,8 @@ export const useConversation = (id: string | null) =>
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; body: string; internal?: boolean }) =>
-      api.sendMessage(v.id, v.body, v.internal ?? false),
+    mutationFn: (v: { id: string; body: string; internal?: boolean; attachmentIds?: string[] }) =>
+      api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds),
     onSuccess: (_msg, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
