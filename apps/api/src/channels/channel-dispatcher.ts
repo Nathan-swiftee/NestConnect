@@ -89,6 +89,17 @@ export class ChannelDispatcher {
     }
   }
 
+  /** Show the customer a typing indicator on a channel that supports it. */
+  async sendTyping(conversation: ConversationWithMessages, channelMsgId: string): Promise<void> {
+    const provider = this.providers.find((p) => p.supports(conversation.channel) && p.sendTyping);
+    if (!provider?.sendTyping) return;
+    try {
+      await provider.sendTyping({ conversation, channelMsgId });
+    } catch (err) {
+      this.logger.warn(`sendTyping failed on ${conversation.channel}: ${String(err)}`);
+    }
+  }
+
   /** Turn a message's attachments into ready-to-send media (bytes loaded from storage). */
   private async resolveMedia(message: Message): Promise<OutboundMedia[] | undefined> {
     if (!message.attachments?.length) return undefined;

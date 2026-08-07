@@ -128,4 +128,18 @@ export class ConversationsService {
     }
     return updated ?? conv;
   }
+
+  /** Agent is typing: show the customer a "typing…" indicator on WhatsApp.
+   *  Only works within the 24-hour window (it rides on the customer's last
+   *  inbound message) — a no-op otherwise. */
+  async sendTyping(id: string): Promise<void> {
+    const conv = await this.store.getConversation(id);
+    if (!conv) return;
+    if (conv.channel !== "whatsapp" && conv.channel !== "whatsapp_group") return;
+    if (conv.waWindow && !conv.waWindow.open) return;
+    const lastInbound = [...conv.messages]
+      .reverse()
+      .find((m) => m.direction === "in" && m.channelMsgId);
+    if (lastInbound?.channelMsgId) await this.dispatcher.sendTyping(conv, lastInbound.channelMsgId);
+  }
 }

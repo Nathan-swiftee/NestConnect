@@ -272,6 +272,19 @@ export function useSendMessage() {
   });
 }
 
+/** Mark a conversation read: clears the unread badge and sends a WhatsApp read
+ *  receipt (blue ticks) for the customer's latest message. Idempotent server-side. */
+export function useMarkRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.markRead(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
 /* ---- WhatsApp message templates ---- */
 export const useTemplates = () => useQuery({ queryKey: ["templates"], queryFn: api.templates });
 

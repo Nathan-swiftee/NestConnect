@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from "react";
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
-import type { Message, Attachment } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams } from "../hooks";
+import type { Message, Attachment, MessageStatus } from "@ding/schemas";
+import { ClientEvent, ServerEvent } from "@ding/schemas";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead } from "../hooks";
 import { api } from "../lib/api";
+import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft } from "../lib/format";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
@@ -27,6 +29,7 @@ import {
   BoltIcon,
   CheckSingle,
   CheckDouble,
+  AlertIcon,
   PlayIcon,
   PauseIcon,
   DocIcon,
@@ -189,6 +192,46 @@ function AttachmentView({ att, onImage }: { att: Attachment; onImage: (url: stri
   );
 }
 
+/** Outbound delivery ticks: the full WhatsApp ladder
+ *  Queued → Sent → Delivered → Read (blue), plus a red Failed indicator.
+ *  Maps a message's status to a glyph, a tick class, and a human title. */
+function StatusTick({ status }: { status: MessageStatus }) {
+  let cls = "tick";
+  let title: string;
+  let icon: JSX.Element;
+  switch (status) {
+    case "queued":
+      cls += " pending";
+      title = "Sending…";
+      icon = <ClockIcon />;
+      break;
+    case "delivered":
+      title = "Delivered";
+      icon = <CheckDouble />;
+      break;
+    case "read":
+      cls += " read";
+      title = "Read";
+      icon = <CheckDouble />;
+      break;
+    case "failed":
+      cls += " failed";
+      title = "Not delivered — tap to retry";
+      icon = <AlertIcon />;
+      break;
+    case "sent":
+    default:
+      title = "Sent";
+      icon = <CheckSingle />;
+      break;
+  }
+  return (
+    <span className={cls} role="img" aria-label={title} title={title}>
+      {icon}
+    </span>
+  );
+}
+
 /** A single customer/agent message bubble, with any media rendered above an
  *  optional caption. Text-only messages keep their original markup exactly. */
 function MessageBubble({ m, onImage }: { m: Message; onImage: (url: string) => void }) {
@@ -219,11 +262,7 @@ function MessageBubble({ m, onImage }: { m: Message; onImage: (url: string) => v
         )}
         <span className={"stamp" + (overlay ? " stamp--over" : blockStamp ? " stamp--block" : "")}>
           {clockTime(m.createdAt)}
-          {out && (
-            <span className={"tick" + (m.status === "read" ? " read" : "")}>
-              {m.status === "read" || m.status === "delivered" ? <CheckDouble /> : <CheckSingle />}
-            </span>
-          )}
+          {out && !m.internal && <StatusTick status={m.status} />}
         </span>
       </div>
     </div>
@@ -441,8 +480,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const assign = useAssign();
   const setStatus = useSetStatus();
   const snooze = useSnooze();
+  const { mutate: markRead } = useMarkRead();
 
   const [text, setText] = useState("");
+  // Another agent typing on THIS conversation ("{who} is typing…"); null when idle.
+  const [typingWho, setTypingWho] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [snoozeMenu, setSnoozeMenu] = useState(false);
   const [internal, setInternal] = useState(false);
@@ -451,6 +493,15 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Ticks so the WhatsApp 24-hour window countdown stays live without a reload.
   const [now, setNow] = useState(() => Date.now());
   const endRef = useRef<HTMLDivElement>(null);
+  // ─── Read receipts + typing indicator bookkeeping ───
+  // Track the last-seen (conversation, message-count) so we can mark-read exactly
+  // once on open and again only when a *new inbound* message lands while open.
+  const seenRef = useRef<{ id: string | null; len: number }>({ id: null, len: 0 });
+  const typingSentRef = useRef(false); // have we emitted typing:true since the last stop?
+  const typingThrottleRef = useRef(0); // last time we emitted typing:true (ms epoch)
+  const typingStopRef = useRef<number | null>(null); // idle timer that emits typing:false
+  const typingClearRef = useRef<number | null>(null); // auto-clears the incoming indicator
+  const waTypingRef = useRef(0); // last time we pinged WhatsApp's typing indicator (ms epoch)
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
   const modeThumbRef = useRef<HTMLSpanElement>(null);
@@ -554,6 +605,67 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setRecording(false);
   }, [conversationId]);
 
+  // Mark the conversation read on open, and again whenever a fresh inbound
+  // message arrives while it's open — clearing the unread badge and sending a
+  // WhatsApp read receipt. Gated on (id changed) or (count grew with an inbound
+  // newest) so it never fires on every render.
+  useEffect(() => {
+    if (!conversationId || !conv) return;
+    const len = conv.messages.length;
+    const prev = seenRef.current;
+    seenRef.current = { id: conversationId, len };
+    if (prev.id !== conversationId) {
+      markRead(conversationId);
+    } else if (len > prev.len) {
+      const newest = conv.messages[len - 1];
+      if (newest && newest.direction === "in" && !newest.internal) markRead(conversationId);
+    }
+  }, [conversationId, conv, markRead]);
+
+  // Listen for another agent's typing on THIS conversation. Auto-clears after 4s
+  // of silence and on an explicit typing:false; fully torn down on switch/unmount
+  // so a stale indicator can never bleed across conversations.
+  useEffect(() => {
+    if (!conversationId) return;
+    const socket = getSocket();
+    const onTyping = (p: { conversationId: string; who: string; typing: boolean }) => {
+      if (p.conversationId !== conversationId) return;
+      if (typingClearRef.current != null) window.clearTimeout(typingClearRef.current);
+      if (p.typing) {
+        setTypingWho(p.who);
+        typingClearRef.current = window.setTimeout(() => setTypingWho(null), 4000);
+      } else {
+        typingClearRef.current = null;
+        setTypingWho(null);
+      }
+    };
+    socket.on(ServerEvent.Typing, onTyping);
+    return () => {
+      socket.off(ServerEvent.Typing, onTyping);
+      if (typingClearRef.current != null) {
+        window.clearTimeout(typingClearRef.current);
+        typingClearRef.current = null;
+      }
+      setTypingWho(null);
+    };
+  }, [conversationId]);
+
+  // Stop broadcasting our own typing when leaving/switching a conversation.
+  useEffect(() => {
+    const id = conversationId;
+    return () => {
+      if (typingStopRef.current != null) {
+        window.clearTimeout(typingStopRef.current);
+        typingStopRef.current = null;
+      }
+      if (id && typingSentRef.current) {
+        getSocket().emit(ClientEvent.Typing, { conversationId: id, typing: false });
+      }
+      typingSentRef.current = false;
+      typingThrottleRef.current = 0;
+    };
+  }, [conversationId]);
+
   if (!conversationId) {
     return (
       <main className="thread">
@@ -605,6 +717,37 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     });
   };
 
+  // Emit typing:false now and disarm the idle timer (called on stop/send/blur).
+  const stopTyping = () => {
+    if (typingStopRef.current != null) {
+      window.clearTimeout(typingStopRef.current);
+      typingStopRef.current = null;
+    }
+    typingThrottleRef.current = 0;
+    if (typingSentRef.current) {
+      typingSentRef.current = false;
+      getSocket().emit(ClientEvent.Typing, { conversationId: conv.id, typing: false, who: me?.user.name });
+    }
+  };
+  // Broadcast that we're typing — throttled to ≤1 "true" every 2s — and (re)arm a
+  // 2.5s idle timer that emits "false" once the agent stops.
+  const signalTyping = () => {
+    const t = Date.now();
+    if (t - typingThrottleRef.current > 2000) {
+      typingThrottleRef.current = t;
+      typingSentRef.current = true;
+      getSocket().emit(ClientEvent.Typing, { conversationId: conv.id, typing: true, who: me?.user.name });
+    }
+    // Also show the *customer* a "typing…" indicator on WhatsApp (each ping keeps
+    // it alive ~25s, so throttle hard — and only while free-typing in the window).
+    if (isWhatsApp && !internal && !composeLocked && t - waTypingRef.current > 9000) {
+      waTypingRef.current = t;
+      void api.sendTyping(conv.id).catch(() => {});
+    }
+    if (typingStopRef.current != null) window.clearTimeout(typingStopRef.current);
+    typingStopRef.current = window.setTimeout(stopTyping, 2500);
+  };
+
   const handleSend = () => {
     if (!canSend || composeLocked) return;
     const body = text.trim();
@@ -631,6 +774,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       },
     );
     if (!internal) playSent();
+    stopTyping();
     setText("");
     clearStaged();
     setInternal(false);
@@ -1047,6 +1191,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         {conv.messages.length === 0 && (
           <div className="thread-empty">No messages yet — start the conversation.</div>
         )}
+        {typingWho && (
+          <div className="typing" role="status" aria-live="polite">
+            <span className="typing__dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            <span className="typing__who">{typingWho} is typing…</span>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
 
@@ -1158,7 +1312,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               <textarea
                 value={text}
                 rows={1}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  signalTyping();
+                }}
+                onBlur={stopTyping}
                 onPaste={onTextareaPaste}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {

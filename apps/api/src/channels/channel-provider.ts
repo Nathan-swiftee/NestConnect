@@ -75,4 +75,11 @@ export abstract class ChannelProvider {
    * Optional — only channels that support it (WhatsApp) implement it.
    */
   markRead?(params: { conversation: Conversation; channelMsgId: string }): Promise<void>;
+
+  /**
+   * Show the customer a "typing…" indicator (WhatsApp shows it for up to ~25s,
+   * or until the next message). Tied to the customer's latest inbound message.
+   * Optional — only channels that support it implement it.
+   */
+  sendTyping?(params: { conversation: Conversation; channelMsgId: string }): Promise<void>;
 }

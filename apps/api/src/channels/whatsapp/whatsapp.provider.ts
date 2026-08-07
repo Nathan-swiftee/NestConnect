@@ -57,9 +57,24 @@ export class WhatsAppCloudProvider extends ChannelProvider {
 
   /** Tell WhatsApp the customer's message was read → blue ticks on their side. */
   async markRead(params: { conversation: Conversation; channelMsgId: string }): Promise<void> {
-    const creds = await this.credsFor(params.conversation.inboxId);
+    await this.readReceipt(params.conversation.inboxId, params.channelMsgId, false);
+  }
+
+  /** Show the customer a "typing…" indicator (rides on the read receipt; ~25s). */
+  async sendTyping(params: { conversation: Conversation; channelMsgId: string }): Promise<void> {
+    await this.readReceipt(params.conversation.inboxId, params.channelMsgId, true);
+  }
+
+  /**
+   * Mark an inbound message read, optionally with a typing indicator. Meta folds
+   * both into one call: `status:read` (+ `typing_indicator` for the "typing…"
+   * bubble), keyed on the customer's message id.
+   */
+  private async readReceipt(inboxId: string, channelMsgId: string, typing: boolean): Promise<void> {
+    const what = typing ? "typing indicator" : "read receipt";
+    const creds = await this.credsFor(inboxId);
     if (!creds) {
-      this.logger.log(`[mock] WhatsApp read receipt for ${params.channelMsgId}`);
+      this.logger.log(`[mock] WhatsApp ${what} for ${channelMsgId}`);
       return;
     }
     try {
@@ -70,15 +85,16 @@ export class WhatsAppCloudProvider extends ChannelProvider {
         body: JSON.stringify({
           messaging_product: "whatsapp",
           status: "read",
-          message_id: params.channelMsgId,
+          message_id: channelMsgId,
+          ...(typing ? { typing_indicator: { type: "text" } } : {}),
         }),
       });
       if (!res.ok) {
         const detail = await res.text().catch(() => "");
-        this.logger.warn(`WhatsApp read receipt failed (${res.status}): ${detail}`);
+        this.logger.warn(`WhatsApp ${what} failed (${res.status}): ${detail}`);
       }
     } catch (err) {
-      this.logger.warn(`WhatsApp read receipt error: ${String(err)}`);
+      this.logger.warn(`WhatsApp ${what} error: ${String(err)}`);
     }
   }
 

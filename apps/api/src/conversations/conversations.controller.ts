@@ -69,6 +69,13 @@ export class ConversationsController {
     return this.conversations.markRead(id);
   }
 
+  /** Agent started typing — show the customer a WhatsApp "typing…" indicator. */
+  @Post(":id/typing")
+  async typing(@Param("id") id: string): Promise<{ ok: boolean }> {
+    await this.conversations.sendTyping(id);
+    return { ok: true };
+  }
+
   @Post(":id/priority")
   setPriority(
     @Param("id") id: string,
