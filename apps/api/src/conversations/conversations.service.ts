@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import type {
   AssignConversationInput,
   Conversation,
@@ -11,6 +11,12 @@ import type {
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { ChannelDispatcher } from "../channels/channel-dispatcher";
+import type { OutboundTemplate } from "../channels/channel-provider";
+
+/** Fill a template body's {{1}}, {{2}} … positional variables from `params`. */
+function fillTemplate(body: string, params: string[]): string {
+  return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_m, n) => params[Number(n) - 1] ?? `{{${n}}}`);
+}
 
 @Injectable()
 export class ConversationsService {
@@ -34,7 +40,32 @@ export class ConversationsService {
     const author = await this.store.getUser(userId);
     if (!author) throw new NotFoundException("Current user not found");
 
-    const message = await this.store.addMessage(id, input, author);
+    // A template send: resolve it and render the body from its variables.
+    let template: OutboundTemplate | undefined;
+    let body = input.body;
+    if (input.template) {
+      const tpl = await this.store.getTemplate(input.template.id);
+      if (!tpl) throw new NotFoundException("Template not found");
+      body = fillTemplate(tpl.body, input.template.params);
+      template = { name: tpl.name, language: tpl.language, params: input.template.params };
+    }
+
+    // Enforce WhatsApp's 24-hour window: a free-form reply is only allowed while
+    // the window is open — once closed, an approved template is the only way in.
+    if (!input.internal && !template) {
+      const current = await this.store.getConversation(id);
+      if (current?.waWindow && !current.waWindow.open) {
+        throw new BadRequestException(
+          "This WhatsApp conversation's 24-hour window has closed — send an approved template to reply.",
+        );
+      }
+    }
+
+    const message = await this.store.addMessage(
+      id,
+      { body, internal: input.internal, attachmentIds: input.attachmentIds },
+      author,
+    );
     if (!message) throw new NotFoundException(`Conversation ${id} not found`);
 
     // Broadcast immediately so every open client updates the thread + previews.
@@ -46,7 +77,7 @@ export class ConversationsService {
       const cleared = await this.store.setSla(id, null);
       if (cleared) this.realtime.emitConversationUpdated(cleared);
       const conv = await this.store.getConversation(id);
-      if (conv) void this.dispatcher.dispatchOutbound(conv, message);
+      if (conv) void this.dispatcher.dispatchOutbound(conv, message, template);
     }
     return message;
   }

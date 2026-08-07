@@ -113,6 +113,21 @@ async function main() {
     await prisma.label.upsert({ where: { id: l.id }, update: {}, create: { orgId: ORG, ...l } });
   }
 
+  // Pre-approved WhatsApp templates for replying once a 24-hour window closes.
+  const templates = [
+    { id: "tpl_order_update", name: "order_update", category: "utility", body: "Hi {{1}}, your order {{2}} is on its way and should arrive by {{3}}. Reply here if you need anything!" },
+    { id: "tpl_appointment_reminder", name: "appointment_reminder", category: "utility", body: "Hi {{1}}, a quick reminder of your appointment on {{2}} at {{3}}. Reply here to reschedule." },
+    { id: "tpl_payment_reminder", name: "payment_reminder", category: "utility", body: "Hi {{1}}, invoice {{2}} for {{3}} is now due. You can reply here with any questions." },
+    { id: "tpl_welcome_back", name: "welcome_back", category: "marketing", body: "Hi {{1}} 👋 It's been a little while — reply here and we'll pick up right where we left off." },
+  ];
+  for (const t of templates) {
+    await prisma.template.upsert({
+      where: { id: t.id },
+      update: {},
+      create: { id: t.id, orgId: ORG, language: "en", approvalStatus: "approved", ...t },
+    });
+  }
+
   // A representative set of contacts + conversations + messages.
   const seedConversations = [
     {
@@ -180,6 +195,12 @@ async function main() {
       (a, m) => (m.createdAt > a ? m.createdAt : a),
       s.messages[0].createdAt,
     );
+    // Seed the WhatsApp 24-hour window anchor from the newest inbound message
+    // (fresh DBs run the seed before any backfill could populate it).
+    const lastInboundAt =
+      s.messages
+        .filter((m) => m.direction === "in")
+        .reduce<Date | null>((a, m) => (a && a > m.createdAt ? a : m.createdAt), null);
 
     await prisma.conversation.create({
       data: {
@@ -198,6 +219,7 @@ async function main() {
         preview: s.conv.preview,
         slaDueAt: s.conv.slaDueAt,
         lastActivityAt: newest,
+        lastInboundAt,
         seq: s.messages.length,
         labels: { create: s.labels.map((labelId) => ({ labelId })) },
       },

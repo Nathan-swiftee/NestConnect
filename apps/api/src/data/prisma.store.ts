@@ -9,6 +9,7 @@ import type {
   Conversation,
   ConversationStatus,
   ConversationWithMessages,
+  CreateTemplateInput,
   Inbox,
   Member,
   Message,
@@ -19,6 +20,8 @@ import type {
   Role,
   RoutingStrategy,
   Team,
+  Template,
+  UpdateTemplateInput,
   User,
 } from "@ding/schemas";
 import { env } from "../config/env";
@@ -32,6 +35,7 @@ import {
   mapMessage,
   mapParticipant,
   mapTeam,
+  mapTemplate,
   mapUser,
   messageTypeForKind,
   previewForType,
@@ -196,6 +200,80 @@ export class PrismaStore extends Store {
       create: { orgId, key, value },
       update: { value },
     });
+  }
+
+  /* ---- message templates ---- */
+
+  async listTemplates(orgId: string): Promise<Template[]> {
+    const rows = await this.prisma.template.findMany({
+      where: { orgId },
+      orderBy: [{ name: "asc" }, { language: "asc" }],
+    });
+    return rows.map(mapTemplate);
+  }
+
+  async getTemplate(id: string): Promise<Template | undefined> {
+    const row = await this.prisma.template.findUnique({ where: { id } });
+    return row ? mapTemplate(row) : undefined;
+  }
+
+  async createTemplate(orgId: string, input: CreateTemplateInput): Promise<Template> {
+    const row = await this.prisma.template.create({
+      data: {
+        orgId,
+        name: input.name,
+        category: input.category,
+        language: input.language,
+        body: input.body,
+        approvalStatus: "draft",
+      },
+    });
+    return mapTemplate(row);
+  }
+
+  async updateTemplate(id: string, input: UpdateTemplateInput): Promise<Template | undefined> {
+    try {
+      const row = await this.prisma.template.update({
+        where: { id },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.category !== undefined ? { category: input.category } : {}),
+          ...(input.language !== undefined ? { language: input.language } : {}),
+          ...(input.body !== undefined ? { body: input.body } : {}),
+          ...(input.approvalStatus !== undefined ? { approvalStatus: input.approvalStatus } : {}),
+        },
+      });
+      return mapTemplate(row);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async deleteTemplate(id: string): Promise<void> {
+    await this.prisma.template.delete({ where: { id } }).catch(() => {});
+  }
+
+  async upsertTemplateByName(
+    orgId: string,
+    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"] },
+  ): Promise<Template> {
+    const row = await this.prisma.template.upsert({
+      where: { orgId_name_language: { orgId, name: input.name, language: input.language } },
+      create: {
+        orgId,
+        name: input.name,
+        category: input.category,
+        language: input.language,
+        body: input.body,
+        approvalStatus: input.approvalStatus,
+      },
+      update: {
+        category: input.category,
+        body: input.body,
+        approvalStatus: input.approvalStatus,
+      },
+    });
+    return mapTemplate(row);
   }
 
   async listTeams(): Promise<Team[]> {
@@ -773,6 +851,8 @@ export class PrismaStore extends Store {
         data: {
           seq,
           lastActivityAt: new Date(),
+          // An inbound message (re)opens the WhatsApp 24-hour window.
+          lastInboundAt: new Date(),
           unread: true,
           unreadCount: { increment: 1 },
           preview: input.body || previewForType(input.messageType),

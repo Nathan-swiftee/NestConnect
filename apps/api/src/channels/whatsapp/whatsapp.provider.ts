@@ -5,6 +5,7 @@ import { Store } from "../../data/store";
 import {
   ChannelProvider,
   type OutboundMedia,
+  type OutboundTemplate,
   type SendParams,
   type SendResult,
 } from "../channel-provider";
@@ -58,11 +59,33 @@ export class WhatsAppCloudProvider extends ChannelProvider {
     const creds = await this.credsFor(params.conversation.inboxId);
     const media = params.media ?? [];
     if (!creds) {
-      const what = media.length ? `${media.length} media + "${params.body}"` : params.body;
+      const what = params.template
+        ? `template "${params.template.name}" [${params.template.params.join(", ")}]`
+        : media.length
+          ? `${media.length} media + "${params.body}"`
+          : params.body;
       this.logger.log(`[mock] WhatsApp → ${params.to}: ${what}`);
       return { ok: true, channelMsgId: `wamid.mock_${Date.now()}`, simulated: true };
     }
+    if (params.template) return this.sendTemplateMessage(creds, params.to, params.template);
     return media.length ? this.sendWithMedia(creds, params, media) : this.sendTextOnly(creds, params);
+  }
+
+  /** Send an approved template (type:template) with its body variables filled. */
+  private async sendTemplateMessage(
+    creds: WhatsAppCreds,
+    to: string,
+    tpl: OutboundTemplate,
+  ): Promise<SendResult> {
+    const components = tpl.params.length
+      ? [{ type: "body", parameters: tpl.params.map((text) => ({ type: "text", text })) }]
+      : [];
+    return this.postMessage(creds, {
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: { name: tpl.name, language: { code: tpl.language }, components },
+    });
   }
 
   private async sendTextOnly(creds: WhatsAppCreds, params: SendParams): Promise<SendResult> {

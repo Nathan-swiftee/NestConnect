@@ -30,6 +30,14 @@ export interface OutboundMedia {
   durationMs?: number;
 }
 
+/** An approved WhatsApp template to send (used to re-open a closed 24h window). */
+export interface OutboundTemplate {
+  name: string;
+  language: string;
+  /** Values filling the body's {{1}}, {{2}} … variables, in order. */
+  params: string[];
+}
+
 export interface SendParams {
   to: string;
   body: string;
@@ -37,6 +45,8 @@ export interface SendParams {
   context?: SendContext;
   /** Media to deliver alongside (or instead of) the text body. */
   media?: OutboundMedia[];
+  /** When set, deliver this as a WhatsApp template message (type:template). */
+  template?: OutboundTemplate;
 }
 
 /**

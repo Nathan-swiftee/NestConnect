@@ -3,6 +3,9 @@ import type {
   Attachment,
   ChannelType,
   Contact,
+  CreateTemplateInput,
+  Template,
+  UpdateTemplateInput,
   ContactWithConversations,
   Conversation,
   ConversationStatus,
@@ -120,12 +123,25 @@ export const api = {
     if (meta?.waveform) form.append("waveform", JSON.stringify(meta.waveform));
     return request<Attachment>("/media", { method: "POST", body: form });
   },
-  sendMessage: (id: string, body: string, internal = false, attachmentIds?: string[]) =>
+  sendMessage: (
+    id: string,
+    body: string,
+    internal = false,
+    attachmentIds?: string[],
+    template?: { id: string; params: string[] },
+  ) =>
     post<Message>(`/conversations/${id}/messages`, {
       body,
       internal,
       ...(attachmentIds?.length ? { attachmentIds } : {}),
+      ...(template ? { template } : {}),
     }),
+  // WhatsApp message templates (for replying once a 24-hour window has closed)
+  templates: () => get<Template[]>("/templates"),
+  createTemplate: (input: CreateTemplateInput) => post<Template>("/templates", input),
+  updateTemplate: (id: string, input: UpdateTemplateInput) => patch<Template>(`/templates/${id}`, input),
+  deleteTemplate: (id: string) => del<{ ok: boolean }>(`/templates/${id}`),
+  syncTemplates: () => post<{ synced: number }>("/templates/sync", {}),
   assign: (
     id: string,
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },

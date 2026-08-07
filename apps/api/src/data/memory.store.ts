@@ -8,6 +8,7 @@ import type {
   Conversation,
   ConversationStatus,
   ConversationWithMessages,
+  CreateTemplateInput,
   Inbox,
   Member,
   Message,
@@ -18,11 +19,13 @@ import type {
   Role,
   RoutingStrategy,
   Team,
+  Template,
+  UpdateTemplateInput,
   User,
 } from "@ding/schemas";
 import { isInboxConnected } from "@ding/schemas";
 import { env } from "../config/env";
-import { messageTypeForKind, previewForType } from "./mappers";
+import { computeWaWindow, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
@@ -51,6 +54,7 @@ export class MemoryStore extends Store {
   private inboxes: Inbox[];
   private conversations: ConversationRecord[];
   private contacts: Contact[];
+  private templates: Template[];
   private passwords: Map<string, string>;
   /** Per-inbox provider credentials, kept server-side only (never serialised). */
   private inboxConfig = new Map<string, Record<string, string>>();
@@ -70,6 +74,7 @@ export class MemoryStore extends Store {
     this.membership = seed.membership;
     this.inboxes = seed.inboxes;
     this.conversations = seed.conversations;
+    this.templates = seed.templates;
     this.contacts = seed.conversations.map((c) => ({ ...c.contact }));
     // Every demo user shares the dev password (real bcrypt hashing).
     const hash = bcrypt.hashSync(env.auth.devPassword, 8);
@@ -161,6 +166,75 @@ export class MemoryStore extends Store {
 
   async setAppSetting(orgId: string, key: string, value: string): Promise<void> {
     this.appSettings.set(`${orgId}::${key}`, value);
+  }
+
+  /* ---- message templates ---- */
+
+  async listTemplates(_orgId: string): Promise<Template[]> {
+    return [...this.templates].sort(
+      (a, b) => a.name.localeCompare(b.name) || a.language.localeCompare(b.language),
+    );
+  }
+
+  async getTemplate(id: string): Promise<Template | undefined> {
+    return this.templates.find((t) => t.id === id);
+  }
+
+  async createTemplate(_orgId: string, input: CreateTemplateInput): Promise<Template> {
+    const tpl: Template = {
+      id: `tpl_${++this.idSeq}`,
+      name: input.name,
+      category: input.category,
+      language: input.language,
+      body: input.body,
+      approvalStatus: "draft",
+      variableCount: templateVariableCount(input.body),
+    };
+    this.templates.push(tpl);
+    return tpl;
+  }
+
+  async updateTemplate(id: string, input: UpdateTemplateInput): Promise<Template | undefined> {
+    const tpl = this.templates.find((t) => t.id === id);
+    if (!tpl) return undefined;
+    if (input.name !== undefined) tpl.name = input.name;
+    if (input.category !== undefined) tpl.category = input.category;
+    if (input.language !== undefined) tpl.language = input.language;
+    if (input.body !== undefined) {
+      tpl.body = input.body;
+      tpl.variableCount = templateVariableCount(input.body);
+    }
+    if (input.approvalStatus !== undefined) tpl.approvalStatus = input.approvalStatus;
+    return tpl;
+  }
+
+  async deleteTemplate(id: string): Promise<void> {
+    this.templates = this.templates.filter((t) => t.id !== id);
+  }
+
+  async upsertTemplateByName(
+    _orgId: string,
+    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"] },
+  ): Promise<Template> {
+    const existing = this.templates.find((t) => t.name === input.name && t.language === input.language);
+    if (existing) {
+      existing.category = input.category;
+      existing.body = input.body;
+      existing.approvalStatus = input.approvalStatus;
+      existing.variableCount = templateVariableCount(input.body);
+      return existing;
+    }
+    const tpl: Template = {
+      id: `tpl_${++this.idSeq}`,
+      name: input.name,
+      category: input.category,
+      language: input.language,
+      body: input.body,
+      approvalStatus: input.approvalStatus,
+      variableCount: templateVariableCount(input.body),
+    };
+    this.templates.push(tpl);
+    return tpl;
   }
 
   async listTeams(): Promise<Team[]> {
@@ -343,10 +417,20 @@ export class MemoryStore extends Store {
   }
 
   private summary(rec: ConversationRecord): Conversation {
-    const { messages: _messages, participants: _participants, ...rest } = rec;
-    void _messages;
+    const { messages, participants: _participants, lastInboundAt, ...rest } = rec;
     void _participants;
-    return { ...rest, snoozedUntil: rest.snoozedUntil ?? null, unreadCount: rest.unreadCount ?? 0 };
+    // Derive the last inbound time from history when not explicitly tracked, so
+    // the WhatsApp window is right for seeded threads too (no inbound → closed).
+    const lastInbound =
+      lastInboundAt ??
+      [...messages].reverse().find((m) => m.direction === "in")?.createdAt ??
+      null;
+    return {
+      ...rest,
+      snoozedUntil: rest.snoozedUntil ?? null,
+      unreadCount: rest.unreadCount ?? 0,
+      waWindow: computeWaWindow(rest.channel, lastInbound),
+    };
   }
 
   /** How many snoozed conversations are now due (wake time passed). */
@@ -651,6 +735,8 @@ export class MemoryStore extends Store {
     };
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
+    // Inbound (re)opens the WhatsApp 24-hour customer-service window.
+    rec.lastInboundAt = message.createdAt;
     rec.unread = true;
     rec.unreadCount = (rec.unreadCount ?? 0) + 1;
     rec.preview = input.body || previewForType(input.messageType);

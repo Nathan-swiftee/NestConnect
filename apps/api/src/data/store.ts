@@ -7,6 +7,7 @@ import type {
   Conversation,
   ConversationStatus,
   ConversationWithMessages,
+  CreateTemplateInput,
   Inbox,
   Member,
   Message,
@@ -18,6 +19,8 @@ import type {
   Role,
   RoutingStrategy,
   Team,
+  Template,
+  UpdateTemplateInput,
   User,
 } from "@ding/schemas";
 
@@ -120,6 +123,18 @@ export abstract class Store {
   abstract getAppSetting(orgId: string, key: string): Promise<string | undefined>;
   /** Create or update an org-scoped app setting. */
   abstract setAppSetting(orgId: string, key: string, value: string): Promise<void>;
+
+  /* ---- WhatsApp message templates (org-scoped) ---- */
+  abstract listTemplates(orgId: string): Promise<Template[]>;
+  abstract getTemplate(id: string): Promise<Template | undefined>;
+  abstract createTemplate(orgId: string, input: CreateTemplateInput): Promise<Template>;
+  abstract updateTemplate(id: string, input: UpdateTemplateInput): Promise<Template | undefined>;
+  abstract deleteTemplate(id: string): Promise<void>;
+  /** Upsert a template synced from Meta, keyed by (orgId, name, language). */
+  abstract upsertTemplateByName(
+    orgId: string,
+    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"] },
+  ): Promise<Template>;
 
   /* ---- settings: teams & people ---- */
   abstract listTeams(): Promise<Team[]>;

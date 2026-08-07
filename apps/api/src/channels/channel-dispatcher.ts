@@ -7,6 +7,7 @@ import {
   CHANNEL_PROVIDERS,
   ChannelProvider,
   type OutboundMedia,
+  type OutboundTemplate,
   type SendContext,
 } from "./channel-provider";
 
@@ -26,7 +27,11 @@ export class ChannelDispatcher {
     private readonly realtime: RealtimeGateway,
   ) {}
 
-  async dispatchOutbound(conversation: ConversationWithMessages, message: Message): Promise<void> {
+  async dispatchOutbound(
+    conversation: ConversationWithMessages,
+    message: Message,
+    template?: OutboundTemplate,
+  ): Promise<void> {
     // Email is served by more than one provider (Gmail vs generic), chosen by
     // the inbox's connected provider. Other channels ignore the context.
     const ctx =
@@ -54,8 +59,8 @@ export class ChannelDispatcher {
       };
     }
 
-    const media = await this.resolveMedia(message);
-    const result = await provider.sendText({ to, body: message.body, conversation, context, media });
+    const media = template ? undefined : await this.resolveMedia(message);
+    const result = await provider.sendText({ to, body: message.body, conversation, context, media, template });
     if (result.channelMsgId) {
       await this.store.setMessageChannelId(message.id, result.channelMsgId);
     }

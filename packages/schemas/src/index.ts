@@ -216,6 +216,14 @@ export const participantSchema = z.object({
 });
 export type Participant = z.infer<typeof participantSchema>;
 
+/** WhatsApp 24-hour customer-service window state on a conversation. */
+export const waWindowSchema = z.object({
+  open: z.boolean(),
+  /** ISO time an open window closes (24h after the last inbound); null if never opened. */
+  expiresAt: z.string().nullable(),
+});
+export type WaWindow = z.infer<typeof waWindowSchema>;
+
 export const conversationSchema = z.object({
   id: z.string(),
   orgId: z.string(),
@@ -242,6 +250,12 @@ export const conversationSchema = z.object({
   lastActivityAt: z.string(),
   seq: z.number().int().nonnegative().default(0),
   preview: z.string().default(""),
+  /**
+   * WhatsApp's 24-hour customer-service window (whatsapp channels only; null on
+   * email). `open` = you may free-type; when closed you may only send an
+   * approved template. `expiresAt` is when an open window closes (ISO).
+   */
+  waWindow: waWindowSchema.nullable().default(null),
 });
 export type Conversation = z.infer<typeof conversationSchema>;
 
@@ -257,18 +271,80 @@ export type ConversationWithMessages = z.infer<typeof conversationWithMessagesSc
 /* API request payloads                                                */
 /* ------------------------------------------------------------------ */
 
+/* ---- WhatsApp message templates (HSM) ---- */
+
+export const templateCategorySchema = z.enum(["marketing", "utility", "authentication"]);
+export type TemplateCategory = z.infer<typeof templateCategorySchema>;
+
+/** Meta's template review states, plus our local "draft" for unsynced ones. */
+export const templateApprovalSchema = z.enum([
+  "approved",
+  "pending",
+  "rejected",
+  "paused",
+  "disabled",
+  "draft",
+]);
+export type TemplateApproval = z.infer<typeof templateApprovalSchema>;
+
+export const templateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  category: templateCategorySchema,
+  /** BCP-47-ish language code, e.g. "en" or "en_GB". */
+  language: z.string(),
+  /** Body text with {{1}}, {{2}} … positional variables. */
+  body: z.string(),
+  approvalStatus: templateApprovalSchema,
+  /** How many {{n}} variables the body has (derived; drives the fill form). */
+  variableCount: z.number().int().nonnegative().default(0),
+});
+export type Template = z.infer<typeof templateSchema>;
+
+export const createTemplateInputSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9_]+$/, "Use lower-case letters, numbers and underscores only"),
+  category: templateCategorySchema.default("utility"),
+  language: z.string().min(2).default("en"),
+  body: z.string().min(1),
+});
+export type CreateTemplateInput = z.infer<typeof createTemplateInputSchema>;
+
+export const updateTemplateInputSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9_]+$/, "Use lower-case letters, numbers and underscores only")
+    .optional(),
+  category: templateCategorySchema.optional(),
+  language: z.string().min(2).optional(),
+  body: z.string().min(1).optional(),
+  approvalStatus: templateApprovalSchema.optional(),
+});
+export type UpdateTemplateInput = z.infer<typeof updateTemplateInputSchema>;
+
 export const sendMessageInputSchema = z
   .object({
     body: z.string().default(""),
     internal: z.boolean().default(false),
     /** Ids of previously-uploaded attachments to send with this message. */
     attachmentIds: z.array(z.string()).optional(),
+    /**
+     * Send an approved WhatsApp template instead of free text — required to
+     * re-open a conversation once its 24-hour window has closed. `params` fill
+     * the template's {{1}}, {{2}} … variables in order.
+     */
+    template: z
+      .object({ id: z.string(), params: z.array(z.string()).default([]) })
+      .optional(),
   })
-  // Must carry something — text or at least one attachment.
-  .refine((v) => v.body.trim().length > 0 || (v.attachmentIds?.length ?? 0) > 0, {
-    message: "Message needs text or an attachment",
-    path: ["body"],
-  });
+  // Must carry something — text, an attachment, or a template.
+  .refine(
+    (v) => v.body.trim().length > 0 || (v.attachmentIds?.length ?? 0) > 0 || !!v.template,
+    { message: "Message needs text, an attachment, or a template", path: ["body"] },
+  );
 export type SendMessageInput = z.infer<typeof sendMessageInputSchema>;
 
 export const assignConversationInputSchema = z.object({

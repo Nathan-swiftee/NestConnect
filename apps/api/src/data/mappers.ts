@@ -14,9 +14,52 @@ import type {
   Priority,
   RoutingStrategy,
   Team,
+  Template,
+  TemplateApproval,
+  TemplateCategory,
   User,
+  WaWindow,
 } from "@ding/schemas";
 import { isInboxConnected } from "@ding/schemas";
+
+/** WhatsApp's customer-service window is 24 hours from the last inbound message. */
+const WA_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Compute the WhatsApp 24-hour window for a conversation. Only WhatsApp channels
+ * have a window; everything else returns null. With no inbound yet the window is
+ * closed (you must open with a template).
+ */
+export function computeWaWindow(
+  channel: string,
+  lastInboundAt: Date | string | null | undefined,
+): WaWindow | null {
+  if (channel !== "whatsapp" && channel !== "whatsapp_group") return null;
+  if (!lastInboundAt) return { open: false, expiresAt: null };
+  const last = typeof lastInboundAt === "string" ? new Date(lastInboundAt) : lastInboundAt;
+  const expiresAt = new Date(last.getTime() + WA_WINDOW_MS);
+  return { open: Date.now() < expiresAt.getTime(), expiresAt: expiresAt.toISOString() };
+}
+
+/** Count the distinct {{n}} positional variables in a template body. */
+export function templateVariableCount(body: string): number {
+  const nums = new Set<number>();
+  for (const m of body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) nums.add(Number(m[1]));
+  return nums.size;
+}
+
+/** Prisma Template row → domain Template (variable count derived from the body). */
+export function mapTemplate(t: Prisma.TemplateGetPayload<object>): Template {
+  return {
+    id: t.id,
+    name: t.name,
+    category: t.category as TemplateCategory,
+    language: t.language,
+    body: t.body,
+    approvalStatus: t.approvalStatus as TemplateApproval,
+    variableCount: templateVariableCount(t.body),
+  };
+}
 
 /* Prisma row → domain type mappers. Includes are typed via Prisma payload helpers. */
 
@@ -195,6 +238,7 @@ export function mapConversation(c: ConversationSummaryRow): Conversation {
     lastActivityAt: c.lastActivityAt.toISOString(),
     seq: c.seq,
     preview: c.preview,
+    waWindow: computeWaWindow(c.channel, c.lastInboundAt),
   };
 }
 

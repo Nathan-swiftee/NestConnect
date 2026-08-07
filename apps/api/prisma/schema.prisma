@@ -205,6 +205,9 @@ model Conversation {
   slaDueAt       DateTime?
   snoozedUntil   DateTime?
   lastActivityAt DateTime           @default(now())
+  // Timestamp of the most recent inbound (customer) message — drives WhatsApp's
+  // 24-hour customer-service window. Null until the customer first messages.
+  lastInboundAt  DateTime?
   seq            Int                @default(0)
   preview        String             @default("")
   createdAt      DateTime           @default(now())

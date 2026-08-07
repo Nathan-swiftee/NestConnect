@@ -10,6 +10,7 @@ import { ConversationsModule } from "./conversations/conversations.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { ContactsModule } from "./contacts/contacts.module";
 import { StorageModule } from "./storage/storage.module";
+import { TemplatesModule } from "./templates/templates.module";
 import { HealthController } from "./health/health.controller";
 
 const imports: ModuleMetadata["imports"] = [
@@ -21,6 +22,7 @@ const imports: ModuleMetadata["imports"] = [
   ConversationsModule,
   WorkspaceModule,
   ContactsModule,
+  TemplatesModule,
 ];
 
 // In production the API serves the built SPA (apps/api/dist/main.js → ../../web/dist),
