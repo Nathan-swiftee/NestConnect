@@ -1,5 +1,5 @@
 import { createHash, createHmac } from "node:crypto";
-import { env } from "../config/env";
+import type { R2Config } from "./r2-config";
 
 /** SHA-256 hex of an empty body (used for GET / no-body requests). */
 const EMPTY_SHA = createHash("sha256").update("").digest("hex");
@@ -73,11 +73,16 @@ function amzNow(): string {
 
 /**
  * Cloudflare R2 object storage over its S3-compatible API. Server-side PUT/GET
- * with SigV4 (region "auto", service "s3"). Only used when all four R2 env vars
- * are set; otherwise StorageService falls back to local disk.
+ * with SigV4 (region "auto", service "s3"). Constructed with a resolved
+ * {@link R2Config}; StorageService builds one only when all four credentials are
+ * present (from env or the org's saved Setup settings), else falls back to disk.
  */
 export class R2Driver {
-  private readonly host = `${env.r2.accountId}.r2.cloudflarestorage.com`;
+  private readonly host: string;
+
+  constructor(private readonly cfg: R2Config) {
+    this.host = `${cfg.accountId}.r2.cloudflarestorage.com`;
+  }
 
   async put(key: string, body: Buffer, contentType = "application/octet-stream"): Promise<void> {
     const res = await this.signed("PUT", key, body, contentType);
@@ -96,7 +101,7 @@ export class R2Driver {
 
   private signed(method: "GET" | "PUT", key: string, body?: Buffer, contentType?: string) {
     const amzDate = amzNow();
-    const path = `/${env.r2.bucket}/${encodeKey(key)}`;
+    const path = `/${this.cfg.bucket}/${encodeKey(key)}`;
     const payloadHash = body ? sha256hex(body) : EMPTY_SHA;
     const authorization = signV4({
       method,
@@ -105,8 +110,8 @@ export class R2Driver {
       payloadHash,
       region: "auto",
       service: "s3",
-      accessKey: env.r2.accessKeyId,
-      secretKey: env.r2.secretAccessKey,
+      accessKey: this.cfg.accessKeyId,
+      secretKey: this.cfg.secretAccessKey,
       headers: [
         ["host", this.host],
         ["x-amz-content-sha256", payloadHash],

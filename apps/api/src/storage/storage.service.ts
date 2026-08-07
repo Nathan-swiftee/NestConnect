@@ -4,24 +4,43 @@ import { existsSync } from "node:fs";
 import { dirname, join, normalize, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
+import { Store } from "../data/store";
 import { R2Driver } from "./r2.driver";
+import { resolveR2Config } from "./r2-config";
 
 /**
- * Object storage for message media. Uses Cloudflare R2 when configured (all four
- * R2_* env vars set), otherwise a local-disk driver (works in dev and on
- * Railway, though Railway disk is ephemeral). Keys are app-generated
- * (`YYYY/MM/uuid.ext`) so they're safe to join onto a base path or R2 prefix.
+ * Object storage for message media. Uses Cloudflare R2 when configured —
+ * credentials come from the env or the org's Settings › Setup card, resolved on
+ * demand so R2 can be switched on from the UI without a redeploy — otherwise a
+ * local-disk driver (works in dev and on Railway, though Railway disk is
+ * ephemeral). Keys are app-generated (`YYYY/MM/uuid.ext`) so they're safe to
+ * join onto a base path or R2 prefix.
  */
 @Injectable()
 export class StorageService {
   private readonly logger = new Logger(StorageService.name);
   private readonly base = env.media.dir;
-  private readonly r2: R2Driver | null;
+  /** Cached R2 driver + the config signature it was built from (re-resolved on a TTL). */
+  private driver: R2Driver | null = null;
+  private driverSig: string | null = null;
+  private resolvedAt = 0;
+  private readonly ttlMs = 15_000;
 
-  constructor() {
-    const { accountId, accessKeyId, secretAccessKey, bucket } = env.r2;
-    this.r2 = accountId && accessKeyId && secretAccessKey && bucket ? new R2Driver() : null;
-    this.logger.log(`Media storage: ${this.r2 ? `Cloudflare R2 (${bucket})` : `local disk (${this.base})`}`);
+  constructor(private readonly store: Store) {}
+
+  /** The active R2 driver (or null for disk), re-resolved from settings on a TTL. */
+  private async r2(): Promise<R2Driver | null> {
+    const now = Date.now();
+    if (this.driverSig !== null && now - this.resolvedAt < this.ttlMs) return this.driver;
+    const cfg = await resolveR2Config(this.store);
+    const sig = cfg ? `${cfg.accountId}/${cfg.bucket}/${cfg.accessKeyId}/${cfg.secretAccessKey}` : "";
+    if (sig !== this.driverSig) {
+      this.driver = cfg ? new R2Driver(cfg) : null;
+      this.driverSig = sig;
+      this.logger.log(`Media storage: ${cfg ? `Cloudflare R2 (${cfg.bucket})` : `local disk (${this.base})`}`);
+    }
+    this.resolvedAt = now;
+    return this.driver;
   }
 
   /** A fresh, collision-free storage key with an optional extension. */
@@ -34,8 +53,9 @@ export class StorageService {
   }
 
   async put(key: string, body: Buffer, contentType?: string): Promise<void> {
-    if (this.r2) {
-      await this.r2.put(key, body, contentType);
+    const r2 = await this.r2();
+    if (r2) {
+      await r2.put(key, body, contentType);
       return;
     }
     const path = this.resolve(key);
@@ -44,9 +64,10 @@ export class StorageService {
   }
 
   async get(key: string): Promise<Buffer | null> {
-    if (this.r2) {
+    const r2 = await this.r2();
+    if (r2) {
       try {
-        return await this.r2.get(key);
+        return await r2.get(key);
       } catch (err) {
         this.logger.warn(`R2 read failed for ${key}: ${String(err)}`);
         return null;

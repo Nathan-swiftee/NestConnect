@@ -28,6 +28,7 @@ import {
   EditIcon,
   GmailGlyph,
   PlusIcon,
+  StorageIcon,
   TeamGlyph,
   TEAM_ICON_KEYS,
   TEAM_ICONS,
@@ -957,6 +958,8 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
   const configured = Boolean(google?.configured);
   const meta = integrations.data?.meta;
   const metaConfigured = Boolean(meta?.configured);
+  const storage = integrations.data?.storage;
+  const storageConfigured = Boolean(storage?.configured);
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -964,6 +967,10 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
   const [metaAppId, setMetaAppId] = useState("");
   const [metaAppSecret, setMetaAppSecret] = useState("");
   const [metaConfigId, setMetaConfigId] = useState("");
+  const [r2AccountId, setR2AccountId] = useState("");
+  const [r2Bucket, setR2Bucket] = useState("");
+  const [r2AccessKeyId, setR2AccessKeyId] = useState("");
+  const [r2SecretAccessKey, setR2SecretAccessKey] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Prefill non-secret values from the stored settings once they load.
@@ -979,6 +986,12 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
   useEffect(() => {
     if (meta?.configId !== undefined) setMetaConfigId(meta.configId);
   }, [meta?.configId]);
+  useEffect(() => {
+    if (storage?.accountId !== undefined) setR2AccountId(storage.accountId);
+  }, [storage?.accountId]);
+  useEffect(() => {
+    if (storage?.bucket !== undefined) setR2Bucket(storage.bucket);
+  }, [storage?.bucket]);
 
   const saveGoogle = () => {
     const input: {
@@ -1022,6 +1035,35 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
       onSuccess: () => {
         setMetaAppSecret("");
         onToast("Meta settings saved");
+      },
+      onError: () => onToast("Only admins & managers can change setup"),
+    });
+  };
+
+  const saveStorage = () => {
+    const input: {
+      r2AccountId?: string;
+      r2Bucket?: string;
+      r2AccessKeyId?: string;
+      r2SecretAccessKey?: string;
+    } = {};
+    // Account id + bucket are non-secret — send when changed (empty clears).
+    if (r2AccountId.trim() !== (storage?.accountId ?? "")) input.r2AccountId = r2AccountId.trim();
+    if (r2Bucket.trim() !== (storage?.bucket ?? "")) input.r2Bucket = r2Bucket.trim();
+    // Keys are write-only — only send when the field has a value.
+    const akid = r2AccessKeyId.trim();
+    const secret = r2SecretAccessKey.trim();
+    if (akid) input.r2AccessKeyId = akid;
+    if (secret) input.r2SecretAccessKey = secret;
+    if (Object.keys(input).length === 0) {
+      onToast("Enter your R2 details to save");
+      return;
+    }
+    update.mutate(input, {
+      onSuccess: () => {
+        setR2AccessKeyId("");
+        setR2SecretAccessKey("");
+        onToast("Storage settings saved");
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
@@ -1216,6 +1258,87 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
 
         <div className="setform__foot">
           <button className="btn-primary" type="button" onClick={saveMeta} disabled={update.isPending || integrations.isLoading}>
+            Save
+          </button>
+        </div>
+      </div>
+
+      <div className="setupcard">
+        <div className="setupcard__head">
+          <span className="setrow__ic" style={{ color: "#F6821F" }}>
+            <StorageIcon />
+          </span>
+          <div className="setrow__main">
+            <b>Cloud storage · Cloudflare R2</b>
+            <small>Where sent &amp; received media (photos, files, voice notes) is stored.</small>
+          </div>
+          <span
+            className={"connpill " + (storageConfigured ? "on" : "off")}
+            title={storageConfigured ? "Media is stored durably in R2" : "Using local disk — files are lost on redeploy"}
+          >
+            <span className="connpill__dot" />
+            {storageConfigured ? "Storing in R2" : "Using ephemeral disk"}
+          </span>
+        </div>
+
+        <p className="fieldhint">
+          Without R2, uploaded media lives on the server’s local disk, which is wiped on every redeploy. Add a
+          Cloudflare R2 bucket and an <b>Object Read &amp; Write</b> API token to keep media permanently. Takes effect
+          within a few seconds of saving — no redeploy needed.
+        </p>
+
+        <div className="setform__grid two">
+          <label className="field">
+            <span>Account ID</span>
+            <input
+              value={r2AccountId}
+              autoComplete="off"
+              onChange={(e) => setR2AccountId(e.target.value)}
+              placeholder="e.g. 8f2a…c1 (Cloudflare account id)"
+            />
+          </label>
+          <label className="field">
+            <span>Bucket</span>
+            <input
+              value={r2Bucket}
+              autoComplete="off"
+              onChange={(e) => setR2Bucket(e.target.value)}
+              placeholder="e.g. nest-media"
+            />
+          </label>
+        </div>
+
+        <div className="setform__grid two">
+          <label className="field">
+            <span>Access Key ID</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={r2AccessKeyId}
+              onChange={(e) => setR2AccessKeyId(e.target.value)}
+              placeholder={storageConfigured ? "••••• (hidden)" : "R2 token access key id"}
+            />
+          </label>
+          <label className="field">
+            <span>Secret Access Key</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={r2SecretAccessKey}
+              onChange={(e) => setR2SecretAccessKey(e.target.value)}
+              placeholder={storageConfigured ? "••••• (hidden)" : "R2 token secret"}
+            />
+          </label>
+        </div>
+
+        <p className="fieldhint">
+          In Cloudflare → R2: create a bucket, then under <b>Manage R2 API Tokens</b> create a token with
+          Object Read &amp; Write permission. Copy the Account ID, Access Key ID and Secret here. Clear the bucket to
+          switch back to disk.
+        </p>
+
+        <div className="setform__foot">
+          <button className="btn-primary" type="button" onClick={saveStorage} disabled={update.isPending || integrations.isLoading}>
             Save
           </button>
         </div>

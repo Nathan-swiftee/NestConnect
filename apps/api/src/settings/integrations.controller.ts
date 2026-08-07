@@ -31,6 +31,13 @@ import {
   META_CONFIG_ID_KEY,
 } from "../channels/meta/meta-oauth.service";
 import { metaRedirectUri } from "../channels/meta/redirect-uri";
+import {
+  r2PublicSettings,
+  R2_ACCESS_KEY_ID_KEY,
+  R2_ACCOUNT_ID_KEY,
+  R2_BUCKET_KEY,
+  R2_SECRET_ACCESS_KEY_KEY,
+} from "../storage/r2-config";
 
 /** App-level integration settings (Settings › Setup). Currently: the org's
  *  Google OAuth app credentials that power the "Connect with Google" flow. */
@@ -74,12 +81,24 @@ export class IntegrationsController {
     if (body.metaConfigId !== undefined) {
       await this.store.setAppSetting(me.orgId, META_CONFIG_ID_KEY, body.metaConfigId.trim());
     }
+    // Cloudflare R2 storage. Account id + bucket write on any change (empty
+    // clears, dropping back to disk); the keys write only when supplied.
+    if (body.r2AccountId !== undefined) {
+      await this.store.setAppSetting(me.orgId, R2_ACCOUNT_ID_KEY, body.r2AccountId.trim());
+    }
+    if (body.r2Bucket !== undefined) {
+      await this.store.setAppSetting(me.orgId, R2_BUCKET_KEY, body.r2Bucket.trim());
+    }
+    const r2AccessKeyId = body.r2AccessKeyId?.trim();
+    if (r2AccessKeyId) await this.store.setAppSetting(me.orgId, R2_ACCESS_KEY_ID_KEY, r2AccessKeyId);
+    const r2Secret = body.r2SecretAccessKey?.trim();
+    if (r2Secret) await this.store.setAppSetting(me.orgId, R2_SECRET_ACCESS_KEY_KEY, r2Secret);
     return this.snapshot(me.orgId, req);
   }
 
   /** Build the GET/PATCH response. Secrets are never included. */
   private async snapshot(orgId: string, req: Request): Promise<IntegrationSettings> {
-    const [clientId, googleConfigured, pubsubTopic, metaAppId, metaConfigured, metaConfigId] =
+    const [clientId, googleConfigured, pubsubTopic, metaAppId, metaConfigured, metaConfigId, storage] =
       await Promise.all([
         this.google.clientId(orgId),
         this.google.configured(orgId),
@@ -87,6 +106,7 @@ export class IntegrationsController {
         this.meta.appId(orgId),
         this.meta.configured(orgId),
         this.meta.configId(orgId),
+        r2PublicSettings(this.store, orgId),
       ]);
     return {
       google: {
@@ -102,6 +122,7 @@ export class IntegrationsController {
         configId: metaConfigId,
         redirectUri: metaRedirectUri(req),
       },
+      storage,
     };
   }
 

@@ -436,6 +436,14 @@ export const integrationSettingsSchema = z.object({
     /** The exact URL to list as a Valid OAuth Redirect URI in the Meta app. */
     redirectUri: z.string(),
   }),
+  /** Cloudflare R2 object storage for durable message media. */
+  storage: z.object({
+    /** True when all four R2 credentials are set (media is stored in R2). */
+    configured: z.boolean(),
+    /** Non-secret echo: the Cloudflare account id and bucket (keys never echoed). */
+    accountId: z.string(),
+    bucket: z.string(),
+  }),
 });
 export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
 
@@ -449,6 +457,12 @@ export const updateIntegrationSettingsInputSchema = z.object({
   metaAppId: z.string().optional(),
   metaAppSecret: z.string().optional(),
   metaConfigId: z.string().optional(),
+  /** Cloudflare R2: account id + bucket write on any change (empty clears);
+   *  the access key id + secret are written only when a non-empty value is sent. */
+  r2AccountId: z.string().optional(),
+  r2AccessKeyId: z.string().optional(),
+  r2SecretAccessKey: z.string().optional(),
+  r2Bucket: z.string().optional(),
 });
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
 

@@ -131,6 +131,9 @@ export const PauseIcon = () => (
 export const MicIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="9" y="2.5" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" /></svg>
 );
+export const StorageIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 18.5a4 4 0 0 1-.6-7.96 5.5 5.5 0 0 1 10.63-1.42A3.75 3.75 0 0 1 17 18.5H7Z" /></svg>
+);
 export const StopIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>
 );
