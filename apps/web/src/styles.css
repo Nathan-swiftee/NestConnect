@@ -588,6 +588,30 @@ input,textarea{font:inherit}
 .compinput .richedit ul,.compinput .richedit ol{margin:4px 0;padding-left:22px}
 .compinput .richedit a{color:var(--brand-strong)}
 
+/* ─── Composer emoji picker ─── */
+.compinput{position:relative}
+.tool.tool--emoji.on{background:color-mix(in srgb,var(--brand) 16%,transparent);color:var(--brand-strong)}
+.emojipop{position:absolute;left:6px;bottom:calc(100% + 8px);z-index:40;
+  width:296px;max-height:224px;overflow-y:auto;display:grid;grid-template-columns:repeat(8,1fr);gap:2px;
+  padding:8px;border-radius:var(--r-16);background:var(--elevated);
+  box-shadow:0 14px 34px -10px rgba(0,0,0,.4),0 0 0 1px var(--border);animation:msgIn .14s var(--ease)}
+.emojipop__e{width:32px;height:32px;border-radius:var(--r-8);display:grid;place-items:center;font-size:19px;line-height:1;
+  transition:background .1s,transform .1s var(--ease)}
+.emojipop__e:hover{background:color-mix(in srgb,var(--text) 10%,transparent);transform:scale(1.16)}
+
+/* ─── Email composer header: Subject + Cc/Bcc ─── */
+.emailhdr{margin:8px 2px 0;display:flex;flex-direction:column;gap:6px}
+.emailhdr__row{display:flex;align-items:center;gap:8px;font-size:13px}
+.emailhdr__lbl{flex:0 0 46px;color:var(--text-faint);font-weight:600}
+.emailhdr__subj{flex:1 1 auto;min-width:0;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emailhdr__cc{flex:0 0 auto;padding:3px 10px;border-radius:var(--r-full);font-size:11.5px;font-weight:700;
+  color:var(--text-muted);border:1px solid var(--border);transition:background .12s,color .12s,border-color .12s}
+.emailhdr__cc:hover{background:color-mix(in srgb,var(--text) 7%,transparent);color:var(--text)}
+.emailhdr__cc.on{color:var(--brand-strong);border-color:var(--brand)}
+.emailhdr__in{flex:1 1 auto;min-width:0;padding:5px 9px;border-radius:var(--r-8);border:1px solid var(--border);
+  background:var(--surface-2);color:var(--text);font-size:13px;outline:none}
+.emailhdr__in:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-ring)}
+
 /* ─── Typing indicator ─── another agent composing on this conversation:
    a tail-less inbound-style bubble with three bouncing dots. */
 .typing{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;max-width:100%;

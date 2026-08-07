@@ -357,6 +357,9 @@ export const sendMessageInputSchema = z
     quotedMsgId: z.string().optional(),
     /** Rich HTML body for an email reply (sanitized server-side before send). */
     bodyHtml: z.string().optional(),
+    /** Additional email recipients (email channel only). */
+    cc: z.array(z.string()).optional(),
+    bcc: z.array(z.string()).optional(),
   })
   // Must carry something — text, an attachment, or a template.
   .refine(

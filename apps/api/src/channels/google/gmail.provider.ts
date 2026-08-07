@@ -63,6 +63,8 @@ export class GmailProvider extends ChannelProvider {
         fromName: inbox.name,
         to: params.to,
         toName: params.context?.toName,
+        cc: params.cc,
+        bcc: params.bcc,
         subject,
         body: params.body,
         // Rich reply → a text+html alternative; else derive HTML from the text.

@@ -267,8 +267,17 @@ export function useSendMessage() {
       quotedMsgId?: string;
       /** Rich HTML body for an email reply (sanitized server-side). */
       bodyHtml?: string;
+      /** Cc / Bcc recipients on an email reply. */
+      cc?: string[];
+      bcc?: string[];
     }) =>
-      api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, v.template, v.quotedMsgId, v.bodyHtml),
+      api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, {
+        template: v.template,
+        quotedMsgId: v.quotedMsgId,
+        bodyHtml: v.bodyHtml,
+        cc: v.cc,
+        bcc: v.bcc,
+      }),
     onSuccess: (_msg, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });

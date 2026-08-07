@@ -43,6 +43,9 @@ export interface SendParams {
   body: string;
   /** Sanitized HTML body for a rich email reply (email providers only). */
   bodyHtml?: string;
+  /** Extra email recipients (email providers only). */
+  cc?: string[];
+  bcc?: string[];
   conversation: Conversation;
   context?: SendContext;
   /** Media to deliver alongside (or instead of) the text body. */

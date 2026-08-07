@@ -304,6 +304,14 @@ function EmailHtml({ html }: { html: string }) {
 /** Emoji offered in the quick-reaction bar (WhatsApp's default set). */
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
+/** A compact, curated set for the composer's emoji picker (no dependency). */
+const COMPOSER_EMOJIS = [
+  "😀","😄","😁","😅","😂","🙂","😉","😊","😍","😘","😎","🤩","🤗","🤔","😐","😴",
+  "😌","🙃","😇","🥳","😢","😭","😤","😡","😱","🤯","🥺","😬","👍","👎","👏","🙏",
+  "💪","🙌","👌","🤝","👋","🤙","💯","🔥","✨","🎉","🎊","❤️","🧡","💛","💚","💙",
+  "💜","✅","❌","⚠️","⭐","💡","🚀","🎯","💰","📦","📅","⏰","💬","📞","📧","☕",
+];
+
 /** One-line label for a quoted message: media get an icon + kind, else the text. */
 function quotedSnippet(q: Message): string {
   const body = (q.body ?? "").trim();
@@ -697,6 +705,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [reactFor, setReactFor] = useState<string | null>(null);
   // Rich-text HTML for an email reply (mirrors the contentEditable editor).
   const [html, setHtml] = useState("");
+  // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [showCc, setShowCc] = useState(false);
+  const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   // Another agent typing on THIS conversation ("{who} is typing…"); null when idle.
   const [typingWho, setTypingWho] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
@@ -766,8 +779,28 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setReplyTo(null);
     setReactFor(null);
     setHtml("");
+    setEmojiOpen(false);
+    setShowCc(false);
+    setCc("");
+    setBcc("");
     if (editorRef.current) editorRef.current.innerHTML = "";
   }, [conversationId]);
+
+  // Dismiss the composer emoji picker on outside click or Esc.
+  useEffect(() => {
+    if (!emojiOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest(".emojipop") && !t.closest(".tool--emoji")) setEmojiOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setEmojiOpen(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [emojiOpen]);
 
   // Dismiss an open quick-reaction bar on outside click or Esc.
   useEffect(() => {
@@ -942,6 +975,12 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const isWhatsApp = conv.channel === "whatsapp" || conv.channel === "whatsapp_group";
   // Email replies compose in a rich-text editor; notes + other channels stay plain.
   const isRich = isEmail && !internal;
+  // The subject an email reply will carry (mirrors the server's Re: prefixing).
+  const emailSubject = conv.subject
+    ? /^re:/i.test(conv.subject)
+      ? conv.subject
+      : `Re: ${conv.subject}`
+    : "Re: your message";
   // Resolve a quoted reply's target message by id for in-bubble rendering.
   const msgById = new Map(conv.messages.map((m) => [m.id, m]));
   const waWindow = conv.waWindow;
@@ -1043,6 +1082,33 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     signalTyping();
   };
 
+  // Insert an emoji at the caret of whichever composer input is active.
+  const insertEmoji = (emoji: string) => {
+    if (isRich && editorRef.current) {
+      const el = editorRef.current;
+      el.focus();
+      document.execCommand("insertText", false, emoji);
+      setHtml(el.innerHTML);
+      setText(el.textContent ?? "");
+    } else {
+      const ta = taRef.current;
+      if (ta) {
+        const start = ta.selectionStart ?? text.length;
+        const end = ta.selectionEnd ?? text.length;
+        const next = text.slice(0, start) + emoji + text.slice(end);
+        setText(next);
+        requestAnimationFrame(() => {
+          ta.focus();
+          const pos = start + emoji.length;
+          ta.setSelectionRange(pos, pos);
+        });
+      } else {
+        setText(text + emoji);
+      }
+    }
+    setEmojiOpen(false);
+  };
+
   const handleSend = () => {
     if (!canSend || composeLocked) return;
     const body = text.trim();
@@ -1051,6 +1117,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     const quotedMsgId = !internal ? replyTo?.id : undefined;
     // A rich email reply carries the editor's HTML; the server sanitizes it.
     const bodyHtml = isRich && body ? html || undefined : undefined;
+    // Optional Cc/Bcc on an email reply (comma/space separated addresses).
+    const parseAddrs = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
+    const ccList = isEmail && !internal ? parseAddrs(cc) : [];
+    const bccList = isEmail && !internal ? parseAddrs(bcc) : [];
     unlock();
     const attachmentIds = readyAtts.map((s) => s.attachment!.id);
     send.mutate(
@@ -1061,6 +1131,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         attachmentIds: attachmentIds.length ? attachmentIds : undefined,
         quotedMsgId,
         bodyHtml,
+        cc: ccList.length ? ccList : undefined,
+        bcc: bccList.length ? bccList : undefined,
       },
       {
         onError: (err) => {
@@ -1082,6 +1154,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     clearStaged();
     setInternal(false);
     setReplyTo(null);
+    setCc("");
+    setBcc("");
+    setShowCc(false);
   };
 
   const uploadStaged = async (item: Staged) => {
@@ -1576,6 +1651,45 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             </div>
             <span className="compctx">{ctxNode}</span>
           </div>
+          {isEmail && !internal && (
+            <div className="emailhdr">
+              <div className="emailhdr__row">
+                <span className="emailhdr__lbl">Subject</span>
+                <span className="emailhdr__subj" title={emailSubject}>{emailSubject}</span>
+                <button
+                  type="button"
+                  className={"emailhdr__cc" + (showCc ? " on" : "")}
+                  onClick={() => setShowCc((v) => !v)}
+                >
+                  Cc/Bcc
+                </button>
+              </div>
+              {showCc && (
+                <>
+                  <div className="emailhdr__row">
+                    <span className="emailhdr__lbl">Cc</span>
+                    <input
+                      className="emailhdr__in"
+                      value={cc}
+                      onChange={(e) => setCc(e.target.value)}
+                      placeholder="name@example.com, …"
+                      inputMode="email"
+                    />
+                  </div>
+                  <div className="emailhdr__row">
+                    <span className="emailhdr__lbl">Bcc</span>
+                    <input
+                      className="emailhdr__in"
+                      value={bcc}
+                      onChange={(e) => setBcc(e.target.value)}
+                      placeholder="name@example.com, …"
+                      inputMode="email"
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
           {replyTo && !internal && (
             <div className="reply-cue">
               <span className="reply-cue__accent" aria-hidden="true" />
@@ -1672,7 +1786,28 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             </div>
           ) : (
             <div className={"compinput" + (isRich ? " compinput--rich" : "")}>
-              <button className="tool" title="Emoji" aria-label="Emoji">
+              {emojiOpen && (
+                <div className="emojipop" role="menu" aria-label="Insert emoji">
+                  {COMPOSER_EMOJIS.map((e) => (
+                    <button
+                      key={e}
+                      type="button"
+                      className="emojipop__e"
+                      onClick={() => insertEmoji(e)}
+                      aria-label={`Insert ${e}`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                className={"tool tool--emoji" + (emojiOpen ? " on" : "")}
+                title="Emoji"
+                aria-label="Emoji"
+                onClick={() => setEmojiOpen((v) => !v)}
+              >
                 <EmojiIcon />
               </button>
               {isRich ? (
@@ -1735,7 +1870,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   <BoltIcon />
                 </button>
               )}
-              {canRecord && (
+              {canRecord && isWhatsApp && !internal && (
                 <button
                   className="tool"
                   title="Record voice message"

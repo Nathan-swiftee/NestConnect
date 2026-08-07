@@ -280,6 +280,8 @@ export interface BuildMimeInput {
   fromName?: string;
   to: string;
   toName?: string;
+  cc?: string[];
+  bcc?: string[];
   subject: string;
   body: string;
   /** Rich HTML alternative — when present the message is multipart/alternative. */
@@ -315,6 +317,8 @@ export function buildMime(input: BuildMimeInput): string {
     `Message-ID: ${input.messageId}`,
     "MIME-Version: 1.0",
   ];
+  if (input.cc?.length) headers.push(`Cc: ${input.cc.join(", ")}`);
+  if (input.bcc?.length) headers.push(`Bcc: ${input.bcc.join(", ")}`);
   if (input.inReplyTo) headers.push(`In-Reply-To: ${input.inReplyTo}`);
   if (input.references) headers.push(`References: ${input.references}`);
 

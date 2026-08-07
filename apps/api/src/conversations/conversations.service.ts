@@ -88,7 +88,14 @@ export class ConversationsService {
       if (cleared) this.realtime.emitConversationUpdated(cleared);
       // Re-read so the dispatch sees the just-appended message in the thread.
       const fresh = await this.store.getConversation(id);
-      if (fresh) void this.dispatcher.dispatchOutbound(fresh, message, template);
+      if (fresh) {
+        const cc = input.cc?.filter((a) => a.trim());
+        const bcc = input.bcc?.filter((a) => a.trim());
+        void this.dispatcher.dispatchOutbound(fresh, message, template, {
+          cc: cc?.length ? cc : undefined,
+          bcc: bcc?.length ? bcc : undefined,
+        });
+      }
     }
     return message;
   }

@@ -128,17 +128,23 @@ export const api = {
     body: string,
     internal = false,
     attachmentIds?: string[],
-    template?: { id: string; params: string[] },
-    quotedMsgId?: string,
-    bodyHtml?: string,
+    extras?: {
+      template?: { id: string; params: string[] };
+      quotedMsgId?: string;
+      bodyHtml?: string;
+      cc?: string[];
+      bcc?: string[];
+    },
   ) =>
     post<Message>(`/conversations/${id}/messages`, {
       body,
       internal,
       ...(attachmentIds?.length ? { attachmentIds } : {}),
-      ...(template ? { template } : {}),
-      ...(quotedMsgId ? { quotedMsgId } : {}),
-      ...(bodyHtml ? { bodyHtml } : {}),
+      ...(extras?.template ? { template: extras.template } : {}),
+      ...(extras?.quotedMsgId ? { quotedMsgId: extras.quotedMsgId } : {}),
+      ...(extras?.bodyHtml ? { bodyHtml: extras.bodyHtml } : {}),
+      ...(extras?.cc?.length ? { cc: extras.cc } : {}),
+      ...(extras?.bcc?.length ? { bcc: extras.bcc } : {}),
     }),
   // React to a message with an emoji (empty string removes the agent's reaction).
   react: (conversationId: string, messageId: string, emoji: string) =>

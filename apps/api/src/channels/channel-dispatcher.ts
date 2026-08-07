@@ -31,6 +31,7 @@ export class ChannelDispatcher {
     conversation: ConversationWithMessages,
     message: Message,
     template?: OutboundTemplate,
+    opts?: { cc?: string[]; bcc?: string[] },
   ): Promise<void> {
     // Email is served by more than one provider (Gmail vs generic), chosen by
     // the inbox's connected provider. Other channels ignore the context.
@@ -69,6 +70,8 @@ export class ChannelDispatcher {
       to,
       body: message.body,
       bodyHtml: message.bodyHtml ?? undefined,
+      cc: opts?.cc,
+      bcc: opts?.bcc,
       conversation,
       context,
       media,

@@ -57,6 +57,8 @@ export class EmailProvider extends ChannelProvider {
         body: JSON.stringify({
           From: env.email.from,
           To: params.to,
+          ...(params.cc?.length ? { Cc: params.cc.join(", ") } : {}),
+          ...(params.bcc?.length ? { Bcc: params.bcc.join(", ") } : {}),
           Subject: subject,
           TextBody: params.body,
           // Rich reply → its HTML; else derive a simple HTML alternative.
