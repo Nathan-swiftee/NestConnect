@@ -12,9 +12,10 @@ const ORG = "org_swiftee";
 // Dev password shared by all seeded users. Change via AUTH_DEV_PASSWORD.
 const passwordHash = bcrypt.hashSync(process.env.AUTH_DEV_PASSWORD ?? "ding1234", 8);
 
-// Demo timestamps relative to real "now" so the seeded thread stays fresh and
-// its date dividers roll over (2 days ago / Yesterday / Today) like WhatsApp.
-// The message seed below re-runs on every deploy, so these stay current.
+// Demo timestamps relative to real "now" so a freshly-seeded thread looks
+// current — 2 days ago / Yesterday / Today, with rolling date dividers like
+// WhatsApp. Demo conversations are seeded once on an empty DB and preserved
+// thereafter (see the guard below), so these anchor the first seed only.
 const now = Date.now();
 const mins = (m: number) => new Date(now - m * 60_000);
 const dayAt = (d: number, hh: number, mm: number) => {
@@ -147,6 +148,15 @@ async function main() {
   ];
 
   for (const s of seedConversations) {
+    // Non-destructive: a demo conversation is seeded only when it's absent.
+    // Once it exists it's a real working thread — its state, messages and media
+    // are preserved across deploys rather than wiped and rebuilt.
+    const alreadySeeded = await prisma.conversation.findUnique({
+      where: { id: s.conv.id },
+      select: { id: true },
+    });
+    if (alreadySeeded) continue;
+
     await prisma.contact.upsert({
       where: { id: s.contact.id },
       update: { tags: s.contact.tags ?? [] },
@@ -171,23 +181,8 @@ async function main() {
       s.messages[0].createdAt,
     );
 
-    await prisma.conversation.upsert({
-      where: { id: s.conv.id },
-      // Refresh the shell on every deploy so the demo's dates and SLA stay
-      // current instead of frozen at whenever the DB was first seeded.
-      update: {
-        status: s.conv.status,
-        assigneeUserId: s.conv.assigneeUserId,
-        assignedTeamId: s.conv.assignedTeamId,
-        priority: s.conv.priority,
-        unread: s.conv.unread,
-        unreadCount: s.conv.unreadCount ?? 0,
-        preview: s.conv.preview,
-        slaDueAt: s.conv.slaDueAt,
-        lastActivityAt: newest,
-        seq: s.messages.length,
-      },
-      create: {
+    await prisma.conversation.create({
+      data: {
         id: s.conv.id,
         orgId: ORG,
         inboxId: s.conv.inboxId,
@@ -208,20 +203,6 @@ async function main() {
       },
     });
 
-    // Rebuild the demo history each run so the seeded timestamps track real
-    // "now" (2 days ago / yesterday / today) rather than the first-seed date.
-    // Attachments FK-block message deletes (onDelete: Restrict) once real media
-    // has been sent into a seeded conversation, so clear those rows first.
-    const priorMsgs = await prisma.message.findMany({
-      where: { conversationId: s.conv.id },
-      select: { id: true },
-    });
-    if (priorMsgs.length) {
-      await prisma.attachment.deleteMany({
-        where: { messageId: { in: priorMsgs.map((m) => m.id) } },
-      });
-    }
-    await prisma.message.deleteMany({ where: { conversationId: s.conv.id } });
     await prisma.message.createMany({
       data: s.messages.map((m, idx) => ({
         conversationId: s.conv.id,
