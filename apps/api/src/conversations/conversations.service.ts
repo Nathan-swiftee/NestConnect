@@ -112,4 +112,20 @@ export class ConversationsService {
     this.realtime.emitConversationUpdated(conv);
     return conv;
   }
+
+  /** Agent opened/read a conversation: clear its unread badge and, on WhatsApp,
+   *  send the customer a read receipt (blue ticks) for their latest message. */
+  async markRead(id: string): Promise<Conversation> {
+    const conv = await this.store.getConversation(id);
+    if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
+    const updated = await this.store.clearUnread(id);
+    if (updated) this.realtime.emitConversationUpdated(updated);
+    if (conv.channel === "whatsapp" || conv.channel === "whatsapp_group") {
+      const lastInbound = [...conv.messages]
+        .reverse()
+        .find((m) => m.direction === "in" && m.channelMsgId);
+      if (lastInbound?.channelMsgId) void this.dispatcher.markRead(conv, lastInbound.channelMsgId);
+    }
+    return updated ?? conv;
+  }
 }

@@ -25,7 +25,7 @@ import type {
 } from "@ding/schemas";
 import { isInboxConnected } from "@ding/schemas";
 import { env } from "../config/env";
-import { computeWaWindow, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
+import { canAdvanceStatus, computeWaWindow, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
@@ -509,7 +509,9 @@ export class MemoryStore extends Store {
       authorType: "user",
       authorName: author.name,
       body: input.body,
-      status: "sent",
+      // A real reply starts queued and climbs the ladder as the channel
+      // confirms it (sent → delivered → read); notes have no delivery ladder.
+      status: input.internal ? "sent" : "queued",
       internal: input.internal,
       messageType,
       attachments,
@@ -782,11 +784,21 @@ export class MemoryStore extends Store {
     for (const rec of this.conversations) {
       const m = rec.messages.find((x) => x.channelMsgId === channelMsgId);
       if (m) {
+        // Never regress the ladder (out-of-order/duplicate webhooks are common).
+        if (!canAdvanceStatus(m.status, status)) return undefined;
         m.status = status;
         return { conversationId: rec.id, message: m };
       }
     }
     return undefined;
+  }
+
+  async clearUnread(conversationId: string): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    rec.unread = false;
+    rec.unreadCount = 0;
+    return this.summary(rec);
   }
 
   /* ---- groups ---- */

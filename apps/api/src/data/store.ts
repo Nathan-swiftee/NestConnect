@@ -206,6 +206,9 @@ export abstract class Store {
   /** Record a provider-side id on an outbound message (for status reconciliation). */
   abstract setMessageChannelId(messageId: string, channelMsgId: string): Promise<void>;
 
+  /** Clear a conversation's unread flag + count (agent opened/read it). */
+  abstract clearUnread(conversationId: string): Promise<Conversation | undefined>;
+
   /* ---- channel ingestion (inbound) ---- */
 
   abstract getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined>;

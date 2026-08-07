@@ -152,6 +152,8 @@ export const api = {
     post<Conversation>(`/conversations/${id}/priority`, { priority }),
   snooze: (id: string, until: string) =>
     post<Conversation>(`/conversations/${id}/snooze`, { until }),
+  // Mark a conversation read: clears its unread badge + sends a WhatsApp read receipt.
+  markRead: (id: string) => post<Conversation>(`/conversations/${id}/read`, {}),
   // groups
   createGroup: (input: CreateGroupInput) => post<ConversationWithMessages>("/groups", input),
   addParticipant: (conversationId: string, input: AddParticipantInput) =>

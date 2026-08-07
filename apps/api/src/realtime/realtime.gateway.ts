@@ -75,10 +75,14 @@ export class RealtimeGateway
   }
 
   @SubscribeMessage(ClientEvent.Typing)
-  onTyping(@ConnectedSocket() client: DingSocket, @MessageBody() body: { conversationId: string; typing: boolean }) {
+  onTyping(
+    @ConnectedSocket() client: DingSocket,
+    @MessageBody() body: { conversationId: string; typing: boolean; who?: string },
+  ) {
+    // Relay to the other agents on this thread (client.to excludes the sender).
     client.to(convRoom(body.conversationId)).emit(ServerEvent.Typing, {
       conversationId: body.conversationId,
-      who: "someone",
+      who: body.who?.trim() || "Someone",
       typing: body.typing,
     });
   }

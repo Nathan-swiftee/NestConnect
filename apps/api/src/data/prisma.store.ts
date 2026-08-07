@@ -27,6 +27,7 @@ import type {
 import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 import {
+  canAdvanceStatus,
   mapAttachment,
   mapContact,
   mapConversation,
@@ -598,7 +599,9 @@ export class PrismaStore extends Store {
           authorUserId: author.id,
           authorName: author.name,
           body: input.body,
-          status: "sent",
+          // A real reply starts queued and climbs the delivery ladder as the
+          // channel confirms it (sent → delivered → read); notes have no ladder.
+          status: input.internal ? "sent" : "queued",
           internal: input.internal,
           messageType,
           ...(staged.length ? { attachments: { connect: staged.map((a) => ({ id: a.id })) } } : {}),
@@ -874,12 +877,27 @@ export class PrismaStore extends Store {
   ): Promise<{ conversationId: string; message: Message } | undefined> {
     const msg = await this.prisma.message.findFirst({ where: { channelMsgId } });
     if (!msg) return undefined;
+    // Never regress the ladder (out-of-order/duplicate webhooks are common).
+    if (!canAdvanceStatus(msg.status as MessageStatus, status)) return undefined;
     const updated = await this.prisma.message.update({
       where: { id: msg.id },
       data: { status },
       include: { attachments: true },
     });
     return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  async clearUnread(conversationId: string): Promise<Conversation | undefined> {
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { unread: false, unreadCount: 0 },
+        include: convInclude,
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
   }
 
   /* ---- groups ---- */

@@ -69,9 +69,23 @@ export class ChannelDispatcher {
       await this.transition(result.channelMsgId, "failed", 0);
       return;
     }
+    // The provider accepted it → "sent" (single grey tick). Real channels then
+    // move delivered/read via status webhooks; the mock fakes that ladder.
+    void this.transition(result.channelMsgId, "sent", 0);
     if (result.simulated && result.channelMsgId) {
-      void this.transition(result.channelMsgId, "delivered", 1200);
-      void this.transition(result.channelMsgId, "read", 2600);
+      void this.transition(result.channelMsgId, "delivered", 1400);
+      void this.transition(result.channelMsgId, "read", 3200);
+    }
+  }
+
+  /** Send a read receipt for an inbound message on a channel that supports it. */
+  async markRead(conversation: ConversationWithMessages, channelMsgId: string): Promise<void> {
+    const provider = this.providers.find((p) => p.supports(conversation.channel) && p.markRead);
+    if (!provider?.markRead) return;
+    try {
+      await provider.markRead({ conversation, channelMsgId });
+    } catch (err) {
+      this.logger.warn(`markRead failed on ${conversation.channel}: ${String(err)}`);
     }
   }
 

@@ -1,5 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
-import type { AttachmentKind, ChannelType } from "@ding/schemas";
+import type { AttachmentKind, ChannelType, Conversation } from "@ding/schemas";
 import { env } from "../../config/env";
 import { Store } from "../../data/store";
 import {
@@ -53,6 +53,33 @@ export class WhatsAppCloudProvider extends ChannelProvider {
 
   supports(channel: ChannelType): boolean {
     return channel === "whatsapp" || channel === "whatsapp_group";
+  }
+
+  /** Tell WhatsApp the customer's message was read → blue ticks on their side. */
+  async markRead(params: { conversation: Conversation; channelMsgId: string }): Promise<void> {
+    const creds = await this.credsFor(params.conversation.inboxId);
+    if (!creds) {
+      this.logger.log(`[mock] WhatsApp read receipt for ${params.channelMsgId}`);
+      return;
+    }
+    try {
+      const url = `https://graph.facebook.com/${env.whatsapp.apiVersion}/${creds.phoneNumberId}/messages`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${creds.accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          status: "read",
+          message_id: params.channelMsgId,
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res.text().catch(() => "");
+        this.logger.warn(`WhatsApp read receipt failed (${res.status}): ${detail}`);
+      }
+    } catch (err) {
+      this.logger.warn(`WhatsApp read receipt error: ${String(err)}`);
+    }
   }
 
   async sendText(params: SendParams): Promise<SendResult> {

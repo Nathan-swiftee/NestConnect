@@ -582,5 +582,6 @@ export const ClientEvent = {
 export interface ClientToServerEvents {
   [ClientEvent.JoinConversation]: (p: { conversationId: string }) => void;
   [ClientEvent.LeaveConversation]: (p: { conversationId: string }) => void;
-  [ClientEvent.Typing]: (p: { conversationId: string; typing: boolean }) => void;
+  /** `who` is the sender's display name, echoed to other agents on the thread. */
+  [ClientEvent.Typing]: (p: { conversationId: string; typing: boolean; who?: string }) => void;
 }

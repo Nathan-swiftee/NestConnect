@@ -41,6 +41,21 @@ export function computeWaWindow(
   return { open: Date.now() < expiresAt.getTime(), expiresAt: expiresAt.toISOString() };
 }
 
+/** The delivery ladder order: queued → sent → delivered → read. */
+const STATUS_ORDER: MessageStatus[] = ["queued", "sent", "delivered", "read"];
+
+/**
+ * Whether a message may move from `current` to `next`. Status only ever advances
+ * up the ladder (so a late/duplicate/out-of-order webhook can't drag a "read"
+ * back to "sent"); "failed" is terminal and only reachable before delivery.
+ */
+export function canAdvanceStatus(current: MessageStatus, next: MessageStatus): boolean {
+  if (current === next) return false;
+  if (current === "failed") return false;
+  if (next === "failed") return STATUS_ORDER.indexOf(current) < STATUS_ORDER.indexOf("delivered");
+  return STATUS_ORDER.indexOf(next) > STATUS_ORDER.indexOf(current);
+}
+
 /** Count the distinct {{n}} positional variables in a template body. */
 export function templateVariableCount(body: string): number {
   const nums = new Set<number>();

@@ -69,4 +69,10 @@ export abstract class ChannelProvider {
    */
   abstract supports(channel: ChannelType, ctx?: SupportsContext): boolean;
   abstract sendText(params: SendParams): Promise<SendResult>;
+
+  /**
+   * Send a read receipt for an inbound message (so the customer sees blue ticks).
+   * Optional — only channels that support it (WhatsApp) implement it.
+   */
+  markRead?(params: { conversation: Conversation; channelMsgId: string }): Promise<void>;
 }

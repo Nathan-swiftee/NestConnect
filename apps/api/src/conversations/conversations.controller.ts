@@ -63,6 +63,12 @@ export class ConversationsController {
     return this.conversations.snooze(id, body.until);
   }
 
+  /** Mark a conversation read — clears the unread badge + sends a WhatsApp read receipt. */
+  @Post(":id/read")
+  markRead(@Param("id") id: string) {
+    return this.conversations.markRead(id);
+  }
+
   @Post(":id/priority")
   setPriority(
     @Param("id") id: string,
