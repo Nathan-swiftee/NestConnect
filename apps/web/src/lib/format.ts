@@ -54,6 +54,15 @@ export function formatDuration(ms: number): string {
   return `${m}:${s < 10 ? "0" : ""}${s}`;
 }
 
+/** Time left in a WhatsApp 24-hour window as "23h 12m" (or "42m" under an hour). */
+export function windowLeft(ms: number): string {
+  const totalMin = Math.max(0, Math.floor(ms / 60000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 /** Countdown string for an SLA due timestamp; "overdue" once passed. */
 export function slaCountdown(dueIso: string, nowMs: number = Date.now()): string {
   const left = new Date(dueIso).getTime() - nowMs;

@@ -983,6 +983,96 @@ input,textarea{font:inherit}
 .closedbar__btn:active{transform:scale(.97)}
 .closedbar__btn svg{width:16px;height:16px}
 
+/* ─── WhatsApp 24-hour window ───────────────────────────────────────
+   A subtle live countdown chip in the composer context line; it warms to
+   amber under an hour, and greys out once the window has closed. */
+.wawin{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:var(--r-full);
+  background:color-mix(in srgb,var(--wa) 15%,transparent);color:var(--wa)}
+.wawin__dot{width:7px;height:7px;border-radius:50%;background:currentColor;
+  box-shadow:0 0 0 3px color-mix(in srgb,currentColor 22%,transparent)}
+.wawin.soon{background:var(--amber-tint);color:var(--amber)}
+.wawin--closed{background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text-muted)}
+.wawin--closed .wawin__dot{box-shadow:none;background:var(--text-faint)}
+
+/* closed-window banner — replaces the input row in Reply mode; notes still work */
+.wa-closed{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border-radius:var(--r-16);
+  background:var(--surface-2);border:1px solid var(--border);animation:subIn .18s var(--ease)}
+.wa-closed__txt{display:flex;align-items:center;gap:10px;flex:1 1 240px;min-width:0;
+  font-size:13px;font-weight:600;color:var(--text-muted);line-height:1.4}
+.wa-closed__txt svg{flex:0 0 20px;width:20px;height:20px;color:var(--amber)}
+.wa-closed__btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;padding:10px 16px;border-radius:var(--r-12);
+  color:#fff;font-weight:700;font-size:13px;
+  background:linear-gradient(160deg,color-mix(in srgb,var(--brand) 92%,#fff),var(--brand-strong));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 6px 16px -6px var(--brand-ring);transition:filter .15s,transform .12s var(--ease)}
+.wa-closed__btn svg{width:16px;height:16px}
+.wa-closed__btn:hover{filter:brightness(1.05)}
+.wa-closed__btn:active{transform:scale(.97)}
+
+/* ─── Template chips & pills (picker + Settings share these) ───────── */
+.tpl-cat{flex:0 0 auto;font-size:10.5px;font-weight:700;text-transform:capitalize;padding:2px 8px;border-radius:var(--r-full);
+  background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text-muted)}
+.tpl-cat--utility{background:color-mix(in srgb,var(--email) 15%,transparent);color:var(--email)}
+.tpl-cat--marketing{background:color-mix(in srgb,var(--group) 16%,transparent);color:var(--group)}
+.tpl-cat--authentication{background:color-mix(in srgb,var(--amber) 16%,transparent);color:var(--amber)}
+.tpl-lang{flex:0 0 auto;font-size:10.5px;font-weight:700;color:var(--text-faint);text-transform:uppercase;letter-spacing:.03em}
+.tpl-appr{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;font-size:10.5px;font-weight:700;padding:2px 8px 2px 7px;border-radius:var(--r-full);
+  background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text-muted)}
+.tpl-appr__dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tpl-appr.ok{background:color-mix(in srgb,var(--wa) 15%,transparent);color:var(--wa)}
+.tpl-appr.pending,.tpl-appr.warn{background:var(--amber-tint);color:var(--amber)}
+.tpl-appr.bad{background:var(--danger-tint);color:var(--danger)}
+.tpl-appr.muted{background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text-faint)}
+
+/* ─── Template picker (modal) ─────────────────────────────────────── */
+.tpl-list{display:flex;flex-direction:column;gap:8px}
+.tpl-row{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;padding:12px 13px;
+  border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface-2);
+  transition:background .14s,border-color .14s,transform .12s var(--ease)}
+button.tpl-row:hover{border-color:var(--brand);background:var(--surface)}
+button.tpl-row:active{transform:scale(.99)}
+.tpl-row--off{opacity:.7;cursor:default}
+.tpl-row__top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tpl-row__name{font-size:13.5px;font-weight:700;color:var(--text)}
+.tpl-row__body{font-size:12.5px;color:var(--text-muted);line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.tpl-empty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding:22px 12px;color:var(--text-muted)}
+.tpl-empty svg{width:26px;height:26px;color:var(--text-faint)}
+.tpl-empty p{margin:0;font-size:13px;line-height:1.5;max-width:340px}
+/* detail (fill-in) view */
+.tpl-detail__back{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:650;color:var(--text-muted);padding:5px 9px 5px 7px;border-radius:var(--r-8);transition:background .12s,color .12s}
+.tpl-detail__back:hover{background:color-mix(in srgb,var(--text) 7%,transparent);color:var(--text)}
+.tpl-detail__back svg{width:15px;height:15px}
+.tpl-detail__top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tpl-detail__name{font-size:15px;font-weight:750;color:var(--text)}
+.tpl-fill{display:flex;flex-direction:column;gap:10px}
+.tpl-var{display:flex;flex-direction:column;gap:5px}
+.tpl-var__lbl{font-size:12px;font-weight:700;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.tpl-preview{border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface-2);padding:12px 13px}
+.tpl-preview__hd{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px}
+.tpl-preview__body{font-size:13.5px;color:var(--text);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.tpl-preview__ph{color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:5px;padding:0 4px;font-weight:600}
+.tpl-send{display:inline-flex;align-items:center;gap:7px}
+.tpl-send svg{width:16px;height:16px}
+/* textarea + picker inputs share the carved-field recipe */
+.field textarea,.tpl-var input{width:100%;padding:10px 13px;border:1px solid transparent;border-radius:var(--r-12);
+  background:var(--surface-2);color:var(--text);font-size:14px;font-weight:500;outline:none;
+  box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow .15s,background .15s,border-color .15s}
+.field textarea{resize:vertical;min-height:96px;line-height:1.5;font-family:inherit}
+.field textarea:focus,.tpl-var input:focus{border-color:var(--brand);background-color:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
+
+/* ─── Settings › Templates ────────────────────────────────────────── */
+.setpane__headacts{display:flex;align-items:center;gap:8px;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
+.setpane__headacts .btn-ghost{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;border:1px solid var(--border)}
+.setpane__headacts .btn-ghost svg,.setpane__headacts .btn-primary svg{width:15px;height:15px}
+.tpl-synchint{margin:-8px 0 16px}
+.setpane code{font-family:var(--mono);font-size:.9em;background:color-mix(in srgb,var(--text) 8%,transparent);padding:1px 5px;border-radius:5px}
+.tpl-item{display:flex;align-items:flex-start;gap:12px;padding:12px 14px}
+.tpl-item__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+.tpl-item__top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tpl-item__name{font-size:14px;font-weight:700;color:var(--text);word-break:break-word}
+.tpl-item__body{font-size:12.5px;color:var(--text-muted);line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.tpl-langfield{max-width:200px}
+.setempty{padding:22px 16px;text-align:center;font-size:13px;color:var(--text-faint);border:1px dashed var(--border);border-radius:var(--r-12);background:var(--surface-2)}
+
 /* mobile chrome (hidden on desktop) */
 .thread__back{display:none;width:38px;height:38px;color:var(--text-muted);flex:0 0 38px;margin-right:-2px}
 .thread__back svg{width:21px;height:21px}

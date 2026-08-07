@@ -11,12 +11,14 @@ import {
   type CreateGroupInput,
   type CreateInboxInput,
   type CreateTeamInput,
+  type CreateTemplateInput,
   type CreateUserInput,
   type Message,
   type UpdateContactInput,
   type UpdateInboxInput,
   type UpdateIntegrationSettingsInput,
   type UpdateTeamInput,
+  type UpdateTemplateInput,
   type UpdateUserInput,
 } from "@ding/schemas";
 import { api } from "./lib/api";
@@ -254,13 +256,54 @@ export const useConversation = (id: string | null) =>
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; body: string; internal?: boolean; attachmentIds?: string[] }) =>
-      api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds),
+    mutationFn: (v: {
+      id: string;
+      body: string;
+      internal?: boolean;
+      attachmentIds?: string[];
+      /** Send an approved WhatsApp template instead of free text (window closed). */
+      template?: { id: string; params: string[] };
+    }) => api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, v.template),
     onSuccess: (_msg, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
     },
+  });
+}
+
+/* ---- WhatsApp message templates ---- */
+export const useTemplates = () => useQuery({ queryKey: ["templates"], queryFn: api.templates });
+
+export function useCreateTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateTemplateInput) => api.createTemplate(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
+  });
+}
+
+export function useUpdateTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdateTemplateInput }) => api.updateTemplate(v.id, v.input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
+  });
+}
+
+export function useDeleteTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteTemplate(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
+  });
+}
+
+export function useSyncTemplates() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.syncTemplates(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
   });
 }
 

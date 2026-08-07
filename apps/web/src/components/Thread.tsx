@@ -1,13 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from "react";
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
 import type { Message, Attachment } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams } from "../hooks";
 import { api } from "../lib/api";
-import { relativeTime, clockTime, initials, formatBytes, formatDuration } from "../lib/format";
+import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft } from "../lib/format";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
+import { TemplatePicker } from "./TemplatePicker";
 import {
   channelMeta,
+  ClockIcon,
   ChevronDown,
   SnoozeIcon,
   TagIcon,
@@ -445,6 +447,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [snoozeMenu, setSnoozeMenu] = useState(false);
   const [internal, setInternal] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [picker, setPicker] = useState(false);
+  // Ticks so the WhatsApp 24-hour window countdown stays live without a reload.
+  const [now, setNow] = useState(() => Date.now());
   const endRef = useRef<HTMLDivElement>(null);
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
@@ -479,6 +484,18 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [lightbox]);
+
+  // Re-tick the WhatsApp window countdown ~every 30s; cleared on unmount.
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // A newly-opened conversation should show a fresh countdown immediately.
+  useEffect(() => {
+    setNow(Date.now());
+    setPicker(false);
+  }, [conversationId]);
 
   // Slide the Reply|Note thumb under the active tab. Written to the DOM directly
   // (no state → no extra render) so the slide starts on the same frame as the click.
@@ -568,6 +585,19 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const canSend = (text.trim().length > 0 || readyAtts.length > 0) && !uploadingAtts;
   const canRecord = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 
+  // ─── WhatsApp 24-hour window ───
+  // `waWindow` is null on email (no restriction). On WhatsApp it says whether
+  // you may still free-type; once closed, only an approved template gets through.
+  const isWhatsApp = conv.channel === "whatsapp" || conv.channel === "whatsapp_group";
+  const waWindow = conv.waWindow;
+  const windowClosed = isWhatsApp && !!waWindow && !waWindow.open;
+  const msLeft = waWindow?.expiresAt ? new Date(waWindow.expiresAt).getTime() - now : null;
+  const showCountdown = isWhatsApp && waWindow?.open === true && msLeft != null;
+  const closingSoon = msLeft != null && msLeft < 60 * 60 * 1000;
+  // Free-form replies are blocked when the window is closed — but internal notes
+  // bypass the window, so the composer only locks in Reply mode.
+  const composeLocked = windowClosed && !internal;
+
   const clearStaged = () => {
     setStaged((cur) => {
       cur.forEach((s) => s.previewUrl && URL.revokeObjectURL(s.previewUrl));
@@ -576,16 +606,30 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   };
 
   const handleSend = () => {
-    if (!canSend) return;
+    if (!canSend || composeLocked) return;
     const body = text.trim();
+    const wasInternal = internal;
     unlock();
     const attachmentIds = readyAtts.map((s) => s.attachment!.id);
-    send.mutate({
-      id: conv.id,
-      body,
-      internal,
-      attachmentIds: attachmentIds.length ? attachmentIds : undefined,
-    });
+    send.mutate(
+      {
+        id: conv.id,
+        body,
+        internal,
+        attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+      },
+      {
+        onError: (err) => {
+          const status = (err as { status?: number }).status;
+          // A closed-window race: the window shut between load and send.
+          if (isWhatsApp && !wasInternal && status && status >= 400 && status < 500) {
+            onToast("The 24-hour window has closed — send a template to reply.");
+          } else {
+            onToast("Couldn’t send your message. Please try again.");
+          }
+        },
+      },
+    );
     if (!internal) playSent();
     setText("");
     clearStaged();
@@ -758,6 +802,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     e.preventDefault();
     dragDepth.current = 0;
     setDragging(false);
+    if (composeLocked) return; // window closed — free-form attachments blocked
     const files = Array.from(e.dataTransfer.files);
     if (files.length) addFiles(files);
   };
@@ -825,6 +870,33 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     { label: "1 hour", short: "1 hour", until: () => inMin(60) },
     { label: "Tomorrow, 9 AM", short: "tomorrow 9 AM", until: tomorrow9am },
   ];
+
+  // The composer context line: note privacy, email/group target, or — on
+  // WhatsApp — the live 24-hour window state (open countdown / closing / closed).
+  let ctxNode: ReactNode;
+  if (internal) {
+    ctxNode = "Only your team can see this";
+  } else if (isEmail) {
+    ctxNode = `Email · ${conv.contact.displayName}`;
+  } else if (isWhatsApp && showCountdown && msLeft != null) {
+    ctxNode = (
+      <span className={"wawin" + (closingSoon ? " soon" : "")}>
+        <span className="wawin__dot" />
+        {closingSoon ? "Window closing" : "Window open"} · {windowLeft(msLeft)} left
+      </span>
+    );
+  } else if (isWhatsApp && windowClosed) {
+    ctxNode = (
+      <span className="wawin wawin--closed">
+        <span className="wawin__dot" />
+        24-hour window closed
+      </span>
+    );
+  } else {
+    ctxNode = conv.channel === "whatsapp_group"
+      ? `Group · ${conv.contact.displayName}`
+      : `WhatsApp · ${conv.contact.displayName}`;
+  }
 
   return (
     <main className="thread" aria-label="Conversation">
@@ -1027,15 +1099,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 Note
               </button>
             </div>
-            <span className="compctx">
-              {internal
-                ? "Only your team can see this"
-                : isEmail
-                  ? `Email · ${conv.contact.displayName}`
-                  : conv.channel === "whatsapp_group"
-                    ? `Group · ${conv.contact.displayName}`
-                    : "WhatsApp · within 24h window"}
-            </span>
+            <span className="compctx">{ctxNode}</span>
           </div>
           {staged.length > 0 && (
             <div className="comp-atts">
@@ -1049,7 +1113,20 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               ))}
             </div>
           )}
-          {recording ? (
+          {composeLocked ? (
+            <div className="wa-closed" role="note">
+              <div className="wa-closed__txt">
+                <ClockIcon />
+                <span>
+                  The 24-hour window has closed. Send an approved template to re-open the
+                  conversation.
+                </span>
+              </div>
+              <button type="button" className="wa-closed__btn" onClick={() => setPicker(true)}>
+                <BoltIcon /> Choose a template
+              </button>
+            </div>
+          ) : recording ? (
             <div className="comp-rec" role="group" aria-label="Recording voice message">
               <button
                 type="button"
@@ -1101,9 +1178,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
                 onChange={onFileInputChange}
               />
-              <button className="tool" title="Template" onClick={() => onToast("Template picker")} aria-label="Templates">
-                <BoltIcon />
-              </button>
+              {isWhatsApp && !internal && (
+                <button
+                  className="tool"
+                  title="Send a template"
+                  onClick={() => setPicker(true)}
+                  aria-label="Templates"
+                >
+                  <BoltIcon />
+                </button>
+              )}
               {canRecord && (
                 <button
                   className="tool"
@@ -1127,7 +1211,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </button>
             </div>
           )}
-          {dragging && (
+          {dragging && !composeLocked && (
             <div className="comp-drop" aria-hidden="true">
               <span>
                 <AttachIcon /> Drop to attach
@@ -1150,6 +1234,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             <XIcon />
           </button>
         </div>
+      )}
+
+      {picker && (
+        <TemplatePicker conversationId={conv.id} onClose={() => setPicker(false)} onToast={onToast} />
       )}
     </main>
   );

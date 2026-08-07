@@ -1,26 +1,32 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useHoverGlide } from "../lib/useHoverGlide";
-import type { ChannelType, Inbox, Role, RoutingStrategy, Team } from "@ding/schemas";
+import type { ChannelType, Inbox, Role, RoutingStrategy, Team, Template, TemplateCategory } from "@ding/schemas";
 import {
   useCreateInbox,
   useCreateTeam,
+  useCreateTemplate,
   useCreateUser,
   useDeleteInbox,
   useDeleteTeam,
+  useDeleteTemplate,
   useDeleteUser,
   useInboxes,
   useIntegrations,
   useMe,
   usePeople,
   useReorderTeams,
+  useSyncTemplates,
   useTeams,
+  useTemplates,
   useUpdateInbox,
   useUpdateIntegrations,
   useUpdateTeam,
+  useUpdateTemplate,
   useUpdateUser,
 } from "../hooks";
 import { initials } from "../lib/format";
+import { TEMPLATE_CATEGORIES, approvalMeta, countVariables } from "./TemplatePicker";
 import {
   channelMeta,
   ChevronDown,
@@ -28,6 +34,7 @@ import {
   EditIcon,
   GmailGlyph,
   PlusIcon,
+  RefreshIcon,
   StorageIcon,
   TeamGlyph,
   TEAM_ICON_KEYS,
@@ -36,7 +43,7 @@ import {
   XIcon,
 } from "../lib/icons";
 
-type Tab = "channels" | "teams" | "people" | "setup";
+type Tab = "channels" | "teams" | "people" | "setup" | "templates";
 
 interface Props {
   onClose: () => void;
@@ -47,6 +54,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "channels", label: "Channels" },
   { key: "teams", label: "Teams" },
   { key: "people", label: "People" },
+  { key: "templates", label: "Templates" },
   { key: "setup", label: "Setup" },
 ];
 
@@ -121,6 +129,7 @@ export function Settings({ onClose, onToast }: Props) {
           {tab === "channels" && <ChannelsPane onToast={onToast} />}
           {tab === "teams" && <TeamsPane onToast={onToast} />}
           {tab === "people" && <PeoplePane onToast={onToast} />}
+          {tab === "templates" && <TemplatesPane onToast={onToast} />}
           {tab === "setup" && <SetupPane onToast={onToast} />}
         </div>
       </div>
@@ -944,6 +953,204 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
         })}
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Templates — WhatsApp message templates (24-hour window)            */
+/* ------------------------------------------------------------------ */
+
+function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
+  const templates = useTemplates();
+  const del = useDeleteTemplate();
+  const sync = useSyncTemplates();
+  const [open, setOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const doSync = () => {
+    sync.mutate(undefined, {
+      onSuccess: (r) => onToast(`Synced ${r.synced} template${r.synced === 1 ? "" : "s"}`),
+      onError: () => onToast("Only admins & managers can manage templates"),
+    });
+  };
+  const remove = (t: Template) => {
+    if (!window.confirm(`Delete “${t.name}”? Agents will no longer be able to send it.`)) return;
+    del.mutate(t.id, {
+      onSuccess: () => { setEditingId(null); onToast(`Template “${t.name}” deleted`); },
+      onError: () => onToast("Only admins & managers can manage templates"),
+    });
+  };
+
+  return (
+    <div className="setpane">
+      <div className="setpane__head">
+        <div>
+          <h2>Message templates</h2>
+          <p>
+            Pre-approved WhatsApp messages used to re-open a chat once its 24-hour window has
+            closed. Variables like <code>{"{{1}}"}</code> are filled in when you send.
+          </p>
+        </div>
+        <div className="setpane__headacts">
+          <button className="btn-ghost" type="button" onClick={doSync} disabled={sync.isPending}>
+            <RefreshIcon /> Sync from Meta
+          </button>
+          {!open && (
+            <button className="btn-primary" onClick={() => { setEditingId(null); setOpen(true); }}>
+              <PlusIcon /> New template
+            </button>
+          )}
+        </div>
+      </div>
+
+      <p className="fieldhint tpl-synchint">
+        “Sync from Meta” pulls the approved templates from a connected WhatsApp number — it’s a
+        no-op until you connect one under Channels.
+      </p>
+
+      {open && <TemplateForm onDone={() => setOpen(false)} onToast={onToast} />}
+
+      <div className="setlist">
+        {templates.data?.map((t) => {
+          const editing = editingId === t.id;
+          const ap = approvalMeta(t.approvalStatus);
+          return (
+            <div className="setmember" key={t.id}>
+              <div className="tpl-item">
+                <div className="tpl-item__main">
+                  <div className="tpl-item__top">
+                    <b className="tpl-item__name">{t.name}</b>
+                    <span className={"tpl-cat tpl-cat--" + t.category}>{t.category}</span>
+                    <span className="tpl-lang">{t.language}</span>
+                    <span className={"tpl-appr " + ap.cls}>
+                      <span className="tpl-appr__dot" />
+                      {ap.label}
+                    </span>
+                  </div>
+                  <div className="tpl-item__body">{t.body}</div>
+                </div>
+                <div className="rowacts">
+                  <button
+                    className="iconbtn"
+                    title="Edit template"
+                    onClick={() => { setOpen(false); setEditingId(editing ? null : t.id); }}
+                  >
+                    <EditIcon />
+                  </button>
+                  <button className="iconbtn danger" title="Delete template" onClick={() => remove(t)}>
+                    <TrashIcon />
+                  </button>
+                </div>
+              </div>
+              {editing && (
+                <TemplateForm template={t} onDone={() => setEditingId(null)} onToast={onToast} />
+              )}
+            </div>
+          );
+        })}
+        {templates.data && templates.data.length === 0 && !open && (
+          <div className="setempty">
+            No templates yet. Create one, or sync approved templates from a connected WhatsApp number.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TemplateForm({
+  template,
+  onDone,
+  onToast,
+}: {
+  template?: Template;
+  onDone: () => void;
+  onToast: (msg: string) => void;
+}) {
+  const create = useCreateTemplate();
+  const update = useUpdateTemplate();
+  const editing = !!template;
+  const [name, setName] = useState(template?.name ?? "");
+  const [category, setCategory] = useState<TemplateCategory>(template?.category ?? "utility");
+  const [language, setLanguage] = useState(template?.language ?? "en");
+  const [body, setBody] = useState(template?.body ?? "");
+
+  const nameOk = /^[a-z0-9_]+$/.test(name);
+  const varCount = countVariables(body);
+  const valid = nameOk && language.trim().length >= 2 && body.trim().length > 0;
+  const pending = create.isPending || update.isPending;
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    const input = { name, category, language: language.trim(), body };
+    if (editing) {
+      update.mutate(
+        { id: template.id, input },
+        {
+          onSuccess: () => { onToast("Template updated"); onDone(); },
+          onError: () => onToast("Only admins & managers can manage templates"),
+        },
+      );
+    } else {
+      create.mutate(input, {
+        onSuccess: () => { onToast(`Template “${name}” created`); onDone(); },
+        onError: () => onToast("Only admins & managers can manage templates"),
+      });
+    }
+  };
+
+  return (
+    <form className={editing ? "editbox" : "setform"} onSubmit={submit}>
+      <div className="setform__grid two">
+        <label className="field">
+          <span>Name</span>
+          <input
+            value={name}
+            autoComplete="off"
+            autoFocus
+            onChange={(e) => setName(e.target.value)}
+            placeholder="order_confirmation"
+          />
+          <small className="fieldhint">
+            Lower-case letters, numbers and underscores only.
+            {name && !nameOk ? " That name isn’t valid." : ""}
+          </small>
+        </label>
+        <label className="field">
+          <span>Category</span>
+          <select value={category} onChange={(e) => setCategory(e.target.value as TemplateCategory)}>
+            {TEMPLATE_CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>{c.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="field tpl-langfield">
+        <span>Language</span>
+        <input value={language} autoComplete="off" onChange={(e) => setLanguage(e.target.value)} placeholder="en" />
+      </label>
+      <label className="field">
+        <span>
+          Body {varCount > 0 && <em>{varCount} variable{varCount === 1 ? "" : "s"}</em>}
+        </span>
+        <textarea
+          value={body}
+          rows={4}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Hi {{1}}, your order {{2}} is on its way!"
+        />
+        <small className="fieldhint">
+          Use <code>{"{{1}}"}</code>, <code>{"{{2}}"}</code> … for values filled in when the template is sent.
+        </small>
+      </label>
+      <div className="setform__foot">
+        <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
+        <button className="btn-primary" type="submit" disabled={pending || !valid}>
+          {editing ? "Save changes" : "Create template"}
+        </button>
+      </div>
+    </form>
   );
 }
 
