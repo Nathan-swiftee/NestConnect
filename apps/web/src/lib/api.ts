@@ -111,6 +111,9 @@ export const api = {
   // conversations
   conversations: (view: string) =>
     get<Conversation[]>(`/conversations?view=${encodeURIComponent(view)}`),
+  // Global search across every conversation (contact, subject, preview, message body).
+  searchConversations: (q: string) =>
+    get<Conversation[]>(`/conversations/search?q=${encodeURIComponent(q)}`),
   conversation: (id: string) => get<ConversationWithMessages>(`/conversations/${id}`),
   // Stage a composer upload; the returned attachment id is referenced on send.
   uploadMedia: (

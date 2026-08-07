@@ -169,6 +169,8 @@ export abstract class Store {
   abstract deleteUser(id: string): Promise<void>;
   abstract views(userId: string): Promise<SidebarViews>;
   abstract listConversations(view: string, userId: string): Promise<Conversation[]>;
+  /** Search across all conversations by contact, subject, preview and message body. */
+  abstract searchConversations(query: string): Promise<Conversation[]>;
   abstract getConversation(id: string): Promise<ConversationWithMessages | undefined>;
 
   abstract addMessage(

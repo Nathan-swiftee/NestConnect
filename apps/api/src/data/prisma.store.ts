@@ -503,6 +503,27 @@ export class PrismaStore extends Store {
     return rows.map(mapConversation);
   }
 
+  async searchConversations(query: string): Promise<Conversation[]> {
+    const q = query.trim();
+    if (!q) return [];
+    const rows = await this.prisma.conversation.findMany({
+      where: {
+        orgId: ORG_ID,
+        OR: [
+          { subject: { contains: q, mode: "insensitive" } },
+          { preview: { contains: q, mode: "insensitive" } },
+          { contact: { displayName: { contains: q, mode: "insensitive" } } },
+          { contact: { company: { contains: q, mode: "insensitive" } } },
+          { messages: { some: { body: { contains: q, mode: "insensitive" } } } },
+        ],
+      },
+      include: convInclude,
+      orderBy: { lastActivityAt: "desc" },
+      take: 30,
+    });
+    return rows.map(mapConversation);
+  }
+
   async views(userId: string): Promise<SidebarViews> {
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);

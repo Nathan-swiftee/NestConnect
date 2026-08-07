@@ -246,6 +246,15 @@ export function useUpdateContact() {
 
 export const useConversations = (view: string) =>
   useQuery({ queryKey: ["conversations", view], queryFn: () => api.conversations(view) });
+/** Global conversation search (contact, subject, preview, message body). */
+export const useSearchConversations = (q: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ["search", q],
+    queryFn: () => api.searchConversations(q),
+    enabled: enabled && q.trim().length > 0,
+    staleTime: 5000,
+    placeholderData: (prev) => prev,
+  });
 export const useConversation = (id: string | null) =>
   useQuery({
     queryKey: ["conversation", id],

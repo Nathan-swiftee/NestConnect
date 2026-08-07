@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useConversations, useRefresh, useTeams } from "../hooks";
+import { useConversations, useSearchConversations, useRefresh, useTeams } from "../hooks";
 import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
@@ -28,19 +28,23 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const convsRef = useRef<HTMLDivElement>(null);
   const { pull, armed, handlers } = usePullToRefresh(convsRef, refresh, refreshing);
 
-  const query = q.trim().toLowerCase();
+  const query = q.trim();
+  // A non-empty query switches the list to a global search — spanning every
+  // conversation and message body, not just this view's loaded rows.
+  const searching = query.length > 0;
+  const search = useSearchConversations(query, searching);
   const hasGroups = (data ?? []).some((c) => c.channel === "whatsapp_group");
-  const shown = (data ?? []).filter((c) => {
-    const closed = c.status === "closed";
-    // Closed lives only under its own filter; every other filter hides it.
-    if (filter === "closed" ? !closed : closed) return false;
-    if (filter === "unread" && !c.unread) return false;
-    if (filter === "unassigned" && c.assigneeUserId) return false;
-    if (filter === "groups" && c.channel !== "whatsapp_group") return false;
-    if (query && !`${c.contact.displayName} ${c.preview} ${c.subject ?? ""}`.toLowerCase().includes(query))
-      return false;
-    return true;
-  });
+  const shown = searching
+    ? search.data ?? []
+    : (data ?? []).filter((c) => {
+        const closed = c.status === "closed";
+        // Closed lives only under its own filter; every other filter hides it.
+        if (filter === "closed" ? !closed : closed) return false;
+        if (filter === "unread" && !c.unread) return false;
+        if (filter === "unassigned" && c.assigneeUserId) return false;
+        if (filter === "groups" && c.channel !== "whatsapp_group") return false;
+        return true;
+      });
 
   // "Mine" is all-assigned-to-me and "Queue" is all-unassigned, so an Unassigned
   // filter is redundant in both.
@@ -115,29 +119,40 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
         <div className="search">
           <SearchIcon />
           <input
-            placeholder="Search conversations, contacts…"
+            placeholder="Search all conversations & messages…"
             aria-label="Search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
-        </div>
-        <div className="chips" ref={chipsRef} {...hoverProps}>
-          <span className="seg-hover" ref={chipHoverRef} />
-          <span className="seg-thumb" ref={thumbRef} />
-          {filters.map((f) => (
-            <button
-              key={f.key}
-              ref={(el) => {
-                chipRefs.current[f.key] = el;
-              }}
-              className={"chip" + (filter === f.key ? " active" : "")}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label}
-              {f.count > 0 && <span className="chipcount">{f.count}</span>}
+          {q && (
+            <button className="search__clear" onClick={() => setQ("")} aria-label="Clear search" title="Clear">
+              ✕
             </button>
-          ))}
+          )}
         </div>
+        {searching ? (
+          <div className="list__searchnote">
+            {search.isFetching ? "Searching…" : `${shown.length} result${shown.length === 1 ? "" : "s"} for “${query}”`}
+          </div>
+        ) : (
+          <div className="chips" ref={chipsRef} {...hoverProps}>
+            <span className="seg-hover" ref={chipHoverRef} />
+            <span className="seg-thumb" ref={thumbRef} />
+            {filters.map((f) => (
+              <button
+                key={f.key}
+                ref={(el) => {
+                  chipRefs.current[f.key] = el;
+                }}
+                className={"chip" + (filter === f.key ? " active" : "")}
+                onClick={() => setFilter(f.key)}
+              >
+                {f.label}
+                {f.count > 0 && <span className="chipcount">{f.count}</span>}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="convs" key={view} ref={convsRef} {...handlers}>
@@ -150,16 +165,18 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             <RefreshIcon />
           </span>
         </div>
-        {isLoading && <div className="empty">Loading…</div>}
-        {!isLoading && shown.length === 0 && (
+        {(searching ? search.isLoading : isLoading) && <div className="empty">Loading…</div>}
+        {!(searching ? search.isLoading : isLoading) && shown.length === 0 && (
           <div className="empty">
-            {filter === "groups"
-              ? "No group chats here."
-              : filter === "closed"
-                ? "No closed conversations."
-                : filter === "unassigned"
-                  ? "Nothing unassigned — all picked up."
-                  : "Nothing here — inbox zero."}
+            {searching
+              ? `No conversations match “${query}”.`
+              : filter === "groups"
+                ? "No group chats here."
+                : filter === "closed"
+                  ? "No closed conversations."
+                  : filter === "unassigned"
+                    ? "Nothing unassigned — all picked up."
+                    : "Nothing here — inbox zero."}
           </div>
         )}
         {shown.map((c) => {

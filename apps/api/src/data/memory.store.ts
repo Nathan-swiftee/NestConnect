@@ -449,6 +449,23 @@ export class MemoryStore extends Store {
       .map((r) => this.summary(r));
   }
 
+  async searchConversations(query: string): Promise<Conversation[]> {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return this.conversations
+      .filter(
+        (r) =>
+          r.contact.displayName.toLowerCase().includes(q) ||
+          (r.contact.company ?? "").toLowerCase().includes(q) ||
+          (r.subject ?? "").toLowerCase().includes(q) ||
+          (r.preview ?? "").toLowerCase().includes(q) ||
+          r.messages.some((m) => (m.body ?? "").toLowerCase().includes(q)),
+      )
+      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+      .slice(0, 30)
+      .map((r) => this.summary(r));
+  }
+
   async views(userId: string): Promise<SidebarViews> {
     const userTeams = this.membership[userId] ?? [];
     const count = (view: string) =>

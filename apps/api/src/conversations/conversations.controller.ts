@@ -26,6 +26,12 @@ export class ConversationsController {
     return this.conversations.list(view ?? "inbound", userId);
   }
 
+  /** Global search across all conversations (declared before :id so it matches). */
+  @Get("search")
+  search(@Query("q") q?: string) {
+    return this.conversations.search(q ?? "");
+  }
+
   @Get(":id")
   get(@Param("id") id: string) {
     return this.conversations.get(id);

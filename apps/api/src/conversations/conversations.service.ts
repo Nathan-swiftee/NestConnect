@@ -31,6 +31,11 @@ export class ConversationsService {
     return this.store.listConversations(view, userId);
   }
 
+  /** Global search across all conversations (contact, subject, preview, body). */
+  search(query: string): Promise<Conversation[]> {
+    return this.store.searchConversations(query);
+  }
+
   async get(id: string): Promise<ConversationWithMessages> {
     const conv = await this.store.getConversation(id);
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
