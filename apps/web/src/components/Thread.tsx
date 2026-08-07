@@ -733,6 +733,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const noteBtnRef = useRef<HTMLButtonElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  // Conversations we've already auto-opened the template picker for (cold WA starts).
+  const autoTemplateRef = useRef<Set<string>>(new Set());
   const modeThumbRef = useRef<HTMLSpanElement>(null);
   const { containerRef: modeRef, thumbRef: modeHoverRef, hoverProps: modeHover } = useHoverGlide<HTMLDivElement>(".modebtn", "x");
 
@@ -785,6 +787,19 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setBcc("");
     if (editorRef.current) editorRef.current.innerHTML = "";
   }, [conversationId]);
+
+  // Starting a *new* WhatsApp conversation lands on a cold, window-closed thread
+  // where an approved template is the only way to open the conversation — so
+  // present the template picker straight away (once per conversation).
+  useEffect(() => {
+    if (!conv) return;
+    const isWa = conv.channel === "whatsapp" || conv.channel === "whatsapp_group";
+    const coldStart = isWa && !!conv.waWindow && !conv.waWindow.open && conv.messages.length === 0;
+    if (coldStart && !autoTemplateRef.current.has(conv.id)) {
+      autoTemplateRef.current.add(conv.id);
+      setPicker(true);
+    }
+  }, [conv?.id, conv?.channel, conv?.waWindow?.open, conv?.messages.length]);
 
   // Dismiss the composer emoji picker on outside click or Esc.
   useEffect(() => {

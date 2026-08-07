@@ -99,7 +99,7 @@ export function Compose({
     }
   };
 
-  const waHint = "Opens the template composer";
+  const waHint = "Pick an approved template";
   const emailHint = "Write a new email";
 
   return (
