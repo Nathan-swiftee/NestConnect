@@ -68,6 +68,7 @@ export class ChannelDispatcher {
     const result = await provider.sendText({
       to,
       body: message.body,
+      bodyHtml: message.bodyHtml ?? undefined,
       conversation,
       context,
       media,

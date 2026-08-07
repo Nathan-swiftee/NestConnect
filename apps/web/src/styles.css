@@ -543,6 +543,51 @@ input,textarea{font:inherit}
 .reply-cue__x:hover{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
 .reply-cue__x svg{width:15px;height:15px}
 
+/* ─── Rich email (HTML) messages ──────────────────────────────────────
+   A formatted email renders in its own sandboxed iframe, presented as a white
+   "email card" (emails are authored for a white canvas) in both themes — no
+   chat tail, wider than a normal bubble. */
+.msg:has(.bubble--email){max-width:min(620px,94%)}
+.msg .bubble.bubble--email{width:min(600px,100%);max-width:100%;padding:8px 10px 6px}
+.msg.in .bubble.bubble--email,
+.msg.out .bubble.bubble--email{background:#fff;color:#1a1a1a;box-shadow:0 1px 2px rgba(13,21,18,.16)}
+.msg .bubble.bubble--email::before,
+.msg .bubble.bubble--email::after{display:none}
+.msg .bubble.bubble--email .stamp{color:rgba(17,27,33,.5)}
+.msg.out .bubble.bubble--email .tick.read{color:#53BDEB}
+:root[data-theme="dark"] .msg.in .bubble.bubble--email,
+:root[data-theme="dark"] .msg.out .bubble.bubble--email{box-shadow:0 2px 8px -2px rgba(0,0,0,.6)}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .msg.in .bubble.bubble--email,
+  :root:not([data-theme="light"]) .msg.out .bubble.bubble--email{box-shadow:0 2px 8px -2px rgba(0,0,0,.6)}
+}
+.emailhtml{display:block}
+.emailhtml__frame{display:block;width:100%;border:0;background:#fff;border-radius:4px;color-scheme:light}
+.emailhtml__imgbar{display:flex;align-items:center;gap:7px;width:100%;margin-bottom:7px;padding:6px 9px;
+  border-radius:8px;border:1px solid #e4e4e4;background:#f6f6f6;color:#5a5a5a;
+  font-size:12px;font-weight:600;cursor:pointer;transition:background .12s}
+.emailhtml__imgbar:hover{background:#eee}
+.emailhtml__imgbar svg{width:15px;height:15px;flex:0 0 auto;color:#8a8a8a}
+.emailhtml__imgtxt{flex:1 1 auto;text-align:left}
+.emailhtml__show{color:#0a7c66;font-weight:700}
+
+/* ─── Rich-text email composer ────────────────────────────────────────
+   A formatting toolbar sits above the input; the input itself becomes a
+   contentEditable that behaves like the textarea (same metrics). */
+.richbar{display:flex;align-items:center;gap:3px;margin:8px 2px 0;flex-wrap:wrap}
+.richbar__b{min-width:30px;height:28px;padding:0 8px;border-radius:var(--r-8);display:inline-grid;place-items:center;
+  font-size:13px;color:var(--text-muted);transition:background .12s,color .12s,transform .1s}
+.richbar__b:hover{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
+.richbar__b:active{transform:scale(.92)}
+.richbar__b b,.richbar__b i,.richbar__b u{font-size:14px;line-height:1}
+.richbar__sep{width:1px;height:18px;background:var(--border);margin:0 4px}
+.compinput .richedit{flex:1;min-height:24px;max-height:200px;overflow-y:auto;padding:6px 0;color:var(--text);
+  outline:none;font-size:14px;line-height:1.45;border:0;background:none;word-break:break-word;overflow-wrap:anywhere}
+.compinput .richedit:empty::before{content:attr(data-placeholder);color:var(--text-faint);pointer-events:none}
+.compinput .richedit p{margin:0 0 6px}
+.compinput .richedit ul,.compinput .richedit ol{margin:4px 0;padding-left:22px}
+.compinput .richedit a{color:var(--brand-strong)}
+
 /* ─── Typing indicator ─── another agent composing on this conversation:
    a tail-less inbound-style bubble with three bouncing dots. */
 .typing{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;max-width:100%;

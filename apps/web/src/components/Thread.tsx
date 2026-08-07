@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
 import type { Message, Attachment, MessageStatus } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
@@ -31,6 +31,7 @@ import {
   CheckDouble,
   AlertIcon,
   ReplyIcon,
+  ImageIcon,
   PlayIcon,
   PauseIcon,
   DocIcon,
@@ -233,6 +234,73 @@ function StatusTick({ status }: { status: MessageStatus }) {
   );
 }
 
+/** Renders a sanitized email HTML body inside a locked-down iframe. There is no
+ *  `allow-scripts`, so nothing in the message can execute; a strict CSP blocks
+ *  remote resources, and remote images stay hidden until the agent reveals them.
+ *  `allow-same-origin` (without scripts) is only so the parent can read the
+ *  content height to size the frame; `allow-popups` lets links open in a tab. */
+function EmailHtml({ html }: { html: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(80);
+  const [showImages, setShowImages] = useState(false);
+  const hasBlocked = html.includes("data-blocked-src");
+
+  const srcDoc = useMemo(() => {
+    const body = showImages ? html.replace(/data-blocked-src=/g, "src=") : html;
+    const imgSrc = showImages ? "img-src data: https: http:" : "img-src data:";
+    const csp = `default-src 'none'; ${imgSrc}; style-src 'unsafe-inline'; font-src data:; media-src data:`;
+    return (
+      `<!doctype html><html><head><meta charset="utf-8">` +
+      `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
+      `<base target="_blank">` +
+      `<style>html,body{margin:0;padding:0}` +
+      `body{padding:1px 2px;background:#fff;color:#1a1a1a;` +
+      `font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;` +
+      `word-break:break-word;overflow-wrap:anywhere}` +
+      `img{max-width:100%;height:auto}a{color:#0a7c66}` +
+      `table{max-width:100%;border-collapse:collapse}` +
+      `blockquote{margin:6px 0 6px 4px;padding-left:11px;border-left:3px solid #dcdcdc;color:#555}` +
+      `pre{white-space:pre-wrap;word-break:break-word}` +
+      `</style></head><body>${body}</body></html>`
+    );
+  }, [html, showImages]);
+
+  // With allow-same-origin (and no scripts) the parent can read the rendered
+  // height. Re-measure after load and a couple of beats for late reflow.
+  const measure = () => {
+    const d = ref.current?.contentDocument;
+    if (d?.body) {
+      const h = Math.max(d.body.scrollHeight, d.documentElement?.scrollHeight ?? 0);
+      setHeight(Math.min(2000, Math.max(40, h + 6)));
+    }
+  };
+  useEffect(() => {
+    const timers = [60, 260, 700].map((d) => window.setTimeout(measure, d));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [srcDoc]);
+
+  return (
+    <div className="emailhtml">
+      {hasBlocked && !showImages && (
+        <button type="button" className="emailhtml__imgbar" onClick={() => setShowImages(true)}>
+          <ImageIcon />
+          <span className="emailhtml__imgtxt">Images hidden for your privacy</span>
+          <span className="emailhtml__show">Show images</span>
+        </button>
+      )}
+      <iframe
+        ref={ref}
+        className="emailhtml__frame"
+        title="Email message"
+        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        srcDoc={srcDoc}
+        style={{ height }}
+        onLoad={measure}
+      />
+    </div>
+  );
+}
+
 /** Emoji offered in the quick-reaction bar (WhatsApp's default set). */
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -305,12 +373,21 @@ function MessageBubble({
   const reactTitle = reactions
     .map((r) => `${r.emoji} ${r.by === "user" ? "You" : actions?.contactName ?? "Customer"}`)
     .join(",  ") + (mine ? " · tap to remove yours" : "");
+  // A rich email body renders in its own sandboxed frame (below any media).
+  const isEmailHtml = !!m.bodyHtml;
 
   return (
     <div className={"msg " + (out ? "out" : "in")} data-mid={m.id}>
       {!out && m.authorName && <div className="sender">{m.authorName}</div>}
       <div className="bubblewrap">
-        <div className={"bubble" + (hasMedia ? " has-media" : "") + (stickerOnly ? " bubble--plain" : "")}>
+        <div
+          className={
+            "bubble" +
+            (hasMedia ? " has-media" : "") +
+            (stickerOnly ? " bubble--plain" : "") +
+            (isEmailHtml ? " bubble--email" : "")
+          }
+        >
           {quoted && (
             <button
               type="button"
@@ -328,13 +405,19 @@ function MessageBubble({
             </button>
           )}
           {hasMedia && atts.map((a) => <AttachmentView key={a.id} att={a} onImage={onImage} />)}
-          {showText && (
-            <span className="txt">
-              {bodyText}
-              <span className="stampspace" aria-hidden="true" />
-            </span>
+          {isEmailHtml ? (
+            <EmailHtml html={m.bodyHtml as string} />
+          ) : (
+            showText && (
+              <span className="txt">
+                {bodyText}
+                <span className="stampspace" aria-hidden="true" />
+              </span>
+            )
           )}
-          <span className={"stamp" + (overlay ? " stamp--over" : blockStamp ? " stamp--block" : "")}>
+          <span
+            className={"stamp" + (isEmailHtml || blockStamp ? " stamp--block" : overlay ? " stamp--over" : "")}
+          >
             {clockTime(m.createdAt)}
             {out && !m.internal && <StatusTick status={m.status} />}
           </span>
@@ -612,6 +695,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // which message's quick-reaction bar is open. Both reset when the thread changes.
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [reactFor, setReactFor] = useState<string | null>(null);
+  // Rich-text HTML for an email reply (mirrors the contentEditable editor).
+  const [html, setHtml] = useState("");
   // Another agent typing on THIS conversation ("{who} is typing…"); null when idle.
   const [typingWho, setTypingWho] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
@@ -634,6 +719,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const modeThumbRef = useRef<HTMLSpanElement>(null);
   const { containerRef: modeRef, thumbRef: modeHoverRef, hoverProps: modeHover } = useHoverGlide<HTMLDivElement>(".modebtn", "x");
 
@@ -679,6 +765,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setPicker(false);
     setReplyTo(null);
     setReactFor(null);
+    setHtml("");
+    if (editorRef.current) editorRef.current.innerHTML = "";
   }, [conversationId]);
 
   // Dismiss an open quick-reaction bar on outside click or Esc.
@@ -852,6 +940,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // `waWindow` is null on email (no restriction). On WhatsApp it says whether
   // you may still free-type; once closed, only an approved template gets through.
   const isWhatsApp = conv.channel === "whatsapp" || conv.channel === "whatsapp_group";
+  // Email replies compose in a rich-text editor; notes + other channels stay plain.
+  const isRich = isEmail && !internal;
   // Resolve a quoted reply's target message by id for in-bubble rendering.
   const msgById = new Map(conv.messages.map((m) => [m.id, m]));
   const waWindow = conv.waWindow;
@@ -927,12 +1017,40 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     window.setTimeout(() => el.classList.remove("msg--flash"), 1200);
   };
 
+  // Apply a rich-text command to the email editor, keeping focus + state in sync.
+  const format = (cmd: string) => {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+    if (cmd === "createLink") {
+      const url = window.prompt("Link URL");
+      if (!url) return;
+      document.execCommand("createLink", false, /^https?:\/\//i.test(url) ? url : `https://${url}`);
+    } else {
+      document.execCommand(cmd);
+    }
+    setHtml(el.innerHTML);
+    setText(el.textContent ?? "");
+  };
+
+  // Mirror the editor's content into state (drives canSend + html) and keep the
+  // agent-presence typing indicator alive.
+  const onEditorInput = () => {
+    const el = editorRef.current;
+    if (!el) return;
+    setHtml(el.innerHTML);
+    setText(el.textContent ?? "");
+    signalTyping();
+  };
+
   const handleSend = () => {
     if (!canSend || composeLocked) return;
     const body = text.trim();
     const wasInternal = internal;
     // A quote only rides on a real (non-note) reply.
     const quotedMsgId = !internal ? replyTo?.id : undefined;
+    // A rich email reply carries the editor's HTML; the server sanitizes it.
+    const bodyHtml = isRich && body ? html || undefined : undefined;
     unlock();
     const attachmentIds = readyAtts.map((s) => s.attachment!.id);
     send.mutate(
@@ -942,6 +1060,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         internal,
         attachmentIds: attachmentIds.length ? attachmentIds : undefined,
         quotedMsgId,
+        bodyHtml,
       },
       {
         onError: (err) => {
@@ -958,6 +1077,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     if (!internal) playSent();
     stopTyping();
     setText("");
+    setHtml("");
+    if (editorRef.current) editorRef.current.innerHTML = "";
     clearStaged();
     setInternal(false);
     setReplyTo(null);
@@ -1488,6 +1609,30 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               ))}
             </div>
           )}
+          {isRich && !composeLocked && !recording && (
+            <div className="richbar" role="toolbar" aria-label="Formatting">
+              <button type="button" className="richbar__b" title="Bold" aria-label="Bold" onMouseDown={(e) => e.preventDefault()} onClick={() => format("bold")}>
+                <b>B</b>
+              </button>
+              <button type="button" className="richbar__b" title="Italic" aria-label="Italic" onMouseDown={(e) => e.preventDefault()} onClick={() => format("italic")}>
+                <i>I</i>
+              </button>
+              <button type="button" className="richbar__b" title="Underline" aria-label="Underline" onMouseDown={(e) => e.preventDefault()} onClick={() => format("underline")}>
+                <u>U</u>
+              </button>
+              <span className="richbar__sep" aria-hidden="true" />
+              <button type="button" className="richbar__b" title="Bulleted list" aria-label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => format("insertUnorderedList")}>
+                •&nbsp;—
+              </button>
+              <button type="button" className="richbar__b" title="Numbered list" aria-label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => format("insertOrderedList")}>
+                1.&nbsp;—
+              </button>
+              <span className="richbar__sep" aria-hidden="true" />
+              <button type="button" className="richbar__b" title="Insert link" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={() => format("createLink")}>
+                🔗
+              </button>
+            </div>
+          )}
           {composeLocked ? (
             <div className="wa-closed" role="note">
               <div className="wa-closed__txt">
@@ -1526,30 +1671,52 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </button>
             </div>
           ) : (
-            <div className="compinput">
+            <div className={"compinput" + (isRich ? " compinput--rich" : "")}>
               <button className="tool" title="Emoji" aria-label="Emoji">
                 <EmojiIcon />
               </button>
-              <textarea
-                ref={taRef}
-                value={text}
-                rows={1}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  signalTyping();
-                }}
-                onBlur={stopTyping}
-                onPaste={onTextareaPaste}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
+              {isRich ? (
+                <div
+                  ref={editorRef}
+                  className="richedit"
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label={`Reply to ${conv.contact.displayName}`}
+                  data-placeholder={`Reply to ${conv.contact.displayName}…`}
+                  onInput={onEditorInput}
+                  onBlur={stopTyping}
+                  onKeyDown={(e) => {
+                    // Enter adds a line; ⌘/Ctrl+Enter sends (email convention).
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                />
+              ) : (
+                <textarea
+                  ref={taRef}
+                  value={text}
+                  rows={1}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    signalTyping();
+                  }}
+                  onBlur={stopTyping}
+                  onPaste={onTextareaPaste}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder={
+                    internal ? "Write an internal note… use @name to mention" : `Message ${conv.contact.displayName}…`
                   }
-                }}
-                placeholder={
-                  internal ? "Write an internal note… use @name to mention" : `Message ${conv.contact.displayName}…`
-                }
-              />
+                />
+              )}
               <input
                 ref={fileInputRef}
                 type="file"

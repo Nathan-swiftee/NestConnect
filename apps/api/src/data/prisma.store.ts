@@ -572,7 +572,7 @@ export class PrismaStore extends Store {
 
   async addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
     author: User,
   ): Promise<Message | undefined> {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
@@ -600,6 +600,7 @@ export class PrismaStore extends Store {
           authorUserId: author.id,
           authorName: author.name,
           body: input.body,
+          bodyHtml: input.bodyHtml ?? null,
           // A real reply starts queued and climbs the delivery ladder as the
           // channel confirms it (sent → delivered → read); notes have no ladder.
           status: input.internal ? "sent" : "queued",
@@ -842,6 +843,7 @@ export class PrismaStore extends Store {
           authorType: "contact",
           authorName: input.authorName,
           body: input.body,
+          bodyHtml: input.bodyHtml ?? null,
           status: "delivered",
           channelMsgId: input.channelMsgId,
           messageType: input.messageType ?? "text",

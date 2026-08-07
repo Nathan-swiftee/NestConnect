@@ -17,6 +17,7 @@ import {
 import {
   collectAttachmentParts,
   extractPlainText,
+  extractHtml,
   gmail,
   GmailApiError,
   headerValue,
@@ -266,6 +267,7 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
       fromName,
       subject: headerValue(msg, "Subject"),
       text: extractPlainText(msg),
+      html: extractHtml(msg),
       messageId,
       references: threadRefs(msg),
       attachments: attachments.length ? attachments : undefined,

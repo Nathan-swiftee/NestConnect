@@ -232,6 +232,7 @@ export function mapMessage(m: MessageRow): Message {
     attachments: (m.attachments ?? []).map(mapAttachment),
     reactions: parseReactions(m.reactions),
     quotedMsgId: m.quotedMsgId ?? undefined,
+    bodyHtml: m.bodyHtml ?? undefined,
     createdAt: m.createdAt.toISOString(),
   };
 }

@@ -3,6 +3,7 @@ import { GROUP_MAX_MEMBERS, type Conversation, type MessageType } from "@ding/sc
 import { Store, type AttachmentInput } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { RoutingService } from "./routing.service";
+import { sanitizeEmailHtml } from "./email/html-sanitize";
 
 export interface WhatsAppInbound {
   phoneNumberId: string;
@@ -22,6 +23,8 @@ export interface EmailInbound {
   fromName?: string;
   subject?: string;
   text: string;
+  /** Raw HTML body, if the email had one — sanitized here before storage. */
+  html?: string;
   messageId?: string;
   references?: string[]; // In-Reply-To + References header ids, for threading
   messageType?: MessageType;
@@ -173,9 +176,14 @@ export class IngestService {
       }
     }
 
+    // Sanitize the email's HTML once, at the boundary — the stored bodyHtml is
+    // always safe for the sandboxed iframe to render (remote images pre-blocked).
+    const { html: bodyHtml } = sanitizeEmailHtml(input.html);
+
     const message = await this.store.appendInboundMessage(conversationId, {
       authorName: contact.displayName,
       body: input.text,
+      bodyHtml: bodyHtml || undefined,
       channelMsgId: input.messageId,
       messageType: input.messageType,
       attachments: input.attachments,

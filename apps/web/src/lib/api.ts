@@ -130,6 +130,7 @@ export const api = {
     attachmentIds?: string[],
     template?: { id: string; params: string[] },
     quotedMsgId?: string,
+    bodyHtml?: string,
   ) =>
     post<Message>(`/conversations/${id}/messages`, {
       body,
@@ -137,6 +138,7 @@ export const api = {
       ...(attachmentIds?.length ? { attachmentIds } : {}),
       ...(template ? { template } : {}),
       ...(quotedMsgId ? { quotedMsgId } : {}),
+      ...(bodyHtml ? { bodyHtml } : {}),
     }),
   // React to a message with an emoji (empty string removes the agent's reaction).
   react: (conversationId: string, messageId: string, emoji: string) =>

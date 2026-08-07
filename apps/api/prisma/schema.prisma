@@ -251,6 +251,9 @@ model Message {
   authorUserId   String?
   authorName     String?
   body           String
+  // Sanitized HTML body for rich email (rendered in a sandboxed iframe); the
+  // plain `body` above stays the fallback + preview text.
+  bodyHtml       String?
   status         MessageStatus    @default(sent)
   internal       Boolean          @default(false)
   channelMsgId   String?

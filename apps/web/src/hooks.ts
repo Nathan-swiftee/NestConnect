@@ -265,7 +265,10 @@ export function useSendMessage() {
       template?: { id: string; params: string[] };
       /** Quote an earlier message so it threads as a WhatsApp reply. */
       quotedMsgId?: string;
-    }) => api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, v.template, v.quotedMsgId),
+      /** Rich HTML body for an email reply (sanitized server-side). */
+      bodyHtml?: string;
+    }) =>
+      api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, v.template, v.quotedMsgId, v.bodyHtml),
     onSuccess: (_msg, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });

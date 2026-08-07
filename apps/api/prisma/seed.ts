@@ -128,6 +128,29 @@ async function main() {
     });
   }
 
+  // A formatted inbound email (already in the sanitized shape the ingest pipeline
+  // produces): a letterhead image blocked as a remote src, a greeting and a list.
+  const tideEmailHtml = `<div style="font-family:Arial,Helvetica,sans-serif;color:#22303a">
+  <div style="background:#0ea5e9;padding:16px 20px;border-radius:8px 8px 0 0">
+    <h2 style="margin:0;color:#ffffff;font-size:18px">Tide &amp; Co. — New Supplier Onboarding</h2>
+    <p style="margin:4px 0 0;color:#e0f4ff;font-size:13px">Wholesale · Cardiff</p>
+  </div>
+  <img data-blocked-src="https://cdn.example.com/tide/letterhead.png" alt="Tide &amp; Co." width="560" style="width:100%;max-width:560px;display:block">
+  <div style="padding:14px 20px">
+    <p>Hello Swiftee team,</p>
+    <p>We're getting set up as a <b>new supplier</b> and had a few questions before our first delivery:</p>
+    <ul style="padding-left:20px;margin:10px 0">
+      <li>What delivery windows do you offer for Cardiff?</li>
+      <li>Is there a cut-off time for next-day orders?</li>
+      <li>Can we consolidate multiple POs into one drop?</li>
+    </ul>
+    <p style="margin:14px 0">
+      <a href="https://swiftee.co.uk/suppliers/tide" target="_blank" rel="noopener noreferrer nofollow" style="background:#0ea5e9;color:#ffffff;padding:9px 16px;border-radius:6px;text-decoration:none;font-weight:bold">Supplier portal</a>
+    </p>
+    <p style="color:#667;font-size:13px;margin-top:16px">Many thanks,<br>The Tide &amp; Co. team</p>
+  </div>
+</div>`;
+
   // A representative set of contacts + conversations + messages.
   const seedConversations = [
     {
@@ -157,7 +180,7 @@ async function main() {
       conv: { id: "conv_tide", inboxId: "inbox_support", channel: "email" as const, subject: "New supplier onboarding" as string | null, status: "open" as const, assigneeUserId: null, assignedTeamId: "team_support", priority: "normal" as const, unread: true, unreadCount: 1, slaDueAt: mins(165), preview: "New supplier onboarding — a few questions" },
       labels: ["lbl_onboarding"],
       messages: [
-        { direction: "in" as const, authorType: "contact" as const, authorName: "Tide & Co.", body: "Hello! We're getting set up as a new supplier and had a few questions about delivery windows.", internal: false, createdAt: mins(92) },
+        { direction: "in" as const, authorType: "contact" as const, authorName: "Tide & Co.", body: "Hello! We're getting set up as a new supplier and had a few questions about delivery windows.", internal: false, createdAt: mins(92), bodyHtml: tideEmailHtml },
       ],
     },
   ];
@@ -234,12 +257,21 @@ async function main() {
         authorName: m.authorName,
         authorUserId: "authorUserId" in m ? (m.authorUserId as string) : null,
         body: m.body,
+        bodyHtml: "bodyHtml" in m ? (m.bodyHtml as string) : null,
         internal: m.internal,
         status: m.direction === "out" ? ("read" as const) : ("delivered" as const),
         createdAt: m.createdAt,
       })),
     });
   }
+
+  // One-time demo enrichment: give the pre-seeded Tide email its rich HTML body
+  // so the HTML-email feature is visible even on databases seeded before it
+  // existed. Idempotent + scoped to the demo message, so real mail is untouched.
+  await prisma.message.updateMany({
+    where: { conversationId: "conv_tide", direction: "in", bodyHtml: null },
+    data: { bodyHtml: tideEmailHtml },
+  });
 
   console.log("✓ Seeded Swiftee org, users, teams, inboxes, and demo conversations.");
 }

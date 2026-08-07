@@ -153,6 +153,7 @@ export function makeSeed() {
       attachments?: Message["attachments"];
       reactions?: Message["reactions"];
       quotedMsgId?: string;
+      bodyHtml?: string;
     } = {},
   ): Message => ({
     id: `msg_${++mid}`,
@@ -162,6 +163,7 @@ export function makeSeed() {
     authorType,
     authorName,
     body,
+    bodyHtml: opts.bodyHtml,
     status: opts.status ?? (direction === "out" ? "read" : "delivered"),
     internal: opts.internal ?? false,
     messageType: opts.messageType ?? "text",
@@ -187,6 +189,34 @@ export function makeSeed() {
   // James's "5pm works" quotes Priya's request to move the slot.
   ivyMsgs[1].quotedMsgId = ivyMsgs[0].id;
   ivyMsgs[4].quotedMsgId = ivyMsgs[2].id;
+
+  // A formatted inbound email (already in the sanitized shape the ingest pipeline
+  // produces): a hero image blocked as a remote src, a styled table and a button.
+  const bloomEmailHtml = `<div style="font-family:Arial,Helvetica,sans-serif;color:#2b2b2b">
+  <div style="background:#0f766e;padding:16px 20px;border-radius:8px 8px 0 0">
+    <h2 style="margin:0;color:#ffffff;font-size:18px">Bloom Florists — Weekly Purchase Order</h2>
+    <p style="margin:4px 0 0;color:#c9f2ec;font-size:13px">PO #BF-2288 · Delivery Thursday AM</p>
+  </div>
+  <img data-blocked-src="https://images.example.com/bloom/this-week.jpg" alt="This week's arrangements" width="560" style="width:100%;max-width:560px;display:block">
+  <div style="padding:14px 20px">
+    <p>Hi Swiftee team,</p>
+    <p>Here's this week's order — <b>same delivery window</b> as usual please. Full breakdown below.</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0" cellpadding="8">
+      <tr style="background:#f1f5f4">
+        <th align="left" style="border-bottom:2px solid #dddddd">Item</th>
+        <th align="right" style="border-bottom:2px solid #dddddd">Qty</th>
+        <th align="right" style="border-bottom:2px solid #dddddd">Unit</th>
+      </tr>
+      <tr><td style="border-bottom:1px solid #eeeeee">Garden roses (mixed)</td><td align="right" style="border-bottom:1px solid #eeeeee">120</td><td align="right" style="border-bottom:1px solid #eeeeee">£1.10</td></tr>
+      <tr><td style="border-bottom:1px solid #eeeeee">Eucalyptus stems</td><td align="right" style="border-bottom:1px solid #eeeeee">80</td><td align="right" style="border-bottom:1px solid #eeeeee">£0.65</td></tr>
+      <tr><td style="border-bottom:1px solid #eeeeee">Ranunculus (white)</td><td align="right" style="border-bottom:1px solid #eeeeee">60</td><td align="right" style="border-bottom:1px solid #eeeeee">£0.90</td></tr>
+    </table>
+    <p style="margin:14px 0">
+      <a href="https://swiftee.co.uk/orders/BF-2288" target="_blank" rel="noopener noreferrer nofollow" style="background:#0f766e;color:#ffffff;padding:9px 16px;border-radius:6px;text-decoration:none;font-weight:bold">View full order</a>
+    </p>
+    <p style="color:#666666;font-size:13px;margin-top:16px">Thanks,<br>Priya — Bloom Florists</p>
+  </div>
+</div>`;
 
   const conversations: ConversationRecord[] = [
     {
@@ -214,8 +244,8 @@ export function makeSeed() {
       priority: "normal", labels: [LABEL.order], unread: false,
       slaDueAt: null, lastActivityAt: mins(18), seq: 2, preview: "Re: Weekly stem order — confirmed for Thursday AM",
       messages: [
-        msg("conv_bloom", 1, "in", "contact", "Bloom Florists", "Hi — attaching this week's PO for the stem order. Same delivery window as usual please.", 40),
-        msg("conv_bloom", 2, "out", "user", "Nathan A", "Got it, thank you! Confirmed for Thursday AM. I'll send tracking once it's out.", 18),
+        msg("conv_bloom", 1, "in", "contact", "Bloom Florists", "Bloom Florists — Weekly Purchase Order (PO #BF-2288). Here's this week's order — same delivery window as usual please.", 40, { bodyHtml: bloomEmailHtml }),
+        msg("conv_bloom", 2, "out", "user", "Nathan A", "Got it, thank you! Confirmed for Thursday AM. I'll send tracking once it's out.", 18, { bodyHtml: "<p>Got it, thank you! <b>Confirmed for Thursday AM.</b></p><p>I'll send tracking once it's out. 🌸</p><p>— Nathan, Swiftee</p>" }),
       ],
     },
     {

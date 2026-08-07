@@ -493,7 +493,7 @@ export class MemoryStore extends Store {
 
   async addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
     author: User,
   ): Promise<Message | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
@@ -509,6 +509,7 @@ export class MemoryStore extends Store {
       authorType: "user",
       authorName: author.name,
       body: input.body,
+      bodyHtml: input.bodyHtml,
       // A real reply starts queued and climbs the ladder as the channel
       // confirms it (sent → delivered → read); notes have no delivery ladder.
       status: input.internal ? "sent" : "queued",
@@ -730,6 +731,7 @@ export class MemoryStore extends Store {
       authorType: "contact",
       authorName: input.authorName,
       body: input.body,
+      bodyHtml: input.bodyHtml,
       status: "delivered",
       internal: false,
       channelMsgId: input.channelMsgId,

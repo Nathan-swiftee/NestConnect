@@ -204,6 +204,9 @@ export const messageSchema = z.object({
   messageType: messageTypeSchema.default("text"),
   /** Media files attached to the message (images, files, voice notes, …). */
   attachments: z.array(attachmentSchema).default([]),
+  /** Sanitized HTML body for rich email (rendered in a sandboxed iframe). The
+   *  plain `body` above stays the fallback + list-preview text. */
+  bodyHtml: z.string().nullable().optional(),
   /** Emoji reactions on this message (at most one per participant). */
   reactions: z.array(reactionSchema).default([]),
   /** Id of the message this one quotes/replies to (resolved within the thread). */
@@ -352,6 +355,8 @@ export const sendMessageInputSchema = z
       .optional(),
     /** Quote/reply to an earlier message in the thread (by its id). */
     quotedMsgId: z.string().optional(),
+    /** Rich HTML body for an email reply (sanitized server-side before send). */
+    bodyHtml: z.string().optional(),
   })
   // Must carry something — text, an attachment, or a template.
   .refine(

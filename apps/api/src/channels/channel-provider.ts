@@ -41,6 +41,8 @@ export interface OutboundTemplate {
 export interface SendParams {
   to: string;
   body: string;
+  /** Sanitized HTML body for a rich email reply (email providers only). */
+  bodyHtml?: string;
   conversation: Conversation;
   context?: SendContext;
   /** Media to deliver alongside (or instead of) the text body. */

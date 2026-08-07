@@ -64,6 +64,8 @@ export interface AttachmentInput {
 export interface AppendInboundInput {
   authorName?: string;
   body: string;
+  /** Sanitized HTML body for a rich inbound email (already scrubbed). */
+  bodyHtml?: string;
   channelMsgId?: string;
   messageType?: MessageType;
   attachments?: AttachmentInput[];
@@ -171,7 +173,7 @@ export abstract class Store {
 
   abstract addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
     author: User,
   ): Promise<Message | undefined>;
 

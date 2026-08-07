@@ -238,6 +238,17 @@ export function extractPlainText(msg: GmailMessage): string {
   return msg.snippet ?? "";
 }
 
+/** The raw text/html part of a message, if any (decoded, not yet sanitized). */
+export function extractHtml(msg: GmailMessage): string | undefined {
+  const html = findPart(msg.payload, "text/html");
+  if (html?.body?.data) return decodeB64Url(html.body.data);
+  // A single-part text/html message carries its HTML on the top-level body.
+  if (msg.payload?.mimeType === "text/html" && msg.payload.body?.data) {
+    return decodeB64Url(msg.payload.body.data);
+  }
+  return undefined;
+}
+
 function findPart(part: GmailPart | undefined, mimeType: string): GmailPart | undefined {
   if (!part) return undefined;
   if (part.mimeType === mimeType && part.body?.data) return part;
@@ -271,6 +282,8 @@ export interface BuildMimeInput {
   toName?: string;
   subject: string;
   body: string;
+  /** Rich HTML alternative — when present the message is multipart/alternative. */
+  html?: string;
   messageId: string;
   inReplyTo?: string;
   references?: string;
@@ -283,9 +296,11 @@ function b64Wrap(buf: Buffer): string {
 }
 
 /**
- * Build a base64url-encoded RFC 2822 message for Gmail's `raw`. A plain
- * text/plain message when there are no attachments; a multipart/mixed message
- * (text part + one base64 part per file) when there are.
+ * Build a base64url-encoded RFC 2822 message for Gmail's `raw`. The reply body
+ * is a plain text/plain part, or — when `html` is given — a multipart/alternative
+ * (text + html) so clients pick the richer view. Attachments wrap the whole thing
+ * in a multipart/mixed. Four shapes: text | alternative | mixed[text,…files] |
+ * mixed[alternative,…files].
  */
 export function buildMime(input: BuildMimeInput): string {
   const fromHeader = input.fromName
@@ -304,25 +319,46 @@ export function buildMime(input: BuildMimeInput): string {
   if (input.references) headers.push(`References: ${input.references}`);
 
   const attachments = input.attachments ?? [];
-  let mime: string;
-  if (!attachments.length) {
-    headers.push('Content-Type: text/plain; charset="UTF-8"', "Content-Transfer-Encoding: base64");
-    mime = `${headers.join("\r\n")}\r\n\r\n${b64Wrap(Buffer.from(input.body, "utf8"))}`;
-  } else {
-    // A boundary that can't appear in base64 payloads; unique per message.
-    const boundary = `=_ding_${input.messageId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
-    headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
-    const parts: string[] = [
-      `--${boundary}`,
+  const html = input.html?.trim() ? input.html : undefined;
+  const uid = input.messageId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20);
+  const altBoundary = `=_ding_alt_${uid}`;
+  const mixBoundary = `=_ding_mix_${uid}`;
+
+  // The reply body section: either a lone text/plain, or a text+html alternative.
+  // `bodyHeader` is the Content-Type header line(s); `bodyLines` the encoded parts.
+  let bodyHeader: string;
+  let bodyLines: string[];
+  if (html) {
+    bodyHeader = `Content-Type: multipart/alternative; boundary="${altBoundary}"`;
+    bodyLines = [
+      `--${altBoundary}`,
       'Content-Type: text/plain; charset="UTF-8"',
       "Content-Transfer-Encoding: base64",
       "",
       b64Wrap(Buffer.from(input.body, "utf8")),
+      `--${altBoundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: base64",
+      "",
+      b64Wrap(Buffer.from(html, "utf8")),
+      `--${altBoundary}--`,
     ];
+  } else {
+    bodyHeader = 'Content-Type: text/plain; charset="UTF-8"\r\nContent-Transfer-Encoding: base64';
+    bodyLines = [b64Wrap(Buffer.from(input.body, "utf8"))];
+  }
+
+  let mime: string;
+  if (!attachments.length) {
+    headers.push(bodyHeader);
+    mime = `${headers.join("\r\n")}\r\n\r\n${bodyLines.join("\r\n")}`;
+  } else {
+    headers.push(`Content-Type: multipart/mixed; boundary="${mixBoundary}"`);
+    const parts: string[] = [`--${mixBoundary}`, bodyHeader, "", ...bodyLines];
     for (const att of attachments) {
       const name = encodeHeader(att.filename);
       parts.push(
-        `--${boundary}`,
+        `--${mixBoundary}`,
         `Content-Type: ${att.mime}; name="${name}"`,
         "Content-Transfer-Encoding: base64",
         `Content-Disposition: attachment; filename="${name}"`,
@@ -330,7 +366,7 @@ export function buildMime(input: BuildMimeInput): string {
         b64Wrap(att.bytes),
       );
     }
-    parts.push(`--${boundary}--`);
+    parts.push(`--${mixBoundary}--`);
     mime = `${headers.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`;
   }
   return Buffer.from(mime, "utf8").toString("base64url");

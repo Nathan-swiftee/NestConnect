@@ -10,6 +10,7 @@ import {
 } from "../channel-provider";
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
 import { buildMime, gmail } from "./gmail-api";
+import { textToHtml } from "../email/html-sanitize";
 
 /**
  * Sends outbound email through a Gmail-connected inbox using the Gmail API and
@@ -64,6 +65,8 @@ export class GmailProvider extends ChannelProvider {
         toName: params.context?.toName,
         subject,
         body: params.body,
+        // Rich reply → a text+html alternative; else derive HTML from the text.
+        html: params.bodyHtml || textToHtml(params.body),
         messageId,
         inReplyTo: params.context?.inReplyTo,
         // A reply's References should chain the message it answers.

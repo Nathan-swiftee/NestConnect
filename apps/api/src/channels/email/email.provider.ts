@@ -7,6 +7,7 @@ import {
   type SendResult,
   type SupportsContext,
 } from "../channel-provider";
+import { textToHtml } from "./html-sanitize";
 
 /**
  * Email sender. Runs in mock mode until POSTMARK_TOKEN is set. We mint our own
@@ -58,6 +59,8 @@ export class EmailProvider extends ChannelProvider {
           To: params.to,
           Subject: subject,
           TextBody: params.body,
+          // Rich reply → its HTML; else derive a simple HTML alternative.
+          HtmlBody: params.bodyHtml || textToHtml(params.body),
           MessageStream: "outbound",
           Headers: headers,
           ...(attachments.length ? { Attachments: attachments } : {}),

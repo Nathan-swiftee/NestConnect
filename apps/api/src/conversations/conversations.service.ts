@@ -12,6 +12,7 @@ import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { ChannelDispatcher } from "../channels/channel-dispatcher";
 import type { OutboundTemplate } from "../channels/channel-provider";
+import { sanitizeEmailHtml, htmlToText } from "../channels/email/html-sanitize";
 
 /** Fill a template body's {{1}}, {{2}} … positional variables from `params`. */
 function fillTemplate(body: string, params: string[]): string {
@@ -40,6 +41,9 @@ export class ConversationsService {
     const author = await this.store.getUser(userId);
     if (!author) throw new NotFoundException("Current user not found");
 
+    const conv = await this.store.getConversation(id);
+    if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
+
     // A template send: resolve it and render the body from its variables.
     let template: OutboundTemplate | undefined;
     let body = input.body;
@@ -50,20 +54,26 @@ export class ConversationsService {
       template = { name: tpl.name, language: tpl.language, params: input.template.params };
     }
 
+    // A rich email reply carries HTML from the composer — sanitize it (same scrub
+    // as inbound) before it's stored or sent, and derive the plain-text body from
+    // it when the composer only produced formatted content. HTML is email-only.
+    let bodyHtml: string | undefined;
+    if (input.bodyHtml && !input.internal && !template && conv.channel === "email") {
+      bodyHtml = sanitizeEmailHtml(input.bodyHtml).html || undefined;
+      if (bodyHtml && !body.trim()) body = htmlToText(bodyHtml);
+    }
+
     // Enforce WhatsApp's 24-hour window: a free-form reply is only allowed while
     // the window is open — once closed, an approved template is the only way in.
-    if (!input.internal && !template) {
-      const current = await this.store.getConversation(id);
-      if (current?.waWindow && !current.waWindow.open) {
-        throw new BadRequestException(
-          "This WhatsApp conversation's 24-hour window has closed — send an approved template to reply.",
-        );
-      }
+    if (!input.internal && !template && conv.waWindow && !conv.waWindow.open) {
+      throw new BadRequestException(
+        "This WhatsApp conversation's 24-hour window has closed — send an approved template to reply.",
+      );
     }
 
     const message = await this.store.addMessage(
       id,
-      { body, internal: input.internal, attachmentIds: input.attachmentIds, quotedMsgId: input.quotedMsgId },
+      { body, bodyHtml, internal: input.internal, attachmentIds: input.attachmentIds, quotedMsgId: input.quotedMsgId },
       author,
     );
     if (!message) throw new NotFoundException(`Conversation ${id} not found`);
@@ -76,8 +86,9 @@ export class ConversationsService {
       // An agent reply meets the first-response SLA — stop the clock.
       const cleared = await this.store.setSla(id, null);
       if (cleared) this.realtime.emitConversationUpdated(cleared);
-      const conv = await this.store.getConversation(id);
-      if (conv) void this.dispatcher.dispatchOutbound(conv, message, template);
+      // Re-read so the dispatch sees the just-appended message in the thread.
+      const fresh = await this.store.getConversation(id);
+      if (fresh) void this.dispatcher.dispatchOutbound(fresh, message, template);
     }
     return message;
   }

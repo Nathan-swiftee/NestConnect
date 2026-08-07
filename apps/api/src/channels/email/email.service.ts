@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { IngestService } from "../ingest.service";
+import { htmlToText } from "./html-sanitize";
 
 /**
  * Inbound email webhook body. Tolerant of Postmark's shape (From/FromFull/
@@ -13,6 +14,7 @@ export interface EmailWebhookBody {
   ToFull?: Array<{ Email?: string; Name?: string }>;
   Subject?: string;
   TextBody?: string;
+  HtmlBody?: string;
   StrippedTextReply?: string;
   MessageID?: string;
   Headers?: Array<{ Name?: string; Value?: string }>;
@@ -22,6 +24,7 @@ export interface EmailWebhookBody {
   to?: string;
   subject?: string;
   text?: string;
+  html?: string;
   messageId?: string;
   references?: string[];
 }
@@ -43,7 +46,9 @@ export class EmailService {
     const fromName = body.FromFull?.Name || body.FromName || body.fromName;
     const toAddress = extractAddress(body.ToFull?.[0]?.Email || body.To || body.to || "");
     const subject = body.Subject || body.subject;
-    const text = body.TextBody || body.StrippedTextReply || body.text || "";
+    const html = body.HtmlBody || body.html;
+    // Fall back to text derived from the HTML when the sender gave no plain part.
+    const text = body.TextBody || body.StrippedTextReply || body.text || (html ? htmlToText(html) : "");
     const messageId = header("Message-ID") || body.MessageID || body.messageId;
 
     const refsRaw = `${header("References") ?? ""} ${header("In-Reply-To") ?? ""}`;
@@ -61,6 +66,7 @@ export class EmailService {
       fromName,
       subject,
       text,
+      html,
       messageId,
       references,
     });
