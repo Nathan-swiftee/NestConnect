@@ -5,6 +5,7 @@ import { ConversationList } from "./ConversationList";
 import { Thread } from "./Thread";
 import { ContextPanel } from "./ContextPanel";
 import { CommandPalette } from "./CommandPalette";
+import { Compose } from "./Compose";
 import { Settings } from "./Settings";
 import { Customers } from "./Customers";
 import { useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
@@ -22,6 +23,7 @@ export function Workspace() {
     () => typeof window === "undefined" || !window.matchMedia("(max-width: 1399px)").matches,
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [section, setSection] = useState<"inbox" | "customers" | "settings">("inbox");
   const [focusContact, setFocusContact] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -125,6 +127,7 @@ export function Workspace() {
                 selectedId={selectedId}
                 onSelect={selectConversation}
                 onOpenCmdk={() => setCmdkOpen(true)}
+                onCompose={() => setComposeOpen(true)}
                 onOpenDrawer={() => setDrawerOpen(true)}
               />
               <Thread
@@ -170,6 +173,19 @@ export function Workspace() {
           onSelectConversation={(id) => {
             selectConversation(id);
             setCmdkOpen(false);
+          }}
+          onToast={notify}
+        />
+      )}
+
+      {composeOpen && (
+        <Compose
+          onClose={() => setComposeOpen(false)}
+          onOpen={(id) => {
+            setSection("inbox");
+            setFocusContact(null);
+            selectConversation(id);
+            setComposeOpen(false);
           }}
           onToast={notify}
         />

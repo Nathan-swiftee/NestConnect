@@ -612,6 +612,50 @@ input,textarea{font:inherit}
   background:var(--surface-2);color:var(--text);font-size:13px;outline:none}
 .emailhdr__in:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-ring)}
 
+/* ─── New-message (compose) ─────────────────────────────────────────── */
+.list__title .list__compose{width:30px;height:30px;display:inline-grid;place-items:center;border-radius:var(--r-full);
+  color:#fff;background:var(--brand);box-shadow:0 2px 8px -3px color-mix(in srgb,var(--brand) 60%,transparent);
+  transition:filter .14s,transform .12s var(--ease)}
+.list__title .list__compose:hover{filter:brightness(1.07)}
+.list__title .list__compose:active{transform:scale(.92)}
+.list__title .list__compose svg{width:16px;height:16px}
+.modal__box.compose{width:min(460px,94vw)}
+.compose__tabs{display:flex;gap:6px;margin-bottom:12px;background:var(--surface-2);padding:4px;border-radius:var(--r-12)}
+.compose__tabs button{flex:1;padding:7px;border-radius:var(--r-8);font-size:13px;font-weight:650;color:var(--text-muted);transition:background .12s,color .12s}
+.compose__tabs button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.compose__search{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--r-12);background:var(--surface-2);border:1px solid transparent;margin-bottom:10px}
+.compose__search:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-ring)}
+.compose__search svg{width:16px;height:16px;color:var(--text-faint);flex:0 0 auto}
+.compose__search input{flex:1;border:0;background:none;outline:none;color:var(--text);font-size:14px}
+.compose__list{max-height:min(46vh,340px);overflow-y:auto;display:flex;flex-direction:column;gap:2px}
+.compose__empty{color:var(--text-faint);font-size:13px;padding:18px 4px;text-align:center}
+.compose__row{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:var(--r-12);cursor:pointer;text-align:left;transition:background .12s}
+.compose__row:hover{background:var(--surface-2)}
+.compose__av{width:34px;height:34px;flex:0 0 34px;border-radius:var(--r-full);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800}
+.compose__rowm{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.compose__rowm b{font-size:13.5px;font-weight:650}
+.compose__rowm small{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.compose__rowchans{flex:0 0 auto;display:flex;gap:4px}
+.compose__dot{width:8px;height:8px;border-radius:var(--r-full)}
+.compose__back{display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font-size:12.5px;font-weight:600;margin-bottom:12px;transition:color .12s}
+.compose__back:hover{color:var(--text)}
+.compose__back svg{width:14px;height:14px}
+.compose__who{display:flex;align-items:center;gap:11px;margin-bottom:14px}
+.compose__whom{display:flex;flex-direction:column;gap:1px}
+.compose__whom b{font-size:15px;font-weight:700}
+.compose__whom small{font-size:12.5px;color:var(--text-muted)}
+.compose__new{display:flex;flex-direction:column;gap:10px}
+.compose__chans{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.compose__chan{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:var(--r-12);background:var(--surface-2);text-align:left;transition:background .12s,transform .1s var(--ease)}
+.compose__chan:hover:not(:disabled){background:var(--brand-tint)}
+.compose__chan:active:not(:disabled){transform:scale(.99)}
+.compose__chan:disabled{opacity:.5;cursor:default}
+.compose__chanic{width:32px;height:32px;flex:0 0 32px;border-radius:var(--r-8);display:grid;place-items:center;color:#fff}
+.compose__chanic svg{width:17px;height:17px}
+.compose__chanm{display:flex;flex-direction:column;gap:1px}
+.compose__chanm b{font-size:13.5px;font-weight:650}
+.compose__chanm small{font-size:12px;color:var(--text-muted)}
+
 /* ─── Typing indicator ─── another agent composing on this conversation:
    a tail-less inbound-style bubble with three bouncing dots. */
 .typing{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;max-width:100%;

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useConversations, useRefresh, useTeams } from "../hooks";
 import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
-import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon } from "../lib/icons";
+import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
 
@@ -14,10 +14,11 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onOpenCmdk: () => void;
+  onCompose: () => void;
   onOpenDrawer?: () => void;
 }
 
-export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onOpenDrawer }: Props) {
+export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onCompose, onOpenDrawer }: Props) {
   const { data, isLoading } = useConversations(view);
   const teams = useTeams();
   const teamName = (id?: string | null) => (id ? teams.data?.find((t) => t.id === id)?.name : undefined);
@@ -106,6 +107,9 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
           <button className="kbd" onClick={onOpenCmdk} title="Command menu" aria-label="Command menu">
             <CmdIcon />
             <span>K</span>
+          </button>
+          <button className="list__compose" onClick={onCompose} title="New message" aria-label="New message">
+            <ComposeIcon />
           </button>
         </div>
         <div className="search">
