@@ -256,6 +256,10 @@ model Message {
   channelMsgId   String?
   // text | image | video | audio | voice | document | sticker | location | contact
   messageType    String           @default("text")
+  // Emoji reactions: [{ emoji, by: "contact" | "user" }] (≤1 per participant).
+  reactions      Json?
+  // Id of the message this one quotes/replies to (same conversation).
+  quotedMsgId    String?
   createdAt      DateTime         @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id])

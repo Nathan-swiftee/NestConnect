@@ -464,6 +464,85 @@ input,textarea{font:inherit}
 .msg .tick.pending{opacity:.75}
 .tick.failed{color:var(--danger)}
 
+/* ─── Reactions, quoted replies & per-message actions (Phase 5) ───────
+   Each bubble lives in a positioning wrapper so the hover toolbar / emoji
+   bar can float above it and the reaction chip can hang off its bottom edge. */
+.msg{position:relative}
+.bubblewrap{position:relative;display:flex;flex-direction:column;width:fit-content;max-width:100%}
+.msg.out .bubblewrap{align-items:flex-end}
+.msg.in .bubblewrap{align-items:flex-start}
+
+/* quoted-reply preview stacked at the top of a bubble */
+.quoted{display:flex;gap:8px;align-items:stretch;width:100%;text-align:left;cursor:pointer;
+  margin-bottom:5px;padding:5px 9px;border-radius:6px;overflow:hidden;border:0;
+  background:color-mix(in srgb,var(--text) 6%,transparent);transition:background .12s}
+.quoted:hover{background:color-mix(in srgb,var(--text) 11%,transparent)}
+.quoted:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
+.quoted__accent{flex:0 0 3px;border-radius:3px;background:var(--brand-strong)}
+.quoted__body{min-width:0;display:flex;flex-direction:column;gap:1px}
+.quoted__who{font-size:12.5px;font-weight:700;color:var(--brand-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quoted__txt{font-size:12.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(260px,60vw)}
+.msg .bubble.has-media .quoted{margin:1px 1px 4px}
+/* on the green outbound bubble, derive the quote colours from the bubble text */
+.msg.out .quoted{background:color-mix(in srgb,currentColor 12%,transparent)}
+.msg.out .quoted:hover{background:color-mix(in srgb,currentColor 18%,transparent)}
+.msg.out .quoted__accent{background:currentColor;opacity:.65}
+.msg.out .quoted__who{color:currentColor}
+.msg.out .quoted__txt{color:color-mix(in srgb,currentColor 66%,transparent)}
+
+/* reaction chip hanging off the bubble's bottom-outer corner */
+.reacts{display:inline-flex;align-items:center;gap:1px;position:relative;z-index:3;margin-top:-9px;
+  height:19px;padding:0 5px;border-radius:var(--r-full);background:var(--elevated);
+  border:1.5px solid var(--surface-2);box-shadow:0 1px 2px rgba(0,0,0,.16)}
+.msg.in .reacts{margin-left:9px}
+.msg.out .reacts{margin-right:9px}
+.reacts__e{font-size:12.5px;line-height:1}
+.reacts--mine{cursor:pointer;transition:background .12s}
+.reacts--mine:hover{background:color-mix(in srgb,var(--elevated),var(--text) 7%)}
+.reacts--mine:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
+
+/* hover toolbar + emoji picker, floated just above the bubble's near corner */
+.msg__act,.react-pop{position:absolute;top:-6px;z-index:20;display:flex;align-items:center;gap:2px;
+  padding:3px;border-radius:var(--r-full);background:var(--elevated);
+  box-shadow:0 6px 18px -6px rgba(0,0,0,.34),0 0 0 1px var(--border)}
+.msg.in .msg__act,.msg.in .react-pop{left:2px}
+.msg.out .msg__act,.msg.out .react-pop{right:2px}
+.msg__act{transform:translateY(-100%) scale(.94);opacity:0;pointer-events:none;
+  transition:opacity .12s var(--ease),transform .12s var(--ease)}
+.msg:hover .msg__act,.msg:focus-within .msg__act{opacity:1;pointer-events:auto;transform:translateY(-100%) scale(1)}
+.msg__actbtn{width:28px;height:28px;border-radius:var(--r-full);display:grid;place-items:center;
+  color:var(--text-muted);transition:background .12s,color .12s}
+.msg__actbtn:hover{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
+.msg__actbtn:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
+.msg__actbtn svg{width:16px;height:16px}
+.react-pop{transform:translateY(-100%);animation:reactPop .13s var(--ease)}
+@keyframes reactPop{from{opacity:0;transform:translateY(-100%) scale(.9)}to{opacity:1;transform:translateY(-100%) scale(1)}}
+.react-pop__e{width:30px;height:30px;border-radius:var(--r-full);display:grid;place-items:center;
+  font-size:18px;line-height:1;transition:background .1s,transform .1s var(--ease)}
+.react-pop__e:hover{background:color-mix(in srgb,var(--text) 10%,transparent);transform:scale(1.18)}
+.react-pop__e.sel{background:color-mix(in srgb,var(--brand) 22%,transparent)}
+
+/* flash the target bubble when jumping to a quoted message */
+.msg--flash .bubble{animation:msgFlash 1.15s var(--ease)}
+@keyframes msgFlash{
+  0%,100%{box-shadow:0 1px 1.5px rgba(13,21,18,.09),0 0 0 0 transparent}
+  30%{box-shadow:0 1px 1.5px rgba(13,21,18,.09),0 0 0 4px color-mix(in srgb,var(--brand) 45%,transparent)}
+}
+
+/* composer "replying to…" cue above the input */
+.reply-cue{display:flex;align-items:center;gap:10px;margin:8px 2px 0;padding:7px 10px 7px 13px;
+  border-radius:var(--r-12);position:relative;overflow:hidden;
+  background:color-mix(in srgb,var(--brand) 8%,var(--surface));border:1px solid var(--border)}
+.reply-cue__accent{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand-strong)}
+.reply-cue__body{min-width:0;flex:1 1 auto;display:flex;flex-direction:column;gap:1px}
+.reply-cue__who{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--brand-strong)}
+.reply-cue__who svg{width:13px;height:13px}
+.reply-cue__txt{font-size:12.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reply-cue__x{flex:0 0 auto;width:26px;height:26px;border-radius:var(--r-full);display:grid;place-items:center;
+  color:var(--text-muted);transition:background .12s,color .12s}
+.reply-cue__x:hover{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
+.reply-cue__x svg{width:15px;height:15px}
+
 /* ─── Typing indicator ─── another agent composing on this conversation:
    a tail-less inbound-style bubble with three bouncing dots. */
 .typing{align-self:flex-start;display:inline-flex;align-items:center;gap:9px;max-width:100%;

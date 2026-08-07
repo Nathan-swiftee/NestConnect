@@ -39,6 +39,10 @@ export interface WhatsAppWebhookBody {
           audio?: WaMedia;
           document?: WaMedia;
           sticker?: WaMedia;
+          /** An emoji reaction to an earlier message (empty emoji = removed). */
+          reaction?: { message_id?: string; emoji?: string };
+          /** Set when the customer replied to (quoted) an earlier message. */
+          context?: { id?: string };
         }>;
         statuses?: Array<{ id: string; status?: string; recipient_id?: string }>;
         participants?: Array<{ wa_id?: string; user?: string; action?: string; profile?: { name?: string } }>;
@@ -59,10 +63,13 @@ export class WhatsAppService {
     private readonly media: MediaService,
   ) {}
 
-  async handleWebhook(body: WhatsAppWebhookBody): Promise<{ messages: number; statuses: number; groupEvents: number }> {
+  async handleWebhook(
+    body: WhatsAppWebhookBody,
+  ): Promise<{ messages: number; statuses: number; groupEvents: number; reactions: number }> {
     let messages = 0;
     let statuses = 0;
     let groupEvents = 0;
+    let reactions = 0;
 
     for (const entry of body.entry ?? []) {
       for (const change of entry.changes ?? []) {
@@ -89,8 +96,28 @@ export class WhatsAppService {
         }
 
         for (const msg of value.messages ?? []) {
+          // A reaction updates an existing message (emoji) rather than adding one.
+          if (msg.type === "reaction" || msg.reaction) {
+            const target = msg.reaction?.message_id;
+            if (target) {
+              const ref = await this.store.getMessageRefByChannelId(target);
+              if (ref) {
+                const updated = await this.store.reactToMessage(ref.id, msg.reaction?.emoji ?? "", "contact");
+                if (updated) {
+                  this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+                  reactions += 1;
+                }
+              }
+            }
+            continue;
+          }
+
           const groupId = valueGroupId ?? msg.group_id;
           const { text, messageType, attachments } = await this.resolveInbound(msg, phoneNumberId);
+          // Resolve a reply's quoted message to our internal id (when we have it).
+          const quotedMsgId = msg.context?.id
+            ? (await this.store.getMessageRefByChannelId(msg.context.id))?.id
+            : undefined;
           const res = groupId
             ? await this.ingest.ingestWhatsAppGroup({
                 groupId,
@@ -100,6 +127,7 @@ export class WhatsAppService {
                 channelMsgId: msg.id,
                 messageType,
                 attachments,
+                quotedMsgId,
               })
             : await this.ingest.ingestWhatsApp({
                 phoneNumberId,
@@ -109,6 +137,7 @@ export class WhatsAppService {
                 channelMsgId: msg.id,
                 messageType,
                 attachments,
+                quotedMsgId,
               });
           if (res) messages += 1;
         }
@@ -124,7 +153,7 @@ export class WhatsAppService {
         }
       }
     }
-    return { messages, statuses, groupEvents };
+    return { messages, statuses, groupEvents, reactions };
   }
 
   /**

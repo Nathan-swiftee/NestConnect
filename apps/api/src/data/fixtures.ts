@@ -151,6 +151,8 @@ export function makeSeed() {
       at?: string;
       messageType?: Message["messageType"];
       attachments?: Message["attachments"];
+      reactions?: Message["reactions"];
+      quotedMsgId?: string;
     } = {},
   ): Message => ({
     id: `msg_${++mid}`,
@@ -164,8 +166,27 @@ export function makeSeed() {
     internal: opts.internal ?? false,
     messageType: opts.messageType ?? "text",
     attachments: opts.attachments ?? [],
+    reactions: opts.reactions ?? [],
+    quotedMsgId: opts.quotedMsgId,
     createdAt: opts.at ?? mins(minsAgo),
   });
+
+  // The Ivy House group thread — showcases a reaction and quoted replies. Built
+  // as a list first so later messages can reference an earlier one's generated id.
+  const ivyMsgs: Message[] = [
+    msg("conv_ivy", 1, "in", "contact", "Priya (The Ivy House)", "Morning! Are we still on for the linen drop this week?", 0, { at: dayAt(2, 9, 2) }),
+    msg("conv_ivy", 2, "out", "user", "Nathan A", "Morning Priya 👋 Yes — you're booked in. I'll confirm the slot shortly.", 0, { at: dayAt(2, 9, 8), reactions: [{ emoji: "👍", by: "contact" }] }),
+    msg("conv_ivy", 3, "in", "contact", "Priya (The Ivy House)", "Amazing. One change — could we push it to 5pm? We've got a lunch service running.", 0, { at: dayAt(1, 13, 20) }),
+    msg("conv_ivy", 4, "out", "user", "James", "@nathan can the Bristol route take a 5pm slot for the Ivy House? Lunch clash their end.", 0, { internal: true, at: dayAt(1, 13, 24) }),
+    msg("conv_ivy", 5, "in", "contact", "James · Swiftee", "Yep, 5pm works — I'll re-slot the route now. 👍", 35),
+    msg("conv_ivy", 6, "in", "contact", "Priya (The Ivy House)", "Here's the pallet we need matched 👇", 30, { messageType: "image", attachments: DEMO_IMAGE_ATT }),
+    msg("conv_ivy", 7, "in", "contact", "Priya (The Ivy House)", "", 29, { messageType: "voice", attachments: DEMO_VOICE_ATT }),
+    msg("conv_ivy", 8, "in", "contact", "Priya (The Ivy House)", "And the PO for your records", 28, { messageType: "document", attachments: DEMO_DOC_ATT }),
+  ];
+  // Nathan's confirmation replies to Priya's opening question (and she 👍'd it);
+  // James's "5pm works" quotes Priya's request to move the slot.
+  ivyMsgs[1].quotedMsgId = ivyMsgs[0].id;
+  ivyMsgs[4].quotedMsgId = ivyMsgs[2].id;
 
   const conversations: ConversationRecord[] = [
     {
@@ -175,16 +196,7 @@ export function makeSeed() {
       priority: "high", labels: [LABEL.vip, LABEL.delivery], unread: true, unreadCount: 2,
       participants: ivyMembers.map((m, i) => ({ id: `part_ivy_${i + 1}`, conversationId: "conv_ivy", contact: m, role: (i === 2 ? "admin" : "member") as "admin" | "member", joinedAt: mins(600) })),
       slaDueAt: mins(-72), lastActivityAt: mins(35), seq: 5, preview: "James · Swiftee: 5pm works — re-slotting now 👍",
-      messages: [
-        msg("conv_ivy", 1, "in", "contact", "Priya (The Ivy House)", "Morning! Are we still on for the linen drop this week?", 0, { at: dayAt(2, 9, 2) }),
-        msg("conv_ivy", 2, "out", "user", "Nathan A", "Morning Priya 👋 Yes — you're booked in. I'll confirm the slot shortly.", 0, { at: dayAt(2, 9, 8) }),
-        msg("conv_ivy", 3, "in", "contact", "Priya (The Ivy House)", "Amazing. One change — could we push it to 5pm? We've got a lunch service running.", 0, { at: dayAt(1, 13, 20) }),
-        msg("conv_ivy", 4, "out", "user", "James", "@nathan can the Bristol route take a 5pm slot for the Ivy House? Lunch clash their end.", 0, { internal: true, at: dayAt(1, 13, 24) }),
-        msg("conv_ivy", 5, "in", "contact", "James · Swiftee", "Yep, 5pm works — I'll re-slot the route now. 👍", 35),
-        msg("conv_ivy", 6, "in", "contact", "Priya (The Ivy House)", "Here's the pallet we need matched 👇", 30, { messageType: "image", attachments: DEMO_IMAGE_ATT }),
-        msg("conv_ivy", 7, "in", "contact", "Priya (The Ivy House)", "", 29, { messageType: "voice", attachments: DEMO_VOICE_ATT }),
-        msg("conv_ivy", 8, "in", "contact", "Priya (The Ivy House)", "And the PO for your records", 28, { messageType: "document", attachments: DEMO_DOC_ATT }),
-      ],
+      messages: ivyMsgs,
     },
     {
       id: "conv_north", orgId: ORG_ID, inboxId: "inbox_wa", channel: "whatsapp",

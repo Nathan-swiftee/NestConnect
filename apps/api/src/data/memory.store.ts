@@ -493,7 +493,7 @@ export class MemoryStore extends Store {
 
   async addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean; attachmentIds?: string[] },
+    input: { body: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
     author: User,
   ): Promise<Message | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
@@ -515,6 +515,8 @@ export class MemoryStore extends Store {
       internal: input.internal,
       messageType,
       attachments,
+      reactions: [],
+      quotedMsgId: input.quotedMsgId,
       createdAt: new Date().toISOString(),
     };
     rec.messages.push(message);
@@ -733,6 +735,8 @@ export class MemoryStore extends Store {
       channelMsgId: input.channelMsgId,
       messageType: input.messageType ?? "text",
       attachments: this.storeAttachments(input.attachments),
+      reactions: [],
+      quotedMsgId: input.quotedMsgId,
       createdAt: new Date().toISOString(),
     };
     rec.messages.push(message);
@@ -799,6 +803,32 @@ export class MemoryStore extends Store {
     rec.unread = false;
     rec.unreadCount = 0;
     return this.summary(rec);
+  }
+
+  async getMessageRefByChannelId(
+    channelMsgId: string,
+  ): Promise<{ id: string; conversationId: string } | undefined> {
+    for (const rec of this.conversations) {
+      const m = rec.messages.find((x) => x.channelMsgId === channelMsgId);
+      if (m) return { id: m.id, conversationId: rec.id };
+    }
+    return undefined;
+  }
+
+  async reactToMessage(
+    messageId: string,
+    emoji: string,
+    by: "contact" | "user",
+  ): Promise<{ conversationId: string; message: Message } | undefined> {
+    for (const rec of this.conversations) {
+      const m = rec.messages.find((x) => x.id === messageId);
+      if (!m) continue;
+      // At most one reaction per participant.
+      const kept = (m.reactions ?? []).filter((r) => r.by !== by);
+      m.reactions = emoji.trim() ? [...kept, { emoji: emoji.trim(), by }] : kept;
+      return { conversationId: rec.id, message: m };
+    }
+    return undefined;
   }
 
   /* ---- groups ---- */

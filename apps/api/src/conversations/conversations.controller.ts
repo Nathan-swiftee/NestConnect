@@ -1,11 +1,13 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
   assignConversationInputSchema,
+  reactionInputSchema,
   sendMessageInputSchema,
   snoozeInputSchema,
   updatePriorityInputSchema,
   updateStatusInputSchema,
   type AssignConversationInput,
+  type ReactionInput,
   type SendMessageInput,
   type SnoozeInput,
   type UpdatePriorityInput,
@@ -74,6 +76,16 @@ export class ConversationsController {
   async typing(@Param("id") id: string): Promise<{ ok: boolean }> {
     await this.conversations.sendTyping(id);
     return { ok: true };
+  }
+
+  /** React to a message with an emoji (empty removes the agent's reaction). */
+  @Post(":id/messages/:messageId/react")
+  react(
+    @Param("id") id: string,
+    @Param("messageId") messageId: string,
+    @Body(new ZodValidationPipe(reactionInputSchema)) body: ReactionInput,
+  ) {
+    return this.conversations.react(id, messageId, body.emoji);
   }
 
   @Post(":id/priority")

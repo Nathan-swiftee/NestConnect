@@ -47,6 +47,8 @@ export interface SendParams {
   media?: OutboundMedia[];
   /** When set, deliver this as a WhatsApp template message (type:template). */
   template?: OutboundTemplate;
+  /** Provider id of a message this one quotes/replies to (WhatsApp context). */
+  replyToChannelMsgId?: string;
 }
 
 /**
@@ -82,4 +84,14 @@ export abstract class ChannelProvider {
    * Optional — only channels that support it implement it.
    */
   sendTyping?(params: { conversation: Conversation; channelMsgId: string }): Promise<void>;
+
+  /**
+   * React to a message with an emoji (empty removes it). Optional — only
+   * channels that support reactions (WhatsApp) implement it.
+   */
+  sendReaction?(params: {
+    conversation: Conversation;
+    channelMsgId: string;
+    emoji: string;
+  }): Promise<void>;
 }

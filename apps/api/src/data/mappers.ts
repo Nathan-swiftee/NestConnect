@@ -203,6 +203,19 @@ export function mapContact(c: ContactWithIdentities): Contact {
   };
 }
 
+/** Parse the stored reactions JSON into a clean [{emoji, by}] array. */
+export function parseReactions(raw: unknown): Message["reactions"] {
+  if (!Array.isArray(raw)) return [];
+  const out: Message["reactions"] = [];
+  for (const r of raw) {
+    if (r && typeof r === "object" && typeof (r as { emoji?: unknown }).emoji === "string") {
+      const by = (r as { by?: unknown }).by;
+      out.push({ emoji: (r as { emoji: string }).emoji, by: by === "user" ? "user" : "contact" });
+    }
+  }
+  return out;
+}
+
 export function mapMessage(m: MessageRow): Message {
   return {
     id: m.id,
@@ -217,6 +230,8 @@ export function mapMessage(m: MessageRow): Message {
     channelMsgId: m.channelMsgId ?? undefined,
     messageType: (m.messageType as MessageType) ?? "text",
     attachments: (m.attachments ?? []).map(mapAttachment),
+    reactions: parseReactions(m.reactions),
+    quotedMsgId: m.quotedMsgId ?? undefined,
     createdAt: m.createdAt.toISOString(),
   };
 }

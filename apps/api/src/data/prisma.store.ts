@@ -39,6 +39,7 @@ import {
   mapTemplate,
   mapUser,
   messageTypeForKind,
+  parseReactions,
   previewForType,
 } from "./mappers";
 import { PrismaService } from "./prisma.service";
@@ -571,7 +572,7 @@ export class PrismaStore extends Store {
 
   async addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean; attachmentIds?: string[] },
+    input: { body: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
     author: User,
   ): Promise<Message | undefined> {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
@@ -604,6 +605,7 @@ export class PrismaStore extends Store {
           status: input.internal ? "sent" : "queued",
           internal: input.internal,
           messageType,
+          quotedMsgId: input.quotedMsgId ?? null,
           ...(staged.length ? { attachments: { connect: staged.map((a) => ({ id: a.id })) } } : {}),
         },
         include: { attachments: true },
@@ -843,6 +845,7 @@ export class PrismaStore extends Store {
           status: "delivered",
           channelMsgId: input.channelMsgId,
           messageType: input.messageType ?? "text",
+          quotedMsgId: input.quotedMsgId ?? null,
           ...(input.attachments?.length
             ? { attachments: { create: input.attachments.map(toAttachmentCreate) } }
             : {}),
@@ -898,6 +901,35 @@ export class PrismaStore extends Store {
     } catch {
       return undefined;
     }
+  }
+
+  async getMessageRefByChannelId(
+    channelMsgId: string,
+  ): Promise<{ id: string; conversationId: string } | undefined> {
+    const m = await this.prisma.message.findFirst({
+      where: { channelMsgId },
+      select: { id: true, conversationId: true },
+      orderBy: { createdAt: "desc" },
+    });
+    return m ?? undefined;
+  }
+
+  async reactToMessage(
+    messageId: string,
+    emoji: string,
+    by: "contact" | "user",
+  ): Promise<{ conversationId: string; message: Message } | undefined> {
+    const m = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!m) return undefined;
+    // At most one reaction per participant: drop theirs, then add the new one.
+    const kept = parseReactions(m.reactions).filter((r) => r.by !== by);
+    const next = emoji.trim() ? [...kept, { emoji: emoji.trim(), by }] : kept;
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { reactions: next as unknown as Prisma.InputJsonValue },
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
   }
 
   /* ---- groups ---- */

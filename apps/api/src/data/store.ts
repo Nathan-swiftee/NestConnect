@@ -67,6 +67,8 @@ export interface AppendInboundInput {
   channelMsgId?: string;
   messageType?: MessageType;
   attachments?: AttachmentInput[];
+  /** Id of the message this inbound one quotes/replies to (already resolved). */
+  quotedMsgId?: string;
 }
 
 /** What the media-serving endpoint needs to stream a stored file. */
@@ -169,9 +171,21 @@ export abstract class Store {
 
   abstract addMessage(
     conversationId: string,
-    input: { body: string; internal: boolean; attachmentIds?: string[] },
+    input: { body: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
     author: User,
   ): Promise<Message | undefined>;
+
+  /** Resolve a provider message id (WhatsApp wamid) to our stored message. */
+  abstract getMessageRefByChannelId(
+    channelMsgId: string,
+  ): Promise<{ id: string; conversationId: string } | undefined>;
+
+  /** Set/replace/remove a reaction (empty emoji removes) for a participant. */
+  abstract reactToMessage(
+    messageId: string,
+    emoji: string,
+    by: "contact" | "user",
+  ): Promise<{ conversationId: string; message: Message } | undefined>;
 
   /** Stage an uploaded file as an attachment not yet tied to a message. */
   abstract createUploadAttachment(orgId: string, input: AttachmentInput): Promise<Attachment>;

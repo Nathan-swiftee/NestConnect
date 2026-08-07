@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type JSX, type ReactNode 
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
 import type { Message, Attachment, MessageStatus } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact } from "../hooks";
 import { api } from "../lib/api";
 import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft } from "../lib/format";
@@ -30,6 +30,7 @@ import {
   CheckSingle,
   CheckDouble,
   AlertIcon,
+  ReplyIcon,
   PlayIcon,
   PauseIcon,
   DocIcon,
@@ -232,9 +233,59 @@ function StatusTick({ status }: { status: MessageStatus }) {
   );
 }
 
+/** Emoji offered in the quick-reaction bar (WhatsApp's default set). */
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+/** One-line label for a quoted message: media get an icon + kind, else the text. */
+function quotedSnippet(q: Message): string {
+  const body = (q.body ?? "").trim();
+  if (body) return body;
+  const a = q.attachments?.[0];
+  if (a) {
+    switch (a.kind) {
+      case "image": return "📷 Photo";
+      case "video": return "🎥 Video";
+      case "voice": return "🎤 Voice message";
+      case "audio": return "🎵 Audio";
+      case "sticker": return "Sticker";
+      default: return "📄 " + (a.filename || "Document");
+    }
+  }
+  if (q.messageType === "location") return "📍 Location";
+  if (q.messageType === "contact") return "👤 Contact";
+  return "Message";
+}
+
+/** Per-message affordances threaded down from the Thread (react + reply). */
+interface MsgActions {
+  /** Display name to attribute the customer's reaction to. */
+  contactName: string;
+  /** Is this message's quick-reaction bar currently open? */
+  reactOpen: boolean;
+  /** Toggle this message's quick-reaction bar. */
+  onReactToggle: () => void;
+  /** Apply (or, with "", remove) the agent's reaction. */
+  onReact: (emoji: string) => void;
+  /** Start a quoted reply to this message. */
+  onReply: () => void;
+  /** Scroll to a quoted message when its preview is tapped. */
+  onJump: (messageId: string) => void;
+}
+
 /** A single customer/agent message bubble, with any media rendered above an
- *  optional caption. Text-only messages keep their original markup exactly. */
-function MessageBubble({ m, onImage }: { m: Message; onImage: (url: string) => void }) {
+ *  optional caption. Carries a quoted-reply preview, an emoji-reaction chip, and
+ *  a hover toolbar (reply + react). Text-only markup is otherwise unchanged. */
+function MessageBubble({
+  m,
+  quoted,
+  onImage,
+  actions,
+}: {
+  m: Message;
+  quoted?: Message;
+  onImage: (url: string) => void;
+  actions?: MsgActions;
+}) {
   const out = m.direction === "out";
   const atts = m.attachments ?? [];
   const hasMedia = atts.length > 0;
@@ -249,21 +300,94 @@ function MessageBubble({ m, onImage }: { m: Message; onImage: (url: string) => v
   const showText = hasCaption || !hasMedia;
   const bodyText = hasCaption ? m.body : hasMedia ? "" : m.body || fallback;
 
+  const reactions = m.reactions ?? [];
+  const mine = reactions.find((r) => r.by === "user")?.emoji;
+  const reactTitle = reactions
+    .map((r) => `${r.emoji} ${r.by === "user" ? "You" : actions?.contactName ?? "Customer"}`)
+    .join(",  ") + (mine ? " · tap to remove yours" : "");
+
   return (
-    <div className={"msg " + (out ? "out" : "in")}>
+    <div className={"msg " + (out ? "out" : "in")} data-mid={m.id}>
       {!out && m.authorName && <div className="sender">{m.authorName}</div>}
-      <div className={"bubble" + (hasMedia ? " has-media" : "") + (stickerOnly ? " bubble--plain" : "")}>
-        {hasMedia && atts.map((a) => <AttachmentView key={a.id} att={a} onImage={onImage} />)}
-        {showText && (
-          <span className="txt">
-            {bodyText}
-            <span className="stampspace" aria-hidden="true" />
+      <div className="bubblewrap">
+        <div className={"bubble" + (hasMedia ? " has-media" : "") + (stickerOnly ? " bubble--plain" : "")}>
+          {quoted && (
+            <button
+              type="button"
+              className="quoted"
+              onClick={() => actions?.onJump(quoted.id)}
+              title="View replied message"
+            >
+              <span className="quoted__accent" aria-hidden="true" />
+              <span className="quoted__body">
+                <span className="quoted__who">
+                  {quoted.direction === "out" ? "You" : quoted.authorName || actions?.contactName || "Customer"}
+                </span>
+                <span className="quoted__txt">{quotedSnippet(quoted)}</span>
+              </span>
+            </button>
+          )}
+          {hasMedia && atts.map((a) => <AttachmentView key={a.id} att={a} onImage={onImage} />)}
+          {showText && (
+            <span className="txt">
+              {bodyText}
+              <span className="stampspace" aria-hidden="true" />
+            </span>
+          )}
+          <span className={"stamp" + (overlay ? " stamp--over" : blockStamp ? " stamp--block" : "")}>
+            {clockTime(m.createdAt)}
+            {out && !m.internal && <StatusTick status={m.status} />}
           </span>
+        </div>
+
+        {actions && !actions.reactOpen && (
+          <div className="msg__act" role="group" aria-label="Message actions">
+            <button type="button" className="msg__actbtn" onClick={actions.onReply} title="Reply" aria-label="Reply">
+              <ReplyIcon />
+            </button>
+            <button type="button" className="msg__actbtn" onClick={actions.onReactToggle} title="React" aria-label="React">
+              <EmojiIcon />
+            </button>
+          </div>
         )}
-        <span className={"stamp" + (overlay ? " stamp--over" : blockStamp ? " stamp--block" : "")}>
-          {clockTime(m.createdAt)}
-          {out && !m.internal && <StatusTick status={m.status} />}
-        </span>
+        {actions?.reactOpen && (
+          <div className="react-pop" role="menu" aria-label="Pick a reaction">
+            {QUICK_REACTIONS.map((e) => (
+              <button
+                key={e}
+                type="button"
+                className={"react-pop__e" + (mine === e ? " sel" : "")}
+                onClick={() => actions.onReact(mine === e ? "" : e)}
+                aria-label={mine === e ? `Remove ${e}` : `React ${e}`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        )}
+        {reactions.length > 0 && (
+          <div
+            className={"reacts" + (mine ? " reacts--mine" : "")}
+            role={mine && actions ? "button" : undefined}
+            tabIndex={mine && actions ? 0 : undefined}
+            title={reactTitle}
+            onClick={mine && actions ? () => actions.onReact("") : undefined}
+            onKeyDown={
+              mine && actions
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      actions.onReact("");
+                    }
+                  }
+                : undefined
+            }
+          >
+            {reactions.map((r, i) => (
+              <span key={i} className="reacts__e">{r.emoji}</span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -481,8 +605,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const setStatus = useSetStatus();
   const snooze = useSnooze();
   const { mutate: markRead } = useMarkRead();
+  const { mutate: react } = useReact();
 
   const [text, setText] = useState("");
+  // The message being quoted in a reply (shown as a cue above the composer), and
+  // which message's quick-reaction bar is open. Both reset when the thread changes.
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [reactFor, setReactFor] = useState<string | null>(null);
   // Another agent typing on THIS conversation ("{who} is typing…"); null when idle.
   const [typingWho, setTypingWho] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
@@ -504,6 +633,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const waTypingRef = useRef(0); // last time we pinged WhatsApp's typing indicator (ms epoch)
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
   const modeThumbRef = useRef<HTMLSpanElement>(null);
   const { containerRef: modeRef, thumbRef: modeHoverRef, hoverProps: modeHover } = useHoverGlide<HTMLDivElement>(".modebtn", "x");
 
@@ -542,11 +672,32 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     return () => window.clearInterval(t);
   }, []);
 
-  // A newly-opened conversation should show a fresh countdown immediately.
+  // A newly-opened conversation should show a fresh countdown immediately and
+  // drop any pending reply-quote / open reaction bar from the previous thread.
   useEffect(() => {
     setNow(Date.now());
     setPicker(false);
+    setReplyTo(null);
+    setReactFor(null);
   }, [conversationId]);
+
+  // Dismiss an open quick-reaction bar on outside click or Esc.
+  useEffect(() => {
+    if (!reactFor) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest(".react-pop") && !t.closest(".msg__actbtn")) setReactFor(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setReactFor(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [reactFor]);
 
   // Slide the Reply|Note thumb under the active tab. Written to the DOM directly
   // (no state → no extra render) so the slide starts on the same frame as the click.
@@ -701,6 +852,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // `waWindow` is null on email (no restriction). On WhatsApp it says whether
   // you may still free-type; once closed, only an approved template gets through.
   const isWhatsApp = conv.channel === "whatsapp" || conv.channel === "whatsapp_group";
+  // Resolve a quoted reply's target message by id for in-bubble rendering.
+  const msgById = new Map(conv.messages.map((m) => [m.id, m]));
   const waWindow = conv.waWindow;
   const windowClosed = isWhatsApp && !!waWindow && !waWindow.open;
   const msLeft = waWindow?.expiresAt ? new Date(waWindow.expiresAt).getTime() - now : null;
@@ -748,10 +901,38 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     typingStopRef.current = window.setTimeout(stopTyping, 2500);
   };
 
+  // Start (or switch) a quoted reply to a message: force Reply mode and focus
+  // the composer. Notes can't quote a customer message out to WhatsApp.
+  const startReply = (m: Message) => {
+    setReplyTo(m);
+    setReactFor(null);
+    setInternal(false);
+    requestAnimationFrame(() => taRef.current?.focus());
+  };
+
+  // Apply or remove the agent's reaction to a message; the bar closes after.
+  const applyReaction = (messageId: string, emoji: string) => {
+    react({ conversationId: conv.id, messageId, emoji });
+    setReactFor(null);
+  };
+
+  // Scroll to a quoted message and flash it so the reply's target is obvious.
+  const jumpToMessage = (messageId: string) => {
+    const el = document.querySelector<HTMLElement>(`[data-mid="${messageId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.remove("msg--flash");
+    void el.offsetWidth; // restart the animation if it's still mid-flash
+    el.classList.add("msg--flash");
+    window.setTimeout(() => el.classList.remove("msg--flash"), 1200);
+  };
+
   const handleSend = () => {
     if (!canSend || composeLocked) return;
     const body = text.trim();
     const wasInternal = internal;
+    // A quote only rides on a real (non-note) reply.
+    const quotedMsgId = !internal ? replyTo?.id : undefined;
     unlock();
     const attachmentIds = readyAtts.map((s) => s.attachment!.id);
     send.mutate(
@@ -760,6 +941,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         body,
         internal,
         attachmentIds: attachmentIds.length ? attachmentIds : undefined,
+        quotedMsgId,
       },
       {
         onError: (err) => {
@@ -778,6 +960,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setText("");
     clearStaged();
     setInternal(false);
+    setReplyTo(null);
   };
 
   const uploadStaged = async (item: Staged) => {
@@ -1183,7 +1366,24 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   </div>
                 </div>
               ) : (
-                <MessageBubble key={m.id} m={m} onImage={setLightbox} />
+                <MessageBubble
+                  key={m.id}
+                  m={m}
+                  quoted={m.quotedMsgId ? msgById.get(m.quotedMsgId) : undefined}
+                  onImage={setLightbox}
+                  actions={
+                    isWhatsApp
+                      ? {
+                          contactName: conv.contact.displayName,
+                          reactOpen: reactFor === m.id,
+                          onReactToggle: () => setReactFor((cur) => (cur === m.id ? null : m.id)),
+                          onReact: (emoji) => applyReaction(m.id, emoji),
+                          onReply: () => startReply(m),
+                          onJump: jumpToMessage,
+                        }
+                      : undefined
+                  }
+                />
               ),
             )}
           </section>
@@ -1255,6 +1455,27 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             </div>
             <span className="compctx">{ctxNode}</span>
           </div>
+          {replyTo && !internal && (
+            <div className="reply-cue">
+              <span className="reply-cue__accent" aria-hidden="true" />
+              <div className="reply-cue__body">
+                <span className="reply-cue__who">
+                  <ReplyIcon />
+                  Replying to {replyTo.direction === "out" ? "yourself" : replyTo.authorName || conv.contact.displayName}
+                </span>
+                <span className="reply-cue__txt">{quotedSnippet(replyTo)}</span>
+              </div>
+              <button
+                type="button"
+                className="reply-cue__x"
+                onClick={() => setReplyTo(null)}
+                title="Cancel reply"
+                aria-label="Cancel reply"
+              >
+                <XIcon />
+              </button>
+            </div>
+          )}
           {staged.length > 0 && (
             <div className="comp-atts">
               {staged.map((s) => (
@@ -1310,6 +1531,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <EmojiIcon />
               </button>
               <textarea
+                ref={taRef}
                 value={text}
                 rows={1}
                 onChange={(e) => {

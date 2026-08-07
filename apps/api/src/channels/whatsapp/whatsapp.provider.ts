@@ -65,6 +65,27 @@ export class WhatsAppCloudProvider extends ChannelProvider {
     await this.readReceipt(params.conversation.inboxId, params.channelMsgId, true);
   }
 
+  /** React to a message with an emoji (empty string removes our reaction). */
+  async sendReaction(params: {
+    conversation: Conversation;
+    channelMsgId: string;
+    emoji: string;
+  }): Promise<void> {
+    const creds = await this.credsFor(params.conversation.inboxId);
+    if (!creds) {
+      this.logger.log(`[mock] WhatsApp reaction "${params.emoji || "(removed)"}" on ${params.channelMsgId}`);
+      return;
+    }
+    const to = params.conversation.contact.phone;
+    if (!to) return;
+    await this.postMessage(creds, {
+      messaging_product: "whatsapp",
+      to,
+      type: "reaction",
+      reaction: { message_id: params.channelMsgId, emoji: params.emoji },
+    });
+  }
+
   /**
    * Mark an inbound message read, optionally with a typing indicator. Meta folds
    * both into one call: `status:read` (+ `typing_indicator` for the "typing…"
@@ -136,6 +157,8 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       messaging_product: "whatsapp",
       to: params.to,
       type: "text",
+      // Quote the message being replied to, so it renders as a WhatsApp reply.
+      ...(params.replyToChannelMsgId ? { context: { message_id: params.replyToChannelMsgId } } : {}),
       text: { body: params.body },
     });
   }

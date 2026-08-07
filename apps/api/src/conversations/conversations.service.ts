@@ -63,7 +63,7 @@ export class ConversationsService {
 
     const message = await this.store.addMessage(
       id,
-      { body, internal: input.internal, attachmentIds: input.attachmentIds },
+      { body, internal: input.internal, attachmentIds: input.attachmentIds, quotedMsgId: input.quotedMsgId },
       author,
     );
     if (!message) throw new NotFoundException(`Conversation ${id} not found`);
@@ -127,6 +127,21 @@ export class ConversationsService {
       if (lastInbound?.channelMsgId) void this.dispatcher.markRead(conv, lastInbound.channelMsgId);
     }
     return updated ?? conv;
+  }
+
+  /** An agent reacts to a message with an emoji (empty removes theirs). Stores
+   *  it, broadcasts the update, and delivers it to the customer on WhatsApp. */
+  async react(conversationId: string, messageId: string, emoji: string): Promise<Message> {
+    const updated = await this.store.reactToMessage(messageId, emoji, "user");
+    if (!updated) throw new NotFoundException("Message not found");
+    this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+    if (updated.message.channelMsgId) {
+      const conv = await this.store.getConversation(conversationId);
+      if (conv && (conv.channel === "whatsapp" || conv.channel === "whatsapp_group")) {
+        void this.dispatcher.sendReaction(conv, updated.message.channelMsgId, emoji);
+      }
+    }
+    return updated.message;
   }
 
   /** Agent is typing: show the customer a "typing…" indicator on WhatsApp.

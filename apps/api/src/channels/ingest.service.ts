@@ -12,6 +12,8 @@ export interface WhatsAppInbound {
   channelMsgId?: string;
   messageType?: MessageType;
   attachments?: AttachmentInput[];
+  /** Id of the message this one replies to (already resolved to our id). */
+  quotedMsgId?: string;
 }
 
 export interface EmailInbound {
@@ -82,6 +84,7 @@ export class IngestService {
       channelMsgId: input.channelMsgId,
       messageType: input.messageType,
       attachments: input.attachments,
+      quotedMsgId: input.quotedMsgId,
     });
     if (message) this.realtime.emitMessageCreated(conv.id, message);
 
@@ -97,6 +100,7 @@ export class IngestService {
     channelMsgId?: string;
     messageType?: MessageType;
     attachments?: AttachmentInput[];
+    quotedMsgId?: string;
   }): Promise<{ conversationId: string; created: boolean } | undefined> {
     const conversationId = await this.store.findConversationByChannelRef(input.groupId);
     if (!conversationId) {
@@ -121,6 +125,7 @@ export class IngestService {
       channelMsgId: input.channelMsgId,
       messageType: input.messageType,
       attachments: input.attachments,
+      quotedMsgId: input.quotedMsgId,
     });
     if (message) this.realtime.emitMessageCreated(conversationId, message);
     return { conversationId, created: false };

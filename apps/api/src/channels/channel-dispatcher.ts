@@ -60,7 +60,20 @@ export class ChannelDispatcher {
     }
 
     const media = template ? undefined : await this.resolveMedia(message);
-    const result = await provider.sendText({ to, body: message.body, conversation, context, media, template });
+    // If this reply quotes an earlier message, pass its provider id so the
+    // channel threads it as a reply.
+    const replyToChannelMsgId = message.quotedMsgId
+      ? conversation.messages.find((m) => m.id === message.quotedMsgId)?.channelMsgId ?? undefined
+      : undefined;
+    const result = await provider.sendText({
+      to,
+      body: message.body,
+      conversation,
+      context,
+      media,
+      template,
+      replyToChannelMsgId,
+    });
     if (result.channelMsgId) {
       await this.store.setMessageChannelId(message.id, result.channelMsgId);
     }
@@ -97,6 +110,21 @@ export class ChannelDispatcher {
       await provider.sendTyping({ conversation, channelMsgId });
     } catch (err) {
       this.logger.warn(`sendTyping failed on ${conversation.channel}: ${String(err)}`);
+    }
+  }
+
+  /** Deliver an emoji reaction to a message on a channel that supports it. */
+  async sendReaction(
+    conversation: ConversationWithMessages,
+    channelMsgId: string,
+    emoji: string,
+  ): Promise<void> {
+    const provider = this.providers.find((p) => p.supports(conversation.channel) && p.sendReaction);
+    if (!provider?.sendReaction) return;
+    try {
+      await provider.sendReaction({ conversation, channelMsgId, emoji });
+    } catch (err) {
+      this.logger.warn(`sendReaction failed on ${conversation.channel}: ${String(err)}`);
     }
   }
 

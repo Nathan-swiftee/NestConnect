@@ -180,6 +180,13 @@ export const attachmentSchema = z.object({
 });
 export type Attachment = z.infer<typeof attachmentSchema>;
 
+/** An emoji reaction on a message, by the customer ("contact") or an agent ("user"). */
+export const reactionSchema = z.object({
+  emoji: z.string(),
+  by: z.enum(["contact", "user"]),
+});
+export type Reaction = z.infer<typeof reactionSchema>;
+
 export const messageSchema = z.object({
   id: z.string(),
   conversationId: z.string(),
@@ -197,6 +204,10 @@ export const messageSchema = z.object({
   messageType: messageTypeSchema.default("text"),
   /** Media files attached to the message (images, files, voice notes, …). */
   attachments: z.array(attachmentSchema).default([]),
+  /** Emoji reactions on this message (at most one per participant). */
+  reactions: z.array(reactionSchema).default([]),
+  /** Id of the message this one quotes/replies to (resolved within the thread). */
+  quotedMsgId: z.string().nullable().optional(),
   createdAt: z.string(), // ISO-8601
 });
 export type Message = z.infer<typeof messageSchema>;
@@ -339,6 +350,8 @@ export const sendMessageInputSchema = z
     template: z
       .object({ id: z.string(), params: z.array(z.string()).default([]) })
       .optional(),
+    /** Quote/reply to an earlier message in the thread (by its id). */
+    quotedMsgId: z.string().optional(),
   })
   // Must carry something — text, an attachment, or a template.
   .refine(
@@ -346,6 +359,12 @@ export const sendMessageInputSchema = z
     { message: "Message needs text, an attachment, or a template", path: ["body"] },
   );
 export type SendMessageInput = z.infer<typeof sendMessageInputSchema>;
+
+/** React to a message with an emoji (empty string removes the agent's reaction). */
+export const reactionInputSchema = z.object({
+  emoji: z.string().max(16),
+});
+export type ReactionInput = z.infer<typeof reactionInputSchema>;
 
 export const assignConversationInputSchema = z.object({
   assigneeUserId: z.string().nullable().optional(),

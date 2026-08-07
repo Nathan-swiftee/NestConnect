@@ -263,11 +263,26 @@ export function useSendMessage() {
       attachmentIds?: string[];
       /** Send an approved WhatsApp template instead of free text (window closed). */
       template?: { id: string; params: string[] };
-    }) => api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, v.template),
+      /** Quote an earlier message so it threads as a WhatsApp reply. */
+      quotedMsgId?: string;
+    }) => api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, v.template, v.quotedMsgId),
     onSuccess: (_msg, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+/** React to a message with an emoji (empty string removes the agent's reaction).
+ *  The update also arrives over the socket, but we invalidate for instant feedback. */
+export function useReact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { conversationId: string; messageId: string; emoji: string }) =>
+      api.react(v.conversationId, v.messageId, v.emoji),
+    onSuccess: (_msg, v) => {
+      qc.invalidateQueries({ queryKey: ["conversation", v.conversationId] });
     },
   });
 }
