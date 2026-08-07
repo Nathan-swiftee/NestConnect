@@ -210,6 +210,17 @@ async function main() {
 
     // Rebuild the demo history each run so the seeded timestamps track real
     // "now" (2 days ago / yesterday / today) rather than the first-seed date.
+    // Attachments FK-block message deletes (onDelete: Restrict) once real media
+    // has been sent into a seeded conversation, so clear those rows first.
+    const priorMsgs = await prisma.message.findMany({
+      where: { conversationId: s.conv.id },
+      select: { id: true },
+    });
+    if (priorMsgs.length) {
+      await prisma.attachment.deleteMany({
+        where: { messageId: { in: priorMsgs.map((m) => m.id) } },
+      });
+    }
     await prisma.message.deleteMany({ where: { conversationId: s.conv.id } });
     await prisma.message.createMany({
       data: s.messages.map((m, idx) => ({
