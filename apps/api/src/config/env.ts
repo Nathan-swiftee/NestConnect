@@ -53,10 +53,18 @@ export const env = {
   },
   media: {
     // Where downloaded media is stored on the local-disk driver. Ephemeral on
-    // Railway; production durability comes from an object store (R2/S3) later.
+    // Railway; production durability comes from Cloudflare R2 (below).
     dir: process.env.MEDIA_DIR ?? join(tmpdir(), "nest-media"),
     // Hard cap on a single media file we'll download/store (bytes). Default 100MB.
     maxBytes: Number(process.env.MEDIA_MAX_BYTES ?? 100 * 1024 * 1024),
+  },
+  r2: {
+    // Cloudflare R2 (S3-compatible). Set all four to store media in R2 instead
+    // of local disk. Endpoint is https://<accountId>.r2.cloudflarestorage.com.
+    accountId: process.env.R2_ACCOUNT_ID ?? "",
+    accessKeyId: process.env.R2_ACCESS_KEY_ID ?? "",
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? "",
+    bucket: process.env.R2_BUCKET ?? "",
   },
   get usingDatabase() {
     return this.databaseUrl.length > 0;

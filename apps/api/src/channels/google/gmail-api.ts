@@ -126,6 +126,18 @@ export const gmail = {
     return gmailFetch<GmailMessage>(accessToken, `/messages/${encodeURIComponent(id)}?format=full`);
   },
 
+  /** Fetch an attachment's bytes (base64url) by its part id. */
+  getAttachment(
+    accessToken: string,
+    messageId: string,
+    attachmentId: string,
+  ): Promise<{ data?: string; size?: number }> {
+    return gmailFetch(
+      accessToken,
+      `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`,
+    );
+  },
+
   /** Ask Gmail to push change notifications for INBOX to a Pub/Sub topic. */
   watch(accessToken: string, topicName: string): Promise<GmailWatchResult> {
     return gmailFetch<GmailWatchResult>(accessToken, "/watch", {
@@ -163,6 +175,32 @@ export function parseAddress(raw: string): { email: string; name?: string } {
 export function threadRefs(msg: GmailMessage): string[] {
   const raw = `${headerValue(msg, "References") ?? ""} ${headerValue(msg, "In-Reply-To") ?? ""}`;
   return [...new Set(raw.split(/\s+/).map((s) => s.trim()).filter(Boolean))];
+}
+
+export interface GmailAttachmentPart {
+  attachmentId: string;
+  filename: string;
+  mime: string;
+  size: number;
+}
+
+/** Real attachment parts on a message (those with a filename + attachment id). */
+export function collectAttachmentParts(msg: GmailMessage): GmailAttachmentPart[] {
+  const out: GmailAttachmentPart[] = [];
+  const walk = (part?: GmailPart): void => {
+    if (!part) return;
+    if (part.filename && part.body?.attachmentId) {
+      out.push({
+        attachmentId: part.body.attachmentId,
+        filename: part.filename,
+        mime: part.mimeType ?? "application/octet-stream",
+        size: part.body.size ?? 0,
+      });
+    }
+    for (const child of part.parts ?? []) walk(child);
+  };
+  walk(msg.payload);
+  return out;
 }
 
 function decodeB64Url(data: string): string {

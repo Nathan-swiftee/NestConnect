@@ -53,7 +53,7 @@ export class MediaService {
     const mime = meta.mime || "application/octet-stream";
     const kind = meta.kind ?? kindFromMime(mime);
     const key = this.storage.newKey(extFromMime(mime, meta.filename));
-    await this.storage.put(key, bytes);
+    await this.storage.put(key, bytes, mime);
     return {
       storageKey: key,
       kind,

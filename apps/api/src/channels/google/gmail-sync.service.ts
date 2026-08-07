@@ -6,7 +6,8 @@ import {
 } from "@nestjs/common";
 import type { Inbox } from "@ding/schemas";
 import { env } from "../../config/env";
-import { Store } from "../../data/store";
+import { Store, type AttachmentInput } from "../../data/store";
+import { MediaService } from "../../storage/media.service";
 import { IngestService } from "../ingest.service";
 import {
   GMAIL_CONFIG,
@@ -14,6 +15,7 @@ import {
   GoogleOAuthService,
 } from "./google-oauth.service";
 import {
+  collectAttachmentParts,
   extractPlainText,
   gmail,
   GmailApiError,
@@ -41,6 +43,7 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     private readonly store: Store,
     private readonly ingest: IngestService,
     private readonly google: GoogleOAuthService,
+    private readonly media: MediaService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -255,6 +258,8 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     const selfAddress = (config[GMAIL_CONFIG.email] || inbox.handle).toLowerCase();
     if (!from || from === selfAddress) return false;
 
+    const attachments = await this.fetchAttachments(token, id, msg);
+
     await this.ingest.ingestEmail({
       toAddress: selfAddress,
       from,
@@ -263,8 +268,29 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
       text: extractPlainText(msg),
       messageId,
       references: threadRefs(msg),
+      attachments: attachments.length ? attachments : undefined,
     });
     return true;
+  }
+
+  /** Download + store any real attachment parts on a Gmail message. */
+  private async fetchAttachments(
+    token: string,
+    messageId: string,
+    msg: Parameters<typeof collectAttachmentParts>[0],
+  ): Promise<AttachmentInput[]> {
+    const out: AttachmentInput[] = [];
+    for (const part of collectAttachmentParts(msg)) {
+      try {
+        const fetched = await gmail.getAttachment(token, messageId, part.attachmentId);
+        if (!fetched.data) continue;
+        const bytes = Buffer.from(fetched.data, "base64url");
+        out.push(await this.media.store(bytes, { filename: part.filename, mime: part.mime }));
+      } catch (err) {
+        this.logger.warn(`Gmail attachment ${part.filename} failed: ${message(err)}`);
+      }
+    }
+    return out;
   }
 }
 
