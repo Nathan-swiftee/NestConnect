@@ -104,6 +104,16 @@ export interface MessageStatusChange {
   message: Message;
 }
 
+/** A recorded inbound-webhook problem (unmapped account, bad signature, …). */
+export interface WebhookDiagnostic {
+  id: string;
+  channel: string;
+  kind: string;
+  reference?: string;
+  detail?: string;
+  createdAt: string;
+}
+
 /**
  * The data-access contract for the platform. Two implementations exist:
  * `MemoryStore` (zero-infra fixtures) and `PrismaStore` (Postgres). Services
@@ -303,6 +313,15 @@ export abstract class Store {
 
   abstract getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined>;
   abstract getInboxByEmailAddress(address: string): Promise<Inbox | undefined>;
+
+  /* ---- webhook diagnostics (unmapped/unverified inbound) ---- */
+  abstract recordWebhookDiagnostic(input: {
+    channel: string;
+    kind: string;
+    reference?: string;
+    detail?: string;
+  }): Promise<void>;
+  abstract listWebhookDiagnostics(limit?: number): Promise<WebhookDiagnostic[]>;
   abstract getMembers(teamId: string): Promise<User[]>;
 
   /** Threading: find the conversation owning any message with one of these provider ids. */

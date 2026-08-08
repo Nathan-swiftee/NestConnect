@@ -14,6 +14,8 @@ import type { Request } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../../config/env";
 import { Public } from "../../auth/public.decorator";
+import { Store } from "../../data/store";
+import { META_APP_SECRET_KEY } from "../meta/meta-oauth.service";
 import { WhatsAppService, type WhatsAppWebhookBody } from "./whatsapp.service";
 
 function verifySignature(raw: Buffer | undefined, appSecret: string, header?: string): boolean {
@@ -24,9 +26,24 @@ function verifySignature(raw: Buffer | undefined, appSecret: string, header?: st
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** First phone_number_id in the payload — used only to pick which app secret to
+ *  verify against (never trusted on its own; a wrong id just fails the HMAC). */
+function firstPhoneNumberId(body: WhatsAppWebhookBody): string | undefined {
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      const id = change.value?.metadata?.phone_number_id;
+      if (id) return id;
+    }
+  }
+  return undefined;
+}
+
 @Controller("channels/whatsapp")
 export class WhatsAppController {
-  constructor(private readonly whatsapp: WhatsAppService) {}
+  constructor(
+    private readonly whatsapp: WhatsAppService,
+    private readonly store: Store,
+  ) {}
 
   /** Meta webhook verification handshake (GET). */
   @Public()
@@ -47,18 +64,49 @@ export class WhatsAppController {
   @Post("webhook")
   @HttpCode(200)
   async receive(@Req() req: RawBodyRequest<Request>, @Body() body: WhatsAppWebhookBody) {
-    // Verify the X-Hub-Signature-256 HMAC whenever an app secret is configured,
-    // and require it in production (fail closed) — an unsigned webhook must never
-    // be trusted with live traffic. Dev/mock stays open so the simulate tools work.
-    if (env.isProd || env.whatsapp.appSecret) {
-      if (!env.whatsapp.appSecret) {
-        throw new UnauthorizedException("WhatsApp signature verification required in production (set WHATSAPP_APP_SECRET)");
-      }
+    const phoneNumberId = firstPhoneNumberId(body);
+    // Verify against the app secret that owns this number: the connected inbox's
+    // per-org Meta secret when configured, otherwise the global env secret. This
+    // stops a single global secret from standing in for a per-integration one.
+    const secret = await this.resolveAppSecret(phoneNumberId);
+
+    if (secret) {
       const sig = req.header("x-hub-signature-256") ?? undefined;
-      if (!verifySignature(req.rawBody, env.whatsapp.appSecret, sig)) {
+      if (!verifySignature(req.rawBody, secret, sig)) {
+        await this.store.recordWebhookDiagnostic({
+          channel: "whatsapp",
+          kind: "bad_signature",
+          reference: phoneNumberId,
+          detail: "X-Hub-Signature-256 verification failed",
+        });
         throw new UnauthorizedException("Invalid WhatsApp signature");
       }
+    } else if (env.isProd) {
+      // No secret available to verify with — never trust unsigned traffic in prod.
+      await this.store.recordWebhookDiagnostic({
+        channel: "whatsapp",
+        kind: "bad_signature",
+        reference: phoneNumberId,
+        detail: "No app secret configured to verify the webhook signature",
+      });
+      throw new UnauthorizedException(
+        "WhatsApp signature verification required in production (configure the Meta app secret)",
+      );
     }
+    // Dev with no secret configured stays open so the simulate tools work.
     return this.whatsapp.handleWebhook(body);
+  }
+
+  /** The Meta app secret to verify with: the number's org secret, else the global
+   *  env secret, else none. */
+  private async resolveAppSecret(phoneNumberId?: string): Promise<string | undefined> {
+    if (phoneNumberId) {
+      const inbox = await this.store.getInboxByWhatsAppPhoneId(phoneNumberId);
+      if (inbox) {
+        const orgSecret = (await this.store.getAppSetting(inbox.orgId, META_APP_SECRET_KEY))?.trim();
+        if (orgSecret) return orgSecret;
+      }
+    }
+    return env.whatsapp.appSecret || undefined;
   }
 }

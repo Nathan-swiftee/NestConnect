@@ -53,12 +53,8 @@ export class OutboundDeliveryService {
       return { state: "skipped", reason: `status ${ref.status}` };
     }
 
-    // Claim the attempt: queued → sending (+ attemptCount/lastAttemptAt), broadcast.
-    const sending = await this.store.markMessageSending(job.messageId);
-    if (!sending) return { state: "skipped", reason: "not in a sendable state" };
-    this.realtime.emitMessageUpdated(sending.conversationId, sending.message);
-
-    // Load the full thread so the provider has threading/media/quote context.
+    // Load the full thread first — it gives the provider threading/media/quote
+    // context, and its orgId so every emit routes to the right tenant room.
     const conversation = await this.store.getConversation(ref.conversationId);
     const message = conversation?.messages.find((m) => m.id === job.messageId);
     if (!conversation || !message) {
@@ -67,6 +63,12 @@ export class OutboundDeliveryService {
       if (change) this.realtime.emitMessageUpdated(change.conversationId, change.message);
       return { state: "failed-permanent", reason };
     }
+    const orgId = conversation.orgId;
+
+    // Claim the attempt: queued → sending (+ attemptCount/lastAttemptAt), broadcast.
+    const sending = await this.store.markMessageSending(job.messageId);
+    if (!sending) return { state: "skipped", reason: "not in a sendable state" };
+    this.realtime.emitMessageUpdated(sending.conversationId, sending.message, orgId);
 
     const template: OutboundTemplate | undefined = ref.deliveryMeta?.template;
     const cc = ref.deliveryMeta?.cc;
@@ -76,7 +78,7 @@ export class OutboundDeliveryService {
 
     if (outcome.ok) {
       const change = await this.store.markMessageSent(job.messageId, outcome.channelMsgId);
-      if (change) this.realtime.emitMessageUpdated(change.conversationId, change.message);
+      if (change) this.realtime.emitMessageUpdated(change.conversationId, change.message, orgId);
       return { state: "sent", channelMsgId: outcome.channelMsgId, simulated: outcome.simulated };
     }
 
@@ -98,7 +100,7 @@ export class OutboundDeliveryService {
       code: outcome.code,
       reason: outcome.reason,
     });
-    if (change) this.realtime.emitMessageUpdated(change.conversationId, change.message);
+    if (change) this.realtime.emitMessageUpdated(change.conversationId, change.message, orgId);
     return { state: "failed-permanent", reason: outcome.reason };
   }
 

@@ -21,6 +21,7 @@ import { GmailProvider } from "./google/gmail.provider";
 import { GmailSyncService } from "./google/gmail-sync.service";
 import { MetaOAuthService } from "./meta/meta-oauth.service";
 import { MetaController } from "./meta/meta.controller";
+import { DiagnosticsController } from "./diagnostics.controller";
 import { IntegrationsController } from "../settings/integrations.controller";
 
 @Module({
@@ -31,6 +32,7 @@ import { IntegrationsController } from "../settings/integrations.controller";
     GroupsController,
     GoogleController,
     MetaController,
+    DiagnosticsController,
     IntegrationsController,
   ],
   providers: [

@@ -54,6 +54,7 @@ import {
   type SidebarViews,
   type StoredAttachmentRef,
   type ViewItem,
+  type WebhookDiagnostic,
 } from "./store";
 
 const convInclude = {
@@ -923,11 +924,21 @@ export class PrismaStore extends Store {
       where: { orgId: ORG_ID, type: { in: ["whatsapp", "whatsapp_group"] } },
       include: { teams: true },
     });
+    // Deterministic: the inbox whose configured number matches this one.
     const byConfig = rows.find(
       (i) => (i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId === phoneNumberId,
     );
-    const target = byConfig ?? rows.find((i) => i.type === "whatsapp") ?? rows[0];
-    return target ? mapInbox(target) : undefined;
+    if (byConfig) return mapInbox(byConfig);
+    // Single-number env fallback: the globally-configured number maps to the one
+    // WhatsApp inbox that has no per-inbox number of its own. Still deterministic
+    // (keyed on the incoming number equalling env) — never an arbitrary inbox.
+    if (env.whatsapp.phoneNumberId && env.whatsapp.phoneNumberId === phoneNumberId) {
+      const envInbox = rows.find(
+        (i) => !(i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId,
+      );
+      if (envInbox) return mapInbox(envInbox);
+    }
+    return undefined; // no deterministic match — caller records a diagnostic
   }
 
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
@@ -936,8 +947,41 @@ export class PrismaStore extends Store {
       include: { teams: true },
     });
     const a = address.trim().toLowerCase();
-    const match = rows.find((i) => i.handle.toLowerCase() === a) ?? rows[0];
+    // Deterministic match on the inbox address only — never fall back to an
+    // arbitrary inbox for mail addressed to an account we don't manage.
+    const match = rows.find((i) => i.handle.toLowerCase() === a);
     return match ? mapInbox(match) : undefined;
+  }
+
+  async recordWebhookDiagnostic(input: {
+    channel: string;
+    kind: string;
+    reference?: string;
+    detail?: string;
+  }): Promise<void> {
+    await this.prisma.webhookDiagnostic.create({
+      data: {
+        channel: input.channel,
+        kind: input.kind,
+        reference: input.reference ?? null,
+        detail: input.detail ?? null,
+      },
+    });
+  }
+
+  async listWebhookDiagnostics(limit = 100): Promise<WebhookDiagnostic[]> {
+    const rows = await this.prisma.webhookDiagnostic.findMany({
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Math.max(limit, 1), 500),
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      channel: r.channel,
+      kind: r.kind,
+      reference: r.reference ?? undefined,
+      detail: r.detail ?? undefined,
+      createdAt: r.createdAt.toISOString(),
+    }));
   }
 
   async findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined> {

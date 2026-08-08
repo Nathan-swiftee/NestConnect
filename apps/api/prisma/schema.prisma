@@ -410,3 +410,18 @@ model AppSetting {
 
   @@id([orgId, key])
 }
+
+// Diagnostics for inbound webhooks that could not be handled deterministically —
+// e.g. an event for a phone number/address we don't manage, or a bad signature.
+// Deliberately org-less: these are recorded before (or because) tenant
+// resolution failed, so they must not be pinned to an arbitrary org.
+model WebhookDiagnostic {
+  id        String   @id @default(cuid())
+  channel   String // whatsapp | whatsapp_group | email | gmail
+  kind      String // unmapped_inbox | bad_signature | unmapped_group
+  reference String? // phone number id / email address / group id
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

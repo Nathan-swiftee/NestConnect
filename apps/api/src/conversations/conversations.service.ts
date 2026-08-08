@@ -119,7 +119,7 @@ export class ConversationsService {
     if (!message) throw new NotFoundException(`Conversation ${id} not found`);
 
     // Broadcast immediately so every open client updates the thread + previews.
-    this.realtime.emitMessageCreated(id, message);
+    this.realtime.emitMessageCreated(id, message, conv.orgId);
 
     // Real (non-internal) replies are enqueued for durable delivery. The message
     // is already persisted (status "queued"); the queue drives it to sent/failed

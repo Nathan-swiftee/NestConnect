@@ -37,6 +37,7 @@ import {
   type SidebarViews,
   type StoredAttachmentRef,
   type ViewItem,
+  type WebhookDiagnostic,
 } from "./store";
 
 const AVATAR_PALETTE = [
@@ -67,6 +68,8 @@ export class MemoryStore extends Store {
   private mediaRefs = new Map<string, StoredAttachmentRef>();
   /** Uploaded-but-not-yet-sent attachments (composer staging), keyed by id. */
   private pendingUploads = new Map<string, Attachment>();
+  /** In-memory webhook diagnostics log (newest first, bounded). */
+  private webhookDiagnostics: WebhookDiagnostic[] = [];
   /** Backend-only outbound delivery bookkeeping, keyed by message id. */
   private outboundMeta = new Map<
     string,
@@ -782,17 +785,43 @@ export class MemoryStore extends Store {
 
   /* ---- ingestion ---- */
 
-  async getInboxByWhatsAppPhoneId(_phoneNumberId: string): Promise<Inbox | undefined> {
-    void _phoneNumberId;
-    return this.inboxes.find((i) => i.type === "whatsapp");
+  async getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined> {
+    const wa = this.inboxes.filter((i) => i.type === "whatsapp" || i.type === "whatsapp_group");
+    const byConfig = wa.find((i) => this.inboxConfig.get(i.id)?.phoneNumberId === phoneNumberId);
+    if (byConfig) return byConfig;
+    // Dev convenience: a single WhatsApp inbox with no configured number handles
+    // simulated inbound (the simulate tools don't send a real phone id). If more
+    // than one is unconfigured it's ambiguous — don't guess.
+    const unconfigured = wa.filter((i) => !this.inboxConfig.get(i.id)?.phoneNumberId);
+    return unconfigured.length === 1 ? unconfigured[0] : undefined;
   }
 
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const a = address.trim().toLowerCase();
-    return (
-      this.inboxes.find((i) => i.type === "email" && i.handle.toLowerCase() === a) ??
-      this.inboxes.find((i) => i.type === "email")
-    );
+    // Deterministic match on the inbox address only — no arbitrary fallback.
+    return this.inboxes.find((i) => i.type === "email" && i.handle.toLowerCase() === a);
+  }
+
+  async recordWebhookDiagnostic(input: {
+    channel: string;
+    kind: string;
+    reference?: string;
+    detail?: string;
+  }): Promise<void> {
+    this.webhookDiagnostics.unshift({
+      id: `whd_${++this.idSeq}`,
+      channel: input.channel,
+      kind: input.kind,
+      reference: input.reference,
+      detail: input.detail,
+      createdAt: new Date().toISOString(),
+    });
+    // Keep the in-memory log bounded.
+    if (this.webhookDiagnostics.length > 200) this.webhookDiagnostics.length = 200;
+  }
+
+  async listWebhookDiagnostics(limit = 100): Promise<WebhookDiagnostic[]> {
+    return this.webhookDiagnostics.slice(0, Math.min(Math.max(limit, 1), 500));
   }
 
   async findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined> {
