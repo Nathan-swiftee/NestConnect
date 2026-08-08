@@ -75,4 +75,10 @@ export class InlineOutboundQueue extends OutboundQueue implements OnApplicationB
     }
     return stuck.length;
   }
+
+  async getStats(): Promise<Record<string, unknown>> {
+    // No external queue to introspect; in flight count comes from the DB sweep.
+    const inflight = (await this.store.listStuckOutbound(0)).length;
+    return { mode: "inline", inflight };
+  }
 }

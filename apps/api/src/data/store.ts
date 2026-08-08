@@ -126,6 +126,9 @@ export abstract class Store {
   /** The current demo user until real auth resolves identity per-request. */
   abstract get demoUserId(): string;
 
+  /** Cheap liveness probe of the persistence layer (SELECT 1 / no-op). */
+  abstract healthCheck(): Promise<boolean>;
+
   abstract getUser(id: string): Promise<User | undefined>;
   abstract findUserByEmail(email: string): Promise<User | undefined>;
   abstract getPasswordHash(userId: string): Promise<string | undefined>;

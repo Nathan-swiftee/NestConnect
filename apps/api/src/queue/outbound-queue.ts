@@ -20,4 +20,7 @@ export abstract class OutboundQueue {
    * re-driven. `olderThanMs` skips very recent messages a live worker may hold.
    */
   abstract recoverStuck(olderThanMs?: number): Promise<number>;
+
+  /** Queue diagnostics for health/readiness (job counts, mode). */
+  abstract getStats(): Promise<Record<string, unknown>>;
 }

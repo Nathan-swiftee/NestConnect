@@ -9,6 +9,7 @@ import {
   Res,
   UnauthorizedException,
 } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { env } from "../../config/env";
 import { Public } from "../../auth/public.decorator";
@@ -153,6 +154,7 @@ export class GoogleController {
    * background so Pub/Sub doesn't retry. Optionally guarded by a shared ?token=.
    */
   @Public()
+  @SkipThrottle() // Pub/Sub push can burst; guarded by the shared token
   @Post("push")
   @HttpCode(200)
   async push(

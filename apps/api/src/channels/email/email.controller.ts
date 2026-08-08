@@ -1,8 +1,10 @@
 import { Body, Controller, HttpCode, Post, Query, UnauthorizedException } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import { env } from "../../config/env";
 import { Public } from "../../auth/public.decorator";
 import { EmailService, type EmailWebhookBody } from "./email.service";
 
+@SkipThrottle() // inbound email webhook — bursts; guarded by the shared token
 @Controller("channels/email")
 export class EmailController {
   constructor(private readonly email: EmailService) {}

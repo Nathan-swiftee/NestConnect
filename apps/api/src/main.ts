@@ -2,21 +2,49 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { Logger } from "@nestjs/common";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { env, assertProdSecrets } from "./config/env";
+import { StructuredLogger } from "./common/structured-logger";
+
+// Last-resort process guards: log and keep serving on an unhandled rejection;
+// on a truly uncaught exception the process is in an unknown state — log and let
+// the platform restart it (graceful shutdown hooks still run).
+function installProcessGuards(logger: Logger): void {
+  process.on("unhandledRejection", (reason) => {
+    logger.error(`Unhandled promise rejection: ${reason instanceof Error ? reason.stack : String(reason)}`);
+  });
+  process.on("uncaughtException", (err) => {
+    logger.error(`Uncaught exception: ${err.stack ?? err.message}`);
+    process.exit(1);
+  });
+}
 
 async function bootstrap() {
   // Refuse to boot production on insecure default secrets (fail closed).
   assertProdSecrets(new Logger("Bootstrap"));
 
   // rawBody:true keeps the raw request buffer so we can verify the WhatsApp
-  // X-Hub-Signature-256 HMAC on inbound webhooks.
-  const app = await NestFactory.create(AppModule, { cors: false, rawBody: true });
+  // X-Hub-Signature-256 HMAC on inbound webhooks. Structured JSON logs in prod.
+  const app = await NestFactory.create(AppModule, {
+    cors: false,
+    rawBody: true,
+    logger: new StructuredLogger(),
+  });
+  installProcessGuards(new Logger("Process"));
+
+  // Security headers. CSP is left to the app (it serves the SPA and renders
+  // email in a sandboxed iframe with its own strict CSP), so helmet's default
+  // CSP is disabled to avoid breaking those; the rest of the headers stay on.
+  app.use(helmet({ contentSecurityPolicy: false }));
+  // Trust the platform proxy so req.ip is the real client (rate limiting keys on
+  // it). Set to the number of proxy hops in front of the app (Railway ≈ 1).
+  app.getHttpAdapter().getInstance().set("trust proxy", 1);
 
   app.use(cookieParser());
   app.enableCors({ origin: env.corsOrigin, credentials: true });
-  // REST lives under /api; /health stays at the root for platform probes.
-  app.setGlobalPrefix("api", { exclude: ["health"] });
+  // REST lives under /api; health endpoints stay at the root for platform probes.
+  app.setGlobalPrefix("api", { exclude: ["health", "health/ready"] });
 
   // Graceful shutdown: on SIGTERM/SIGINT, Nest runs OnModuleDestroy hooks so the
   // BullMQ worker stops taking jobs and lets in-flight deliveries drain.

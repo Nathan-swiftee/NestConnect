@@ -169,6 +169,15 @@ export class BullOutboundQueue
     return stuck.length;
   }
 
+  async getStats(): Promise<Record<string, unknown>> {
+    try {
+      const counts = await this.queue.getJobCounts("waiting", "active", "delayed", "failed", "completed");
+      return { mode: "bullmq", ...counts };
+    } catch (err) {
+      return { mode: "bullmq", error: String(err) };
+    }
+  }
+
   async onModuleDestroy(): Promise<void> {
     // Graceful shutdown: stop taking new jobs, let active ones drain, close conns.
     await this.worker?.close();

@@ -1,7 +1,11 @@
 import { Module, type ModuleMetadata } from "@nestjs/common";
+import { APP_FILTER, APP_GUARD } from "@nestjs/core";
 import { ServeStaticModule } from "@nestjs/serve-static";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { join } from "node:path";
 import { env } from "./config/env";
+import { AllExceptionsFilter } from "./common/all-exceptions.filter";
+import { HealthService } from "./health/health.service";
 import { CryptoModule } from "./crypto/crypto.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
 import { DataModule } from "./data/data.module";
@@ -17,6 +21,9 @@ import { TemplatesModule } from "./templates/templates.module";
 import { HealthController } from "./health/health.controller";
 
 const imports: ModuleMetadata["imports"] = [
+  // Global IP rate limiting (in-memory per node; move to Redis storage for
+  // multi-node). Generous default — abuse/DoS protection, not a usage cap.
+  ThrottlerModule.forRoot([{ ttl: 60_000, limit: 1200 }]),
   CryptoModule,
   TenancyModule,
   DataModule,
@@ -37,7 +44,7 @@ if (env.serveWeb) {
   imports.push(
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, "..", "..", "web", "dist"),
-      exclude: ["/api/(.*)", "/health", "/socket.io/(.*)"],
+      exclude: ["/api/(.*)", "/health", "/health/(.*)", "/socket.io/(.*)"],
     }),
   );
 }
@@ -45,5 +52,11 @@ if (env.serveWeb) {
 @Module({
   imports,
   controllers: [HealthController],
+  providers: [
+    HealthService,
+    // Global rate-limit guard and catch-all exception filter (structured logging).
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+  ],
 })
 export class AppModule {}

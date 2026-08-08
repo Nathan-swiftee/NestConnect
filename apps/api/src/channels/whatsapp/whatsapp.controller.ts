@@ -11,6 +11,7 @@ import {
   type RawBodyRequest,
 } from "@nestjs/common";
 import type { Request } from "express";
+import { SkipThrottle } from "@nestjs/throttler";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { env } from "../../config/env";
 import { Public } from "../../auth/public.decorator";
@@ -38,6 +39,7 @@ function firstPhoneNumberId(body: WhatsAppWebhookBody): string | undefined {
   return undefined;
 }
 
+@SkipThrottle() // provider webhooks arrive in bursts; they're auth'd by signature
 @Controller("channels/whatsapp")
 export class WhatsAppController {
   constructor(

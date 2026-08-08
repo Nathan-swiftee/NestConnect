@@ -116,6 +116,15 @@ export class PrismaStore extends Store {
     return DEMO_USER_ID;
   }
 
+  async healthCheck(): Promise<boolean> {
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async getUser(id: string): Promise<User | undefined> {
     const u = await this.prisma.user.findUnique({ where: { id } });
     return u ? mapUser(u) : undefined;
