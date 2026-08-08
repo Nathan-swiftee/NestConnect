@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import type {
   AssignConversationInput,
   Conversation,
+  ConversationPage,
   ConversationWithMessages,
   Message,
+  MessagePage,
   SendMessageInput,
   UpdatePriorityInput,
   UpdateStatusInput,
@@ -43,13 +45,18 @@ export class ConversationsService {
     private readonly queue: OutboundQueue,
   ) {}
 
-  list(view: string, userId: string): Promise<Conversation[]> {
-    return this.store.listConversations(view, userId);
+  list(view: string, userId: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
+    return this.store.listConversations(view, userId, opts);
   }
 
   /** Global search across all conversations (contact, subject, preview, body). */
-  search(query: string): Promise<Conversation[]> {
-    return this.store.searchConversations(query);
+  search(query: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
+    return this.store.searchConversations(query, opts);
+  }
+
+  /** Older messages in a thread (scroll-up history), before a seq cursor. */
+  messages(conversationId: string, opts?: { before?: string; limit?: number }): Promise<MessagePage> {
+    return this.store.listMessages(conversationId, opts);
   }
 
   async get(id: string): Promise<ConversationWithMessages> {

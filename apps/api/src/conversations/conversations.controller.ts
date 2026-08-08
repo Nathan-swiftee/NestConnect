@@ -22,14 +22,36 @@ export class ConversationsController {
   constructor(private readonly conversations: ConversationsService) {}
 
   @Get()
-  list(@CurrentUserId() userId: string, @Query("view") view?: string) {
-    return this.conversations.list(view ?? "inbound", userId);
+  list(
+    @CurrentUserId() userId: string,
+    @Query("view") view?: string,
+    @Query("cursor") cursor?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.conversations.list(view ?? "inbound", userId, {
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   /** Global search across all conversations (declared before :id so it matches). */
   @Get("search")
-  search(@Query("q") q?: string) {
-    return this.conversations.search(q ?? "");
+  search(
+    @Query("q") q?: string,
+    @Query("cursor") cursor?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.conversations.search(q ?? "", { cursor, limit: limit ? Number(limit) : undefined });
+  }
+
+  /** Older messages in a thread (scroll-up history), before a seq cursor. */
+  @Get(":id/messages")
+  messages(
+    @Param("id") id: string,
+    @Query("before") before?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.conversations.messages(id, { before, limit: limit ? Number(limit) : undefined });
   }
 
   @Get(":id")

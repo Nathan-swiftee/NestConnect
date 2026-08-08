@@ -6,12 +6,14 @@ import type {
   Contact,
   ContactWithConversations,
   Conversation,
+  ConversationPage,
   ConversationStatus,
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
   Member,
   Message,
+  MessagePage,
   MessageStatus,
   Participant,
   ParticipantRole,
@@ -23,7 +25,7 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
-import { isInboxConnected } from "@ding/schemas";
+import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE } from "@ding/schemas";
 import { env } from "../config/env";
 import { canAdvanceStatus, computeWaWindow, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
@@ -48,6 +50,25 @@ const AVATAR_PALETTE = [
   "linear-gradient(135deg,#F59E0B,#EF4444)",
   "linear-gradient(135deg,#14B8A6,#0EA5E9)",
 ];
+
+/** Recency ordering matching the Postgres store: lastActivityAt desc, id desc. */
+function byRecencyDesc(a: { lastActivityAt: string; id: string }, b: { lastActivityAt: string; id: string }): number {
+  return b.lastActivityAt.localeCompare(a.lastActivityAt) || b.id.localeCompare(a.id);
+}
+function encodeMemCursor(r: { lastActivityAt: string; id: string }): string {
+  return Buffer.from(`${r.lastActivityAt}::${r.id}`).toString("base64url");
+}
+function safeDecode(cursor: string): string {
+  try {
+    return Buffer.from(cursor, "base64url").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+function clampLimit(requested: number | undefined, fallback: number): number {
+  const n = requested ?? fallback;
+  return Math.min(Math.max(Math.trunc(n) || fallback, 1), 100);
+}
 
 /** Zero-infrastructure store backed by in-memory fixtures. Default in dev. */
 @Injectable()
@@ -458,18 +479,25 @@ export class MemoryStore extends Store {
     ).length;
   }
 
-  async listConversations(view: string, userId: string): Promise<Conversation[]> {
+  async listConversations(
+    view: string,
+    userId: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage> {
     const userTeams = this.membership[userId] ?? [];
-    return this.conversations
+    const sorted = this.conversations
       .filter((r) => this.matchesView(r, view, userId, userTeams))
-      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
-      .map((r) => this.summary(r));
+      .sort(byRecencyDesc);
+    return this.pageConversations(sorted, opts);
   }
 
-  async searchConversations(query: string): Promise<Conversation[]> {
+  async searchConversations(
+    query: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage> {
     const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return this.conversations
+    if (!q) return { items: [], nextCursor: null };
+    const sorted = this.conversations
       .filter(
         (r) =>
           r.contact.displayName.toLowerCase().includes(q) ||
@@ -478,9 +506,29 @@ export class MemoryStore extends Store {
           (r.preview ?? "").toLowerCase().includes(q) ||
           r.messages.some((m) => (m.body ?? "").toLowerCase().includes(q)),
       )
-      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
-      .slice(0, 30)
-      .map((r) => this.summary(r));
+      .sort(byRecencyDesc);
+    return this.pageConversations(sorted, opts);
+  }
+
+  /** Slice a pre-sorted record list into one cursor page. */
+  private pageConversations(
+    sorted: ConversationRecord[],
+    opts?: { cursor?: string; limit?: number },
+  ): ConversationPage {
+    const limit = clampLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
+    let start = 0;
+    if (opts?.cursor) {
+      const decoded = safeDecode(opts.cursor);
+      const idx = sorted.findIndex((r) => `${r.lastActivityAt}::${r.id}` === decoded);
+      start = idx >= 0 ? idx + 1 : 0;
+    }
+    const page = sorted.slice(start, start + limit);
+    const hasMore = start + limit < sorted.length;
+    const last = page[page.length - 1];
+    return {
+      items: page.map((r) => this.summary(r)),
+      nextCursor: hasMore && last ? encodeMemCursor(last) : null,
+    };
   }
 
   async views(userId: string): Promise<SidebarViews> {
@@ -522,7 +570,25 @@ export class MemoryStore extends Store {
   async getConversation(id: string): Promise<ConversationWithMessages | undefined> {
     const rec = this.conversations.find((c) => c.id === id);
     if (!rec) return undefined;
-    return { ...this.summary(rec), messages: rec.messages, participants: rec.participants ?? [] };
+    // Only the most-recent page of messages — never the full lifetime thread.
+    const hasMoreMessages = rec.messages.length > MESSAGES_PAGE_SIZE;
+    const messages = hasMoreMessages ? rec.messages.slice(-MESSAGES_PAGE_SIZE) : rec.messages;
+    return { ...this.summary(rec), messages, hasMoreMessages, participants: rec.participants ?? [] };
+  }
+
+  async listMessages(
+    conversationId: string,
+    opts?: { before?: string; limit?: number },
+  ): Promise<MessagePage> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return { items: [], nextCursor: null };
+    const limit = clampLimit(opts?.limit, MESSAGES_PAGE_SIZE);
+    const beforeSeq = opts?.before != null ? Number(opts.before) : Infinity;
+    const older = rec.messages.filter((m) => m.seq < beforeSeq); // ascending by seq
+    const hasMore = older.length > limit;
+    const page = older.slice(Math.max(0, older.length - limit)); // most-recent `limit` older msgs
+    const oldest = page[0];
+    return { items: page, nextCursor: hasMore && oldest ? String(oldest.seq) : null };
   }
 
   async addMessage(

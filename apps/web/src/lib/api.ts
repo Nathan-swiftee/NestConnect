@@ -8,7 +8,9 @@ import type {
   UpdateTemplateInput,
   ContactWithConversations,
   Conversation,
+  ConversationPage,
   ConversationStatus,
+  MessagePage,
   Priority,
   ConversationWithMessages,
   CreateContactInput,
@@ -108,13 +110,20 @@ export const api = {
   // Open (or start) this customer's conversation on another channel.
   reachContact: (contactId: string, channel: "whatsapp" | "email") =>
     post<{ conversationId: string; created: boolean }>(`/contacts/${contactId}/reach`, { channel }),
-  // conversations
-  conversations: (view: string) =>
-    get<Conversation[]>(`/conversations?view=${encodeURIComponent(view)}`),
+  // conversations (cursor-paginated — one page per call, never the whole inbox)
+  conversations: (view: string, cursor?: string) =>
+    get<ConversationPage>(
+      `/conversations?view=${encodeURIComponent(view)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    ),
   // Global search across every conversation (contact, subject, preview, message body).
-  searchConversations: (q: string) =>
-    get<Conversation[]>(`/conversations/search?q=${encodeURIComponent(q)}`),
+  searchConversations: (q: string, cursor?: string) =>
+    get<ConversationPage>(
+      `/conversations/search?q=${encodeURIComponent(q)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+    ),
   conversation: (id: string) => get<ConversationWithMessages>(`/conversations/${id}`),
+  // Older thread history (scroll-up), before a seq cursor.
+  olderMessages: (id: string, before?: string) =>
+    get<MessagePage>(`/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`),
   // Stage a composer upload; the returned attachment id is referenced on send.
   uploadMedia: (
     file: File | Blob,

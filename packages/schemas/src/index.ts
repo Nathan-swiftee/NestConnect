@@ -277,13 +277,37 @@ export const conversationSchema = z.object({
 });
 export type Conversation = z.infer<typeof conversationSchema>;
 
-/** A conversation plus its messages — the thread view payload. */
+/** A conversation plus its (most-recent page of) messages — the thread payload. */
 export const conversationWithMessagesSchema = conversationSchema.extend({
   messages: z.array(messageSchema),
+  /** True when older messages exist beyond the returned page (load on scroll-up). */
+  hasMoreMessages: z.boolean().default(false),
   /** Group members (whatsapp_group only; empty otherwise). */
   participants: z.array(participantSchema).default([]),
 });
 export type ConversationWithMessages = z.infer<typeof conversationWithMessagesSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Cursor pagination                                                   */
+/* ------------------------------------------------------------------ */
+
+/** A page of conversations (list/search). `nextCursor` is null on the last page. */
+export const conversationPageSchema = z.object({
+  items: z.array(conversationSchema),
+  nextCursor: z.string().nullable().default(null),
+});
+export type ConversationPage = z.infer<typeof conversationPageSchema>;
+
+/** A page of older thread messages (scroll-up history). */
+export const messagePageSchema = z.object({
+  items: z.array(messageSchema),
+  nextCursor: z.string().nullable().default(null),
+});
+export type MessagePage = z.infer<typeof messagePageSchema>;
+
+/** Default page sizes shared by the API and the client. */
+export const CONVERSATIONS_PAGE_SIZE = 30;
+export const MESSAGES_PAGE_SIZE = 40;
 
 /* ------------------------------------------------------------------ */
 /* API request payloads                                                */

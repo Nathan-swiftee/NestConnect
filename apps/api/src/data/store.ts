@@ -5,12 +5,14 @@ import type {
   Contact,
   ContactWithConversations,
   Conversation,
+  ConversationPage,
   ConversationStatus,
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
   Member,
   Message,
+  MessagePage,
   MessageStatus,
   MessageType,
   Participant,
@@ -202,10 +204,24 @@ export abstract class Store {
   /** Remove a person, detaching their team memberships and clearing assignments. */
   abstract deleteUser(id: string): Promise<void>;
   abstract views(userId: string): Promise<SidebarViews>;
-  abstract listConversations(view: string, userId: string): Promise<Conversation[]>;
-  /** Search across all conversations by contact, subject, preview and message body. */
-  abstract searchConversations(query: string): Promise<Conversation[]>;
+  /** A cursor page of conversations for a view (most-recent first). */
+  abstract listConversations(
+    view: string,
+    userId: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage>;
+  /** A cursor page of search results (contact, subject, preview, message body). */
+  abstract searchConversations(
+    query: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage>;
+  /** A conversation with its most-recent page of messages (+ hasMoreMessages). */
   abstract getConversation(id: string): Promise<ConversationWithMessages | undefined>;
+  /** Older messages in a thread, before `opts.before` (a seq cursor). For scroll-up. */
+  abstract listMessages(
+    conversationId: string,
+    opts?: { before?: string; limit?: number },
+  ): Promise<MessagePage>;
 
   abstract addMessage(
     conversationId: string,

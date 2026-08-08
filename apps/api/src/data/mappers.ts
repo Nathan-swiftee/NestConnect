@@ -4,7 +4,6 @@ import type {
   ChannelType,
   Contact,
   Conversation,
-  ConversationWithMessages,
   Inbox,
   Message,
   MessageStatus,
@@ -82,14 +81,6 @@ type ContactWithIdentities = Prisma.ContactGetPayload<{ include: { identities: t
 type InboxWithTeams = Prisma.InboxGetPayload<{ include: { teams: true } }>;
 type ConversationSummaryRow = Prisma.ConversationGetPayload<{
   include: { contact: { include: { identities: true } }; labels: { include: { label: true } } };
-}>;
-type ConversationFullRow = Prisma.ConversationGetPayload<{
-  include: {
-    contact: { include: { identities: true } };
-    labels: { include: { label: true } };
-    messages: { include: { attachments: true } };
-    participants: { include: { contact: { include: { identities: true } } } };
-  };
 }>;
 type MessageRow = Prisma.MessageGetPayload<{ include: { attachments: true } }>;
 type AttachmentRow = Prisma.AttachmentGetPayload<object>;
@@ -275,10 +266,3 @@ export function mapConversation(c: ConversationSummaryRow): Conversation {
   };
 }
 
-export function mapConversationWithMessages(c: ConversationFullRow): ConversationWithMessages {
-  return {
-    ...mapConversation(c),
-    messages: [...c.messages].sort((a, b) => a.seq - b.seq).map(mapMessage),
-    participants: c.participants.map(mapParticipant),
-  };
-}

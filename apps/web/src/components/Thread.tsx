@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type R
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
 import type { Message, Attachment, MessageStatus } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages } from "../hooks";
 import { api } from "../lib/api";
 import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft } from "../lib/format";
@@ -689,6 +689,7 @@ function StagedChip({
 
 export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed }: Props) {
   const { data: conv } = useConversation(conversationId);
+  const { loadOlder, loading: loadingOlder } = useLoadOlderMessages(conversationId);
   const { data: me } = useMe();
   const { data: teams } = useTeams();
   const send = useSendMessage();
@@ -1560,6 +1561,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       )}
 
       <div className={"msgs" + (isClosed ? " is-closed" : "")}>
+        {conv.hasMoreMessages && (
+          <div className="loadolder">
+            <button className="loadolder__btn" onClick={() => void loadOlder()} disabled={loadingOlder}>
+              {loadingOlder ? "Loading earlier messages…" : "Load earlier messages"}
+            </button>
+          </div>
+        )}
         {groupMessagesByDay(conv.messages).map((group) => (
           <section className="daygroup" key={group.key}>
             <div className="daysep">{group.label}</div>

@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   ClientEvent,
   ServerEvent,
   type AddParticipantInput,
-  type Conversation,
   type ConversationStatus,
+  type ConversationWithMessages,
   type Priority,
   type CreateContactInput,
   type CreateGroupInput,
@@ -244,23 +250,60 @@ export function useUpdateContact() {
   });
 }
 
+/** Cursor-paginated conversation list. `data` is the flattened rows so far;
+ *  call fetchNextPage() to load the next page (never the whole inbox at once). */
 export const useConversations = (view: string) =>
-  useQuery({ queryKey: ["conversations", view], queryFn: () => api.conversations(view) });
-/** Global conversation search (contact, subject, preview, message body). */
+  useInfiniteQuery({
+    queryKey: ["conversations", view],
+    queryFn: ({ pageParam }) => api.conversations(view, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    select: (d) => d.pages.flatMap((p) => p.items),
+  });
+
+/** Global conversation search (contact, subject, preview, message body), paginated. */
 export const useSearchConversations = (q: string, enabled: boolean) =>
-  useQuery({
+  useInfiniteQuery({
     queryKey: ["search", q],
-    queryFn: () => api.searchConversations(q),
+    queryFn: ({ pageParam }) => api.searchConversations(q, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: enabled && q.trim().length > 0,
     staleTime: 5000,
-    placeholderData: (prev) => prev,
+    placeholderData: keepPreviousData,
+    select: (d) => d.pages.flatMap((p) => p.items),
   });
+
 export const useConversation = (id: string | null) =>
   useQuery({
     queryKey: ["conversation", id],
     queryFn: () => api.conversation(id as string),
     enabled: !!id,
   });
+
+/** Load older thread history (scroll-up) and prepend it into the thread cache. */
+export function useLoadOlderMessages(conversationId: string | null) {
+  const qc = useQueryClient();
+  const [loading, setLoading] = useState(false);
+  const loadOlder = useCallback(async () => {
+    if (!conversationId) return;
+    const current = qc.getQueryData<ConversationWithMessages>(["conversation", conversationId]);
+    if (!current?.hasMoreMessages || current.messages.length === 0) return;
+    setLoading(true);
+    try {
+      const before = String(current.messages[0].seq);
+      const page = await api.olderMessages(conversationId, before);
+      qc.setQueryData<ConversationWithMessages>(["conversation", conversationId], (prev) =>
+        prev
+          ? { ...prev, messages: [...page.items, ...prev.messages], hasMoreMessages: page.nextCursor != null }
+          : prev,
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [conversationId, qc]);
+  return { loadOlder, loading };
+}
 
 export function useSendMessage() {
   const qc = useQueryClient();
@@ -287,8 +330,47 @@ export function useSendMessage() {
         cc: v.cc,
         bcc: v.bcc,
       }),
-    onSuccess: (_msg, v) => {
+    // Optimistically render a plain text/HTML reply immediately (skip when it
+    // carries attachments or a template — those render from the server result).
+    onMutate: async (v) => {
+      if (v.template || v.attachmentIds?.length) return { tempId: undefined as string | undefined };
+      await qc.cancelQueries({ queryKey: ["conversation", v.id] });
+      const prev = qc.getQueryData<ConversationWithMessages>(["conversation", v.id]);
+      if (!prev) return { tempId: undefined };
+      const tempId = `temp_${Date.now()}`;
+      const optimistic: Message = {
+        id: tempId,
+        conversationId: v.id,
+        seq: (prev.messages[prev.messages.length - 1]?.seq ?? 0) + 1,
+        direction: "out",
+        authorType: "user",
+        body: v.body,
+        status: v.internal ? "sent" : "queued",
+        internal: v.internal ?? false,
+        messageType: "text",
+        attachments: [],
+        reactions: [],
+        bodyHtml: v.bodyHtml,
+        createdAt: new Date().toISOString(),
+      };
+      qc.setQueryData<ConversationWithMessages>(["conversation", v.id], {
+        ...prev,
+        messages: [...prev.messages, optimistic],
+      });
+      return { tempId };
+    },
+    onError: (_e, v) => {
+      // Drop the optimistic bubble on failure; the thread refetch restores truth.
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
+    },
+    onSuccess: (msg, v, ctx) => {
+      // Swap the temp bubble for the real message (also arrives via socket; dedup by id).
+      qc.setQueryData<ConversationWithMessages>(["conversation", v.id], (cur) => {
+        if (!cur) return cur;
+        const withoutTemp = ctx?.tempId ? cur.messages.filter((m) => m.id !== ctx.tempId) : cur.messages;
+        const exists = withoutTemp.some((m) => m.id === msg.id);
+        return { ...cur, messages: exists ? withoutTemp : [...withoutTemp, msg] };
+      });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
     },
@@ -475,26 +557,48 @@ export function useRealtime(openConversationId: string | null) {
 
   useEffect(() => {
     const socket = getSocket();
-    const invalidate = (conversationId?: string) => {
-      if (conversationId) qc.invalidateQueries({ queryKey: ["conversation", conversationId] });
-      else qc.invalidateQueries({ queryKey: ["conversation"] });
+    // Patch the open thread's cache in place instead of refetching the whole
+    // thread on every event. Returns whether the message was appended (i.e. new).
+    const patchThread = (conversationId: string, message: Message): boolean => {
+      let appended = false;
+      qc.setQueryData<ConversationWithMessages>(["conversation", conversationId], (cur) => {
+        if (!cur) return cur; // thread not open/cached — nothing to patch
+        const idx = cur.messages.findIndex((m) => m.id === message.id);
+        if (idx >= 0) {
+          const next = cur.messages.slice();
+          next[idx] = message;
+          return { ...cur, messages: next };
+        }
+        appended = true;
+        return { ...cur, messages: [...cur.messages, message] };
+      });
+      return appended;
+    };
+    const invalidateLists = () => {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
     };
-    const onMessage = (p: { conversationId: string; message: Message }) => {
-      // Ping only for real inbound messages (not our own echoes or internal notes).
+    // A brand-new message changes list previews/counts/order → patch thread + refresh lists.
+    const onCreated = (p: { conversationId: string; message: Message }) => {
       if (p.message.direction === "in" && !p.message.internal) playReceived();
-      invalidate(p.conversationId);
+      patchThread(p.conversationId, p.message);
+      invalidateLists();
     };
-    const onConversation = (p: { conversation: Conversation }) => invalidate(p.conversation.id);
-    const onAssigned = () => invalidate();
-    socket.on(ServerEvent.MessageCreated, onMessage);
-    socket.on(ServerEvent.MessageUpdated, onMessage);
+    // A status tick (sent→delivered→read) only moves the ticks — patch the thread
+    // in place and do NOT refetch the lists (this is the frequent, cheap path).
+    const onUpdated = (p: { conversationId: string; message: Message }) => {
+      patchThread(p.conversationId, p.message);
+    };
+    // Assignment/status/snooze change the lists → refresh them (infrequent).
+    const onConversation = () => invalidateLists();
+    const onAssigned = () => invalidateLists();
+    socket.on(ServerEvent.MessageCreated, onCreated);
+    socket.on(ServerEvent.MessageUpdated, onUpdated);
     socket.on(ServerEvent.ConversationAssigned, onAssigned);
     socket.on(ServerEvent.ConversationUpdated, onConversation);
     return () => {
-      socket.off(ServerEvent.MessageCreated, onMessage);
-      socket.off(ServerEvent.MessageUpdated, onMessage);
+      socket.off(ServerEvent.MessageCreated, onCreated);
+      socket.off(ServerEvent.MessageUpdated, onUpdated);
       socket.off(ServerEvent.ConversationAssigned, onAssigned);
       socket.off(ServerEvent.ConversationUpdated, onConversation);
     };

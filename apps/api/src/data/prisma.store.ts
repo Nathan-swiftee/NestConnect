@@ -7,12 +7,14 @@ import type {
   Contact,
   ContactWithConversations,
   Conversation,
+  ConversationPage,
   ConversationStatus,
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
   Member,
   Message,
+  MessagePage,
   MessageStatus,
   Participant,
   ParticipantRole,
@@ -24,6 +26,7 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
+import { CONVERSATIONS_PAGE_SIZE, MESSAGES_PAGE_SIZE } from "@ding/schemas";
 import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 import {
@@ -31,7 +34,6 @@ import {
   mapAttachment,
   mapContact,
   mapConversation,
-  mapConversationWithMessages,
   mapInbox,
   mapMessage,
   mapParticipant,
@@ -61,6 +63,35 @@ const convInclude = {
   contact: { include: { identities: true } },
   labels: { include: { label: true } },
 } satisfies Prisma.ConversationInclude;
+
+/** Keyset cursor for the (lastActivityAt desc, id desc) conversation ordering. */
+function encodeConvCursor(row: { lastActivityAt: Date; id: string }): string {
+  return Buffer.from(`${row.lastActivityAt.toISOString()}::${row.id}`).toString("base64url");
+}
+function decodeConvCursor(cursor?: string): { t: Date; id: string } | undefined {
+  if (!cursor) return undefined;
+  try {
+    const [t, id] = Buffer.from(cursor, "base64url").toString("utf8").split("::");
+    const date = new Date(t);
+    return id && !Number.isNaN(date.getTime()) ? { t: date, id } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** Clamp a requested page size into a sane range. */
+function pageLimit(requested: number | undefined, fallback: number): number {
+  const n = requested ?? fallback;
+  return Math.min(Math.max(Math.trunc(n) || fallback, 1), 100);
+}
+/** Keyset predicate: rows strictly after the cursor in (lastActivityAt, id) desc. */
+function keysetBefore(cur: { t: Date; id: string }): Prisma.ConversationWhereInput {
+  return {
+    OR: [
+      { lastActivityAt: { lt: cur.t } },
+      { AND: [{ lastActivityAt: cur.t }, { id: { lt: cur.id } }] },
+    ],
+  };
+}
 
 const AVATAR_PALETTE = [
   "linear-gradient(135deg,#F97316,#DB2777)",
@@ -513,36 +544,62 @@ export class PrismaStore extends Store {
     return { id: "__none__" };
   }
 
-  async listConversations(view: string, userId: string): Promise<Conversation[]> {
+  async listConversations(
+    view: string,
+    userId: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage> {
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
-    const rows = await this.prisma.conversation.findMany({
-      where: this.buildWhere(view, userId, userTeams, token),
-      include: convInclude,
-      orderBy: { lastActivityAt: "desc" },
-    });
-    return rows.map(mapConversation);
+    const limit = pageLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
+    const cur = decodeConvCursor(opts?.cursor);
+    const base = this.buildWhere(view, userId, userTeams, token);
+    const where: Prisma.ConversationWhereInput = cur
+      ? { AND: [base, keysetBefore(cur)] }
+      : base;
+    return this.pageConversations(where, limit);
   }
 
-  async searchConversations(query: string): Promise<Conversation[]> {
+  async searchConversations(
+    query: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage> {
     const q = query.trim();
-    if (!q) return [];
+    if (!q) return { items: [], nextCursor: null };
+    const limit = pageLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
+    const cur = decodeConvCursor(opts?.cursor);
+    const match: Prisma.ConversationWhereInput = {
+      orgId: ORG_ID,
+      OR: [
+        { subject: { contains: q, mode: "insensitive" } },
+        { preview: { contains: q, mode: "insensitive" } },
+        { contact: { displayName: { contains: q, mode: "insensitive" } } },
+        { contact: { company: { contains: q, mode: "insensitive" } } },
+        { messages: { some: { body: { contains: q, mode: "insensitive" } } } },
+      ],
+    };
+    const where: Prisma.ConversationWhereInput = cur ? { AND: [match, keysetBefore(cur)] } : match;
+    return this.pageConversations(where, limit);
+  }
+
+  /** Run one keyset page of conversations and derive the next cursor. */
+  private async pageConversations(
+    where: Prisma.ConversationWhereInput,
+    limit: number,
+  ): Promise<ConversationPage> {
     const rows = await this.prisma.conversation.findMany({
-      where: {
-        orgId: ORG_ID,
-        OR: [
-          { subject: { contains: q, mode: "insensitive" } },
-          { preview: { contains: q, mode: "insensitive" } },
-          { contact: { displayName: { contains: q, mode: "insensitive" } } },
-          { contact: { company: { contains: q, mode: "insensitive" } } },
-          { messages: { some: { body: { contains: q, mode: "insensitive" } } } },
-        ],
-      },
+      where,
       include: convInclude,
-      orderBy: { lastActivityAt: "desc" },
-      take: 30,
+      orderBy: [{ lastActivityAt: "desc" }, { id: "desc" }],
+      take: limit + 1, // one extra row tells us whether another page exists
     });
-    return rows.map(mapConversation);
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page[page.length - 1];
+    return {
+      items: page.map(mapConversation),
+      nextCursor: hasMore && last ? encodeConvCursor(last) : null,
+    };
   }
 
   async views(userId: string): Promise<SidebarViews> {
@@ -605,11 +662,50 @@ export class PrismaStore extends Store {
       where: { id },
       include: {
         ...convInclude,
-        messages: { include: { attachments: true } },
         participants: { include: { contact: { include: { identities: true } } } },
       },
     });
-    return row ? mapConversationWithMessages(row) : undefined;
+    if (!row) return undefined;
+    // Load only the most-recent page of messages (one extra row reveals whether
+    // older history exists) — never the full lifetime thread.
+    const latest = await this.prisma.message.findMany({
+      where: { conversationId: id },
+      include: { attachments: true },
+      orderBy: { seq: "desc" },
+      take: MESSAGES_PAGE_SIZE + 1,
+    });
+    const hasMoreMessages = latest.length > MESSAGES_PAGE_SIZE;
+    const page = (hasMoreMessages ? latest.slice(0, MESSAGES_PAGE_SIZE) : latest).reverse();
+    return {
+      ...mapConversation(row),
+      messages: page.map(mapMessage),
+      hasMoreMessages,
+      participants: row.participants.map(mapParticipant),
+    };
+  }
+
+  async listMessages(
+    conversationId: string,
+    opts?: { before?: string; limit?: number },
+  ): Promise<MessagePage> {
+    const limit = pageLimit(opts?.limit, MESSAGES_PAGE_SIZE);
+    const beforeSeq = opts?.before != null ? Number(opts.before) : undefined;
+    const older = await this.prisma.message.findMany({
+      where: {
+        conversationId,
+        ...(beforeSeq != null && Number.isFinite(beforeSeq) ? { seq: { lt: beforeSeq } } : {}),
+      },
+      include: { attachments: true },
+      orderBy: { seq: "desc" },
+      take: limit + 1,
+    });
+    const hasMore = older.length > limit;
+    const page = (hasMore ? older.slice(0, limit) : older).reverse(); // ascending for prepend
+    const oldest = page[0];
+    return {
+      items: page.map(mapMessage),
+      nextCursor: hasMore && oldest ? String(oldest.seq) : null,
+    };
   }
 
   async addMessage(
