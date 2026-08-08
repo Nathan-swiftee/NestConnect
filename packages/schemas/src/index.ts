@@ -200,6 +200,9 @@ export const messageSchema = z.object({
   internal: z.boolean().default(false),
   /** Provider-side id (e.g. WhatsApp wamid) for reconciling delivery/read status. */
   channelMsgId: z.string().nullable().optional(),
+  /** The channel this message was sent/received on (a thread can span channels).
+   *  Absent → the conversation's own channel. */
+  channel: channelTypeSchema.nullable().optional(),
   /** What the message carries; "text" unless it has media. */
   messageType: messageTypeSchema.default("text"),
   /** Media files attached to the message (images, files, voice notes, …). */
@@ -383,6 +386,9 @@ export const sendMessageInputSchema = z
       .optional(),
     /** Quote/reply to an earlier message in the thread (by its id). */
     quotedMsgId: z.string().optional(),
+    /** Reply on a specific channel the contact is reachable on (cross-channel
+     *  thread). Defaults to the conversation's own channel when omitted. */
+    channel: channelTypeSchema.optional(),
     /** Rich HTML body for an email reply (sanitized server-side before send). */
     bodyHtml: z.string().optional(),
     /** Additional email recipients (email channel only). */

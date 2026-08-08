@@ -120,7 +120,9 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   }
 
   async sendText(params: SendParams): Promise<SendResult> {
-    const creds = await this.credsFor(params.conversation.inboxId);
+    // Use the sending inbox (may differ from the conversation's for a
+    // cross-channel reply) to resolve this number's credentials.
+    const creds = await this.credsFor(params.inboxId ?? params.conversation.inboxId);
     const media = params.media ?? [];
     if (!creds) {
       const what = params.template

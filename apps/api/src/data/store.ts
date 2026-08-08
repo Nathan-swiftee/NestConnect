@@ -69,6 +69,8 @@ export interface AppendInboundInput {
   /** Sanitized HTML body for a rich inbound email (already scrubbed). */
   bodyHtml?: string;
   channelMsgId?: string;
+  /** The channel this inbound message arrived on (thread may span channels). */
+  channel?: ChannelType;
   messageType?: MessageType;
   attachments?: AttachmentInput[];
   /** Id of the message this inbound one quotes/replies to (already resolved). */
@@ -234,6 +236,9 @@ export abstract class Store {
       internal: boolean;
       attachmentIds?: string[];
       quotedMsgId?: string;
+      /** Reply on a specific channel (cross-channel thread); defaults to the
+       *  conversation's channel. */
+      channel?: ChannelType;
       /** Dedup key for the delivery job (also the queue jobId). */
       idempotencyKey?: string;
       /** Channel-specific send hints, persisted for restart-safe (re)delivery. */

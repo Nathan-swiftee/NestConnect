@@ -31,6 +31,7 @@ import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 import {
   canAdvanceStatus,
+  isWaChannel,
   mapAttachment,
   mapContact,
   mapConversation,
@@ -725,6 +726,7 @@ export class PrismaStore extends Store {
       internal: boolean;
       attachmentIds?: string[];
       quotedMsgId?: string;
+      channel?: ChannelType;
       idempotencyKey?: string;
       deliveryMeta?: OutboundDeliveryMeta;
     },
@@ -762,6 +764,7 @@ export class PrismaStore extends Store {
           status: input.internal ? "sent" : "queued",
           internal: input.internal,
           messageType,
+          channel: input.channel ?? null,
           quotedMsgId: input.quotedMsgId ?? null,
           idempotencyKey: input.idempotencyKey ?? null,
           deliveryMeta: (input.deliveryMeta as Prisma.InputJsonValue) ?? undefined,
@@ -1138,9 +1141,13 @@ export class PrismaStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
+    // Unify by CONTACT across channels while a thread is open: an inbound on any
+    // channel (or an agent reaching out on another) threads into the customer's
+    // one open conversation. Once it's closed, the next message starts a new chat.
     const open = await this.prisma.conversation.findFirst({
-      where: { inboxId: params.inboxId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
+      where: { orgId: params.orgId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
       include: convInclude,
+      orderBy: { lastActivityAt: "desc" },
     });
     if (open) return { conversation: mapConversation(open), created: false };
 
@@ -1186,6 +1193,7 @@ export class PrismaStore extends Store {
           bodyHtml: input.bodyHtml ?? null,
           status: "delivered",
           channelMsgId: input.channelMsgId,
+          channel: input.channel ?? null,
           messageType: input.messageType ?? "text",
           quotedMsgId: input.quotedMsgId ?? null,
           ...(input.attachments?.length
@@ -1199,8 +1207,11 @@ export class PrismaStore extends Store {
         data: {
           seq,
           lastActivityAt: new Date(),
-          // An inbound message (re)opens the WhatsApp 24-hour window.
-          lastInboundAt: new Date(),
+          // Only a WhatsApp inbound (re)opens the WhatsApp 24-hour window — an
+          // email arriving in a cross-channel thread must not extend it.
+          ...(isWaChannel(input.channel ?? (conv.channel as ChannelType))
+            ? { lastInboundAt: new Date() }
+            : {}),
           unread: true,
           unreadCount: { increment: 1 },
           preview: input.body || previewForType(input.messageType),

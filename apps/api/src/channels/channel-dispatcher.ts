@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import type { ConversationWithMessages, Message } from "@ding/schemas";
+import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { Store } from "../data/store";
 import { MediaService } from "../storage/media.service";
 import { redactSecrets } from "../crypto/redact";
@@ -45,28 +45,38 @@ export class ChannelDispatcher {
     template?: OutboundTemplate,
     opts?: { cc?: string[]; bcc?: string[] },
   ): Promise<DeliveryOutcome> {
+    // A message may be sent on a different channel than the conversation's own
+    // (cross-channel reply within one open thread). Resolve the effective channel
+    // and the inbox to send from.
+    const channel = message.channel ?? conversation.channel;
+    const sendingInboxId =
+      channel === conversation.channel
+        ? conversation.inboxId
+        : (await this.firstInboxOfType(channel)) ?? conversation.inboxId;
+
     // Email is served by more than one provider (Gmail vs generic), chosen by
-    // the inbox's connected provider. Other channels ignore the context.
+    // the sending inbox's connected provider. Other channels ignore the context.
     const ctx =
-      conversation.channel === "email"
-        ? { provider: (await this.store.getInboxConfig(conversation.inboxId))?.provider }
+      channel === "email"
+        ? { provider: (await this.store.getInboxConfig(sendingInboxId))?.provider }
         : undefined;
-    const provider = this.providers.find((p) => p.supports(conversation.channel, ctx));
+    const provider = this.providers.find((p) => p.supports(channel, ctx));
     if (!provider) {
       // Channel not wired for sending — a configuration error, not worth retrying.
-      return { ok: false, retryable: false, reason: `No provider configured for ${conversation.channel}` };
+      return { ok: false, retryable: false, reason: `No provider configured for ${channel}` };
     }
 
-    const to = conversation.channel === "email" ? conversation.contact.email : conversation.contact.phone;
+    const to = channel === "email" ? conversation.contact.email : conversation.contact.phone;
     if (!to) {
-      return { ok: false, retryable: false, reason: `Conversation has no ${conversation.channel} address` };
+      return { ok: false, retryable: false, reason: `Conversation has no ${channel} address` };
     }
 
     let context: SendContext | undefined;
-    if (conversation.channel === "email") {
+    if (channel === "email") {
+      // Thread only onto prior EMAIL messages (a WhatsApp wamid is not a Message-ID).
       const prior = [...conversation.messages]
         .reverse()
-        .find((m) => m.channelMsgId && m.id !== message.id);
+        .find((m) => m.channelMsgId && m.id !== message.id && (m.channel ?? conversation.channel) === "email");
       context = {
         subject: conversation.subject ?? undefined,
         toName: conversation.contact.displayName,
@@ -87,6 +97,7 @@ export class ChannelDispatcher {
       cc: opts?.cc,
       bcc: opts?.bcc,
       conversation,
+      inboxId: sendingInboxId,
       context,
       media,
       template,
@@ -98,15 +109,23 @@ export class ChannelDispatcher {
     }
     const retryable = result.retryable ?? isRetryableStatus(result.httpStatus);
     this.logger.warn(
-      `Send failed on ${conversation.channel} (${retryable ? "transient" : "permanent"}): ${redactSecrets(result.error)}`,
+      `Send failed on ${channel} (${retryable ? "transient" : "permanent"}): ${redactSecrets(result.error)}`,
     );
     return {
       ok: false,
       retryable,
-      reason: shortReason(conversation.channel, result),
+      reason: shortReason(channel, result),
       error: result.error,
       code: result.errorCode,
     };
+  }
+
+  /** The org's first inbox of a given channel type — the send-from inbox for a
+   *  cross-channel reply (its provider creds / from-address are used). */
+  private async firstInboxOfType(channel: ChannelType): Promise<string | undefined> {
+    const type = channel === "whatsapp_group" ? "whatsapp" : channel;
+    const inboxes = await this.store.listInboxes();
+    return inboxes.find((i) => i.type === type)?.id;
   }
 
   /** Send a read receipt for an inbound message on a channel that supports it. */

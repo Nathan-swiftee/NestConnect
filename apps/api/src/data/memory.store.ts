@@ -27,7 +27,7 @@ import type {
 } from "@ding/schemas";
 import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE } from "@ding/schemas";
 import { env } from "../config/env";
-import { canAdvanceStatus, computeWaWindow, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
+import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
@@ -627,6 +627,7 @@ export class MemoryStore extends Store {
       status: input.internal ? "sent" : "queued",
       internal: input.internal,
       messageType,
+      channel: input.channel,
       attachments,
       reactions: [],
       quotedMsgId: input.quotedMsgId,
@@ -935,12 +936,15 @@ export class MemoryStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
-    const open = this.conversations.find(
-      (c) =>
-        c.inboxId === params.inboxId &&
-        c.contact.id === params.contact.id &&
-        (c.status === "open" || c.status === "pending"),
-    );
+    // Unify by CONTACT across channels while a thread is open (closed → new chat).
+    const open = [...this.conversations]
+      .sort(byRecencyDesc)
+      .find(
+        (c) =>
+          c.orgId === params.orgId &&
+          c.contact.id === params.contact.id &&
+          (c.status === "open" || c.status === "pending"),
+      );
     if (open) return { conversation: this.summary(open), created: false };
 
     const now = new Date().toISOString();
@@ -985,6 +989,7 @@ export class MemoryStore extends Store {
       status: "delivered",
       internal: false,
       channelMsgId: input.channelMsgId,
+      channel: input.channel,
       messageType: input.messageType ?? "text",
       attachments: this.storeAttachments(input.attachments),
       reactions: [],
@@ -993,8 +998,8 @@ export class MemoryStore extends Store {
     };
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
-    // Inbound (re)opens the WhatsApp 24-hour customer-service window.
-    rec.lastInboundAt = message.createdAt;
+    // Only a WhatsApp inbound (re)opens the WhatsApp 24-hour window.
+    if (isWaChannel(input.channel ?? rec.channel)) rec.lastInboundAt = message.createdAt;
     rec.unread = true;
     rec.unreadCount = (rec.unreadCount ?? 0) + 1;
     rec.preview = input.body || previewForType(input.messageType);

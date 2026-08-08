@@ -24,6 +24,11 @@ import { isInboxConnected } from "@ding/schemas";
 /** WhatsApp's customer-service window is 24 hours from the last inbound message. */
 const WA_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/** Whether a channel is one of the WhatsApp channels (1:1 or group). */
+export function isWaChannel(channel: string | null | undefined): boolean {
+  return channel === "whatsapp" || channel === "whatsapp_group";
+}
+
 /**
  * Compute the WhatsApp 24-hour window for a conversation. Only WhatsApp channels
  * have a window; everything else returns null. With no inbound yet the window is
@@ -219,6 +224,7 @@ export function mapMessage(m: MessageRow): Message {
     status: m.status as MessageStatus,
     internal: m.internal,
     channelMsgId: m.channelMsgId ?? undefined,
+    channel: (m.channel as ChannelType | null) ?? undefined,
     messageType: (m.messageType as MessageType) ?? "text",
     attachments: (m.attachments ?? []).map(mapAttachment),
     reactions: parseReactions(m.reactions),

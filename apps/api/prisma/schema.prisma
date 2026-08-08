@@ -252,6 +252,10 @@ model Message {
   authorUserId   String?
   authorName     String?
   body           String
+  // The channel this specific message was sent/received on. Lets one open
+  // conversation carry messages across channels (WhatsApp, email …). Null on
+  // legacy rows → falls back to the conversation's channel.
+  channel        ChannelType?
   // Sanitized HTML body for rich email (rendered in a sandboxed iframe); the
   // plain `body` above stays the fallback + preview text.
   bodyHtml       String?

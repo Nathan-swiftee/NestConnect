@@ -100,6 +100,7 @@ export class IngestService {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.channelMsgId,
+      channel: "whatsapp",
       messageType: input.messageType,
       attachments: input.attachments,
       quotedMsgId: input.quotedMsgId,
@@ -152,6 +153,7 @@ export class IngestService {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.channelMsgId,
+      channel: "whatsapp_group",
       messageType: input.messageType,
       attachments: input.attachments,
       quotedMsgId: input.quotedMsgId,
@@ -224,6 +226,7 @@ export class IngestService {
       body: input.text,
       bodyHtml: bodyHtml || undefined,
       channelMsgId: input.messageId,
+      channel: "email",
       messageType: input.messageType,
       attachments: input.attachments,
     });

@@ -33,7 +33,8 @@ export class GmailProvider extends ChannelProvider {
   }
 
   async sendText(params: SendParams): Promise<SendResult> {
-    const inboxId = params.conversation.inboxId;
+    // The sending inbox may differ from the conversation's (cross-channel reply).
+    const inboxId = params.inboxId ?? params.conversation.inboxId;
     const config = await this.store.getInboxConfig(inboxId);
     if (!config || config[GMAIL_CONFIG.provider] !== "gmail") {
       return { ok: false, error: "Gmail inbox is not connected" };

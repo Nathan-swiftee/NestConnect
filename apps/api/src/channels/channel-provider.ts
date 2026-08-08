@@ -67,6 +67,10 @@ export interface SendParams {
   cc?: string[];
   bcc?: string[];
   conversation: Conversation;
+  /** The inbox to send FROM — the conversation's own inbox for a same-channel
+   *  reply, or another channel's inbox for a cross-channel reply (its creds/
+   *  from-address are used). Falls back to the conversation's inbox. */
+  inboxId?: string;
   context?: SendContext;
   /** Media to deliver alongside (or instead of) the text body. */
   media?: OutboundMedia[];

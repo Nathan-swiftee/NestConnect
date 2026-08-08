@@ -12,11 +12,24 @@ import type {
   UpdateStatusInput,
 } from "@ding/schemas";
 import { Store, type OutboundDeliveryMeta } from "../data/store";
+import { isWaChannel } from "../data/mappers";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { ChannelDispatcher } from "../channels/channel-dispatcher";
 import type { OutboundTemplate } from "../channels/channel-provider";
 import { OutboundQueue } from "../queue/outbound-queue";
 import { sanitizeOutboundHtml, htmlToText } from "../channels/email/html-sanitize";
+
+/** WhatsApp's 24-hour customer-service window: open while the last WhatsApp
+ *  inbound in the thread is under 24h old. Computed from the messages (with a
+ *  fallback to the conversation's channel for legacy rows) so a cross-channel
+ *  thread — which may be email-primary — is handled correctly. */
+const WA_WINDOW_MS = 24 * 60 * 60 * 1000;
+function waWindowOpenFromMessages(messages: Message[], convChannel: string): boolean {
+  const lastWaInbound = [...messages]
+    .reverse()
+    .find((m) => m.direction === "in" && isWaChannel(m.channel ?? convChannel));
+  return lastWaInbound ? Date.now() - new Date(lastWaInbound.createdAt).getTime() < WA_WINDOW_MS : false;
+}
 
 /** Fill a template body's {{1}}, {{2}} … positional variables from `params`. */
 function fillTemplate(body: string, params: string[]): string {
@@ -72,6 +85,22 @@ export class ConversationsService {
     const conv = await this.store.getConversation(id);
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
 
+    // Cross-channel reply: the agent may answer on any channel the customer is
+    // reachable on, within this one open thread. The effective channel defaults
+    // to the conversation's own; an explicit override must have an address on file.
+    const channelOverride = input.channel && input.channel !== conv.channel ? input.channel : undefined;
+    const effectiveChannel = channelOverride ?? conv.channel;
+    const sendingEmail = effectiveChannel === "email";
+    const sendingWa = isWaChannel(effectiveChannel);
+    if (!input.internal && channelOverride) {
+      if (sendingEmail && !conv.contact.email) {
+        throw new BadRequestException("This customer has no email address on file.");
+      }
+      if (sendingWa && !conv.contact.phone) {
+        throw new BadRequestException("This customer has no WhatsApp number on file.");
+      }
+    }
+
     // A template send: resolve it and render the body from its variables.
     let template: OutboundTemplate | undefined;
     let body = input.body;
@@ -82,22 +111,27 @@ export class ConversationsService {
       template = { name: tpl.name, language: tpl.language, params: input.template.params };
     }
 
-    // A rich email reply carries HTML from the composer — sanitize it with the
-    // outbound scrub (keeps the agent's own images/links, strips scripts) before
-    // it's stored or sent, and derive the plain-text body from it when the
-    // composer only produced formatted content. HTML is email-only.
+    // A rich email reply carries HTML from the composer — sanitize it (keeps the
+    // agent's own images/links, strips scripts) before it's stored or sent, and
+    // derive the plain-text body from it when the composer only produced HTML.
     let bodyHtml: string | undefined;
-    if (input.bodyHtml && !input.internal && !template && conv.channel === "email") {
+    if (input.bodyHtml && !input.internal && !template && sendingEmail) {
       bodyHtml = sanitizeOutboundHtml(input.bodyHtml) || undefined;
       if (bodyHtml && !body.trim()) body = htmlToText(bodyHtml);
     }
 
-    // Enforce WhatsApp's 24-hour window: a free-form reply is only allowed while
-    // the window is open — once closed, an approved template is the only way in.
-    if (!input.internal && !template && conv.waWindow && !conv.waWindow.open) {
-      throw new BadRequestException(
-        "This WhatsApp conversation's 24-hour window has closed — send an approved template to reply.",
-      );
+    // Enforce WhatsApp's 24-hour window when replying on WhatsApp. For a
+    // WhatsApp-primary thread use its computed window (unchanged behaviour); for
+    // a cross-channel thread compute it from the last WhatsApp inbound message.
+    if (!input.internal && !template && sendingWa) {
+      const open = isWaChannel(conv.channel)
+        ? (conv.waWindow?.open ?? false)
+        : waWindowOpenFromMessages(conv.messages, conv.channel);
+      if (!open) {
+        throw new BadRequestException(
+          "This WhatsApp conversation's 24-hour window has closed — send an approved template to reply.",
+        );
+      }
     }
 
     // Build the channel-specific send hints, persisted with the message so a
@@ -118,6 +152,7 @@ export class ConversationsService {
         internal: input.internal,
         attachmentIds: input.attachmentIds,
         quotedMsgId: input.quotedMsgId,
+        channel: channelOverride,
         idempotencyKey,
         deliveryMeta,
       },
