@@ -16,6 +16,9 @@ export const env = {
   // Railway (and most PaaS) inject PORT; fall back to API_PORT for local dev.
   port: Number(process.env.PORT ?? process.env.API_PORT ?? 3001),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
+  // Public origin of the web app, used to build links (e.g. invite emails).
+  // Defaults to the CORS origin (same-origin in prod).
+  appUrl: process.env.APP_URL ?? process.env.CORS_ORIGIN ?? "http://localhost:5173",
   databaseUrl: process.env.DATABASE_URL ?? "",
   redisUrl: process.env.REDIS_URL ?? "",
   whatsapp: {

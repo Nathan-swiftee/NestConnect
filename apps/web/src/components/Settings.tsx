@@ -789,6 +789,10 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("agent");
   const [teamIds, setTeamIds] = useState<string[]>([]);
+  // The most recent invite's set-password link, shown so the admin can share it
+  // when no transactional email is connected yet.
+  const [invite, setInvite] = useState<{ name: string; url: string; emailed: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
   const [eRole, setERole] = useState<Role>("agent");
@@ -802,16 +806,35 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!valid) return;
+    const who = name.trim();
     create.mutate(
-      { name: name.trim(), email: email.trim(), role, teamIds },
+      { name: who, email: email.trim(), role, teamIds },
       {
-        onSuccess: () => {
-          onToast(`Invited ${name.trim()}`);
+        onSuccess: (result) => {
+          if (result.invite) {
+            setInvite({ name: who, url: result.invite.url, emailed: result.invite.emailed });
+            setCopied(false);
+            onToast(result.invite.emailed ? `Invite emailed to ${email.trim()}` : `Invited ${who} — share their link below`);
+          } else {
+            onToast(`Invited ${who}`);
+          }
           setName(""); setEmail(""); setRole("agent"); setTeamIds([]); setOpen(false);
         },
         onError: () => onToast("Only admins/managers can add people"),
       },
     );
+  };
+
+  const copyInvite = async () => {
+    if (!invite) return;
+    try {
+      await navigator.clipboard.writeText(invite.url);
+      setCopied(true);
+      onToast("Invite link copied");
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      onToast("Couldn't copy — select the link and copy manually");
+    }
   };
 
   const startEdit = (id: string, r: Role, t: string[]) => {
@@ -840,12 +863,34 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
       <div className="setpane__head">
         <div>
           <h2>People</h2>
-          <p>Team members who pick up conversations. New people sign in with the demo password.</p>
+          <p>Team members who pick up conversations. Invited people get a link to set their own password.</p>
         </div>
         <button className="btn-primary" onClick={() => { setEditId(null); setOpen((o) => !o); }}>
           <PlusIcon /> Invite person
         </button>
       </div>
+
+      {invite && (
+        <div className="invitebox">
+          <div className="invitebox__head">
+            <b>{invite.emailed ? `Invite emailed to ${invite.name}` : `Invite ${invite.name}`}</b>
+            <button className="iconbtn" title="Dismiss" onClick={() => setInvite(null)}>
+              <XIcon />
+            </button>
+          </div>
+          <p>
+            {invite.emailed
+              ? "They'll get an email with a link to set their own password. You can also share this link directly:"
+              : "Email isn't connected yet, so send this set-password link to them directly. It expires in 7 days."}
+          </p>
+          <div className="copyrow">
+            <input readOnly value={invite.url} onFocus={(e) => e.target.select()} />
+            <button className="btn-primary" type="button" onClick={copyInvite}>
+              {copied ? "Copied" : "Copy link"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {open && (
         <form className="setform" onSubmit={submit}>

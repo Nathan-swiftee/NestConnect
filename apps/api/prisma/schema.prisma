@@ -88,6 +88,10 @@ model User {
   avatarColor  String?
   online       Boolean  @default(false)
   passwordHash String?
+  // Emailed-invite flow: SHA-256 of a single-use token + its expiry. Cleared
+  // once the invitee sets their password.
+  inviteTokenHash String?
+  inviteExpiresAt DateTime?
   createdAt    DateTime @default(now())
 
   org         Organization   @relation(fields: [orgId], references: [id])

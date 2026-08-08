@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
+import { hashInviteToken, newInviteToken } from "../auth/invite-token";
 import type { Prisma } from "@prisma/client";
 import type {
   Attachment,
@@ -24,7 +26,6 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
-import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 import {
   canAdvanceStatus,
@@ -355,18 +356,34 @@ export class PrismaStore extends Store {
     email: string;
     role: Role;
     teamIds: string[];
-  }): Promise<User> {
+    password?: string;
+  }): Promise<{ user: User; inviteToken?: string }> {
+    // With a password → loginable now (seeding). Without → mint an invite token
+    // and set a random unusable password until the invitee sets their own.
+    const invite = params.password ? null : newInviteToken();
     const u = await this.prisma.user.create({
       data: {
         orgId: params.orgId,
         name: params.name,
         email: params.email,
         role: params.role,
-        passwordHash: bcrypt.hashSync(env.auth.devPassword, 8),
+        passwordHash: bcrypt.hashSync(params.password ?? randomBytes(24).toString("hex"), 8),
+        inviteTokenHash: invite?.hash ?? null,
+        inviteExpiresAt: invite?.expiresAt ?? null,
         memberships: { create: params.teamIds.map((teamId) => ({ teamId })) },
       },
     });
-    return mapUser(u);
+    return { user: mapUser(u), inviteToken: invite?.token };
+  }
+
+  async setPasswordByInviteToken(token: string, password: string): Promise<User | undefined> {
+    const u = await this.prisma.user.findFirst({ where: { inviteTokenHash: hashInviteToken(token) } });
+    if (!u || !u.inviteExpiresAt || u.inviteExpiresAt.getTime() < Date.now()) return undefined;
+    const updated = await this.prisma.user.update({
+      where: { id: u.id },
+      data: { passwordHash: bcrypt.hashSync(password, 8), inviteTokenHash: null, inviteExpiresAt: null },
+    });
+    return mapUser(updated);
   }
 
   async updateUser(

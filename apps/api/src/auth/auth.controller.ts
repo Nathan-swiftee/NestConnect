@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Res, UnauthorizedException } from "@nestjs/common";
 import type { Response } from "express";
-import { loginInputSchema, type LoginInput } from "@ding/schemas";
+import { loginInputSchema, setPasswordInputSchema, type LoginInput, type SetPasswordInput } from "@ding/schemas";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { Store } from "../data/store";
 import { env } from "../config/env";
@@ -25,6 +25,25 @@ export class AuthController {
     const user = await this.auth.validate(body.email, body.password);
     if (!user) throw new UnauthorizedException("Invalid email or password");
 
+    res.cookie(env.auth.cookieName, this.auth.sign(user.id), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: env.isProd,
+      maxAge: env.auth.ttlSeconds * 1000,
+      path: "/",
+    });
+    return this.store.me(user.id);
+  }
+
+  /** Set an initial password from an emailed invite link, then sign in. */
+  @Public()
+  @Post("set-password")
+  async setPassword(
+    @Body(new ZodValidationPipe(setPasswordInputSchema)) body: SetPasswordInput,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const user = await this.store.setPasswordByInviteToken(body.token, body.password);
+    if (!user) throw new UnauthorizedException("This invite link is invalid or has expired.");
     res.cookie(env.auth.cookieName, this.auth.sign(user.id), {
       httpOnly: true,
       sameSite: "lax",

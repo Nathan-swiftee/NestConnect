@@ -501,6 +501,13 @@ export const loginInputSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
 
+/** Set an initial password from an emailed invite link (token → new password). */
+export const setPasswordInputSchema = z.object({
+  token: z.string().min(10),
+  password: z.string().min(8, "Use at least 8 characters"),
+});
+export type SetPasswordInput = z.infer<typeof setPasswordInputSchema>;
+
 export const groupMemberInputSchema = z.object({
   phone: z.string().min(1),
   name: z.string().optional(),

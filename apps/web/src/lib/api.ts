@@ -48,6 +48,12 @@ export interface MeResponse {
   user: User;
   teams: Team[];
 }
+export interface CreateUserResult {
+  user: User;
+  /** Present when the person was invited (not seeded): the set-password link and
+   *  whether it was emailed. Surface the link when `emailed` is false. */
+  invite?: { url: string; emailed: boolean };
+}
 
 export interface ApiError extends Error {
   status: number;
@@ -76,6 +82,8 @@ export const api = {
   // auth
   session: () => get<MeResponse>("/auth/session"),
   login: (email: string, password: string) => post<MeResponse>("/auth/login", { email, password }),
+  // Set an initial password from an emailed invite link, then sign in.
+  setPassword: (token: string, password: string) => post<MeResponse>("/auth/set-password", { token, password }),
   logout: () => post<{ ok: boolean }>("/auth/logout", {}),
   // workspace
   me: () => get<MeResponse>("/me"),
@@ -91,7 +99,7 @@ export const api = {
   updateTeam: (id: string, input: UpdateTeamInput) => patch<Team>(`/settings/teams/${id}`, input),
   deleteTeam: (id: string) => del<{ ok: boolean }>(`/settings/teams/${id}`),
   reorderTeams: (orderedIds: string[]) => post<Team[]>("/settings/teams/reorder", { orderedIds }),
-  createUser: (input: CreateUserInput) => post<User>("/settings/people", input),
+  createUser: (input: CreateUserInput) => post<CreateUserResult>("/settings/people", input),
   updateUser: (id: string, input: UpdateUserInput) => patch<User>(`/settings/people/${id}`, input),
   deleteUser: (id: string) => del<{ ok: boolean }>(`/settings/people/${id}`),
   // integrations (Settings › Setup)

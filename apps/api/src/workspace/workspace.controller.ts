@@ -29,11 +29,16 @@ import {
 import { Store } from "../data/store";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
+import { InviteMailer } from "../auth/invite-mailer";
+import { env } from "../config/env";
 
 /** Workspace bootstrap data for the app shell, plus the Settings admin surface. */
 @Controller()
 export class WorkspaceController {
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly invites: InviteMailer,
+  ) {}
 
   @Get("me")
   me(@CurrentUserId() userId: string) {
@@ -134,7 +139,14 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(createUserInputSchema)) body: CreateUserInput,
   ) {
     const me = await this.requireManager(userId);
-    return this.store.createUser({ orgId: me.orgId, ...body });
+    // No password → the store mints an invite token; email the "set your
+    // password" link, and return it so the admin can share it by hand when no
+    // transactional email is connected yet.
+    const { user, inviteToken } = await this.store.createUser({ orgId: me.orgId, ...body });
+    if (!inviteToken) return { user };
+    const url = `${env.appUrl}/?invite=${inviteToken}`;
+    const { sent } = await this.invites.sendInvite(user.email, user.name, url);
+    return { user, invite: { url, emailed: sent } };
   }
 
   @Patch("settings/people/:id")

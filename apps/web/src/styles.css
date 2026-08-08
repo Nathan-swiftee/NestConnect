@@ -1059,7 +1059,11 @@ input,textarea{font:inherit}
 .setupcard__head{display:flex;align-items:center;gap:12px}
 .copyrow{display:flex;gap:8px;align-items:stretch}
 .copyrow input{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px}
-.copyrow .btn-ghost{flex:0 0 auto;white-space:nowrap}
+.copyrow .btn-ghost,.copyrow .btn-primary{flex:0 0 auto;white-space:nowrap}
+.invitebox{border:1px solid var(--brand-ring);border-radius:var(--r-12);background:var(--brand-tint);padding:14px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:10px;animation:paneIn .2s var(--ease)}
+.invitebox__head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.invitebox__head b{font-size:14px}
+.invitebox p{margin:0;font-size:13px;color:var(--text-muted)}
 .setupcard__sub{display:flex;flex-direction:column;gap:3px;padding-top:14px;margin-top:2px;border-top:1px solid var(--border)}
 .setupcard__sub b{font-size:13.5px}
 .setupcard__sub small{color:var(--text-faint);line-height:1.5}

@@ -154,13 +154,22 @@ export abstract class Store {
   abstract deleteTeam(id: string): Promise<void>;
   /** Persist a new team ordering; ids not present keep their relative order after. */
   abstract reorderTeams(orderedIds: string[]): Promise<Team[]>;
+  /**
+   * Create a user. With `password` set (seeding) the account can log in straight
+   * away; without it, a single-use invite token is minted and returned so the
+   * invitee can set their own password — the account has no usable password
+   * until they do.
+   */
   abstract createUser(params: {
     orgId: string;
     name: string;
     email: string;
     role: Role;
     teamIds: string[];
-  }): Promise<User>;
+    password?: string;
+  }): Promise<{ user: User; inviteToken?: string }>;
+  /** Consume an invite token, set the user's password, and return the user. */
+  abstract setPasswordByInviteToken(token: string, password: string): Promise<User | undefined>;
   abstract updateUser(
     id: string,
     params: { name?: string; role?: Role; teamIds?: string[] },

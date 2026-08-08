@@ -1,5 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import bcrypt from "bcryptjs";
+import { randomBytes } from "node:crypto";
+import { hashInviteToken, newInviteToken } from "../auth/invite-token";
 import type {
   Attachment,
   ChannelType,
@@ -56,6 +58,8 @@ export class MemoryStore extends Store {
   private contacts: Contact[];
   private templates: Template[];
   private passwords: Map<string, string>;
+  // Pending emailed invites: userId → { sha256(token), expiry ms }.
+  private invites = new Map<string, { hash: string; exp: number }>();
   /** Per-inbox provider credentials, kept server-side only (never serialised). */
   private inboxConfig = new Map<string, Record<string, string>>();
   /** Org-scoped app settings, keyed by `${orgId}::${key}` (e.g. Google OAuth creds). */
@@ -298,7 +302,8 @@ export class MemoryStore extends Store {
     email: string;
     role: Role;
     teamIds: string[];
-  }): Promise<User> {
+    password?: string;
+  }): Promise<{ user: User; inviteToken?: string }> {
     const id = `usr_${++this.idSeq}`;
     const user: User = {
       id,
@@ -311,8 +316,28 @@ export class MemoryStore extends Store {
     };
     this.users.push(user);
     this.membership[id] = params.teamIds;
-    this.passwords.set(id, bcrypt.hashSync(env.auth.devPassword, 8));
-    return user;
+    if (params.password) {
+      this.passwords.set(id, bcrypt.hashSync(params.password, 8));
+      return { user };
+    }
+    // No password given → mint an invite token; the account can't log in with a
+    // known password until the invitee sets one (guard with a random hash).
+    this.passwords.set(id, bcrypt.hashSync(randomBytes(24).toString("hex"), 8));
+    const inv = newInviteToken();
+    this.invites.set(id, { hash: inv.hash, exp: inv.expiresAt.getTime() });
+    return { user, inviteToken: inv.token };
+  }
+
+  async setPasswordByInviteToken(token: string, password: string): Promise<User | undefined> {
+    const hash = hashInviteToken(token);
+    for (const [userId, inv] of this.invites) {
+      if (inv.hash !== hash) continue;
+      if (Date.now() > inv.exp) return undefined; // expired
+      this.passwords.set(userId, bcrypt.hashSync(password, 8));
+      this.invites.delete(userId);
+      return this.users.find((u) => u.id === userId);
+    }
+    return undefined;
   }
 
   async updateUser(
