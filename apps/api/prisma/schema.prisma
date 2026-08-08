@@ -270,6 +270,8 @@ model Message {
   attachments  Attachment[]
 
   @@index([conversationId, seq])
+  // Backs inbound idempotency + delivery-status lookups (both hit channelMsgId).
+  @@index([channelMsgId])
 }
 
 model Attachment {

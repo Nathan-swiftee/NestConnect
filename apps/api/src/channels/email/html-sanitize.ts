@@ -79,7 +79,53 @@ export function sanitizeEmailHtml(dirty: string | null | undefined): SanitizedHt
     },
   });
 
-  return { html, blockedImages };
+  return { html: stripCssUrls(html), blockedImages };
+}
+
+/**
+ * Remove `url(...)` from inline `style` attributes. A CSS background image
+ * (`style="background:url(http://tracker/x.png)"`) would otherwise fetch on
+ * render and defeat the <img>-level remote-image block, leaking the reader's IP.
+ */
+function stripCssUrls(html: string): string {
+  return html.replace(
+    /style="([^"]*)"/gi,
+    (_m, css: string) => `style="${css.replace(/url\(\s*(['"]?)[^)]*\1\s*\)/gi, "none")}"`,
+  );
+}
+
+/**
+ * Sanitise the agent's OWN composed HTML before sending. Uses the same tag /
+ * attribute allowlist and script/handler stripping as inbound, but keeps the
+ * agent's remote images and doesn't force `nofollow` — those are inbound
+ * anti-tracking behaviours that would wrongly break a legitimate outbound email
+ * (a hosted signature logo, pasted image, or real marketing link).
+ */
+export function sanitizeOutboundHtml(dirty: string | null | undefined): string {
+  const input = (dirty ?? "").slice(0, MAX_HTML);
+  if (!input.trim()) return "";
+  return sanitizeHtml(input, {
+    allowedTags: ALLOWED_TAGS,
+    allowedAttributes: {
+      "*": COMMON_ATTRS,
+      a: ["href", "name", "target", "rel", "title", "style", "class"],
+      img: ["src", "alt", "width", "height", "style", "class"],
+      font: ["color", "face", "size"],
+      col: ["span", "width", "style"],
+      table: ["width", "border", "cellpadding", "cellspacing", "bgcolor", "align", "style", "class"],
+    },
+    allowedSchemes: ["http", "https", "mailto", "tel"],
+    allowedSchemesByTag: { img: ["http", "https", "data", "cid"] },
+    allowProtocolRelative: false,
+    nonTextTags: ["script", "style", "textarea", "noscript", "title", "head"],
+    transformTags: {
+      a: (tagName, attribs) => {
+        attribs.target = "_blank";
+        attribs.rel = "noopener noreferrer";
+        return { tagName, attribs };
+      },
+    },
+  });
 }
 
 /** Minimal HTML-entity decode for the handful that appear in extracted text. */

@@ -12,7 +12,7 @@ import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { ChannelDispatcher } from "../channels/channel-dispatcher";
 import type { OutboundTemplate } from "../channels/channel-provider";
-import { sanitizeEmailHtml, htmlToText } from "../channels/email/html-sanitize";
+import { sanitizeOutboundHtml, htmlToText } from "../channels/email/html-sanitize";
 
 /** Fill a template body's {{1}}, {{2}} … positional variables from `params`. */
 function fillTemplate(body: string, params: string[]): string {
@@ -59,12 +59,13 @@ export class ConversationsService {
       template = { name: tpl.name, language: tpl.language, params: input.template.params };
     }
 
-    // A rich email reply carries HTML from the composer — sanitize it (same scrub
-    // as inbound) before it's stored or sent, and derive the plain-text body from
-    // it when the composer only produced formatted content. HTML is email-only.
+    // A rich email reply carries HTML from the composer — sanitize it with the
+    // outbound scrub (keeps the agent's own images/links, strips scripts) before
+    // it's stored or sent, and derive the plain-text body from it when the
+    // composer only produced formatted content. HTML is email-only.
     let bodyHtml: string | undefined;
     if (input.bodyHtml && !input.internal && !template && conv.channel === "email") {
-      bodyHtml = sanitizeEmailHtml(input.bodyHtml).html || undefined;
+      bodyHtml = sanitizeOutboundHtml(input.bodyHtml) || undefined;
       if (bodyHtml && !body.trim()) body = htmlToText(bodyHtml);
     }
 

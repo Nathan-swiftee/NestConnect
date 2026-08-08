@@ -48,6 +48,13 @@ export class IngestService {
   ) {}
 
   async ingestWhatsApp(input: WhatsAppInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
+    // Idempotency: Meta retries any webhook it doesn't get a fast 2xx for, so a
+    // message we've already stored must not be ingested twice.
+    if (input.channelMsgId) {
+      const seen = await this.store.getMessageRefByChannelId(input.channelMsgId);
+      if (seen) return { conversationId: seen.conversationId, created: false };
+    }
+
     const inbox = await this.store.getInboxByWhatsAppPhoneId(input.phoneNumberId);
     if (!inbox) {
       this.logger.warn(`No inbox mapped for WhatsApp phone id ${input.phoneNumberId}`);
@@ -105,6 +112,10 @@ export class IngestService {
     attachments?: AttachmentInput[];
     quotedMsgId?: string;
   }): Promise<{ conversationId: string; created: boolean } | undefined> {
+    if (input.channelMsgId) {
+      const seen = await this.store.getMessageRefByChannelId(input.channelMsgId);
+      if (seen) return { conversationId: seen.conversationId, created: false };
+    }
     const conversationId = await this.store.findConversationByChannelRef(input.groupId);
     if (!conversationId) {
       this.logger.warn(`No group conversation for WhatsApp group ${input.groupId}`);
@@ -135,6 +146,13 @@ export class IngestService {
   }
 
   async ingestEmail(input: EmailInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
+    // Idempotency: a Postmark/webhook retry of an email we've already stored
+    // (matched on its own Message-ID) must not append a duplicate.
+    if (input.messageId) {
+      const seen = await this.store.getMessageRefByChannelId(input.messageId);
+      if (seen) return { conversationId: seen.conversationId, created: false };
+    }
+
     const inbox = await this.store.getInboxByEmailAddress(input.toAddress);
     if (!inbox) {
       this.logger.warn(`No inbox mapped for email address ${input.toAddress}`);

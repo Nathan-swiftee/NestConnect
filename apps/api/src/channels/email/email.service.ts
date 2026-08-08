@@ -34,6 +34,12 @@ function extractAddress(raw: string): string {
   return (m ? m[1] : raw).trim().toLowerCase();
 }
 
+/** Pull the display name out of a `"Name" <addr>` header, if there is one. */
+function extractName(raw: string): string | undefined {
+  const m = raw.match(/^\s*"?([^"<]+?)"?\s*<[^>]+>/);
+  return m ? m[1].trim() || undefined : undefined;
+}
+
 @Injectable()
 export class EmailService {
   constructor(private readonly ingest: IngestService) {}
@@ -42,8 +48,11 @@ export class EmailService {
     const header = (name: string) =>
       body.Headers?.find((h) => h.Name?.toLowerCase() === name.toLowerCase())?.Value;
 
-    const from = body.FromFull?.Email || body.From || body.from || "";
-    const fromName = body.FromFull?.Name || body.FromName || body.fromName;
+    // Extract the bare address from the From header ("Name <a@b>" → "a@b") so the
+    // contact identity is the address, not the whole header (which forks contacts).
+    const rawFrom = body.From || body.from || "";
+    const from = extractAddress(body.FromFull?.Email || rawFrom);
+    const fromName = body.FromFull?.Name || body.FromName || body.fromName || extractName(rawFrom);
     const toAddress = extractAddress(body.ToFull?.[0]?.Email || body.To || body.to || "");
     const subject = body.Subject || body.subject;
     const html = body.HtmlBody || body.html;

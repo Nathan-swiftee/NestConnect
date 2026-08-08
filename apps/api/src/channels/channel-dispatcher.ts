@@ -40,11 +40,17 @@ export class ChannelDispatcher {
         ? { provider: (await this.store.getInboxConfig(conversation.inboxId))?.provider }
         : undefined;
     const provider = this.providers.find((p) => p.supports(conversation.channel, ctx));
-    if (!provider) return; // channel not wired for sending yet
+    if (!provider) {
+      // Channel not wired for sending yet — don't leave the message pending forever.
+      this.logger.warn(`No provider for ${conversation.channel} — marking ${message.id} failed`);
+      await this.fail(message.id);
+      return;
+    }
 
     const to = conversation.channel === "email" ? conversation.contact.email : conversation.contact.phone;
     if (!to) {
       this.logger.warn(`Conversation ${conversation.id} has no ${conversation.channel} address to send to`);
+      await this.fail(message.id);
       return;
     }
 
@@ -83,7 +89,10 @@ export class ChannelDispatcher {
     }
     if (!result.ok) {
       this.logger.warn(`Send failed on ${conversation.channel}: ${result.error}`);
-      await this.transition(result.channelMsgId, "failed", 0);
+      // The provider rejected the send — most return no channel id, so fail by
+      // internal id (falling back to the id path when we do have one).
+      if (result.channelMsgId) await this.transition(result.channelMsgId, "failed", 0);
+      else await this.fail(message.id);
       return;
     }
     // The provider accepted it → "sent" (single grey tick). Real channels then
@@ -151,6 +160,12 @@ export class ChannelDispatcher {
       });
     }
     return out.length ? out : undefined;
+  }
+
+  /** Flip an outbound message to failed by internal id and broadcast the change. */
+  private async fail(messageId: string): Promise<void> {
+    const failed = await this.store.failMessage(messageId);
+    if (failed) this.realtime.emitMessageUpdated(failed.conversationId, failed.message);
   }
 
   private transition(channelMsgId: string | undefined, status: MessageStatus, delay: number): Promise<void> {

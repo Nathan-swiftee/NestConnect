@@ -834,6 +834,19 @@ export class MemoryStore extends Store {
     return undefined;
   }
 
+  async failMessage(
+    messageId: string,
+  ): Promise<{ conversationId: string; message: Message } | undefined> {
+    for (const rec of this.conversations) {
+      const m = rec.messages.find((x) => x.id === messageId);
+      if (!m) continue;
+      if (!canAdvanceStatus(m.status, "failed")) return undefined;
+      m.status = "failed";
+      return { conversationId: rec.id, message: m };
+    }
+    return undefined;
+  }
+
   async reactToMessage(
     messageId: string,
     emoji: string,

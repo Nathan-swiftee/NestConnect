@@ -268,6 +268,16 @@ export abstract class Store {
     status: MessageStatus,
   ): Promise<{ conversationId: string; message: Message } | undefined>;
 
+  /**
+   * Mark an outbound message as failed by its internal id — used when a send is
+   * rejected before the provider ever returns a channel id (bad address, no
+   * provider, expired token). Guarded by the status ladder so it never drags a
+   * message that already reached the customer back to failed.
+   */
+  abstract failMessage(
+    messageId: string,
+  ): Promise<{ conversationId: string; message: Message } | undefined>;
+
   /* ---- WhatsApp groups ---- */
 
   abstract findConversationByChannelRef(channelRef: string): Promise<string | undefined>;

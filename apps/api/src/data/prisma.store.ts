@@ -791,8 +791,11 @@ export class PrismaStore extends Store {
     company?: string;
     avatarColor?: string;
   }): Promise<Contact> {
-    const ident = await this.prisma.contactIdentity.findUnique({
-      where: { kind_value: { kind: params.kind, value: params.value } },
+    // A phone number can arrive as either `phone` or `wa_id` — match across both
+    // so we don't fork one customer into two contacts (mirrors setIdentity).
+    const matchKinds = params.kind === "email" ? ["email"] : ["phone", "wa_id"];
+    const ident = await this.prisma.contactIdentity.findFirst({
+      where: { kind: { in: matchKinds }, value: params.value },
       include: { contact: { include: { identities: true } } },
     });
     if (ident) return mapContact(ident.contact);
@@ -935,6 +938,20 @@ export class PrismaStore extends Store {
       orderBy: { createdAt: "desc" },
     });
     return m ?? undefined;
+  }
+
+  async failMessage(
+    messageId: string,
+  ): Promise<{ conversationId: string; message: Message } | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    if (!canAdvanceStatus(msg.status as MessageStatus, "failed")) return undefined;
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { status: "failed" },
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
   }
 
   async reactToMessage(

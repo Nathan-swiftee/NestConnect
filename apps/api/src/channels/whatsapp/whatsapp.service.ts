@@ -96,59 +96,70 @@ export class WhatsAppService {
         }
 
         for (const msg of value.messages ?? []) {
-          // A reaction updates an existing message (emoji) rather than adding one.
-          if (msg.type === "reaction" || msg.reaction) {
-            const target = msg.reaction?.message_id;
-            if (target) {
-              const ref = await this.store.getMessageRefByChannelId(target);
-              if (ref) {
-                const updated = await this.store.reactToMessage(ref.id, msg.reaction?.emoji ?? "", "contact");
-                if (updated) {
-                  this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
-                  reactions += 1;
+          // Isolate each message: a single failure (DB blip, media error) must
+          // log-and-continue, never throw the whole batch back to Meta as a 500
+          // — that would retry messages that already succeeded.
+          try {
+            // A reaction updates an existing message (emoji) rather than adding one.
+            if (msg.type === "reaction" || msg.reaction) {
+              const target = msg.reaction?.message_id;
+              if (target) {
+                const ref = await this.store.getMessageRefByChannelId(target);
+                if (ref) {
+                  const updated = await this.store.reactToMessage(ref.id, msg.reaction?.emoji ?? "", "contact");
+                  if (updated) {
+                    this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+                    reactions += 1;
+                  }
                 }
               }
+              continue;
             }
-            continue;
-          }
 
-          const groupId = valueGroupId ?? msg.group_id;
-          const { text, messageType, attachments } = await this.resolveInbound(msg, phoneNumberId);
-          // Resolve a reply's quoted message to our internal id (when we have it).
-          const quotedMsgId = msg.context?.id
-            ? (await this.store.getMessageRefByChannelId(msg.context.id))?.id
-            : undefined;
-          const res = groupId
-            ? await this.ingest.ingestWhatsAppGroup({
-                groupId,
-                from: msg.from,
-                name: nameOf(msg.from),
-                text,
-                channelMsgId: msg.id,
-                messageType,
-                attachments,
-                quotedMsgId,
-              })
-            : await this.ingest.ingestWhatsApp({
-                phoneNumberId,
-                from: msg.from,
-                name: nameOf(msg.from),
-                text,
-                channelMsgId: msg.id,
-                messageType,
-                attachments,
-                quotedMsgId,
-              });
-          if (res) messages += 1;
+            const groupId = valueGroupId ?? msg.group_id;
+            const { text, messageType, attachments } = await this.resolveInbound(msg, phoneNumberId);
+            // Resolve a reply's quoted message to our internal id (when we have it).
+            const quotedMsgId = msg.context?.id
+              ? (await this.store.getMessageRefByChannelId(msg.context.id))?.id
+              : undefined;
+            const res = groupId
+              ? await this.ingest.ingestWhatsAppGroup({
+                  groupId,
+                  from: msg.from,
+                  name: nameOf(msg.from),
+                  text,
+                  channelMsgId: msg.id,
+                  messageType,
+                  attachments,
+                  quotedMsgId,
+                })
+              : await this.ingest.ingestWhatsApp({
+                  phoneNumberId,
+                  from: msg.from,
+                  name: nameOf(msg.from),
+                  text,
+                  channelMsgId: msg.id,
+                  messageType,
+                  attachments,
+                  quotedMsgId,
+                });
+            if (res) messages += 1;
+          } catch (err) {
+            this.logger.error(`Failed to ingest WhatsApp message ${msg.id}: ${String(err)}`);
+          }
         }
 
         for (const st of value.statuses ?? []) {
-          const status = this.mapStatus(st.status);
-          if (!status) continue;
-          const updated = await this.store.updateMessageStatusByChannelId(st.id, status);
-          if (updated) {
-            this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
-            statuses += 1;
+          try {
+            const status = this.mapStatus(st.status);
+            if (!status) continue;
+            const updated = await this.store.updateMessageStatusByChannelId(st.id, status);
+            if (updated) {
+              this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+              statuses += 1;
+            }
+          } catch (err) {
+            this.logger.warn(`Failed to apply WhatsApp status ${st.id}: ${String(err)}`);
           }
         }
       }

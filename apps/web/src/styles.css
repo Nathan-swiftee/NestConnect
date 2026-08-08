@@ -967,13 +967,13 @@ input,textarea{font:inherit}
 /* settings & customers — an in-app page (fills the area beside the icon rail),
    not a full-screen modal takeover */
 .settings{flex:1;min-width:0;min-height:0;background:var(--bg);display:flex;flex-direction:column;animation:overlayIn .2s ease}
-.settings__head{display:flex;align-items:center;justify-content:space-between;padding:15px 22px;border-bottom:1px solid var(--border);background:var(--surface)}
+.settings__head{display:flex;align-items:center;justify-content:space-between;padding:15px 28px;border-bottom:1px solid var(--border);background:var(--surface)}
 .settings__head h1{margin:0;font-size:18px;font-weight:750;letter-spacing:-.01em}
 .settings__x{width:36px;height:36px;color:var(--text-muted)}
 .settings__x svg{width:18px;height:18px}
 .settings__body{flex:1;display:flex;flex-direction:column;min-height:0}
 /* tabs run horizontally across the top of the page (no slim left column) */
-.settings__tabs{position:relative;flex:0 0 auto;border-bottom:1px solid var(--border);background:var(--surface);padding:10px 16px;display:flex;flex-direction:row;gap:4px;overflow-x:auto}
+.settings__tabs{position:relative;flex:0 0 auto;border-bottom:1px solid var(--border);background:var(--surface);padding:10px 15px;display:flex;flex-direction:row;gap:4px;overflow-x:auto}
 .settabs__thumb{position:absolute;top:0;left:0;border-radius:var(--r-12);background:var(--brand-tint);z-index:0;pointer-events:none;will-change:transform,width,height;
   box-shadow:inset 0 1px 0 var(--glass-hi),0 4px 12px -8px var(--brand-ring);
   transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1)}
@@ -984,7 +984,7 @@ input,textarea{font:inherit}
 .settabs__btn.active{color:var(--brand-strong)}
 .settings__pane{flex:1;overflow-y:auto;padding:24px 28px;animation:paneIn .26s var(--ease)}
 @keyframes paneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.setpane{max-width:760px;margin:0 auto}
+.setpane{max-width:880px;margin:0}
 .setpane__head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
 .setpane__head h2{margin:0 0 3px;font-size:17px;font-weight:750}
 .setpane__head p{margin:0;font-size:13px;color:var(--text-muted);max-width:470px}
