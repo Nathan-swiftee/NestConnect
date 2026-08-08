@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { ConversationWithMessages, Message } from "@ding/schemas";
 import { Store } from "../data/store";
 import { MediaService } from "../storage/media.service";
+import { redactSecrets } from "../crypto/redact";
 import {
   CHANNEL_PROVIDERS,
   ChannelProvider,
@@ -97,7 +98,7 @@ export class ChannelDispatcher {
     }
     const retryable = result.retryable ?? isRetryableStatus(result.httpStatus);
     this.logger.warn(
-      `Send failed on ${conversation.channel} (${retryable ? "transient" : "permanent"}): ${result.error}`,
+      `Send failed on ${conversation.channel} (${retryable ? "transient" : "permanent"}): ${redactSecrets(result.error)}`,
     );
     return {
       ok: false,

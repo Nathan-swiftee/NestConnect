@@ -43,6 +43,7 @@ import {
   previewForType,
 } from "./mappers";
 import { PrismaService } from "./prisma.service";
+import { SecretEncryptionService } from "../crypto/secret-encryption.service";
 import {
   Store,
   type AppendInboundInput,
@@ -72,7 +73,10 @@ const AVATAR_PALETTE = [
 /** Postgres-backed store (active when DATABASE_URL is set). */
 @Injectable()
 export class PrismaStore extends Store {
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: SecretEncryptionService,
+  ) {
     super();
   }
 
@@ -116,7 +120,10 @@ export class PrismaStore extends Store {
         name: params.name,
         handle: params.handle,
         routingStrategy: params.routingStrategy,
-        channelConfig: params.channelConfig ?? undefined,
+        // Encrypt credential fields (accessToken/providerToken/refreshToken) at rest.
+        channelConfig: params.channelConfig
+          ? this.crypto.encryptChannelConfig(params.channelConfig)
+          : undefined,
         teams: { create: params.teamIds.map((teamId) => ({ teamId })) },
       },
       include: { teams: true },
@@ -135,9 +142,15 @@ export class PrismaStore extends Store {
   ): Promise<Inbox | undefined> {
     const existing = await this.prisma.inbox.findUnique({ where: { id } });
     if (!existing) return undefined;
+    // Merge new (plaintext) fields over the stored config, encrypting the
+    // incoming secret fields. Existing secret fields are already ciphertext and
+    // are preserved as-is (encrypt() is idempotent, so no double-encryption).
     const mergedConfig =
       params.channelConfig !== undefined
-        ? { ...((existing.channelConfig as Record<string, string> | null) ?? {}), ...params.channelConfig }
+        ? {
+            ...((existing.channelConfig as Record<string, string> | null) ?? {}),
+            ...this.crypto.encryptChannelConfig(params.channelConfig),
+          }
         : undefined;
     const updated = await this.prisma.inbox.update({
       where: { id },
@@ -189,21 +202,25 @@ export class PrismaStore extends Store {
       where: { id },
       select: { channelConfig: true },
     });
-    return (row?.channelConfig as Record<string, string> | null) ?? undefined;
+    const config = (row?.channelConfig as Record<string, string> | null) ?? undefined;
+    // Decrypt credential fields so callers (providers) get plaintext tokens.
+    return config ? this.crypto.decryptChannelConfig(config) : undefined;
   }
 
   async getAppSetting(orgId: string, key: string): Promise<string | undefined> {
     const row = await this.prisma.appSetting.findUnique({
       where: { orgId_key: { orgId, key } },
     });
-    return row?.value ?? undefined;
+    if (row?.value == null) return undefined;
+    return this.crypto.decryptAppSetting(key, row.value);
   }
 
   async setAppSetting(orgId: string, key: string, value: string): Promise<void> {
+    const stored = this.crypto.encryptAppSetting(key, value);
     await this.prisma.appSetting.upsert({
       where: { orgId_key: { orgId, key } },
-      create: { orgId, key, value },
-      update: { value },
+      create: { orgId, key, value: stored },
+      update: { value: stored },
     });
   }
 

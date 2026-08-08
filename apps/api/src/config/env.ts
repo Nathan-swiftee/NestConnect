@@ -36,6 +36,11 @@ export const env = {
     // Password for all seeded demo users (dev only).
     devPassword: process.env.AUTH_DEV_PASSWORD ?? "ding1234",
   },
+  // Master key for encrypting integration secrets at rest (AES-256-GCM). Loaded
+  // from the environment only — never stored in Postgres. Prefer a base64- or
+  // hex-encoded 32-byte random key; any other non-empty value is stretched with
+  // SHA-256. Unset ⇒ encryption disabled (secrets stored as plaintext).
+  secretKey: process.env.SECRET_ENCRYPTION_KEY ?? "",
   email: {
     // Postmark server token → enables live sending (else the provider mocks).
     postmarkToken: process.env.POSTMARK_TOKEN ?? "",
@@ -108,5 +113,8 @@ export function assertProdSecrets(logger: { warn: (m: string) => void } = consol
   }
   if (env.auth.devPassword === "ding1234") {
     logger.warn("AUTH_DEV_PASSWORD is the built-in default — seeded demo users share it. Invite real users to get unique credentials.");
+  }
+  if (!env.secretKey) {
+    logger.warn("SECRET_ENCRYPTION_KEY is not set — integration credentials (OAuth tokens, app secrets) are stored UNENCRYPTED. Set a 32-byte key and run `pnpm --filter @ding/api db:encrypt-secrets`.");
   }
 }

@@ -2,6 +2,7 @@ import { Module, type ModuleMetadata } from "@nestjs/common";
 import { ServeStaticModule } from "@nestjs/serve-static";
 import { join } from "node:path";
 import { env } from "./config/env";
+import { CryptoModule } from "./crypto/crypto.module";
 import { DataModule } from "./data/data.module";
 import { AuthModule } from "./auth/auth.module";
 import { RealtimeModule } from "./realtime/realtime.module";
@@ -15,6 +16,7 @@ import { TemplatesModule } from "./templates/templates.module";
 import { HealthController } from "./health/health.controller";
 
 const imports: ModuleMetadata["imports"] = [
+  CryptoModule,
   DataModule,
   AuthModule,
   RealtimeModule,

@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import type { MessageStatus } from "@ding/schemas";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { redactSecrets } from "../crypto/redact";
 import { ChannelDispatcher } from "./channel-dispatcher";
 import type { OutboundTemplate } from "./channel-provider";
 
@@ -84,7 +85,7 @@ export class OutboundDeliveryService {
       // the UI keeps showing "sending" while the queue backs off and retries.
       await this.store.recordSendFailure(job.messageId, {
         permanent: false,
-        error: outcome.error,
+        error: redactSecrets(outcome.error),
         code: outcome.code,
       });
       return { state: "failed-transient", error: outcome.error };
@@ -93,7 +94,7 @@ export class OutboundDeliveryService {
     // Permanent failure — mark failed with a human reason and broadcast.
     const change = await this.store.recordSendFailure(job.messageId, {
       permanent: true,
-      error: outcome.error,
+      error: redactSecrets(outcome.error),
       code: outcome.code,
       reason: outcome.reason,
     });
