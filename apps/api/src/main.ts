@@ -18,6 +18,10 @@ async function bootstrap() {
   // REST lives under /api; /health stays at the root for platform probes.
   app.setGlobalPrefix("api", { exclude: ["health"] });
 
+  // Graceful shutdown: on SIGTERM/SIGINT, Nest runs OnModuleDestroy hooks so the
+  // BullMQ worker stops taking jobs and lets in-flight deliveries drain.
+  app.enableShutdownHooks();
+
   await app.listen(env.port);
 
   const log = new Logger("Bootstrap");

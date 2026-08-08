@@ -9,7 +9,7 @@ import {
   type SupportsContext,
 } from "../channel-provider";
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
-import { buildMime, gmail } from "./gmail-api";
+import { buildMime, gmail, GmailApiError } from "./gmail-api";
 import { textToHtml } from "../email/html-sanitize";
 
 /**
@@ -78,7 +78,11 @@ export class GmailProvider extends ChannelProvider {
       await gmail.send(accessToken, raw);
       return { ok: true, channelMsgId: messageId };
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      if (err instanceof GmailApiError) {
+        return { ok: false, error: err.message, errorCode: String(err.status), httpStatus: err.status };
+      }
+      // Token refresh / network error before any HTTP response — transient.
+      return { ok: false, error: err instanceof Error ? err.message : String(err), retryable: true };
     }
   }
 

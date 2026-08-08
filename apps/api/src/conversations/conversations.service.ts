@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type {
   AssignConversationInput,
   Conversation,
@@ -8,15 +9,29 @@ import type {
   UpdatePriorityInput,
   UpdateStatusInput,
 } from "@ding/schemas";
-import { Store } from "../data/store";
+import { Store, type OutboundDeliveryMeta } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { ChannelDispatcher } from "../channels/channel-dispatcher";
 import type { OutboundTemplate } from "../channels/channel-provider";
+import { OutboundQueue } from "../queue/outbound-queue";
 import { sanitizeOutboundHtml, htmlToText } from "../channels/email/html-sanitize";
 
 /** Fill a template body's {{1}}, {{2}} … positional variables from `params`. */
 function fillTemplate(body: string, params: string[]): string {
   return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_m, n) => params[Number(n) - 1] ?? `{{${n}}}`);
+}
+
+/** Assemble the persisted send hints, omitting empty parts (undefined when none). */
+function buildDeliveryMeta(
+  template?: OutboundTemplate,
+  cc?: string[],
+  bcc?: string[],
+): OutboundDeliveryMeta | undefined {
+  const meta: OutboundDeliveryMeta = {};
+  if (template) meta.template = template;
+  if (cc?.length) meta.cc = cc;
+  if (bcc?.length) meta.bcc = bcc;
+  return Object.keys(meta).length ? meta : undefined;
 }
 
 @Injectable()
@@ -25,6 +40,7 @@ export class ConversationsService {
     private readonly store: Store,
     private readonly realtime: RealtimeGateway,
     private readonly dispatcher: ChannelDispatcher,
+    private readonly queue: OutboundQueue,
   ) {}
 
   list(view: string, userId: string): Promise<Conversation[]> {
@@ -77,9 +93,27 @@ export class ConversationsService {
       );
     }
 
+    // Build the channel-specific send hints, persisted with the message so a
+    // (re)delivery can be reconstructed from the DB alone after a restart.
+    const cc = input.internal ? undefined : input.cc?.filter((a) => a.trim());
+    const bcc = input.internal ? undefined : input.bcc?.filter((a) => a.trim());
+    const deliveryMeta: OutboundDeliveryMeta | undefined = input.internal
+      ? undefined
+      : buildDeliveryMeta(template, cc, bcc);
+    // Idempotency key doubles as the delivery job id, so duplicate sends collapse.
+    const idempotencyKey = input.internal ? undefined : randomUUID();
+
     const message = await this.store.addMessage(
       id,
-      { body, bodyHtml, internal: input.internal, attachmentIds: input.attachmentIds, quotedMsgId: input.quotedMsgId },
+      {
+        body,
+        bodyHtml,
+        internal: input.internal,
+        attachmentIds: input.attachmentIds,
+        quotedMsgId: input.quotedMsgId,
+        idempotencyKey,
+        deliveryMeta,
+      },
       author,
     );
     if (!message) throw new NotFoundException(`Conversation ${id} not found`);
@@ -87,23 +121,30 @@ export class ConversationsService {
     // Broadcast immediately so every open client updates the thread + previews.
     this.realtime.emitMessageCreated(id, message);
 
-    // Dispatch real (non-internal) replies out through the channel provider.
+    // Real (non-internal) replies are enqueued for durable delivery. The message
+    // is already persisted (status "queued"); the queue drives it to sent/failed
+    // with retries, so a crash here never loses it — the recovery sweep re-drives
+    // any message left queued/sending.
     if (!input.internal) {
       // An agent reply meets the first-response SLA — stop the clock.
       const cleared = await this.store.setSla(id, null);
       if (cleared) this.realtime.emitConversationUpdated(cleared);
-      // Re-read so the dispatch sees the just-appended message in the thread.
-      const fresh = await this.store.getConversation(id);
-      if (fresh) {
-        const cc = input.cc?.filter((a) => a.trim());
-        const bcc = input.bcc?.filter((a) => a.trim());
-        void this.dispatcher.dispatchOutbound(fresh, message, template, {
-          cc: cc?.length ? cc : undefined,
-          bcc: bcc?.length ? bcc : undefined,
-        });
-      }
+      await this.queue.enqueueDelivery({ messageId: message.id, conversationId: id }, idempotencyKey);
     }
     return message;
+  }
+
+  /** Manually retry a failed outbound message: reset it to queued and re-enqueue. */
+  async retryMessage(messageId: string): Promise<Message> {
+    const key = randomUUID();
+    const change = await this.store.resetMessageForRetry(messageId, key);
+    if (!change) throw new BadRequestException("Message is not in a retryable state");
+    this.realtime.emitMessageUpdated(change.conversationId, change.message);
+    await this.queue.enqueueDelivery(
+      { messageId, conversationId: change.conversationId },
+      key,
+    );
+    return change.message;
   }
 
   async assign(id: string, input: AssignConversationInput, byUserId: string): Promise<Conversation> {

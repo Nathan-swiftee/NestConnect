@@ -6,12 +6,32 @@ export interface SendResult {
   ok: boolean;
   channelMsgId?: string;
   error?: string;
+  /** Provider-specific error code (WhatsApp error.code, Postmark ErrorCode …). */
+  errorCode?: string;
+  /** Transport status of the failed call, used to classify transient vs permanent. */
+  httpStatus?: number;
+  /**
+   * Explicit retry hint. When set it wins over the httpStatus heuristic — e.g. a
+   * network error (no response) sets `retryable: true`; a rejected recipient sets
+   * `retryable: false`.
+   */
+  retryable?: boolean;
   /**
    * True when the send was mocked (no live credentials), so the dispatcher can
    * fake delivered/read ticks. Real sends leave this false and let the channel's
    * own status webhooks move the ticks.
    */
   simulated?: boolean;
+}
+
+/**
+ * Whether a failed transport call is worth retrying: network/unknown failures
+ * (no status) and 408/429/5xx are transient; explicit 4xx are permanent.
+ */
+export function isRetryableStatus(status?: number): boolean {
+  if (status == null) return true;
+  if (status === 408 || status === 429) return true;
+  return status >= 500 && status <= 599;
 }
 
 /** Optional context a provider can use (email threading, subjects). */

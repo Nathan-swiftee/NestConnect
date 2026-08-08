@@ -25,7 +25,7 @@ export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 export const messageDirectionSchema = z.enum(["in", "out"]);
 export type MessageDirection = z.infer<typeof messageDirectionSchema>;
 
-export const messageStatusSchema = z.enum(["queued", "sent", "delivered", "read", "failed"]);
+export const messageStatusSchema = z.enum(["queued", "sending", "sent", "delivered", "read", "failed"]);
 export type MessageStatus = z.infer<typeof messageStatusSchema>;
 
 export const authorTypeSchema = z.enum(["contact", "user", "system"]);
@@ -211,6 +211,10 @@ export const messageSchema = z.object({
   reactions: z.array(reactionSchema).default([]),
   /** Id of the message this one quotes/replies to (resolved within the thread). */
   quotedMsgId: z.string().nullable().optional(),
+  /** Outbound send attempts made so far (absent for inbound/internal). */
+  attemptCount: z.number().int().nonnegative().optional(),
+  /** Human-readable reason shown in the UI once an outbound send has failed. */
+  failureReason: z.string().nullable().optional(),
   createdAt: z.string(), // ISO-8601
 });
 export type Message = z.infer<typeof messageSchema>;

@@ -80,6 +80,30 @@ export interface StoredAttachmentRef {
   filename: string;
 }
 
+/** Channel-specific hints persisted so an outbound message can be (re)sent from
+ *  the DB alone after a restart — no reliance on in-flight job payloads. */
+export interface OutboundDeliveryMeta {
+  template?: { name: string; language: string; params: string[] };
+  cc?: string[];
+  bcc?: string[];
+}
+
+/** The minimal record the delivery worker needs to (re)send an outbound message. */
+export interface OutboundMessageRef {
+  messageId: string;
+  conversationId: string;
+  status: MessageStatus;
+  channelMsgId?: string;
+  internal: boolean;
+  deliveryMeta?: OutboundDeliveryMeta;
+}
+
+/** A message status change to broadcast (returned by the delivery-state writers). */
+export interface MessageStatusChange {
+  conversationId: string;
+  message: Message;
+}
+
 /**
  * The data-access contract for the platform. Two implementations exist:
  * `MemoryStore` (zero-infra fixtures) and `PrismaStore` (Postgres). Services
@@ -175,7 +199,17 @@ export abstract class Store {
 
   abstract addMessage(
     conversationId: string,
-    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: {
+      body: string;
+      bodyHtml?: string;
+      internal: boolean;
+      attachmentIds?: string[];
+      quotedMsgId?: string;
+      /** Dedup key for the delivery job (also the queue jobId). */
+      idempotencyKey?: string;
+      /** Channel-specific send hints, persisted for restart-safe (re)delivery. */
+      deliveryMeta?: OutboundDeliveryMeta;
+    },
     author: User,
   ): Promise<Message | undefined>;
 
@@ -223,6 +257,44 @@ export abstract class Store {
 
   /** Record a provider-side id on an outbound message (for status reconciliation). */
   abstract setMessageChannelId(messageId: string, channelMsgId: string): Promise<void>;
+
+  /* ---- durable outbound delivery ---- */
+
+  /** Everything the delivery worker needs to (re)send a message by its id. */
+  abstract getOutboundMessage(messageId: string): Promise<OutboundMessageRef | undefined>;
+
+  /** Begin a send attempt: status→sending, attemptCount++, lastAttemptAt=now.
+   *  Returns undefined if the message is gone or already past the sending stage. */
+  abstract markMessageSending(messageId: string): Promise<MessageStatusChange | undefined>;
+
+  /** Provider accepted the send: persist its channel id (if any) and advance to
+   *  "sent", clearing any recorded error. Guarded by the status ladder. */
+  abstract markMessageSent(
+    messageId: string,
+    channelMsgId?: string,
+  ): Promise<MessageStatusChange | undefined>;
+
+  /** Record a failed send attempt. `permanent` flips the message to failed
+   *  (terminal) with `reason`; otherwise it stays in flight for the queue to
+   *  retry, and only the diagnostics (error/code) are recorded. */
+  abstract recordSendFailure(
+    messageId: string,
+    info: { error?: string; code?: string; permanent: boolean; reason?: string },
+  ): Promise<MessageStatusChange | undefined>;
+
+  /** Outbound messages still in flight (queued/sending) whose last attempt is
+   *  older than `olderThanMs` — used to re-enqueue after a restart/crash. The
+   *  idempotency key rides along so the re-enqueue reuses the same job identity. */
+  abstract listStuckOutbound(
+    olderThanMs: number,
+  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>>;
+
+  /** Reset a failed message to queued for a manual retry (new idempotency key,
+   *  failure fields cleared). Returns undefined if it isn't in a retryable state. */
+  abstract resetMessageForRetry(
+    messageId: string,
+    idempotencyKey: string,
+  ): Promise<MessageStatusChange | undefined>;
 
   /** Clear a conversation's unread flag + count (agent opened/read it). */
   abstract clearUnread(conversationId: string): Promise<Conversation | undefined>;

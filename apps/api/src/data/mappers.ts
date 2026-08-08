@@ -41,8 +41,8 @@ export function computeWaWindow(
   return { open: Date.now() < expiresAt.getTime(), expiresAt: expiresAt.toISOString() };
 }
 
-/** The delivery ladder order: queued → sent → delivered → read. */
-const STATUS_ORDER: MessageStatus[] = ["queued", "sent", "delivered", "read"];
+/** The delivery ladder order: queued → sending → sent → delivered → read. */
+const STATUS_ORDER: MessageStatus[] = ["queued", "sending", "sent", "delivered", "read"];
 
 /**
  * Whether a message may move from `current` to `next`. Status only ever advances
@@ -233,6 +233,8 @@ export function mapMessage(m: MessageRow): Message {
     reactions: parseReactions(m.reactions),
     quotedMsgId: m.quotedMsgId ?? undefined,
     bodyHtml: m.bodyHtml ?? undefined,
+    attemptCount: m.attemptCount ?? 0,
+    failureReason: m.failureReason ?? undefined,
     createdAt: m.createdAt.toISOString(),
   };
 }

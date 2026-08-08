@@ -94,6 +94,12 @@ export class ConversationsController {
     return this.conversations.react(id, messageId, body.emoji);
   }
 
+  /** Manually retry a failed outbound message (re-queues it for delivery). */
+  @Post(":id/messages/:messageId/retry")
+  retry(@Param("messageId") messageId: string) {
+    return this.conversations.retryMessage(messageId);
+  }
+
   @Post(":id/priority")
   setPriority(
     @Param("id") id: string,

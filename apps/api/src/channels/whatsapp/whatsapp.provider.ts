@@ -216,12 +216,23 @@ export class WhatsAppCloudProvider extends ChannelProvider {
         headers: { authorization: `Bearer ${creds.accessToken}`, "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const json = (await res.json()) as { messages?: Array<{ id: string }>; error?: unknown };
-      if (!res.ok) return { ok: false, error: JSON.stringify(json.error ?? json) };
+      const json = (await res.json()) as {
+        messages?: Array<{ id: string }>;
+        error?: { code?: number; message?: string };
+      };
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: JSON.stringify(json.error ?? json),
+          errorCode: json.error?.code != null ? String(json.error.code) : undefined,
+          httpStatus: res.status,
+        };
+      }
       // Real WhatsApp reports delivered/read via status webhooks, so don't fake it.
       return { ok: true, channelMsgId: json.messages?.[0]?.id, simulated: false };
     } catch (err) {
-      return { ok: false, error: String(err) };
+      // Network/transport error before any HTTP response — transient, worth a retry.
+      return { ok: false, error: String(err), retryable: true };
     }
   }
 

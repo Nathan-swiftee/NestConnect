@@ -31,6 +31,7 @@ enum MessageDirection {
 
 enum MessageStatus {
   queued
+  sending
   sent
   delivered
   read
@@ -263,6 +264,20 @@ model Message {
   reactions      Json?
   // Id of the message this one quotes/replies to (same conversation).
   quotedMsgId    String?
+  // ---- durable outbound delivery bookkeeping (out messages only) ----
+  // How many provider send attempts have been made, and when the last one ran.
+  attemptCount   Int              @default(0)
+  lastAttemptAt  DateTime?
+  // Last provider/transport error message + code (diagnostics; backend-only).
+  providerError  String?
+  providerErrorCode String?
+  // Human-readable reason once the send has permanently failed (shown in the UI).
+  failureReason  String?
+  // Dedup key for the delivery job (also the BullMQ jobId) — prevents double sends.
+  idempotencyKey String?
+  // Channel-specific send hints needed to (re)deliver from the DB alone after a
+  // restart: { template?: { name, language, params }, cc?, bcc? }.
+  deliveryMeta   Json?
   createdAt      DateTime         @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id])
@@ -272,6 +287,10 @@ model Message {
   @@index([conversationId, seq])
   // Backs inbound idempotency + delivery-status lookups (both hit channelMsgId).
   @@index([channelMsgId])
+  // Dedup outbound sends by idempotency key.
+  @@unique([idempotencyKey])
+  // Restart recovery scans for still-in-flight outbound messages.
+  @@index([direction, status])
 }
 
 model Attachment {

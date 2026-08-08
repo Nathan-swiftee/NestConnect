@@ -70,11 +70,17 @@ export class EmailProvider extends ChannelProvider {
       });
       const json = (await res.json()) as { ErrorCode?: number; Message?: string };
       if (!res.ok || (json.ErrorCode && json.ErrorCode !== 0)) {
-        return { ok: false, error: json.Message ?? `HTTP ${res.status}` };
+        return {
+          ok: false,
+          error: json.Message ?? `HTTP ${res.status}`,
+          errorCode: json.ErrorCode != null ? String(json.ErrorCode) : undefined,
+          httpStatus: res.status,
+        };
       }
       return { ok: true, channelMsgId: messageId };
     } catch (err) {
-      return { ok: false, error: String(err) };
+      // Network/transport error before any HTTP response — transient, worth a retry.
+      return { ok: false, error: String(err), retryable: true };
     }
   }
 

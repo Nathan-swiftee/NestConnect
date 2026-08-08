@@ -31,6 +31,9 @@ import {
   Store,
   type AppendInboundInput,
   type AttachmentInput,
+  type MessageStatusChange,
+  type OutboundDeliveryMeta,
+  type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
   type ViewItem,
@@ -64,6 +67,17 @@ export class MemoryStore extends Store {
   private mediaRefs = new Map<string, StoredAttachmentRef>();
   /** Uploaded-but-not-yet-sent attachments (composer staging), keyed by id. */
   private pendingUploads = new Map<string, Attachment>();
+  /** Backend-only outbound delivery bookkeeping, keyed by message id. */
+  private outboundMeta = new Map<
+    string,
+    {
+      idempotencyKey?: string;
+      deliveryMeta?: OutboundDeliveryMeta;
+      lastAttemptAt?: number;
+      providerError?: string;
+      providerErrorCode?: string;
+    }
+  >();
   private idSeq = 10_000;
 
   constructor() {
@@ -510,7 +524,15 @@ export class MemoryStore extends Store {
 
   async addMessage(
     conversationId: string,
-    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: {
+      body: string;
+      bodyHtml?: string;
+      internal: boolean;
+      attachmentIds?: string[];
+      quotedMsgId?: string;
+      idempotencyKey?: string;
+      deliveryMeta?: OutboundDeliveryMeta;
+    },
     author: User,
   ): Promise<Message | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
@@ -527,16 +549,23 @@ export class MemoryStore extends Store {
       authorName: author.name,
       body: input.body,
       bodyHtml: input.bodyHtml,
-      // A real reply starts queued and climbs the ladder as the channel
-      // confirms it (sent → delivered → read); notes have no delivery ladder.
+      // A real reply starts queued and climbs the ladder as the channel confirms
+      // it (queued → sending → sent → delivered → read); notes have no ladder.
       status: input.internal ? "sent" : "queued",
       internal: input.internal,
       messageType,
       attachments,
       reactions: [],
       quotedMsgId: input.quotedMsgId,
+      ...(input.internal ? {} : { attemptCount: 0 }),
       createdAt: new Date().toISOString(),
     };
+    if (!input.internal && (input.idempotencyKey || input.deliveryMeta)) {
+      this.outboundMeta.set(message.id, {
+        idempotencyKey: input.idempotencyKey,
+        deliveryMeta: input.deliveryMeta,
+      });
+    }
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
     rec.unread = false;
@@ -643,6 +672,112 @@ export class MemoryStore extends Store {
         return;
       }
     }
+  }
+
+  /* ---- durable outbound delivery ---- */
+
+  private findMsg(messageId: string): { rec: ConversationRecord; m: Message } | undefined {
+    for (const rec of this.conversations) {
+      const m = rec.messages.find((x) => x.id === messageId);
+      if (m) return { rec, m };
+    }
+    return undefined;
+  }
+
+  async getOutboundMessage(messageId: string): Promise<OutboundMessageRef | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    return {
+      messageId,
+      conversationId: hit.rec.id,
+      status: hit.m.status,
+      channelMsgId: hit.m.channelMsgId ?? undefined,
+      internal: hit.m.internal,
+      deliveryMeta: this.outboundMeta.get(messageId)?.deliveryMeta,
+    };
+  }
+
+  async markMessageSending(messageId: string): Promise<MessageStatusChange | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    if (hit.m.status !== "queued" && hit.m.status !== "sending") return undefined;
+    hit.m.status = "sending";
+    hit.m.attemptCount = (hit.m.attemptCount ?? 0) + 1;
+    const meta = this.outboundMeta.get(messageId) ?? {};
+    meta.lastAttemptAt = Date.now();
+    this.outboundMeta.set(messageId, meta);
+    return { conversationId: hit.rec.id, message: hit.m };
+  }
+
+  async markMessageSent(
+    messageId: string,
+    channelMsgId?: string,
+  ): Promise<MessageStatusChange | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    if (hit.m.status === "failed") return undefined;
+    if (channelMsgId && !hit.m.channelMsgId) hit.m.channelMsgId = channelMsgId;
+    if (canAdvanceStatus(hit.m.status, "sent")) hit.m.status = "sent";
+    hit.m.failureReason = undefined;
+    const meta = this.outboundMeta.get(messageId);
+    if (meta) {
+      meta.providerError = undefined;
+      meta.providerErrorCode = undefined;
+    }
+    return { conversationId: hit.rec.id, message: hit.m };
+  }
+
+  async recordSendFailure(
+    messageId: string,
+    info: { error?: string; code?: string; permanent: boolean; reason?: string },
+  ): Promise<MessageStatusChange | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    const meta = this.outboundMeta.get(messageId) ?? {};
+    meta.providerError = info.error ? info.error.slice(0, 500) : undefined;
+    meta.providerErrorCode = info.code;
+    this.outboundMeta.set(messageId, meta);
+    if (info.permanent && canAdvanceStatus(hit.m.status, "failed")) {
+      hit.m.status = "failed";
+      hit.m.failureReason = info.reason ?? "Message could not be delivered";
+    }
+    return { conversationId: hit.rec.id, message: hit.m };
+  }
+
+  async listStuckOutbound(
+    olderThanMs: number,
+  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>> {
+    const cutoff = Date.now() - olderThanMs;
+    const out: Array<{ messageId: string; conversationId: string; idempotencyKey?: string }> = [];
+    for (const rec of this.conversations) {
+      for (const m of rec.messages) {
+        if (m.direction !== "out" || m.internal) continue;
+        if (m.status !== "queued" && m.status !== "sending") continue;
+        const meta = this.outboundMeta.get(m.id);
+        if (meta?.lastAttemptAt == null || meta.lastAttemptAt <= cutoff) {
+          out.push({ messageId: m.id, conversationId: rec.id, idempotencyKey: meta?.idempotencyKey });
+        }
+      }
+    }
+    return out;
+  }
+
+  async resetMessageForRetry(
+    messageId: string,
+    idempotencyKey: string,
+  ): Promise<MessageStatusChange | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    if (hit.m.direction !== "out" || hit.m.internal || hit.m.status !== "failed") return undefined;
+    hit.m.status = "queued";
+    hit.m.failureReason = undefined;
+    const meta = this.outboundMeta.get(messageId) ?? {};
+    meta.idempotencyKey = idempotencyKey;
+    meta.providerError = undefined;
+    meta.providerErrorCode = undefined;
+    meta.lastAttemptAt = undefined;
+    this.outboundMeta.set(messageId, meta);
+    return { conversationId: hit.rec.id, message: hit.m };
   }
 
   /* ---- ingestion ---- */

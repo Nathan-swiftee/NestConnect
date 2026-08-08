@@ -3,6 +3,7 @@ import { RealtimeModule } from "../realtime/realtime.module";
 import { StorageModule } from "../storage/storage.module";
 import { CHANNEL_PROVIDERS } from "./channel-provider";
 import { ChannelDispatcher } from "./channel-dispatcher";
+import { OutboundDeliveryService } from "./outbound-delivery.service";
 import { IngestService } from "./ingest.service";
 import { RoutingService } from "./routing.service";
 import { WhatsAppCloudProvider } from "./whatsapp/whatsapp.provider";
@@ -55,7 +56,8 @@ import { IntegrationsController } from "../settings/integrations.controller";
     GmailSyncService,
     MetaOAuthService,
     ChannelDispatcher,
+    OutboundDeliveryService,
   ],
-  exports: [ChannelDispatcher],
+  exports: [ChannelDispatcher, OutboundDeliveryService, GmailSyncService],
 })
 export class ChannelsModule {}

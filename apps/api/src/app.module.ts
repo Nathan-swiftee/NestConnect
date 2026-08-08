@@ -6,6 +6,7 @@ import { DataModule } from "./data/data.module";
 import { AuthModule } from "./auth/auth.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { ChannelsModule } from "./channels/channels.module";
+import { QueueModule } from "./queue/queue.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { ContactsModule } from "./contacts/contacts.module";
@@ -19,6 +20,7 @@ const imports: ModuleMetadata["imports"] = [
   RealtimeModule,
   StorageModule,
   ChannelsModule,
+  QueueModule,
   ConversationsModule,
   WorkspaceModule,
   ContactsModule,

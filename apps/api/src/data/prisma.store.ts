@@ -47,6 +47,9 @@ import {
   Store,
   type AppendInboundInput,
   type AttachmentInput,
+  type MessageStatusChange,
+  type OutboundDeliveryMeta,
+  type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
   type ViewItem,
@@ -593,7 +596,15 @@ export class PrismaStore extends Store {
 
   async addMessage(
     conversationId: string,
-    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: {
+      body: string;
+      bodyHtml?: string;
+      internal: boolean;
+      attachmentIds?: string[];
+      quotedMsgId?: string;
+      idempotencyKey?: string;
+      deliveryMeta?: OutboundDeliveryMeta;
+    },
     author: User,
   ): Promise<Message | undefined> {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
@@ -623,11 +634,14 @@ export class PrismaStore extends Store {
           body: input.body,
           bodyHtml: input.bodyHtml ?? null,
           // A real reply starts queued and climbs the delivery ladder as the
-          // channel confirms it (sent → delivered → read); notes have no ladder.
+          // channel confirms it (queued → sending → sent → delivered → read);
+          // notes have no ladder.
           status: input.internal ? "sent" : "queued",
           internal: input.internal,
           messageType,
           quotedMsgId: input.quotedMsgId ?? null,
+          idempotencyKey: input.idempotencyKey ?? null,
+          deliveryMeta: (input.deliveryMeta as Prisma.InputJsonValue) ?? undefined,
           ...(staged.length ? { attachments: { connect: staged.map((a) => ({ id: a.id })) } } : {}),
         },
         include: { attachments: true },
@@ -748,6 +762,141 @@ export class PrismaStore extends Store {
     } catch {
       /* message gone — nothing to reconcile */
     }
+  }
+
+  /* ---- durable outbound delivery ---- */
+
+  async getOutboundMessage(messageId: string): Promise<OutboundMessageRef | undefined> {
+    const m = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        conversationId: true,
+        status: true,
+        channelMsgId: true,
+        internal: true,
+        deliveryMeta: true,
+      },
+    });
+    if (!m) return undefined;
+    return {
+      messageId: m.id,
+      conversationId: m.conversationId,
+      status: m.status as MessageStatus,
+      channelMsgId: m.channelMsgId ?? undefined,
+      internal: m.internal,
+      deliveryMeta: (m.deliveryMeta as OutboundDeliveryMeta | null) ?? undefined,
+    };
+  }
+
+  async markMessageSending(messageId: string): Promise<MessageStatusChange | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    const current = msg.status as MessageStatus;
+    // Only a queued message (or one already mid-attempt on a retry) enters "sending".
+    if (current !== "queued" && current !== "sending") return undefined;
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { status: "sending", attemptCount: { increment: 1 }, lastAttemptAt: new Date() },
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  async markMessageSent(
+    messageId: string,
+    channelMsgId?: string,
+  ): Promise<MessageStatusChange | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    const current = msg.status as MessageStatus;
+    if (current === "failed") return undefined; // never resurrect a failed message
+    const data: Prisma.MessageUpdateInput = {
+      providerError: null,
+      providerErrorCode: null,
+      failureReason: null,
+    };
+    // Set the channel id once so out-of-order status webhooks can reconcile.
+    if (channelMsgId && !msg.channelMsgId) data.channelMsgId = channelMsgId;
+    // Advance to "sent" unless a delivered/read webhook already beat us there.
+    if (canAdvanceStatus(current, "sent")) data.status = "sent";
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data,
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  async recordSendFailure(
+    messageId: string,
+    info: { error?: string; code?: string; permanent: boolean; reason?: string },
+  ): Promise<MessageStatusChange | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    const current = msg.status as MessageStatus;
+    const data: Prisma.MessageUpdateInput = {
+      providerError: info.error ? info.error.slice(0, 500) : null,
+      providerErrorCode: info.code ?? null,
+    };
+    // A permanent failure flips the message to failed — but only if the ladder
+    // allows it (a delivered/read message stays; we just keep the diagnostics).
+    if (info.permanent && canAdvanceStatus(current, "failed")) {
+      data.status = "failed";
+      data.failureReason = info.reason ?? "Message could not be delivered";
+    }
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data,
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  async listStuckOutbound(
+    olderThanMs: number,
+  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>> {
+    const cutoff = new Date(Date.now() - olderThanMs);
+    const rows = await this.prisma.message.findMany({
+      where: {
+        direction: "out",
+        internal: false,
+        status: { in: ["queued", "sending"] },
+        OR: [{ lastAttemptAt: null }, { lastAttemptAt: { lte: cutoff } }],
+      },
+      select: { id: true, conversationId: true, idempotencyKey: true },
+      orderBy: { createdAt: "asc" },
+      take: 500,
+    });
+    return rows.map((r) => ({
+      messageId: r.id,
+      conversationId: r.conversationId,
+      idempotencyKey: r.idempotencyKey ?? undefined,
+    }));
+  }
+
+  async resetMessageForRetry(
+    messageId: string,
+    idempotencyKey: string,
+  ): Promise<MessageStatusChange | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    // Only a failed outbound message may be manually retried.
+    if (msg.direction !== "out" || msg.internal || (msg.status as MessageStatus) !== "failed") {
+      return undefined;
+    }
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        status: "queued",
+        failureReason: null,
+        providerError: null,
+        providerErrorCode: null,
+        idempotencyKey,
+      },
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
   }
 
   /* ---- ingestion ---- */
