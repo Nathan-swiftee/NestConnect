@@ -370,6 +370,13 @@ export abstract class Store {
   /** Backend-only: the storage key + mime of an attachment, for serving media. */
   abstract getAttachment(id: string): Promise<StoredAttachmentRef | undefined>;
 
+  /** Media access info for the serving endpoint: the storage ref plus the org
+   *  that owns it (via its message's conversation), for the authorization check.
+   *  `orgId` is undefined for a staged upload not yet attached to a conversation. */
+  abstract getAttachmentAccess(
+    id: string,
+  ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined>;
+
   abstract updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,

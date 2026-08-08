@@ -1009,6 +1009,21 @@ export class MemoryStore extends Store {
     return this.mediaRefs.get(id);
   }
 
+  async getAttachmentAccess(
+    id: string,
+  ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined> {
+    const ref = this.mediaRefs.get(id);
+    if (!ref) return undefined;
+    // A sent attachment belongs to its conversation's org (the access boundary);
+    // a staged upload isn't attached to a conversation yet → no org.
+    for (const rec of this.conversations) {
+      if (rec.messages.some((m) => m.attachments?.some((a) => a.id === id))) {
+        return { ...ref, orgId: rec.orgId };
+      }
+    }
+    return { ...ref };
+  }
+
   /** Persist attachment refs (for serving) and return the client-facing shape. */
   private storeAttachments(inputs?: AttachmentInput[]): Attachment[] {
     if (!inputs?.length) return [];

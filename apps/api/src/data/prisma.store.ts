@@ -1206,6 +1206,27 @@ export class PrismaStore extends Store {
     return a ? { storageKey: a.r2Key, mime: a.mime, filename: a.filename } : undefined;
   }
 
+  async getAttachmentAccess(
+    id: string,
+  ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined> {
+    const a = await this.prisma.attachment.findUnique({
+      where: { id },
+      select: {
+        r2Key: true,
+        mime: true,
+        filename: true,
+        message: { select: { conversation: { select: { orgId: true } } } },
+      },
+    });
+    if (!a) return undefined;
+    return {
+      storageKey: a.r2Key,
+      mime: a.mime,
+      filename: a.filename,
+      orgId: a.message?.conversation.orgId,
+    };
+  }
+
   async updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,
