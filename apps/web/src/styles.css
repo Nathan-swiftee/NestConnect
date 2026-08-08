@@ -1407,3 +1407,15 @@ button.tpl-row:active{transform:scale(.99)}
 }
 .loadolder__btn:hover:not(:disabled) { background: var(--glass-strong, rgba(120,130,150,0.18)); }
 .loadolder__btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Tiptap email editor: EditorContent's wrapper is the composer's flex child;
+   the inner .ProseMirror keeps the class "richedit" and reuses the styles above. */
+.richedit-host { flex: 1; min-width: 0; display: flex; }
+.compinput .richedit:focus, .compinput .richedit:focus-visible { outline: none; }
+.compinput .richedit p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}

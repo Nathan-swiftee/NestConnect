@@ -1,5 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Underline from "@tiptap/extension-underline";
+import Link from "@tiptap/extension-link";
+import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages } from "../hooks";
@@ -704,7 +709,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // which message's quick-reaction bar is open. Both reset when the thread changes.
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [reactFor, setReactFor] = useState<string | null>(null);
-  // Rich-text HTML for an email reply (mirrors the contentEditable editor).
+  // Rich-text HTML for an email reply (mirrors the Tiptap editor's content).
   const [html, setHtml] = useState("");
   // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -733,7 +738,30 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
+  // Latest typing-signal fn, so the editor's (once-created) onUpdate calls the
+  // current one without a stale closure.
+  const typingSignalRef = useRef<() => void>(() => {});
+  // Maintained rich-text editor for email replies (replaces document.execCommand).
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: false }), // email bodies don't need headings
+      Underline,
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
+      }),
+      Placeholder.configure({ placeholder: "Write a reply…" }),
+    ],
+    editorProps: {
+      attributes: { class: "richedit", role: "textbox", "aria-multiline": "true" },
+    },
+    onUpdate: ({ editor }) => {
+      setHtml(editor.getHTML());
+      setText(editor.getText());
+      typingSignalRef.current();
+    },
+  });
   // Conversations we've already auto-opened the template picker for (cold WA starts).
   const autoTemplateRef = useRef<Set<string>>(new Set());
   const modeThumbRef = useRef<HTMLSpanElement>(null);
@@ -786,8 +814,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setShowCc(false);
     setCc("");
     setBcc("");
-    if (editorRef.current) editorRef.current.innerHTML = "";
-  }, [conversationId]);
+    editor?.commands.clearContent();
+  }, [conversationId, editor]);
 
   // Starting a *new* WhatsApp conversation lands on a cold, window-closed thread
   // where an approved template is the only way to open the conversation — so
@@ -1045,6 +1073,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     if (typingStopRef.current != null) window.clearTimeout(typingStopRef.current);
     typingStopRef.current = window.setTimeout(stopTyping, 2500);
   };
+  // Keep the editor's onUpdate pointing at the current signalTyping closure.
+  typingSignalRef.current = signalTyping;
 
   // Start (or switch) a quoted reply to a message: force Reply mode and focus
   // the composer. Notes can't quote a customer message out to WhatsApp.
@@ -1072,40 +1102,23 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     window.setTimeout(() => el.classList.remove("msg--flash"), 1200);
   };
 
-  // Apply a rich-text command to the email editor, keeping focus + state in sync.
-  const format = (cmd: string) => {
-    const el = editorRef.current;
-    if (!el) return;
-    el.focus();
-    if (cmd === "createLink") {
-      const url = window.prompt("Link URL");
-      if (!url) return;
-      document.execCommand("createLink", false, /^https?:\/\//i.test(url) ? url : `https://${url}`);
-    } else {
-      document.execCommand(cmd);
+  // Toggle a link on the current selection via the editor (replaces execCommand).
+  const toggleLink = () => {
+    if (!editor) return;
+    if (editor.isActive("link")) {
+      editor.chain().focus().unsetLink().run();
+      return;
     }
-    setHtml(el.innerHTML);
-    setText(el.textContent ?? "");
-  };
-
-  // Mirror the editor's content into state (drives canSend + html) and keep the
-  // agent-presence typing indicator alive.
-  const onEditorInput = () => {
-    const el = editorRef.current;
-    if (!el) return;
-    setHtml(el.innerHTML);
-    setText(el.textContent ?? "");
-    signalTyping();
+    const url = window.prompt("Link URL");
+    if (!url) return;
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    editor.chain().focus().setLink({ href }).run();
   };
 
   // Insert an emoji at the caret of whichever composer input is active.
   const insertEmoji = (emoji: string) => {
-    if (isRich && editorRef.current) {
-      const el = editorRef.current;
-      el.focus();
-      document.execCommand("insertText", false, emoji);
-      setHtml(el.innerHTML);
-      setText(el.textContent ?? "");
+    if (isRich && editor) {
+      editor.chain().focus().insertContent(emoji).run();
     } else {
       const ta = taRef.current;
       if (ta) {
@@ -1166,7 +1179,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     stopTyping();
     setText("");
     setHtml("");
-    if (editorRef.current) editorRef.current.innerHTML = "";
+    editor?.commands.clearContent();
     clearStaged();
     setInternal(false);
     setReplyTo(null);
@@ -1748,24 +1761,24 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           )}
           {isRich && !composeLocked && !recording && (
             <div className="richbar" role="toolbar" aria-label="Formatting">
-              <button type="button" className="richbar__b" title="Bold" aria-label="Bold" onMouseDown={(e) => e.preventDefault()} onClick={() => format("bold")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("bold") ? " on" : "")} title="Bold" aria-label="Bold" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBold().run()}>
                 <b>B</b>
               </button>
-              <button type="button" className="richbar__b" title="Italic" aria-label="Italic" onMouseDown={(e) => e.preventDefault()} onClick={() => format("italic")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("italic") ? " on" : "")} title="Italic" aria-label="Italic" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleItalic().run()}>
                 <i>I</i>
               </button>
-              <button type="button" className="richbar__b" title="Underline" aria-label="Underline" onMouseDown={(e) => e.preventDefault()} onClick={() => format("underline")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("underline") ? " on" : "")} title="Underline" aria-label="Underline" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleUnderline().run()}>
                 <u>U</u>
               </button>
               <span className="richbar__sep" aria-hidden="true" />
-              <button type="button" className="richbar__b" title="Bulleted list" aria-label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => format("insertUnorderedList")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("bulletList") ? " on" : "")} title="Bulleted list" aria-label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBulletList().run()}>
                 •&nbsp;—
               </button>
-              <button type="button" className="richbar__b" title="Numbered list" aria-label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => format("insertOrderedList")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("orderedList") ? " on" : "")} title="Numbered list" aria-label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleOrderedList().run()}>
                 1.&nbsp;—
               </button>
               <span className="richbar__sep" aria-hidden="true" />
-              <button type="button" className="richbar__b" title="Insert link" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={() => format("createLink")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("link") ? " on" : "")} title="Insert link" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={toggleLink}>
                 🔗
               </button>
             </div>
@@ -1834,16 +1847,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <EmojiIcon />
               </button>
               {isRich ? (
-                <div
-                  ref={editorRef}
-                  className="richedit"
-                  contentEditable
-                  suppressContentEditableWarning
-                  role="textbox"
-                  aria-multiline="true"
+                <EditorContent
+                  editor={editor}
+                  className="richedit-host"
                   aria-label={`Reply to ${conv.contact.displayName}`}
-                  data-placeholder={`Reply to ${conv.contact.displayName}…`}
-                  onInput={onEditorInput}
                   onBlur={stopTyping}
                   onKeyDown={(e) => {
                     // Enter adds a line; ⌘/Ctrl+Enter sends (email convention).
