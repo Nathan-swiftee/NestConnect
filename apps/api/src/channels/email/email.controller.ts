@@ -12,6 +12,11 @@ export class EmailController {
   @Post("webhook")
   @HttpCode(200)
   async receive(@Body() body: EmailWebhookBody, @Query("token") token?: string) {
+    // Require the shared secret in production (fail closed); enforce it whenever
+    // it's configured. No inbound email is wired until this is set.
+    if (env.isProd && !env.email.inboundToken) {
+      throw new UnauthorizedException("Inbound email token required in production (set EMAIL_INBOUND_TOKEN)");
+    }
     if (env.email.inboundToken && token !== env.email.inboundToken) {
       throw new UnauthorizedException("Invalid inbound email token");
     }

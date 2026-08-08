@@ -21,6 +21,7 @@ export class AuthController {
     @Body(new ZodValidationPipe(loginInputSchema)) body: LoginInput,
     @Res({ passthrough: true }) res: Response,
   ) {
+    this.auth.assertNotThrottled(body.email);
     const user = await this.auth.validate(body.email, body.password);
     if (!user) throw new UnauthorizedException("Invalid email or password");
 

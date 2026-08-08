@@ -86,3 +86,27 @@ export const env = {
     return this.isProd || process.env.SERVE_WEB === "true";
   },
 };
+
+const DEFAULT_JWT_SECRET = "ding-dev-secret-change-me";
+
+/**
+ * Fail closed on boot if production is running on insecure defaults. Only the
+ * session-signing secret is boot-critical (a public default lets anyone forge an
+ * admin cookie); per-channel secrets are enforced at request time instead, since
+ * they're legitimately unset until a channel is wired. Weaker prod defaults are
+ * warned about, not fatal.
+ */
+export function assertProdSecrets(logger: { warn: (m: string) => void } = console): void {
+  if (!env.isProd) return;
+  if (!process.env.AUTH_JWT_SECRET || process.env.AUTH_JWT_SECRET === DEFAULT_JWT_SECRET) {
+    throw new Error(
+      "Refusing to start in production with an insecure AUTH_JWT_SECRET. Set a strong, random value.",
+    );
+  }
+  if (env.corsOrigin.includes("localhost")) {
+    logger.warn(`CORS_ORIGIN is still "${env.corsOrigin}" in production — set it to your real web origin.`);
+  }
+  if (env.auth.devPassword === "ding1234") {
+    logger.warn("AUTH_DEV_PASSWORD is the built-in default — seeded demo users share it. Invite real users to get unique credentials.");
+  }
+}

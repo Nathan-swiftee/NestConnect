@@ -3,9 +3,12 @@ import { NestFactory } from "@nestjs/core";
 import { Logger } from "@nestjs/common";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
-import { env } from "./config/env";
+import { env, assertProdSecrets } from "./config/env";
 
 async function bootstrap() {
+  // Refuse to boot production on insecure default secrets (fail closed).
+  assertProdSecrets(new Logger("Bootstrap"));
+
   // rawBody:true keeps the raw request buffer so we can verify the WhatsApp
   // X-Hub-Signature-256 HMAC on inbound webhooks.
   const app = await NestFactory.create(AppModule, { cors: false, rawBody: true });

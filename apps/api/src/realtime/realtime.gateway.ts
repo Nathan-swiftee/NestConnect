@@ -12,6 +12,7 @@ import { Logger } from "@nestjs/common";
 import { Server, Socket } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 import { Redis } from "ioredis";
+import jwt from "jsonwebtoken";
 import {
   ClientEvent,
   ServerEvent,
@@ -21,13 +22,25 @@ import {
   type ServerToClientEvents,
 } from "@ding/schemas";
 import { env } from "../config/env";
-import { ORG_ID, DEMO_USER_ID } from "../data/fixtures";
+import { ORG_ID } from "../data/fixtures";
+import { Store } from "../data/store";
 
 type DingServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type DingSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
 const orgRoom = (orgId: string) => `org:${orgId}`;
 const convRoom = (id: string) => `conversation:${id}`;
+
+/** Pull one cookie value out of a raw `Cookie:` header. */
+function readCookie(header: string | undefined, name: string): string | undefined {
+  if (!header) return undefined;
+  for (const part of header.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq === -1) continue;
+    if (part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+  }
+  return undefined;
+}
 
 @WebSocketGateway({
   cors: { origin: env.corsOrigin, credentials: true },
@@ -36,6 +49,8 @@ export class RealtimeGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(RealtimeGateway.name);
+
+  constructor(private readonly store: Store) {}
 
   @WebSocketServer()
   server!: DingServer;
@@ -52,12 +67,31 @@ export class RealtimeGateway
     }
   }
 
-  handleConnection(client: DingSocket) {
-    // Phase 0 is single-tenant/single-user: every socket joins the demo org and
-    // the demo user's room. Auth + real identity land in a later phase.
-    client.join(orgRoom(ORG_ID));
-    client.join(`user:${DEMO_USER_ID}`);
-    this.logger.debug(`socket connected: ${client.id}`);
+  async handleConnection(client: DingSocket): Promise<void> {
+    // Authenticate the handshake with the same session cookie the REST API uses:
+    // an unauthenticated socket would otherwise stream every conversation to
+    // anyone who can reach the endpoint. Identity (and the org room) come from
+    // the verified token, never from the client.
+    const token = readCookie(client.handshake.headers.cookie, env.auth.cookieName);
+    let userId: string | undefined;
+    if (token) {
+      try {
+        userId = (jwt.verify(token, env.auth.jwtSecret) as { sub?: string }).sub;
+      } catch {
+        userId = undefined;
+      }
+    }
+    const user = userId ? await this.store.getUser(userId) : undefined;
+    if (!user) {
+      this.logger.debug(`socket rejected (no valid session): ${client.id}`);
+      client.disconnect();
+      return;
+    }
+    client.data.userId = user.id;
+    client.data.orgId = user.orgId;
+    client.join(orgRoom(user.orgId));
+    client.join(`user:${user.id}`);
+    this.logger.debug(`socket connected: ${client.id} (user ${user.id})`);
   }
 
   handleDisconnect(client: DingSocket) {

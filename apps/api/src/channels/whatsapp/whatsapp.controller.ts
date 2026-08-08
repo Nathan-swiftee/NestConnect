@@ -47,7 +47,13 @@ export class WhatsAppController {
   @Post("webhook")
   @HttpCode(200)
   async receive(@Req() req: RawBodyRequest<Request>, @Body() body: WhatsAppWebhookBody) {
-    if (env.whatsapp.appSecret) {
+    // Verify the X-Hub-Signature-256 HMAC whenever an app secret is configured,
+    // and require it in production (fail closed) — an unsigned webhook must never
+    // be trusted with live traffic. Dev/mock stays open so the simulate tools work.
+    if (env.isProd || env.whatsapp.appSecret) {
+      if (!env.whatsapp.appSecret) {
+        throw new UnauthorizedException("WhatsApp signature verification required in production (set WHATSAPP_APP_SECRET)");
+      }
       const sig = req.header("x-hub-signature-256") ?? undefined;
       if (!verifySignature(req.rawBody, env.whatsapp.appSecret, sig)) {
         throw new UnauthorizedException("Invalid WhatsApp signature");

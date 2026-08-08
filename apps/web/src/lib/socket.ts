@@ -9,7 +9,9 @@ let socket: DingSocket | null = null;
 export function getSocket(): DingSocket {
   if (!socket) {
     const url = import.meta.env.VITE_API_URL;
-    const opts = { path: "/socket.io", transports: ["websocket", "polling"] };
+    // withCredentials sends the httpOnly session cookie on the handshake so the
+    // server can authenticate the socket (required cross-origin in dev too).
+    const opts = { path: "/socket.io", transports: ["websocket", "polling"], withCredentials: true };
     socket = url ? io(url, opts) : io(opts);
   }
   return socket;

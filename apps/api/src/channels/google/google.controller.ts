@@ -159,6 +159,11 @@ export class GoogleController {
     @Body() body: PubSubPushBody,
     @Query("token") token?: string,
   ): Promise<{ ok: boolean }> {
+    // Require the shared secret in production (fail closed); polling still works
+    // without push, so this only gates the opt-in Pub/Sub webhook.
+    if (env.isProd && !env.gmail.pushToken) {
+      throw new UnauthorizedException("Gmail push token required in production (set GMAIL_PUSH_TOKEN)");
+    }
     if (env.gmail.pushToken && token !== env.gmail.pushToken) {
       throw new UnauthorizedException("Invalid push token");
     }
