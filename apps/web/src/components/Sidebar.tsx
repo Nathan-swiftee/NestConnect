@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
-import { useLogout, useMe, useSound, useTeams, useViews } from "../hooks";
+import { useLogout, useMe, useSound, useTeams, useTheme, useViews } from "../hooks";
 import {
   ChevronRight,
   ContactsIcon,
@@ -7,6 +7,7 @@ import {
   SnoozeIcon,
   TeamGlyph,
   ThemeIcon,
+  SunIcon,
   SoundOnIcon,
   SoundOffIcon,
   SettingsIcon,
@@ -31,6 +32,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
   const { data: teamList } = useTeams();
   const logout = useLogout();
   const sound = useSound();
+  const theme = useTheme();
   const me = meData?.user;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const teamIconFor = (key: string) => teamList?.find((tm) => `team:${tm.id}` === key)?.icon ?? null;
@@ -250,8 +252,12 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
               <SettingsIcon />
             </button>
           )}
-          <button className="iconbtn" title="Toggle theme" onClick={toggleTheme}>
-            <ThemeIcon />
+          <button
+            className="iconbtn"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            onClick={toggleTheme}
+          >
+            {theme === "dark" ? <SunIcon /> : <ThemeIcon />}
           </button>
           <button
             className={"iconbtn" + (sound.on ? " on" : "")}

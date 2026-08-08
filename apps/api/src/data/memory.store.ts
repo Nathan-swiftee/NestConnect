@@ -640,10 +640,11 @@ export class MemoryStore extends Store {
       });
     }
     rec.messages.push(message);
-    rec.lastActivityAt = message.createdAt;
     rec.unread = false;
     rec.unreadCount = 0;
     if (!input.internal) {
+      // Only a real (non-note) message advances the card's time + list order.
+      rec.lastActivityAt = message.createdAt;
       rec.preview = input.body || previewForType(messageType);
       // Replying to a snoozed conversation wakes it back into the active queue.
       if (rec.status === "snoozed") {
@@ -697,7 +698,7 @@ export class MemoryStore extends Store {
     if (!rec) return undefined;
     if (input.assigneeUserId !== undefined) rec.assigneeUserId = input.assigneeUserId;
     if (input.assignedTeamId !== undefined) rec.assignedTeamId = input.assignedTeamId;
-    rec.lastActivityAt = new Date().toISOString();
+    // Assignment must not reorder the list or reset the card time.
     return this.summary(rec);
   }
 
@@ -705,10 +706,9 @@ export class MemoryStore extends Store {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;
     rec.status = status;
-    // Reopening surfaces the thread again; closing clears the unread flag.
+    // Closing clears the unread flag; a status change doesn't reorder the list.
     if (status === "closed") { rec.unread = false; rec.unreadCount = 0; }
     if (status !== "snoozed") rec.snoozedUntil = null;
-    rec.lastActivityAt = new Date().toISOString();
     return this.summary(rec);
   }
 
@@ -733,7 +733,6 @@ export class MemoryStore extends Store {
     rec.snoozedUntil = until;
     rec.unread = false;
     rec.unreadCount = 0;
-    rec.lastActivityAt = new Date().toISOString();
     return this.summary(rec);
   }
 

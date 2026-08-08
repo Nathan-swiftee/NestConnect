@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useConversations, useSearchConversations, useRefresh, useTeams } from "../hooks";
+import { useConversations, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
 import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
 
-type Filter = "all" | "unread" | "unassigned" | "groups" | "closed";
+type Filter = "all" | "unread" | "mine" | "unassigned" | "groups" | "closed";
 
 interface Props {
   view: string;
@@ -23,6 +23,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const listQuery = useConversations(view);
   const { data, isLoading } = listQuery;
   const teams = useTeams();
+  const myId = useSession().data?.user.id;
   const teamName = (id?: string | null) => (id ? teams.data?.find((t) => t.id === id)?.name : undefined);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
@@ -43,6 +44,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
         // Closed lives only under its own filter; every other filter hides it.
         if (filter === "closed" ? !closed : closed) return false;
         if (filter === "unread" && !c.unread) return false;
+        if (filter === "mine" && c.assigneeUserId !== myId) return false;
         if (filter === "unassigned" && c.assigneeUserId) return false;
         if (filter === "groups" && c.channel !== "whatsapp_group") return false;
         return true;
@@ -51,6 +53,9 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   // "Mine" is all-assigned-to-me and "Queue" is all-unassigned, so an Unassigned
   // filter is redundant in both.
   const showUnassigned = view !== "mine" && view !== "grabs";
+  // A "Yours" filter (assigned to me) is useful in shared team/channel inboxes,
+  // where a mix of agents' conversations live; redundant in the personal views.
+  const showMine = view.startsWith("team:") || view.startsWith("inbox:");
   // A team inbox already scopes to one team, so the per-card team label is redundant there.
   const showTeamTag = !view.startsWith("team:");
   // Per-filter counts (WhatsApp-style) — computed from the view's data, ignoring search.
@@ -60,14 +65,17 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
       ? active.length
       : key === "unread"
         ? active.filter((c) => c.unread).length
-        : key === "unassigned"
-          ? active.filter((c) => !c.assigneeUserId).length
-          : key === "groups"
-            ? active.filter((c) => c.channel === "whatsapp_group").length
-            : (data ?? []).filter((c) => c.status === "closed").length;
+        : key === "mine"
+          ? active.filter((c) => c.assigneeUserId === myId).length
+          : key === "unassigned"
+            ? active.filter((c) => !c.assigneeUserId).length
+            : key === "groups"
+              ? active.filter((c) => c.channel === "whatsapp_group").length
+              : (data ?? []).filter((c) => c.status === "closed").length;
   const filters: { key: Filter; label: string; count: number }[] = [
     { key: "all" as Filter, label: "All" },
     { key: "unread" as Filter, label: "Unread" },
+    ...(showMine ? [{ key: "mine" as Filter, label: "Yours" }] : []),
     ...(showUnassigned ? [{ key: "unassigned" as Filter, label: "Unassigned" }] : []),
     ...(hasGroups ? [{ key: "groups" as Filter, label: "Groups" }] : []),
     { key: "closed" as Filter, label: "Closed" },
@@ -75,10 +83,14 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
 
   // Fall back to All if the active filter isn't available in the current view/data.
   useEffect(() => {
-    if ((filter === "unassigned" && !showUnassigned) || (filter === "groups" && !hasGroups)) {
+    if (
+      (filter === "unassigned" && !showUnassigned) ||
+      (filter === "mine" && !showMine) ||
+      (filter === "groups" && !hasGroups)
+    ) {
       setFilter("all");
     }
-  }, [filter, showUnassigned, hasGroups]);
+  }, [filter, showUnassigned, showMine, hasGroups]);
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const thumbRef = useRef<HTMLSpanElement>(null);
   const { containerRef: chipsRef, thumbRef: chipHoverRef, hoverProps } = useHoverGlide<HTMLDivElement>(".chip", "x");

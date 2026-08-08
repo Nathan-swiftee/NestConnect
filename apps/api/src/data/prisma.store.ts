@@ -773,10 +773,10 @@ export class PrismaStore extends Store {
         where: { id: conversationId },
         data: {
           seq,
-          lastActivityAt: new Date(),
           unread: false,
           unreadCount: 0,
-          ...(input.internal ? {} : { preview }),
+          // Only a real (non-note) message advances the card's time + list order.
+          ...(input.internal ? {} : { lastActivityAt: new Date(), preview }),
           ...(wakeSnooze ? { status: "open", snoozedUntil: null } : {}),
           ...(assignOnReply ? { assigneeUserId: author.id } : {}),
         },
@@ -795,7 +795,9 @@ export class PrismaStore extends Store {
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },
     byUserId?: string,
   ): Promise<Conversation | undefined> {
-    const data: Prisma.ConversationUpdateInput = { lastActivityAt: new Date() };
+    // Assignment must NOT reorder the list or reset the card's time — only real
+    // messages do that.
+    const data: Prisma.ConversationUpdateInput = {};
     if (input.assigneeUserId !== undefined)
       data.assignee = input.assigneeUserId
         ? { connect: { id: input.assigneeUserId } }
@@ -828,7 +830,6 @@ export class PrismaStore extends Store {
         where: { id: conversationId },
         data: {
           status,
-          lastActivityAt: new Date(),
           ...(status === "closed" ? { unread: false, unreadCount: 0 } : {}),
           ...(status !== "snoozed" ? { snoozedUntil: null } : {}),
         },
@@ -870,7 +871,7 @@ export class PrismaStore extends Store {
     try {
       const row = await this.prisma.conversation.update({
         where: { id: conversationId },
-        data: { status: "snoozed", snoozedUntil: new Date(until), unread: false, unreadCount: 0, lastActivityAt: new Date() },
+        data: { status: "snoozed", snoozedUntil: new Date(until), unread: false, unreadCount: 0 },
         include: convInclude,
       });
       return mapConversation(row);

@@ -30,6 +30,7 @@ import {
 import { api } from "./lib/api";
 import { getSocket } from "./lib/socket";
 import { isSoundOn, playReceived, subscribeSound, toggleSound } from "./lib/sound";
+import { effectiveTheme } from "./lib/theme";
 
 export const useSession = () =>
   useQuery({ queryKey: ["session"], queryFn: api.session, retry: false, staleTime: 30_000 });
@@ -522,6 +523,22 @@ export function useSound(): { on: boolean; toggle: () => void } {
   const [on, setOn] = useState(isSoundOn);
   useEffect(() => subscribeSound(setOn), []);
   return { on, toggle: toggleSound };
+}
+
+/** The theme currently in effect, re-read whenever it's toggled or the OS flips. */
+export function useTheme(): "light" | "dark" {
+  const [theme, setTheme] = useState(effectiveTheme);
+  useEffect(() => {
+    const update = () => setTheme(effectiveTheme());
+    const mql = window.matchMedia("(prefers-color-scheme: dark)");
+    window.addEventListener("themechange", update);
+    mql.addEventListener("change", update);
+    return () => {
+      window.removeEventListener("themechange", update);
+      mql.removeEventListener("change", update);
+    };
+  }, []);
+  return theme;
 }
 
 /**
