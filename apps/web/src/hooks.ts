@@ -19,6 +19,7 @@ import {
   type CreateTeamInput,
   type CreateTemplateInput,
   type CreateUserInput,
+  type ChannelType,
   type Message,
   type UpdateContactInput,
   type UpdateInboxInput,
@@ -323,6 +324,8 @@ export function useSendMessage() {
       /** Cc / Bcc recipients on an email reply. */
       cc?: string[];
       bcc?: string[];
+      /** Reply on a channel other than the conversation's own (cross-channel). */
+      channel?: ChannelType;
     }) =>
       api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, {
         template: v.template,
@@ -330,6 +333,7 @@ export function useSendMessage() {
         bodyHtml: v.bodyHtml,
         cc: v.cc,
         bcc: v.bcc,
+        channel: v.channel,
       }),
     // Optimistically render a plain text/HTML reply immediately (skip when it
     // carries attachments or a template — those render from the server result).
@@ -352,6 +356,7 @@ export function useSendMessage() {
         attachments: [],
         reactions: [],
         bodyHtml: v.bodyHtml,
+        channel: v.channel,
         createdAt: new Date().toISOString(),
       };
       qc.setQueryData<ConversationWithMessages>(["conversation", v.id], {

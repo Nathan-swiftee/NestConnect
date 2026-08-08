@@ -603,6 +603,7 @@ export class MemoryStore extends Store {
       internal: boolean;
       attachmentIds?: string[];
       quotedMsgId?: string;
+      channel?: ChannelType;
       idempotencyKey?: string;
       deliveryMeta?: OutboundDeliveryMeta;
     },

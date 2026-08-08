@@ -5,7 +5,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import type { Message, Attachment, MessageStatus } from "@ding/schemas";
+import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages } from "../hooks";
 import { api } from "../lib/api";
@@ -199,6 +199,21 @@ function AttachmentView({ att, onImage }: { att: Attachment; onImage: (url: stri
   );
 }
 
+const WA_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** The WhatsApp 24-hour window derived from a thread's own messages. Used when
+ *  the composer targets WhatsApp on a thread whose primary channel is *not*
+ *  WhatsApp (a cross-channel reply) — the server-computed `conv.waWindow` already
+ *  covers the WhatsApp-primary case. Open while the last WhatsApp inbound is
+ *  under 24h old; closed (template required) when there's never been one. */
+function computeWaWindow(messages: Message[]): WaWindow {
+  const lastWaInbound = [...messages]
+    .reverse()
+    .find((m) => m.direction === "in" && (m.channel === "whatsapp" || m.channel === "whatsapp_group"));
+  if (!lastWaInbound) return { open: false, expiresAt: null };
+  const expires = new Date(lastWaInbound.createdAt).getTime() + WA_WINDOW_MS;
+  return { open: Date.now() < expires, expiresAt: new Date(expires).toISOString() };
+}
+
 /** Outbound delivery ticks: the full WhatsApp ladder
  *  Queued → Sent → Delivered → Read (blue), plus a red Failed indicator.
  *  Maps a message's status to a glyph, a tick class, and a human title. */
@@ -361,11 +376,15 @@ function MessageBubble({
   quoted,
   onImage,
   actions,
+  convChannel,
 }: {
   m: Message;
   quoted?: Message;
   onImage: (url: string) => void;
   actions?: MsgActions;
+  /** The conversation's own channel — a message on a different one (cross-channel
+   *  reply) carries a small badge so the mixed thread stays legible. */
+  convChannel: ChannelType;
 }) {
   const out = m.direction === "out";
   const atts = m.attachments ?? [];
@@ -388,6 +407,9 @@ function MessageBubble({
     .join(",  ") + (mine ? " · tap to remove yours" : "");
   // A rich email body renders in its own sandboxed frame (below any media).
   const isEmailHtml = !!m.bodyHtml;
+  // A message sent/received on a channel other than the thread's own is badged.
+  const crossMeta = m.channel && m.channel !== convChannel ? channelMeta(m.channel) : null;
+  const CrossGlyph = crossMeta?.Glyph;
 
   return (
     <div className={"msg " + (out ? "out" : "in")} data-mid={m.id}>
@@ -431,6 +453,11 @@ function MessageBubble({
           <span
             className={"stamp" + (isEmailHtml || blockStamp ? " stamp--block" : overlay ? " stamp--over" : "")}
           >
+            {crossMeta && CrossGlyph && (
+              <span className="stamp__chan" style={{ color: crossMeta.color }} title={`Via ${crossMeta.label}`}>
+                <CrossGlyph />
+              </span>
+            )}
             {clockTime(m.createdAt)}
             {out && !m.internal && <StatusTick status={m.status} />}
           </span>
@@ -721,6 +748,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [menu, setMenu] = useState(false);
   const [snoozeMenu, setSnoozeMenu] = useState(false);
   const [internal, setInternal] = useState(false);
+  // The channel the composer is currently replying on. null → follow the
+  // conversation's own channel; set (via the channel switcher) to reply on
+  // another channel the customer is reachable on, within this one open thread.
+  const [composeChannelState, setComposeChannelState] = useState<ChannelType | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   // Ticks so the WhatsApp 24-hour window countdown stays live without a reload.
@@ -814,6 +845,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setShowCc(false);
     setCc("");
     setBcc("");
+    setComposeChannelState(null);
     editor?.commands.clearContent();
   }, [conversationId, editor]);
 
@@ -999,10 +1031,27 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
 
   const cm = channelMeta(conv.channel);
   const Glyph = cm.Glyph;
-  const isEmail = conv.channel === "email";
+  // ─── Reply channel (cross-channel thread) ───
+  // The thread's own channel is its identity; the *composer* may target any
+  // channel the customer is reachable on, within this one open thread. The
+  // compose channel defaults to the conversation's own and is switched below
+  // (never for a group — a group can't be answered on another channel).
+  const convIsEmail = conv.channel === "email";
+  const isGroup = conv.channel === "whatsapp_group";
+  const composeChannel: ChannelType = (!isGroup && composeChannelState) || conv.channel;
+  const composeMeta = channelMeta(composeChannel);
+  const ComposeGlyph = composeMeta.Glyph;
+  const isEmail = composeChannel === "email";
+  // Channels this customer can be reached on within this thread (1:1 only).
+  const switchable: ChannelType[] = [];
+  if (!isGroup) {
+    if (conv.contact.phone) switchable.push("whatsapp");
+    if (conv.contact.email) switchable.push("email");
+  }
+  const canSwitchChannel = switchable.length > 1;
   const isClosed = conv.status === "closed";
   const owned = !!conv.assigneeUserId;
-  const sub = isEmail
+  const sub = convIsEmail
     ? (conv.contact.email ?? "")
     : conv.channel === "whatsapp_group"
       ? "group · active now"
@@ -1014,9 +1063,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const canRecord = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 
   // ─── WhatsApp 24-hour window ───
-  // `waWindow` is null on email (no restriction). On WhatsApp it says whether
-  // you may still free-type; once closed, only an approved template gets through.
-  const isWhatsApp = conv.channel === "whatsapp" || conv.channel === "whatsapp_group";
+  // Everything below tracks the *compose* channel, so a cross-channel reply is
+  // gated correctly. `waWindow` is null on email (no restriction). On WhatsApp it
+  // says whether you may still free-type; once closed, only a template gets through.
+  const isWhatsApp = composeChannel === "whatsapp" || composeChannel === "whatsapp_group";
   // Email replies compose in a rich-text editor; notes + other channels stay plain.
   const isRich = isEmail && !internal;
   // The subject an email reply will carry (mirrors the server's Re: prefixing).
@@ -1027,7 +1077,14 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     : "Re: your message";
   // Resolve a quoted reply's target message by id for in-bubble rendering.
   const msgById = new Map(conv.messages.map((m) => [m.id, m]));
-  const waWindow = conv.waWindow;
+  // The WhatsApp window that applies to the compose channel: the server-computed
+  // one when replying on the thread's own WhatsApp channel; else derived from the
+  // thread's WhatsApp inbounds (a cross-channel WhatsApp reply). Null off WhatsApp.
+  const waWindow: WaWindow | null = !isWhatsApp
+    ? null
+    : composeChannel === conv.channel
+      ? conv.waWindow
+      : computeWaWindow(conv.messages);
   const windowClosed = isWhatsApp && !!waWindow && !waWindow.open;
   const msLeft = waWindow?.expiresAt ? new Date(waWindow.expiresAt).getTime() - now : null;
   const showCountdown = isWhatsApp && waWindow?.open === true && msLeft != null;
@@ -1162,6 +1219,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         bodyHtml,
         cc: ccList.length ? ccList : undefined,
         bcc: bccList.length ? bccList : undefined,
+        // Only send an override when replying off the conversation's own channel.
+        channel: !internal && composeChannel !== conv.channel ? composeChannel : undefined,
       },
       {
         onError: (err) => {
@@ -1601,10 +1660,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <MessageBubble
                   key={m.id}
                   m={m}
+                  convChannel={conv.channel}
                   quoted={m.quotedMsgId ? msgById.get(m.quotedMsgId) : undefined}
                   onImage={setLightbox}
                   actions={
-                    isWhatsApp
+                    conv.channel === "whatsapp" || conv.channel === "whatsapp_group"
                       ? {
                           contactName: conv.contact.displayName,
                           reactOpen: reactFor === m.id,
@@ -1666,8 +1726,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 className={"modebtn" + (!internal ? " active" : "")}
                 onClick={() => setInternal(false)}
               >
-                <span className="modebtn__ic" style={!internal ? { color: cm.color } : undefined}>
-                  <Glyph />
+                <span className="modebtn__ic" style={!internal ? { color: composeMeta.color } : undefined}>
+                  <ComposeGlyph />
                 </span>
                 Reply
               </button>
@@ -1685,6 +1745,29 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 Note
               </button>
             </div>
+            {canSwitchChannel && !internal && (
+              <div className="chanpick" role="group" aria-label="Reply channel">
+                {switchable.map((ch) => {
+                  const meta = channelMeta(ch);
+                  const ChG = meta.Glyph;
+                  const active = composeChannel === ch;
+                  return (
+                    <button
+                      key={ch}
+                      type="button"
+                      className={"chanpick__b" + (active ? " active" : "")}
+                      style={active ? { color: meta.color } : undefined}
+                      onClick={() => setComposeChannelState(ch)}
+                      title={`Reply via ${meta.label}`}
+                      aria-pressed={active}
+                    >
+                      <ChG />
+                      <span className="chanpick__lbl">{meta.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <span className="compctx">{ctxNode}</span>
           </div>
           {isEmail && !internal && (
