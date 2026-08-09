@@ -119,7 +119,8 @@ export function TemplatePicker({ conversationId, channel, onClose, onToast }: Pr
       { id: conversationId, body: "", template: { id: selected.id, params }, channel },
       {
         onSuccess: () => {
-          playSent();
+          // Templates are a WhatsApp feature → the WhatsApp send cue.
+          playSent(channel ?? "whatsapp");
           onToast("Template sent");
           onClose();
         },

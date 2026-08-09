@@ -1,12 +1,16 @@
 /**
- * Tiny WhatsApp-style sound layer, synthesised with the Web Audio API so there
- * are no binary assets to ship. Two cues: a soft outgoing "blip" when you send,
- * and a gentle incoming "ding" when a message arrives on another thread.
+ * The app's sound layer. Cues are channel-aware:
+ *  - outbound WhatsApp → the real WhatsApp "sent" sound (an embedded MP3),
+ *  - outbound email → a synthesised "swoosh",
+ *  - outbound note / other → a soft synth blip,
+ *  - incoming message → a gentle two-note "ding".
+ * Everything except the WhatsApp clip is synthesised with the Web Audio API.
  *
  * Sound is on by default, muteable, and the choice persists in localStorage.
  * Browsers block audio until the first user gesture — `unlock()` (wired to the
  * first click/keydown) resumes the context so the very next cue can play.
  */
+import { WHATSAPP_SENT_SOUND } from "./sound-assets";
 
 const STORE_KEY = "nc_sound";
 
@@ -78,9 +82,62 @@ function tone(freq: number, start: number, dur: number, peak: number, type: Osci
   osc.stop(start + dur + 0.02);
 }
 
-/** Outgoing: a quick, bright rising blip. */
-export function playSent(): void {
+/** The embedded WhatsApp "sent" clip, primed once and reused. */
+let waEl: HTMLAudioElement | null = null;
+function playWhatsAppSent(): void {
+  if (typeof Audio === "undefined") return;
+  try {
+    if (!waEl) {
+      waEl = new Audio(WHATSAPP_SENT_SOUND);
+      waEl.preload = "auto";
+      waEl.volume = 0.75;
+    }
+    waEl.currentTime = 0;
+    void waEl.play().catch(() => {});
+  } catch {
+    /* ignore playback errors (autoplay policy, decode) */
+  }
+}
+
+/** Outgoing email: a short filtered-noise "swoosh" (bright → dark sweep). */
+function playSwoosh(): void {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  const dur = 0.34;
+  const frames = Math.floor(ac.sampleRate * dur);
+  const buffer = ac.createBuffer(1, frames, ac.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < frames; i++) data[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource();
+  src.buffer = buffer;
+  // A bandpass sweeping downward is what reads as a "whoosh".
+  const bp = ac.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.setValueAtTime(2600, t);
+  bp.frequency.exponentialRampToValueAtTime(500, t + dur);
+  bp.Q.value = 0.9;
+  const gain = ac.createGain();
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.16, t + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp).connect(gain).connect(ac.destination);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+/** Outgoing: a channel-specific "sent" cue (WhatsApp clip, email swoosh, else blip). */
+export function playSent(channel?: string): void {
   if (!enabled) return;
+  if (channel === "whatsapp" || channel === "whatsapp_group") {
+    playWhatsAppSent();
+    return;
+  }
+  if (channel === "email") {
+    playSwoosh();
+    return;
+  }
+  // Notes / unknown: the original soft synth blip.
   const ac = audio();
   if (!ac) return;
   const t = ac.currentTime;

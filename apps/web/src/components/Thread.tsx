@@ -1334,7 +1334,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         },
       },
     );
-    if (!internal) playSent();
+    if (!internal) playSent(composeChannel);
     stopTyping();
     setText("");
     setHtml("");
