@@ -18,6 +18,7 @@ import type {
   Message,
   MessagePage,
   MessageStatus,
+  Notification,
   Participant,
   ParticipantRole,
   Priority,
@@ -39,6 +40,7 @@ import {
   mapConversation,
   mapInbox,
   mapMessage,
+  mapNotification,
   mapParticipant,
   mapTeam,
   mapTemplate,
@@ -930,6 +932,50 @@ export class PrismaStore extends Store {
     } catch {
       return undefined;
     }
+  }
+
+  async listDueSnoozed(): Promise<Conversation[]> {
+    const rows = await this.prisma.conversation.findMany({
+      where: { status: "snoozed", snoozedUntil: { lte: new Date() } },
+      include: convInclude,
+      orderBy: { snoozedUntil: "asc" },
+    });
+    return rows.map(mapConversation);
+  }
+
+  async createNotification(input: {
+    userId: string;
+    type: Notification["type"];
+    title: string;
+    body?: string;
+    conversationId?: string | null;
+  }): Promise<Notification> {
+    const row = await this.prisma.notification.create({
+      data: {
+        userId: input.userId,
+        type: input.type,
+        title: input.title,
+        body: input.body ?? "",
+        conversationId: input.conversationId ?? null,
+      },
+    });
+    return mapNotification(row);
+  }
+
+  async listNotifications(userId: string, limit = 50): Promise<Notification[]> {
+    const rows = await this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    return rows.map(mapNotification);
+  }
+
+  async markNotificationsRead(userId: string, ids?: string[]): Promise<void> {
+    await this.prisma.notification.updateMany({
+      where: { userId, ...(ids ? { id: { in: ids } } : {}) },
+      data: { read: true },
+    });
   }
 
   async setMessageChannelId(messageId: string, channelMsgId: string): Promise<void> {

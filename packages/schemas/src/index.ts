@@ -646,6 +646,28 @@ export const updateIntegrationSettingsInputSchema = z.object({
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
 
 /* ------------------------------------------------------------------ */
+/* Notifications (the bell) — a per-user history of noteworthy events.  */
+/* High-frequency events (a new inbound chat) stay sound-only and never */
+/* land here.                                                           */
+/* ------------------------------------------------------------------ */
+export const notificationTypeSchema = z.enum(["mention", "snooze_due"]);
+export type NotificationType = z.infer<typeof notificationTypeSchema>;
+
+export const notificationSchema = z.object({
+  id: z.string(),
+  type: notificationTypeSchema,
+  /** Short headline (e.g. "James mentioned you"). */
+  title: z.string(),
+  /** Optional detail line (e.g. the note snippet or the customer name). */
+  body: z.string().default(""),
+  /** The conversation to open when the notification is tapped. */
+  conversationId: z.string().nullable().optional(),
+  read: z.boolean().default(false),
+  createdAt: z.string(),
+});
+export type Notification = z.infer<typeof notificationSchema>;
+
+/* ------------------------------------------------------------------ */
 /* Realtime event contract (Socket.IO)                                 */
 /* ------------------------------------------------------------------ */
 
@@ -658,6 +680,7 @@ export const ServerEvent = {
   Typing: "typing",
   Presence: "presence",
   InboxCounts: "inbox.counts",
+  Notification: "notification",
 } as const;
 export type ServerEventName = (typeof ServerEvent)[keyof typeof ServerEvent];
 
@@ -673,6 +696,7 @@ export interface ServerToClientEvents {
   [ServerEvent.Typing]: (p: { conversationId: string; who: string; typing: boolean }) => void;
   [ServerEvent.Presence]: (p: { userId: string; online: boolean }) => void;
   [ServerEvent.InboxCounts]: (p: { inboxId: string; unread: number }) => void;
+  [ServerEvent.Notification]: (p: { notification: Notification }) => void;
 }
 
 /** Event names / payloads the client emits to the server. */
