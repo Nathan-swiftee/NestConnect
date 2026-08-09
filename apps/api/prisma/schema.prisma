@@ -88,6 +88,12 @@ model User {
   role         Role     @default(agent)
   avatarColor  String?
   online       Boolean  @default(false)
+  // Manual "accepting work" flag (distinct from `online` presence) — an
+  // unavailable agent is skipped by round-robin auto-assignment.
+  available    Boolean  @default(true)
+  // Personal rich-text (HTML) email signature, appended to outbound email the
+  // agent sends. Never shown on the in-app message bubble.
+  emailSignature String?
   passwordHash String?
   // Emailed-invite flow: SHA-256 of a single-use token + its expiry. Cleared
   // once the invitee sets their password.

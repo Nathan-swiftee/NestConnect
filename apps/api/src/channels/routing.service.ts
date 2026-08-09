@@ -35,8 +35,12 @@ export class RoutingService {
     }
 
     const members = await this.store.getMembers(teamId);
-    const online = members.filter((m) => m.online);
-    const pool = online.length ? online : members;
+    // Only agents who've marked themselves available take auto-assignments; among
+    // those, prefer the ones currently online. If nobody is available, leave it
+    // unassigned in the team's queue rather than handing it to someone who's out.
+    const available = members.filter((m) => m.available !== false);
+    const online = available.filter((m) => m.online);
+    const pool = online.length ? online : available;
     if (!pool.length) return { assigneeUserId: null, assignedTeamId: teamId };
 
     const pick = pool[this.rotation++ % pool.length];

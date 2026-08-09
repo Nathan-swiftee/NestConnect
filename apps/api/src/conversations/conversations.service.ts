@@ -42,12 +42,14 @@ function buildDeliveryMeta(
   subject?: string,
   cc?: string[],
   bcc?: string[],
+  signatureHtml?: string,
 ): OutboundDeliveryMeta | undefined {
   const meta: OutboundDeliveryMeta = {};
   if (template) meta.template = template;
   if (subject) meta.subject = subject;
   if (cc?.length) meta.cc = cc;
   if (bcc?.length) meta.bcc = bcc;
+  if (signatureHtml) meta.signatureHtml = signatureHtml;
   return Object.keys(meta).length ? meta : undefined;
 }
 
@@ -157,9 +159,13 @@ export class ConversationsService {
     // Record the subject on email sends so the message can show it (the thread's
     // subject was just updated above from any edit).
     const emailSubject = !input.internal && sendingEmail ? conv.subject ?? undefined : undefined;
+    // Snapshot the sender's signature so the outbound email carries it — appended
+    // to the wire body only, never stored on the shown message.
+    const signatureHtml =
+      !input.internal && sendingEmail ? author.emailSignature?.trim() || undefined : undefined;
     const deliveryMeta: OutboundDeliveryMeta | undefined = input.internal
       ? undefined
-      : buildDeliveryMeta(template, emailSubject, cc, bcc);
+      : buildDeliveryMeta(template, emailSubject, cc, bcc, signatureHtml);
     // Idempotency key doubles as the delivery job id, so duplicate sends collapse.
     const idempotencyKey = input.internal ? undefined : randomUUID();
 

@@ -164,6 +164,8 @@ export function mapUser(u: Prisma.UserGetPayload<object>): User {
     role: u.role as User["role"],
     avatarColor: u.avatarColor ?? undefined,
     online: u.online,
+    available: u.available,
+    emailSignature: u.emailSignature ?? undefined,
   };
 }
 

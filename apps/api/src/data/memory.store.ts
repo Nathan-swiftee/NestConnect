@@ -355,6 +355,7 @@ export class MemoryStore extends Store {
       role: params.role,
       avatarColor: AVATAR_PALETTE[this.users.length % AVATAR_PALETTE.length],
       online: false,
+      available: true,
     };
     this.users.push(user);
     this.membership[id] = params.teamIds;
@@ -391,6 +392,17 @@ export class MemoryStore extends Store {
     if (params.name !== undefined) user.name = params.name;
     if (params.role !== undefined) user.role = params.role;
     if (params.teamIds !== undefined) this.membership[id] = params.teamIds;
+    return user;
+  }
+
+  async updateMyPreferences(
+    userId: string,
+    params: { available?: boolean; emailSignature?: string | null },
+  ): Promise<User | undefined> {
+    const user = this.users.find((u) => u.id === userId);
+    if (!user) return undefined;
+    if (params.available !== undefined) user.available = params.available;
+    if (params.emailSignature !== undefined) user.emailSignature = params.emailSignature ?? undefined;
     return user;
   }
 

@@ -7,6 +7,7 @@ import { ContextPanel } from "./ContextPanel";
 import { CommandPalette } from "./CommandPalette";
 import { Compose } from "./Compose";
 import { Settings } from "./Settings";
+import { PersonalSettings } from "./PersonalSettings";
 import { Customers } from "./Customers";
 import { useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
@@ -28,6 +29,7 @@ export function Workspace() {
   const [section, setSection] = useState<"inbox" | "customers" | "settings">("inbox");
   const [focusContact, setFocusContact] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [personalOpen, setPersonalOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
 
   // The collapse only applies to the inline desktop sidebar; ≤1023 it's a drawer.
@@ -113,7 +115,11 @@ export function Workspace() {
     <>
       <div className="stage">
         <div className={"app" + (drawerOpen ? " drawer-open" : "")} data-pane={pane}>
-          <IconRail section={section} onSection={(s) => { setSection(s); setFocusContact(null); }} />
+          <IconRail
+            section={section}
+            onSection={(s) => { setSection(s); setFocusContact(null); }}
+            onOpenPersonalSettings={() => setPersonalOpen(true)}
+          />
 
           {section === "inbox" && (
             <>
@@ -175,6 +181,8 @@ export function Workspace() {
           {section === "settings" && <Settings onClose={() => setSection("inbox")} onToast={notify} />}
         </div>
       </div>
+
+      {personalOpen && <PersonalSettings onClose={() => setPersonalOpen(false)} onToast={notify} />}
 
       {cmdkOpen && (
         <CommandPalette

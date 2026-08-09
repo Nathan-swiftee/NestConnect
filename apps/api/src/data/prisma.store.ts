@@ -479,6 +479,21 @@ export class PrismaStore extends Store {
     }
   }
 
+  async updateMyPreferences(
+    userId: string,
+    params: { available?: boolean; emailSignature?: string | null },
+  ): Promise<User | undefined> {
+    try {
+      const data: Prisma.UserUpdateInput = {};
+      if (params.available !== undefined) data.available = params.available;
+      if (params.emailSignature !== undefined) data.emailSignature = params.emailSignature;
+      const u = await this.prisma.user.update({ where: { id: userId }, data });
+      return mapUser(u);
+    } catch {
+      return undefined;
+    }
+  }
+
   async deleteUser(id: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await tx.teamMember.deleteMany({ where: { userId: id } });

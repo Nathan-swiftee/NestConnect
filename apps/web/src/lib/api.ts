@@ -28,6 +28,7 @@ import type {
   UpdateInboxInput,
   UpdateIntegrationSettingsInput,
   UpdateTeamInput,
+  UpdateMyPreferencesInput,
   UpdateUserInput,
   User,
 } from "@ding/schemas";
@@ -89,6 +90,8 @@ export const api = {
   logout: () => post<{ ok: boolean }>("/auth/logout", {}),
   // workspace
   me: () => get<MeResponse>("/me"),
+  // The current user's own personal settings (availability + email signature).
+  updateMyPreferences: (input: UpdateMyPreferencesInput) => patch<User>("/me/preferences", input),
   views: () => get<SidebarViews>("/views"),
   inboxes: () => get<Inbox[]>("/inboxes"),
   createInbox: (input: CreateInboxInput) => post<Inbox>("/inboxes", input),

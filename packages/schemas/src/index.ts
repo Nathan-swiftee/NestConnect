@@ -58,6 +58,11 @@ export const userSchema = z.object({
   role: roleSchema,
   avatarColor: z.string().optional(),
   online: z.boolean().default(false),
+  /** Manual "accepting work" flag — an unavailable agent is skipped by
+   *  round-robin auto-assignment (distinct from `online` presence). */
+  available: z.boolean().default(true),
+  /** Personal HTML email signature, appended to outbound email this user sends. */
+  emailSignature: z.string().nullable().optional(),
 });
 export type User = z.infer<typeof userSchema>;
 
@@ -508,6 +513,14 @@ export const updateUserInputSchema = z.object({
   teamIds: z.array(z.string()).optional(),
 });
 export type UpdateUserInput = z.infer<typeof updateUserInputSchema>;
+
+/** A user editing their OWN personal settings (no admin rights needed). */
+export const updateMyPreferencesInputSchema = z.object({
+  available: z.boolean().optional(),
+  /** Rich-text (HTML) signature; empty string clears it. */
+  emailSignature: z.string().max(20000).nullable().optional(),
+});
+export type UpdateMyPreferencesInput = z.infer<typeof updateMyPreferencesInputSchema>;
 
 export const createContactInputSchema = z.object({
   displayName: z.string().min(1),

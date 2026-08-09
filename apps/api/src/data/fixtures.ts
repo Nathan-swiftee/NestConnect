@@ -93,9 +93,9 @@ const LABEL = {
 
 export function makeSeed() {
   const users: User[] = [
-    { id: DEMO_USER_ID, orgId: ORG_ID, name: "Nathan A", email: "nathan@swiftee.co.uk", role: "admin", avatarColor: "linear-gradient(135deg,#3B82F6,#8B5CF6)", online: true },
-    { id: "usr_james", orgId: ORG_ID, name: "James", email: "james@swiftee.co.uk", role: "agent", avatarColor: "linear-gradient(135deg,#0EA5E9,#22D3EE)", online: true },
-    { id: "usr_amara", orgId: ORG_ID, name: "Amara", email: "amara@swiftee.co.uk", role: "agent", avatarColor: "linear-gradient(135deg,#F43F5E,#F59E0B)", online: false },
+    { id: DEMO_USER_ID, orgId: ORG_ID, name: "Nathan A", email: "nathan@swiftee.co.uk", role: "admin", avatarColor: "linear-gradient(135deg,#3B82F6,#8B5CF6)", online: true, available: true },
+    { id: "usr_james", orgId: ORG_ID, name: "James", email: "james@swiftee.co.uk", role: "agent", avatarColor: "linear-gradient(135deg,#0EA5E9,#22D3EE)", online: true, available: true },
+    { id: "usr_amara", orgId: ORG_ID, name: "Amara", email: "amara@swiftee.co.uk", role: "agent", avatarColor: "linear-gradient(135deg,#F43F5E,#F59E0B)", online: false, available: true },
   ];
 
   const teams: Team[] = [

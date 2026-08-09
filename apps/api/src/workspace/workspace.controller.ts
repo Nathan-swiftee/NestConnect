@@ -15,6 +15,7 @@ import {
   createUserInputSchema,
   reorderTeamsInputSchema,
   updateInboxInputSchema,
+  updateMyPreferencesInputSchema,
   updateTeamInputSchema,
   updateUserInputSchema,
   type CreateInboxInput,
@@ -22,6 +23,7 @@ import {
   type CreateUserInput,
   type ReorderTeamsInput,
   type UpdateInboxInput,
+  type UpdateMyPreferencesInput,
   type UpdateTeamInput,
   type UpdateUserInput,
   type User,
@@ -30,6 +32,7 @@ import { Store } from "../data/store";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
 import { InviteMailer } from "../auth/invite-mailer";
+import { sanitizeOutboundHtml } from "../channels/email/html-sanitize";
 import { env } from "../config/env";
 
 /** Workspace bootstrap data for the app shell, plus the Settings admin surface. */
@@ -43,6 +46,25 @@ export class WorkspaceController {
   @Get("me")
   me(@CurrentUserId() userId: string) {
     return this.store.me(userId);
+  }
+
+  /** A user updating their OWN availability + email signature (no admin rights). */
+  @Patch("me/preferences")
+  async updateMyPreferences(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(updateMyPreferencesInputSchema)) body: UpdateMyPreferencesInput,
+  ): Promise<User> {
+    const params: { available?: boolean; emailSignature?: string | null } = {};
+    if (body.available !== undefined) params.available = body.available;
+    if (body.emailSignature !== undefined) {
+      // Sanitize the agent's rich signature (keeps formatting + inline images,
+      // strips scripts) — the same treatment an outbound email body gets.
+      const clean = body.emailSignature ? sanitizeOutboundHtml(body.emailSignature) : "";
+      params.emailSignature = clean || null;
+    }
+    const user = await this.store.updateMyPreferences(userId, params);
+    if (!user) throw new NotFoundException("Current user not found");
+    return user;
   }
 
   @Get("inboxes")

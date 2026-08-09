@@ -7,7 +7,23 @@ import {
   type SendResult,
   type SupportsContext,
 } from "../channel-provider";
-import { textToHtml } from "./html-sanitize";
+import { htmlToText, textToHtml } from "./html-sanitize";
+
+/**
+ * Append the sender's HTML signature to the outbound HTML + text bodies (with a
+ * blank-line separator). The signature rides the wire only — the stored message
+ * never includes it, so it doesn't clutter the in-app thread. Shared by the
+ * Postmark + Gmail providers.
+ */
+export function appendSignature(
+  html: string,
+  text: string,
+  signatureHtml?: string,
+): { html: string; text: string } {
+  const sig = signatureHtml?.trim();
+  if (!sig) return { html, text };
+  return { html: `${html}<br><br>${sig}`, text: `${text}\n\n${htmlToText(sig)}` };
+}
 
 /**
  * Email sender. Runs in mock mode until POSTMARK_TOKEN is set. We mint our own
@@ -57,6 +73,13 @@ export class EmailProvider extends ChannelProvider {
         Content: m.bytes.toString("base64"),
         ContentType: m.mime,
       }));
+      // Rich reply → its HTML; else derive a simple HTML alternative. The
+      // sender's signature is appended to the wire body only.
+      const { html: htmlBody, text: textBody } = appendSignature(
+        params.bodyHtml || textToHtml(params.body),
+        params.body,
+        params.signatureHtml,
+      );
       const res = await fetch("https://api.postmarkapp.com/email", {
         method: "POST",
         headers: {
@@ -70,9 +93,8 @@ export class EmailProvider extends ChannelProvider {
           ...(params.cc?.length ? { Cc: params.cc.join(", ") } : {}),
           ...(params.bcc?.length ? { Bcc: params.bcc.join(", ") } : {}),
           Subject: subject,
-          TextBody: params.body,
-          // Rich reply → its HTML; else derive a simple HTML alternative.
-          HtmlBody: params.bodyHtml || textToHtml(params.body),
+          TextBody: textBody,
+          HtmlBody: htmlBody,
           MessageStream: "outbound",
           Headers: headers,
           ...(attachments.length ? { Attachments: attachments } : {}),

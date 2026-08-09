@@ -11,7 +11,7 @@ import {
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
 import { buildMime, gmail, GmailApiError } from "./gmail-api";
 import { textToHtml } from "../email/html-sanitize";
-import { subjectLine } from "../email/email.provider";
+import { appendSignature, subjectLine } from "../email/email.provider";
 
 /**
  * Sends outbound email through a Gmail-connected inbox using the Gmail API and
@@ -60,6 +60,12 @@ export class GmailProvider extends ChannelProvider {
       const inbox = await this.store.getInbox(inboxId);
       if (!inbox) return { ok: false, error: "Gmail inbox not found" };
       const accessToken = await this.google.accessTokenForInbox(inbox, config);
+      // The sender's signature is appended to the wire body only.
+      const { html: htmlBody, text: textBody } = appendSignature(
+        params.bodyHtml || textToHtml(params.body),
+        params.body,
+        params.signatureHtml,
+      );
       const raw = buildMime({
         from: fromAddress,
         fromName: inbox.name,
@@ -68,9 +74,9 @@ export class GmailProvider extends ChannelProvider {
         cc: params.cc,
         bcc: params.bcc,
         subject,
-        body: params.body,
+        body: textBody,
         // Rich reply → a text+html alternative; else derive HTML from the text.
-        html: params.bodyHtml || textToHtml(params.body),
+        html: htmlBody,
         messageId,
         inReplyTo: params.context?.inReplyTo,
         // A reply's References should chain the message it answers.

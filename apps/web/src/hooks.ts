@@ -24,6 +24,7 @@ import {
   type UpdateContactInput,
   type UpdateInboxInput,
   type UpdateIntegrationSettingsInput,
+  type UpdateMyPreferencesInput,
   type UpdateTeamInput,
   type UpdateTemplateInput,
   type UpdateUserInput,
@@ -127,6 +128,18 @@ export function useRemoveParticipant(conversationId: string) {
 }
 
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: api.me });
+
+/** Update the current user's own personal settings (availability + signature). */
+export function useUpdateMyPreferences() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateMyPreferencesInput) => api.updateMyPreferences(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["people"] });
+    },
+  });
+}
 export const useViews = () => useQuery({ queryKey: ["views"], queryFn: api.views });
 export const useInboxes = () => useQuery({ queryKey: ["inboxes"], queryFn: api.inboxes });
 export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: api.teams });

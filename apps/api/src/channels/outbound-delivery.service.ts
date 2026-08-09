@@ -73,8 +73,13 @@ export class OutboundDeliveryService {
     const template: OutboundTemplate | undefined = ref.deliveryMeta?.template;
     const cc = ref.deliveryMeta?.cc;
     const bcc = ref.deliveryMeta?.bcc;
+    const signatureHtml = ref.deliveryMeta?.signatureHtml;
 
-    const outcome = await this.dispatcher.attemptSend(conversation, message, template, { cc, bcc });
+    const outcome = await this.dispatcher.attemptSend(conversation, message, template, {
+      cc,
+      bcc,
+      signatureHtml,
+    });
 
     if (outcome.ok) {
       const change = await this.store.markMessageSent(job.messageId, outcome.channelMsgId);

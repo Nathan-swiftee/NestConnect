@@ -92,6 +92,9 @@ export interface OutboundDeliveryMeta {
   subject?: string;
   cc?: string[];
   bcc?: string[];
+  /** The sender's HTML signature, snapshotted at send time. Appended to the
+   *  outbound email body only — never stored on the message shown in-app. */
+  signatureHtml?: string;
 }
 
 /** The minimal record the delivery worker needs to (re)send an outbound message. */
@@ -216,6 +219,11 @@ export abstract class Store {
   abstract updateUser(
     id: string,
     params: { name?: string; role?: Role; teamIds?: string[] },
+  ): Promise<User | undefined>;
+  /** A user updating their OWN personal settings (availability + signature). */
+  abstract updateMyPreferences(
+    userId: string,
+    params: { available?: boolean; emailSignature?: string | null },
   ): Promise<User | undefined>;
   /** Remove a person, detaching their team memberships and clearing assignments. */
   abstract deleteUser(id: string): Promise<void>;

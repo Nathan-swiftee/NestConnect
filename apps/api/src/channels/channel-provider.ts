@@ -66,6 +66,9 @@ export interface SendParams {
   /** Extra email recipients (email providers only). */
   cc?: string[];
   bcc?: string[];
+  /** The sender's HTML signature to append to the outbound email body (email
+   *  providers only). Appended to the wire body; never on the stored message. */
+  signatureHtml?: string;
   conversation: Conversation;
   /** The inbox to send FROM — the conversation's own inbox for a same-channel
    *  reply, or another channel's inbox for a cross-channel reply (its creds/

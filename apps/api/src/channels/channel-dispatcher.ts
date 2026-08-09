@@ -43,7 +43,7 @@ export class ChannelDispatcher {
     conversation: ConversationWithMessages,
     message: Message,
     template?: OutboundTemplate,
-    opts?: { cc?: string[]; bcc?: string[] },
+    opts?: { cc?: string[]; bcc?: string[]; signatureHtml?: string },
   ): Promise<DeliveryOutcome> {
     // A message may be sent on a different channel than the conversation's own
     // (cross-channel reply within one open thread). Resolve the effective channel
@@ -96,6 +96,7 @@ export class ChannelDispatcher {
       bodyHtml: message.bodyHtml ?? undefined,
       cc: opts?.cc,
       bcc: opts?.bcc,
+      signatureHtml: opts?.signatureHtml,
       conversation,
       inboxId: sendingInboxId,
       context,
