@@ -855,6 +855,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
   const [copied, setCopied] = useState(false);
 
   const [editId, setEditId] = useState<string | null>(null);
+  const [eName, setEName] = useState("");
   const [eRole, setERole] = useState<Role>("agent");
   const [eTeams, setETeams] = useState<string[]>([]);
 
@@ -897,13 +898,15 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
     }
   };
 
-  const startEdit = (id: string, r: Role, t: string[]) => {
+  const startEdit = (id: string, n: string, r: Role, t: string[]) => {
     setOpen(false);
-    setEditId(id); setERole(r); setETeams(t);
+    setEditId(id); setEName(n); setERole(r); setETeams(t);
   };
   const saveEdit = (id: string) => {
+    const trimmed = eName.trim();
+    if (!trimmed) return;
     update.mutate(
-      { id, input: { role: eRole, teamIds: eTeams } },
+      { id, input: { name: trimmed, role: eRole, teamIds: eTeams } },
       {
         onSuccess: () => { setEditId(null); onToast("Member updated"); },
         onError: () => onToast("Couldn't update member"),
@@ -1011,7 +1014,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
                   </span>
                 </div>
                 <div className="rowacts">
-                  <button className="iconbtn" title="Edit member" onClick={() => startEdit(m.user.id, m.user.role, m.teamIds)}>
+                  <button className="iconbtn" title="Edit member" onClick={() => startEdit(m.user.id, m.user.name, m.user.role, m.teamIds)}>
                     <EditIcon />
                   </button>
                   {!isSelf && (
@@ -1025,6 +1028,10 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
               {editing && (
                 <div className="editbox">
                   <div className="setform__grid">
+                    <label className="field">
+                      <span>Name</span>
+                      <input value={eName} onChange={(e) => setEName(e.target.value)} placeholder="Full name" />
+                    </label>
                     <label className="field">
                       <span>Role</span>
                       <select value={eRole} onChange={(e) => setERole(e.target.value as Role)}>
@@ -1047,7 +1054,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
                   </div>
                   <div className="setform__foot">
                     <button className="btn-ghost" type="button" onClick={() => setEditId(null)}>Cancel</button>
-                    <button className="btn-primary" type="button" onClick={() => saveEdit(m.user.id)} disabled={update.isPending}>
+                    <button className="btn-primary" type="button" onClick={() => saveEdit(m.user.id)} disabled={update.isPending || !eName.trim()}>
                       Save changes
                     </button>
                   </div>
