@@ -12,6 +12,7 @@ import {
   SoundOnIcon,
   SoundOffIcon,
   SettingsIcon,
+  LogoutIcon,
   XIcon,
   channelMeta,
 } from "../lib/icons";
@@ -291,8 +292,13 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           >
             {sound.on ? <SoundOnIcon /> : <SoundOffIcon />}
           </button>
-          <button className="side__signout" onClick={() => logout.mutate()}>
-            Sign out
+          <button
+            className="side__signout"
+            title="Sign out"
+            aria-label="Sign out"
+            onClick={() => logout.mutate()}
+          >
+            <LogoutIcon />
           </button>
         </div>
       </div>

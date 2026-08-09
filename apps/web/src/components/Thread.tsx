@@ -1730,6 +1730,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     type="button"
                     role="tab"
                     aria-selected={active}
+                    aria-label={replyTargets.length > 1 ? meta.label : "Reply"}
                     className={"modebtn" + (active ? " active" : "")}
                     onClick={() => {
                       setInternal(false);
@@ -1740,7 +1741,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     <span className="modebtn__ic" style={active ? { color: meta.color } : undefined}>
                       <ChG />
                     </span>
-                    {replyTargets.length > 1 ? meta.label : "Reply"}
+                    <span className="modebtn__lbl">{replyTargets.length > 1 ? meta.label : "Reply"}</span>
                   </button>
                 );
               })}
@@ -1748,13 +1749,15 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 type="button"
                 role="tab"
                 aria-selected={internal}
+                aria-label="Note"
                 className={"modebtn modenote" + (internal ? " active" : "")}
                 onClick={() => setInternal(true)}
+                title="Internal note"
               >
                 <span className="modebtn__ic">
                   <NoteIcon />
                 </span>
-                Note
+                <span className="modebtn__lbl">Note</span>
               </button>
             </div>
             <span className="compctx">{ctxNode}</span>
