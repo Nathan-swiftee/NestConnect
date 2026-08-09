@@ -421,6 +421,11 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
     }
   };
 
+  const copyValue = (value: string, label: string) => {
+    navigator.clipboard?.writeText(value);
+    onToast(`${label} copied`);
+  };
+
   // Move this customer to another channel: open their thread there (starting one
   // if needed) and jump to it. Closing the panel reveals the thread on mobile.
   const switchChannel = async (channel: "whatsapp" | "email") => {
@@ -461,23 +466,36 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
             )}
           </div>
           {!isGroup && (
-            <div className="quick">
-              {conv.contact.phone ? (
-                <a className="qbtn" href={`tel:${conv.contact.phone}`} title={`Call ${conv.contact.phone}`}>
+            <div className="custkv">
+              {conv.contact.phone && (
+                <button
+                  type="button"
+                  className="custkv__row"
+                  title="Copy phone number"
+                  onClick={() => copyValue(conv.contact.phone as string, "Phone")}
+                >
                   <PhoneIcon />
-                </a>
-              ) : (
-                <button className="qbtn" disabled title="No phone number"><PhoneIcon /></button>
+                  <span>{conv.contact.phone}</span>
+                </button>
               )}
-              {conv.contact.email ? (
-                <a className="qbtn" href={`mailto:${conv.contact.email}`} title={`Email ${conv.contact.email}`}>
+              {conv.contact.email && (
+                <button
+                  type="button"
+                  className="custkv__row"
+                  title="Copy email address"
+                  onClick={() => copyValue(conv.contact.email as string, "Email")}
+                >
                   <MailIcon />
-                </a>
-              ) : (
-                <button className="qbtn" disabled title="No email address"><MailIcon /></button>
+                  <span>{conv.contact.email}</span>
+                </button>
               )}
-              <button className="qbtn" title="Open full profile" onClick={() => onOpenProfile?.(conv.contact.id)}>
+              <button
+                type="button"
+                className="custkv__row custkv__row--action"
+                onClick={() => onOpenProfile?.(conv.contact.id)}
+              >
                 <ProfileIcon />
+                <span>Open full profile</span>
               </button>
             </div>
           )}

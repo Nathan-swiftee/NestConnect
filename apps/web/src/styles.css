@@ -900,6 +900,16 @@ input,textarea{font:inherit}
 .cust .quick .qbtn:hover{background:var(--brand-tint);color:var(--brand-strong)}
 .cust .quick .qbtn:disabled{opacity:.4;cursor:default;pointer-events:none}
 .cust .quick svg{width:17px;height:17px}
+/* Contact info list under the name: shows the actual phone/email (click to
+   copy), plus a link into the full profile — replaces the old bare icon row. */
+.custkv{display:flex;flex-direction:column;gap:3px;width:100%;margin-top:12px;text-align:left}
+.custkv__row{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border-radius:var(--r-12);
+  color:var(--text);font-size:13px;transition:background .15s}
+.custkv__row:hover{background:var(--surface-2)}
+.custkv__row svg{width:16px;height:16px;flex:none;color:var(--text-faint)}
+.custkv__row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.custkv__row--action{color:var(--brand);font-weight:600}
+.custkv__row--action svg{color:var(--brand)}
 /* count badge beside a panel section title */
 .block .t .count{margin-left:7px;font-size:11px}
 /* details-panel tag editor sits on the panel surface, so lift it a touch */
