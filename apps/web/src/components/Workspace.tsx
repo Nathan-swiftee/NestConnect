@@ -108,6 +108,22 @@ export function Workspace() {
     setDrawerOpen(false);
     setMobilePane("list");
   };
+  // After closing / snoozing a conversation, jump straight to the next open one
+  // in the list (wrapping to the top) so you can keep working the queue without
+  // re-selecting. Falls back to the list when nothing's left.
+  const goToNextAfterClosed = () => {
+    const list = convos.data ?? [];
+    const idx = list.findIndex((c) => c.id === selectedId);
+    const ordered = idx >= 0 ? [...list.slice(idx + 1), ...list.slice(0, idx)] : list;
+    const next = ordered.find((c) => c.id !== selectedId && c.status !== "closed");
+    if (next) {
+      setSelectedId(next.id);
+      if (isMobile) setMobilePane("thread");
+    } else {
+      setSelectedId(null);
+      if (isMobile) setMobilePane("list");
+    }
+  };
 
   const pane = isMobile ? mobilePane : "both";
 
@@ -152,7 +168,7 @@ export function Workspace() {
                 onTogglePanel={() => setShowPanel((v) => !v)}
                 onToast={notify}
                 onBack={isMobile ? () => setMobilePane("list") : undefined}
-                onClosed={() => { if (isMobile) setMobilePane("list"); }}
+                onClosed={goToNextAfterClosed}
               />
               {showPanel && (
                 <>
