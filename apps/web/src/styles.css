@@ -286,7 +286,7 @@ input,textarea{font:inherit}
 .conv.active{background:var(--surface)}
 .conv.active::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand)}
 .av{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:650;font-size:15px;position:relative;flex-shrink:0}
-.av .ch{position:absolute;right:-1px;bottom:-1px;width:17px;height:17px;border-radius:50%;border:2px solid var(--bg);display:grid;place-items:center;box-shadow:0 1px 2px rgba(13,21,18,.2)}
+.av .ch{position:absolute;right:-1px;bottom:-1px;width:17px;height:17px;border-radius:50%;border:1.5px solid var(--bg);display:grid;place-items:center;box-shadow:0 1px 2px rgba(13,21,18,.2)}
 .conv:hover .av .ch,.conv.active .av .ch{border-color:var(--surface)}
 .av .ch svg{width:10.5px;height:10.5px;color:#fff;display:block}
 .conv__main{min-width:0}
@@ -522,8 +522,9 @@ input,textarea{font:inherit}
 .msg.out .quoted__who{color:currentColor}
 .msg.out .quoted__txt{color:color-mix(in srgb,currentColor 66%,transparent)}
 
-/* reaction chip hanging off the bubble's bottom-outer corner */
-.reacts{display:inline-flex;align-items:center;gap:1px;position:relative;z-index:3;margin-top:-9px;
+/* reaction chip hanging off the bubble's bottom edge, WhatsApp-style — it sits
+   just below the timestamp/ticks line (bottom:6px) so it never covers them. */
+.reacts{display:inline-flex;align-items:center;gap:1px;position:relative;z-index:3;margin-top:-4px;
   height:19px;padding:0 5px;border-radius:var(--r-full);background:var(--elevated);
   border:1.5px solid var(--surface-2);box-shadow:0 1px 2px rgba(0,0,0,.16)}
 .msg.in .reacts{margin-left:9px}
