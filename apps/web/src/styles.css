@@ -620,6 +620,15 @@ input,textarea{font:inherit}
   :root:not([data-theme="light"]) .msg.in .bubble.bubble--email,
   :root:not([data-theme="light"]) .msg.out .bubble.bubble--email{box-shadow:0 2px 8px -2px rgba(0,0,0,.6)}
 }
+/* Plain-text email bubbles read like an email — white (surface), not the
+   WhatsApp green — keeping the normal bubble shape + tail. Inbound is already on
+   --surface; only the outbound side needs switching off the green. */
+.msg.out .bubble.bubble--mail{--bub:var(--surface);color:var(--text)}
+.msg.out .bubble.bubble--mail .stamp{color:var(--text-faint)}
+:root[data-theme="dark"] .msg.out .bubble.bubble--mail{--bub:color-mix(in srgb,var(--elevated),#fff 7%);color:var(--text)}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .msg.out .bubble.bubble--mail{--bub:color-mix(in srgb,var(--elevated),#fff 7%);color:var(--text)}
+}
 .emailhtml{display:block}
 .emailhtml__frame{display:block;width:100%;border:0;background:#fff;border-radius:4px;color-scheme:light}
 .emailhtml__imgbar{display:flex;align-items:center;gap:7px;width:100%;margin-bottom:7px;padding:6px 9px;

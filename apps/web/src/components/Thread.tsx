@@ -411,6 +411,10 @@ function MessageBubble({
     .join(",  ") + (mine ? " · tap to remove yours" : "");
   // A rich email body renders in its own sandboxed frame (below any media).
   const isEmailHtml = !!m.bodyHtml;
+  // An email message reads as an email — a white bubble, not the WhatsApp green.
+  // Rich HTML emails already get the white .bubble--email card; this covers the
+  // plain-text ones.
+  const isMailMsg = (m.channel ?? convChannel) === "email";
   // A message sent/received on a channel other than the thread's own is badged.
   const crossMeta = m.channel && m.channel !== convChannel ? channelMeta(m.channel) : null;
   const CrossGlyph = crossMeta?.Glyph;
@@ -424,7 +428,8 @@ function MessageBubble({
             "bubble" +
             (hasMedia ? " has-media" : "") +
             (stickerOnly ? " bubble--plain" : "") +
-            (isEmailHtml ? " bubble--email" : "")
+            (isEmailHtml ? " bubble--email" : "") +
+            (isMailMsg && !isEmailHtml ? " bubble--mail" : "")
           }
         >
           {m.email && (m.email.subject || m.email.cc?.length || m.email.bcc?.length) && (
