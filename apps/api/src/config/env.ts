@@ -55,6 +55,19 @@ export const env = {
     // Optional shared secret; when set, inbound webhooks must pass ?token=.
     inboundToken: process.env.EMAIL_INBOUND_TOKEN ?? "",
   },
+  // SMTP for the app's OWN transactional email (invites, password resets, test
+  // sends) — distinct from the customer-facing email channel above. Defaults
+  // suit Gmail with an app password. An org's saved Setup values override these.
+  smtp: {
+    host: process.env.SMTP_HOST ?? "",
+    port: Number(process.env.SMTP_PORT ?? 587),
+    username: process.env.SMTP_USERNAME ?? "",
+    password: process.env.SMTP_PASSWORD ?? "",
+    // Envelope + header From; falls back to the username (the Gmail address).
+    from: process.env.SMTP_FROM ?? "",
+    // true → implicit TLS on connect (port 465); false → STARTTLS (port 587).
+    secure: (process.env.SMTP_SECURE ?? "") === "true",
+  },
   gmail: {
     // Inbound polling cadence in seconds; 0 disables the poller (push-only).
     pollSeconds: Number(process.env.GMAIL_POLL_SECONDS ?? 60),

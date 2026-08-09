@@ -24,6 +24,7 @@ const SECRET_APP_KEYS = new Set([
   "meta_app_secret",
   "r2_access_key_id",
   "r2_secret_access_key",
+  "smtp_password",
 ]);
 
 /**

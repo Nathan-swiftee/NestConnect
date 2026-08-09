@@ -1005,6 +1005,11 @@ input,textarea{font:inherit}
    Left: a light "brushed" panel with an animated, living app mockup.
    Right: a clean sign-in card. Collapses to just the card on mobile. */
 .login{height:100dvh;display:grid;grid-template-columns:1.06fr .94fr;overflow:hidden;background:var(--bg)}
+/* Single-column variant (invite / password-reset pages): one centred card. */
+.login--single{grid-template-columns:1fr;place-items:center;padding:20px;overflow:auto;
+  background:radial-gradient(1000px 520px at 50% -14%,var(--brand-tint),transparent 60%),var(--bg)}
+.login--single .login__card{width:min(400px,92vw);background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-24);box-shadow:var(--shadow-lg);padding:30px 28px}
 
 /* per-theme brushed highlight/line strength (only bit that can't be a shared token) */
 .login__hero{--sheen:rgba(255,255,255,.55);--brush:rgba(13,21,18,.022)}
@@ -1115,6 +1120,9 @@ input,textarea{font:inherit}
 .login__btn:disabled{opacity:.6}
 .login__hint{margin-top:4px;text-align:center;font-size:12px;color:var(--text-faint)}
 .login__hint b{color:var(--text-muted)}
+.login__link{align-self:center;margin-top:2px;background:none;border:0;padding:4px;font-size:12.5px;font-weight:600;color:var(--brand);cursor:pointer;transition:color .15s}
+.login__link:hover{color:var(--brand-strong);text-decoration:underline}
+.login__note{background:var(--brand-tint);color:var(--text);font-size:13px;line-height:1.5;padding:11px 13px;border-radius:var(--r-12)}
 
 /* rail avatar menu — floating polished glass */
 .rail-avatar{position:relative;display:grid;place-items:center}

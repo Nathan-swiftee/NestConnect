@@ -4,12 +4,14 @@ import { LoginScreen } from "./components/LoginScreen";
 import { SetPassword } from "./components/SetPassword";
 
 export function App() {
-  const inviteToken = new URLSearchParams(window.location.search).get("invite");
+  const params = new URLSearchParams(window.location.search);
+  const inviteToken = params.get("invite");
+  const resetToken = params.get("reset");
   const session = useSession();
 
-  // An emailed invite link takes over before the normal auth gate.
-  if (inviteToken) {
-    return <SetPassword token={inviteToken} />;
+  // An emailed invite or password-reset link takes over before the auth gate.
+  if (inviteToken || resetToken) {
+    return <SetPassword token={(inviteToken ?? resetToken) as string} reset={!!resetToken} />;
   }
   if (session.isLoading) {
     return <div className="center-note" style={{ height: "100dvh" }}>Loading…</div>;

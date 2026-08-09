@@ -217,6 +217,13 @@ export abstract class Store {
   }): Promise<{ user: User; inviteToken?: string }>;
   /** Consume an invite token, set the user's password, and return the user. */
   abstract setPasswordByInviteToken(token: string, password: string): Promise<User | undefined>;
+  /**
+   * Mint a fresh single-use token for an EXISTING user by email — used by
+   * "forgot password". Reuses the invite-token storage + set-password flow.
+   * Returns the raw token + user, or null when no such user exists (the caller
+   * still responds success either way, to avoid leaking which emails exist).
+   */
+  abstract createPasswordResetToken(email: string): Promise<{ user: User; token: string } | null>;
   abstract updateUser(
     id: string,
     params: { name?: string; role?: Role; teamIds?: string[] },

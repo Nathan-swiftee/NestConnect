@@ -31,7 +31,7 @@ import {
 import { Store } from "../data/store";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
-import { InviteMailer } from "../auth/invite-mailer";
+import { Mailer } from "../mail/mailer.service";
 import { sanitizeOutboundHtml } from "../channels/email/html-sanitize";
 import { env } from "../config/env";
 
@@ -40,7 +40,7 @@ import { env } from "../config/env";
 export class WorkspaceController {
   constructor(
     private readonly store: Store,
-    private readonly invites: InviteMailer,
+    private readonly mailer: Mailer,
   ) {}
 
   @Get("me")
@@ -175,7 +175,7 @@ export class WorkspaceController {
     const { user, inviteToken } = await this.store.createUser({ orgId: me.orgId, ...body });
     if (!inviteToken) return { user };
     const url = `${env.appUrl}/?invite=${inviteToken}`;
-    const { sent } = await this.invites.sendInvite(user.email, user.name, url);
+    const { sent } = await this.mailer.sendInvite(user.email, user.name, url);
     return { user, invite: { url, emailed: sent } };
   }
 

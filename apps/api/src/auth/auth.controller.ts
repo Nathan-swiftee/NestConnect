@@ -1,10 +1,18 @@
 import { Body, Controller, Get, Post, Res, UnauthorizedException } from "@nestjs/common";
 import type { Response } from "express";
-import { loginInputSchema, setPasswordInputSchema, type LoginInput, type SetPasswordInput } from "@ding/schemas";
+import {
+  forgotPasswordInputSchema,
+  loginInputSchema,
+  setPasswordInputSchema,
+  type ForgotPasswordInput,
+  type LoginInput,
+  type SetPasswordInput,
+} from "@ding/schemas";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { Store } from "../data/store";
 import { env } from "../config/env";
 import { AuthService } from "./auth.service";
+import { Mailer } from "../mail/mailer.service";
 import { Public } from "./public.decorator";
 import { CurrentUserId } from "./current-user.decorator";
 
@@ -13,6 +21,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly store: Store,
+    private readonly mailer: Mailer,
   ) {}
 
   @Public()
@@ -52,6 +61,24 @@ export class AuthController {
       path: "/",
     });
     return this.store.me(user.id);
+  }
+
+  /**
+   * Request a password-reset link. Always responds `{ ok: true }` — we never
+   * reveal whether an address has an account. When it matches a user and a
+   * transactional sender is configured, a reset link is emailed.
+   */
+  @Public()
+  @Post("forgot-password")
+  async forgotPassword(
+    @Body(new ZodValidationPipe(forgotPasswordInputSchema)) body: ForgotPasswordInput,
+  ) {
+    const reset = await this.store.createPasswordResetToken(body.email);
+    if (reset) {
+      const url = `${env.appUrl}/?reset=${reset.token}`;
+      await this.mailer.sendPasswordReset(reset.user.email, reset.user.name, url);
+    }
+    return { ok: true };
   }
 
   @Public()

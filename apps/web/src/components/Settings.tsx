@@ -27,6 +27,7 @@ import {
   useUpdateUser,
 } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
+import { api } from "../lib/api";
 import { TEMPLATE_CATEGORIES, approvalMeta, countVariables } from "./TemplatePicker";
 import {
   channelMeta,
@@ -34,6 +35,7 @@ import {
   ChevronUp,
   EditIcon,
   GmailGlyph,
+  MailIcon,
   PlusIcon,
   RefreshIcon,
   StorageIcon,
@@ -1279,6 +1281,8 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
   const metaConfigured = Boolean(meta?.configured);
   const storage = integrations.data?.storage;
   const storageConfigured = Boolean(storage?.configured);
+  const smtp = integrations.data?.smtp;
+  const smtpConfigured = Boolean(smtp?.configured);
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -1290,6 +1294,12 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
   const [r2Bucket, setR2Bucket] = useState("");
   const [r2AccessKeyId, setR2AccessKeyId] = useState("");
   const [r2SecretAccessKey, setR2SecretAccessKey] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpUsername, setSmtpUsername] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [smtpFrom, setSmtpFrom] = useState("");
+  const [smtpTesting, setSmtpTesting] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Prefill non-secret values from the stored settings once they load.
@@ -1311,6 +1321,18 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
   useEffect(() => {
     if (storage?.bucket !== undefined) setR2Bucket(storage.bucket);
   }, [storage?.bucket]);
+  useEffect(() => {
+    if (smtp?.host !== undefined) setSmtpHost(smtp.host);
+  }, [smtp?.host]);
+  useEffect(() => {
+    if (smtp?.port !== undefined) setSmtpPort(String(smtp.port));
+  }, [smtp?.port]);
+  useEffect(() => {
+    if (smtp?.username !== undefined) setSmtpUsername(smtp.username);
+  }, [smtp?.username]);
+  useEffect(() => {
+    if (smtp?.from !== undefined) setSmtpFrom(smtp.from);
+  }, [smtp?.from]);
 
   const saveGoogle = () => {
     const input: {
@@ -1386,6 +1408,47 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
+  };
+
+  const saveSmtp = () => {
+    const input: {
+      smtpHost?: string;
+      smtpPort?: number;
+      smtpUsername?: string;
+      smtpPassword?: string;
+      smtpFrom?: string;
+    } = {};
+    // Host/port/username/from are non-secret — send when changed (empty clears).
+    if (smtpHost.trim() !== (smtp?.host ?? "")) input.smtpHost = smtpHost.trim();
+    if (smtpPort.trim() && Number(smtpPort) !== (smtp?.port ?? 587)) input.smtpPort = Number(smtpPort);
+    if (smtpUsername.trim() !== (smtp?.username ?? "")) input.smtpUsername = smtpUsername.trim();
+    if (smtpFrom.trim() !== (smtp?.from ?? "")) input.smtpFrom = smtpFrom.trim();
+    // The app password is write-only — send only when the field has a value.
+    const pw = smtpPassword.trim();
+    if (pw) input.smtpPassword = pw;
+    if (Object.keys(input).length === 0) {
+      onToast("Enter your SMTP details to save");
+      return;
+    }
+    update.mutate(input, {
+      onSuccess: () => {
+        setSmtpPassword("");
+        onToast("Email settings saved");
+      },
+      onError: () => onToast("Only admins & managers can change setup"),
+    });
+  };
+
+  const testSmtp = async () => {
+    setSmtpTesting(true);
+    try {
+      const res = await api.testSmtp();
+      onToast(res.sent ? "Test email sent — check your inbox" : `Couldn't send: ${res.error ?? "not configured"}`);
+    } catch {
+      onToast("Couldn't send test email");
+    } finally {
+      setSmtpTesting(false);
+    }
   };
 
   const copy = async (value: string | undefined, key: string, label: string) => {
@@ -1658,6 +1721,73 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
 
         <div className="setform__foot">
           <button className="btn-primary" type="button" onClick={saveStorage} disabled={update.isPending || integrations.isLoading}>
+            Save
+          </button>
+        </div>
+      </div>
+
+      <div className="setupcard">
+        <div className="setupcard__head">
+          <span className="setrow__ic" style={{ color: "#EA4335" }}>
+            <MailIcon />
+          </span>
+          <div className="setrow__main">
+            <b>Email sending · SMTP</b>
+            <small>The app’s own emails — invites, password resets and the test send below.</small>
+          </div>
+          <span
+            className={"connpill " + (smtpConfigured ? "on" : "off")}
+            title={smtpConfigured ? "Transactional email is configured" : "No sender — invites show a link to copy instead"}
+          >
+            <span className="connpill__dot" />
+            {smtpConfigured ? "Email connected" : "Not connected"}
+          </span>
+        </div>
+
+        <p className="fieldhint">
+          Works with Gmail using an <b>app password</b> (Google Account → Security → 2-Step Verification → App
+          passwords). Host <b>smtp.gmail.com</b>, port <b>587</b>, username = your Gmail address. Takes effect
+          immediately — no redeploy needed.
+        </p>
+
+        <div className="setform__grid two">
+          <label className="field">
+            <span>SMTP host</span>
+            <input value={smtpHost} autoComplete="off" onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" />
+          </label>
+          <label className="field">
+            <span>Port</span>
+            <input value={smtpPort} autoComplete="off" inputMode="numeric" onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" />
+          </label>
+        </div>
+        <div className="setform__grid two">
+          <label className="field">
+            <span>Username (email)</span>
+            <input value={smtpUsername} autoComplete="off" onChange={(e) => setSmtpUsername(e.target.value)} placeholder="you@gmail.com" />
+          </label>
+          <label className="field">
+            <span>App password</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={smtpPassword}
+              onChange={(e) => setSmtpPassword(e.target.value)}
+              placeholder={smtpConfigured ? "••••• (hidden)" : "16-character app password"}
+            />
+          </label>
+        </div>
+        <div className="setform__grid two">
+          <label className="field">
+            <span>From address</span>
+            <input value={smtpFrom} autoComplete="off" onChange={(e) => setSmtpFrom(e.target.value)} placeholder="Defaults to the username" />
+          </label>
+        </div>
+
+        <div className="setform__foot">
+          <button className="btn-ghost" type="button" onClick={testSmtp} disabled={smtpTesting || !smtpConfigured}>
+            {smtpTesting ? "Sending…" : "Send test email"}
+          </button>
+          <button className="btn-primary" type="button" onClick={saveSmtp} disabled={update.isPending || integrations.isLoading}>
             Save
           </button>
         </div>

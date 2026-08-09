@@ -88,6 +88,8 @@ export const api = {
   login: (email: string, password: string) => post<MeResponse>("/auth/login", { email, password }),
   // Set an initial password from an emailed invite link, then sign in.
   setPassword: (token: string, password: string) => post<MeResponse>("/auth/set-password", { token, password }),
+  // Request a password-reset link (always resolves; never reveals if the email exists).
+  forgotPassword: (email: string) => post<{ ok: boolean }>("/auth/forgot-password", { email }),
   logout: () => post<{ ok: boolean }>("/auth/logout", {}),
   // workspace
   me: () => get<MeResponse>("/me"),
@@ -117,6 +119,8 @@ export const api = {
   getIntegrations: () => get<IntegrationSettings>("/settings/integrations"),
   updateIntegrations: (input: UpdateIntegrationSettingsInput) =>
     patch<IntegrationSettings>("/settings/integrations", input),
+  // Send a test email to yourself to verify the SMTP/Postmark connection.
+  testSmtp: () => post<{ sent: boolean; via?: string; error?: string }>("/settings/integrations/smtp/test", {}),
   // pull-to-refresh: fetch any new Gmail on demand
   syncGmail: () => post<{ ok: boolean; synced: number }>("/channels/google/sync", {}),
   // customers (CRM)

@@ -454,6 +454,17 @@ export class PrismaStore extends Store {
     return mapUser(updated);
   }
 
+  async createPasswordResetToken(email: string): Promise<{ user: User; token: string } | null> {
+    const u = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
+    if (!u) return null;
+    const inv = newInviteToken();
+    const updated = await this.prisma.user.update({
+      where: { id: u.id },
+      data: { inviteTokenHash: inv.hash, inviteExpiresAt: inv.expiresAt },
+    });
+    return { user: mapUser(updated), token: inv.token };
+  }
+
   async updateUser(
     id: string,
     params: { name?: string; role?: Role; teamIds?: string[] },

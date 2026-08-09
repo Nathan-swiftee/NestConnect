@@ -384,6 +384,14 @@ export class MemoryStore extends Store {
     return undefined;
   }
 
+  async createPasswordResetToken(email: string): Promise<{ user: User; token: string } | null> {
+    const user = this.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    if (!user) return null;
+    const inv = newInviteToken();
+    this.invites.set(user.id, { hash: inv.hash, exp: inv.expiresAt.getTime() });
+    return { user, token: inv.token };
+  }
+
   async updateUser(
     id: string,
     params: { name?: string; role?: Role; teamIds?: string[] },

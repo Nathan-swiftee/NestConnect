@@ -5,6 +5,7 @@ import {
   Get,
   NotFoundException,
   Patch,
+  Post,
   Req,
 } from "@nestjs/common";
 import type { Request } from "express";
@@ -38,6 +39,16 @@ import {
   R2_BUCKET_KEY,
   R2_SECRET_ACCESS_KEY_KEY,
 } from "../storage/r2-config";
+import {
+  smtpPublicSettings,
+  SMTP_FROM_KEY,
+  SMTP_HOST_KEY,
+  SMTP_PASSWORD_KEY,
+  SMTP_PORT_KEY,
+  SMTP_SECURE_KEY,
+  SMTP_USERNAME_KEY,
+} from "../mail/smtp-config";
+import { Mailer } from "../mail/mailer.service";
 
 /** App-level integration settings (Settings › Setup). Currently: the org's
  *  Google OAuth app credentials that power the "Connect with Google" flow. */
@@ -47,6 +58,7 @@ export class IntegrationsController {
     private readonly store: Store,
     private readonly google: GoogleOAuthService,
     private readonly meta: MetaOAuthService,
+    private readonly mailer: Mailer,
   ) {}
 
   @Get()
@@ -93,12 +105,31 @@ export class IntegrationsController {
     if (r2AccessKeyId) await this.store.setAppSetting(me.orgId, R2_ACCESS_KEY_ID_KEY, r2AccessKeyId);
     const r2Secret = body.r2SecretAccessKey?.trim();
     if (r2Secret) await this.store.setAppSetting(me.orgId, R2_SECRET_ACCESS_KEY_KEY, r2Secret);
+    // SMTP transactional email. Host/port/username/from/secure write on any
+    // change (empty clears); the app password writes only when supplied.
+    if (body.smtpHost !== undefined) await this.store.setAppSetting(me.orgId, SMTP_HOST_KEY, body.smtpHost.trim());
+    if (body.smtpPort !== undefined) await this.store.setAppSetting(me.orgId, SMTP_PORT_KEY, String(body.smtpPort));
+    if (body.smtpUsername !== undefined)
+      await this.store.setAppSetting(me.orgId, SMTP_USERNAME_KEY, body.smtpUsername.trim());
+    if (body.smtpFrom !== undefined) await this.store.setAppSetting(me.orgId, SMTP_FROM_KEY, body.smtpFrom.trim());
+    if (body.smtpSecure !== undefined)
+      await this.store.setAppSetting(me.orgId, SMTP_SECURE_KEY, body.smtpSecure ? "true" : "false");
+    const smtpPassword = body.smtpPassword?.trim();
+    if (smtpPassword) await this.store.setAppSetting(me.orgId, SMTP_PASSWORD_KEY, smtpPassword);
     return this.snapshot(me.orgId, req);
+  }
+
+  /** Send a test email to the current user — verifies the SMTP/Postmark setup. */
+  @Post("smtp/test")
+  async smtpTest(@CurrentUserId() userId: string): Promise<{ sent: boolean; via?: string; error?: string }> {
+    const me = await this.requireManager(userId);
+    const result = await this.mailer.sendTest(me.email);
+    return { sent: result.sent, via: result.via, error: result.error };
   }
 
   /** Build the GET/PATCH response. Secrets are never included. */
   private async snapshot(orgId: string, req: Request): Promise<IntegrationSettings> {
-    const [clientId, googleConfigured, pubsubTopic, metaAppId, metaConfigured, metaConfigId, storage] =
+    const [clientId, googleConfigured, pubsubTopic, metaAppId, metaConfigured, metaConfigId, storage, smtp] =
       await Promise.all([
         this.google.clientId(orgId),
         this.google.configured(orgId),
@@ -107,6 +138,7 @@ export class IntegrationsController {
         this.meta.configured(orgId),
         this.meta.configId(orgId),
         r2PublicSettings(this.store, orgId),
+        smtpPublicSettings(this.store, orgId),
       ]);
     return {
       google: {
@@ -123,6 +155,7 @@ export class IntegrationsController {
         redirectUri: metaRedirectUri(req),
       },
       storage,
+      smtp,
     };
   }
 

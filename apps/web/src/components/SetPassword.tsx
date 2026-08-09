@@ -2,9 +2,10 @@ import { useState, type FormEvent } from "react";
 import { api } from "../lib/api";
 import { Logo } from "../lib/icons";
 
-/** Public page reached from an emailed invite link (`/?invite=<token>`): the new
- *  teammate chooses a password, which signs them in and drops them into the app. */
-export function SetPassword({ token }: { token: string }) {
+/** Public page reached from an emailed link — an invite (`/?invite=<token>`) or a
+ *  password reset (`/?reset=<token>`): choose a password, which signs you in and
+ *  drops you into the app. Both use the same single-use token + set-password API. */
+export function SetPassword({ token, reset = false }: { token: string; reset?: boolean }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -24,16 +25,20 @@ export function SetPassword({ token }: { token: string }) {
     setBusy(true);
     try {
       await api.setPassword(token, password);
-      // Signed in — drop the invite token from the URL and enter the app.
+      // Signed in — drop the token from the URL and enter the app.
       window.location.replace("/");
     } catch {
       setBusy(false);
-      setError("This invite link is invalid or has expired — ask an admin to re-invite you.");
+      setError(
+        reset
+          ? "This reset link is invalid or has expired — request a new one from the sign-in page."
+          : "This invite link is invalid or has expired — ask an admin to re-invite you.",
+      );
     }
   };
 
   return (
-    <div className="login">
+    <div className="login login--single">
       <form className="login__card" onSubmit={submit}>
         <div className="login__brand">
           <div className="brandmark">
@@ -43,8 +48,10 @@ export function SetPassword({ token }: { token: string }) {
             Nest <span className="dot">Connect</span>
           </span>
         </div>
-        <h1>Set your password</h1>
-        <p className="login__sub">Choose a password to finish setting up your account</p>
+        <h1>{reset ? "Reset your password" : "Set your password"}</h1>
+        <p className="login__sub">
+          {reset ? "Choose a new password for your account" : "Choose a password to finish setting up your account"}
+        </p>
 
         <label className="field">
           <span>New password</span>
@@ -73,7 +80,7 @@ export function SetPassword({ token }: { token: string }) {
         {error && <div className="login__err">{error}</div>}
 
         <button className="login__btn" type="submit" disabled={busy}>
-          {busy ? "Setting up…" : "Set password & sign in"}
+          {busy ? "Saving…" : reset ? "Reset password & sign in" : "Set password & sign in"}
         </button>
       </form>
     </div>

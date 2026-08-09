@@ -9,6 +9,7 @@ import { HealthService } from "./health/health.service";
 import { CryptoModule } from "./crypto/crypto.module";
 import { TenancyModule } from "./tenancy/tenancy.module";
 import { DataModule } from "./data/data.module";
+import { MailModule } from "./mail/mail.module";
 import { AuthModule } from "./auth/auth.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { ChannelsModule } from "./channels/channels.module";
@@ -28,6 +29,7 @@ const imports: ModuleMetadata["imports"] = [
   CryptoModule,
   TenancyModule,
   DataModule,
+  MailModule,
   AuthModule,
   RealtimeModule,
   StorageModule,

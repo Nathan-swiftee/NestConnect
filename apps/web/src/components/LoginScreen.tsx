@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useLogin } from "../hooks";
+import { api } from "../lib/api";
 import { Logo, channelMeta, CheckDouble, SendIcon } from "../lib/icons";
 
 const wa = channelMeta("whatsapp");
@@ -9,10 +10,25 @@ export function LoginScreen() {
   const login = useLogin();
   const [emailAddr, setEmailAddr] = useState("nathan@swiftee.co.uk");
   const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"signin" | "forgot">("signin");
+  const [resetSent, setResetSent] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     login.mutate({ email: emailAddr, password });
+  };
+  const submitForgot = async (e: FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    // Always resolves the same way — we never reveal whether the email exists.
+    try {
+      await api.forgotPassword(emailAddr);
+    } catch {
+      /* ignore */
+    }
+    setSending(false);
+    setResetSent(true);
   };
 
   return (
@@ -97,7 +113,7 @@ export function LoginScreen() {
 
       {/* ── Right: the sign-in form ── */}
       <section className="login__panel">
-        <form className="login__card" onSubmit={submit}>
+        <form className="login__card" onSubmit={mode === "signin" ? submit : submitForgot}>
           <div className="login__brand">
             <div className="brandmark">
               <Logo />
@@ -106,40 +122,80 @@ export function LoginScreen() {
               Nest <span className="dot">Connect</span>
             </span>
           </div>
-          <h1>Welcome back</h1>
-          <p className="login__sub">Sign in to your team inbox</p>
+          {mode === "signin" ? (
+            <>
+              <h1>Welcome back</h1>
+              <p className="login__sub">Sign in to your team inbox</p>
 
-          <label className="field">
-            <span>Email</span>
-            <input
-              type="email"
-              value={emailAddr}
-              onChange={(e) => setEmailAddr(e.target.value)}
-              autoComplete="username"
-              required
-            />
-          </label>
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="••••••••"
-              required
-            />
-          </label>
+              <label className="field">
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={emailAddr}
+                  onChange={(e) => setEmailAddr(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label className="field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  required
+                />
+              </label>
 
-          {login.isError && <div className="login__err">Invalid email or password.</div>}
+              {login.isError && <div className="login__err">Invalid email or password.</div>}
 
-          <button className="login__btn" type="submit" disabled={login.isPending}>
-            {login.isPending ? "Signing in…" : "Sign in"}
-          </button>
+              <button className="login__btn" type="submit" disabled={login.isPending}>
+                {login.isPending ? "Signing in…" : "Sign in"}
+              </button>
 
-          <div className="login__hint">
-            Demo login — <b>nathan@swiftee.co.uk</b> / <b>ding1234</b>
-          </div>
+              <button type="button" className="login__link" onClick={() => { setResetSent(false); setMode("forgot"); }}>
+                Forgot password?
+              </button>
+
+              <div className="login__hint">
+                Demo login — <b>nathan@swiftee.co.uk</b> / <b>ding1234</b>
+              </div>
+            </>
+          ) : (
+            <>
+              <h1>Reset your password</h1>
+              <p className="login__sub">We'll email you a link to set a new one.</p>
+
+              {resetSent ? (
+                <div className="login__note">
+                  If <b>{emailAddr}</b> has an account, a reset link is on its way — check your inbox.
+                </div>
+              ) : (
+                <label className="field">
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={emailAddr}
+                    onChange={(e) => setEmailAddr(e.target.value)}
+                    autoComplete="username"
+                    required
+                  />
+                </label>
+              )}
+
+              {!resetSent && (
+                <button className="login__btn" type="submit" disabled={sending}>
+                  {sending ? "Sending…" : "Send reset link"}
+                </button>
+              )}
+
+              <button type="button" className="login__link" onClick={() => { setResetSent(false); setMode("signin"); }}>
+                ← Back to sign in
+              </button>
+            </>
+          )}
         </form>
       </section>
     </div>

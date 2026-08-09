@@ -623,6 +623,18 @@ export const integrationSettingsSchema = z.object({
     accountId: z.string(),
     bucket: z.string(),
   }),
+  /** SMTP (e.g. Gmail) for the app's own transactional email — invites,
+   *  password resets and the test send. */
+  smtp: z.object({
+    /** True when host + username + password + from are all set. */
+    configured: z.boolean(),
+    /** Non-secret echo — the app password is never returned. */
+    host: z.string(),
+    port: z.number(),
+    username: z.string(),
+    from: z.string(),
+    secure: z.boolean(),
+  }),
 });
 export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
 
@@ -642,8 +654,21 @@ export const updateIntegrationSettingsInputSchema = z.object({
   r2AccessKeyId: z.string().optional(),
   r2SecretAccessKey: z.string().optional(),
   r2Bucket: z.string().optional(),
+  /** SMTP transactional email. Host/port/username/from/secure write on any change
+   *  (empty clears); the app password is written only when a non-empty value is
+   *  sent, so it can be left blank to keep the stored one. */
+  smtpHost: z.string().optional(),
+  smtpPort: z.coerce.number().int().min(1).max(65535).optional(),
+  smtpUsername: z.string().optional(),
+  smtpPassword: z.string().optional(),
+  smtpFrom: z.string().optional(),
+  smtpSecure: z.boolean().optional(),
 });
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
+
+/** A "forgot my password" request — emails a reset link if the address matches. */
+export const forgotPasswordInputSchema = z.object({ email: z.string().email() });
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordInputSchema>;
 
 /* ------------------------------------------------------------------ */
 /* Notifications (the bell) — a per-user history of noteworthy events.  */

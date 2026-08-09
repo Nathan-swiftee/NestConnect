@@ -1,9 +1,8 @@
 import { Module } from "@nestjs/common";
 import { WorkspaceController } from "./workspace.controller";
-import { InviteMailer } from "../auth/invite-mailer";
 
+// The Mailer used for invites comes from the global MailModule.
 @Module({
   controllers: [WorkspaceController],
-  providers: [InviteMailer],
 })
 export class WorkspaceModule {}
