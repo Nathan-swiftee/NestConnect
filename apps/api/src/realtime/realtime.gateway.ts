@@ -19,6 +19,7 @@ import {
   type ClientToServerEvents,
   type Conversation,
   type Message,
+  type Notification,
   type ServerToClientEvents,
 } from "@ding/schemas";
 import { env } from "../config/env";
@@ -144,5 +145,10 @@ export class RealtimeGateway
 
   emitConversationUpdated(conversation: Conversation) {
     this.server.to(orgRoom(conversation.orgId)).emit(ServerEvent.ConversationUpdated, { conversation });
+  }
+
+  /** A bell notification for one user — delivered only to their own room. */
+  emitNotification(userId: string, notification: Notification) {
+    this.server.to(`user:${userId}`).emit(ServerEvent.Notification, { notification });
   }
 }

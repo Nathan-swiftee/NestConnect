@@ -4,6 +4,7 @@ import { useConversations, useSearchConversations, useRefresh, useSession, useTe
 import { relativeTime, slaCountdown, timeUntil } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon, PanelLeftIcon } from "../lib/icons";
+import { NotificationBell } from "./NotificationBell";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
 import { applyListWidth, getListWidth, setListWidth, resetListWidth, LIST_MIN, LIST_MAX } from "../lib/layout";
@@ -191,6 +192,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
           >
             <RefreshIcon />
           </button>
+          <NotificationBell onOpenConversation={onSelect} />
           <button className="kbd" onClick={onOpenCmdk} title="Command menu" aria-label="Command menu">
             <CmdIcon />
             <span>K</span>

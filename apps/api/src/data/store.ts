@@ -15,6 +15,7 @@ import type {
   MessagePage,
   MessageStatus,
   MessageType,
+  Notification,
   Participant,
   ParticipantRole,
   Priority,
@@ -314,6 +315,23 @@ export abstract class Store {
 
   /** Snooze a conversation until `until` (ISO); it wakes back into the queue then. */
   abstract snooze(conversationId: string, until: string): Promise<Conversation | undefined>;
+
+  /** Snoozed conversations whose wake time has passed — driven by the sweep that
+   *  wakes them and raises a "due" notification for the assignee. */
+  abstract listDueSnoozed(): Promise<Conversation[]>;
+
+  /* ---- Notifications (the bell) ---- */
+  abstract createNotification(input: {
+    userId: string;
+    type: Notification["type"];
+    title: string;
+    body?: string;
+    conversationId?: string | null;
+  }): Promise<Notification>;
+  /** A user's recent notifications, newest first (capped). */
+  abstract listNotifications(userId: string, limit?: number): Promise<Notification[]>;
+  /** Mark some (or, when `ids` is omitted, all) of a user's notifications read. */
+  abstract markNotificationsRead(userId: string, ids?: string[]): Promise<void>;
 
   /** Record a provider-side id on an outbound message (for status reconciliation). */
   abstract setMessageChannelId(messageId: string, channelMsgId: string): Promise<void>;

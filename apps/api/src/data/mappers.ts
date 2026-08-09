@@ -8,6 +8,7 @@ import type {
   Message,
   MessageStatus,
   MessageType,
+  Notification,
   Participant,
   ParticipantRole,
   Priority,
@@ -166,6 +167,18 @@ export function mapUser(u: Prisma.UserGetPayload<object>): User {
     online: u.online,
     available: u.available,
     emailSignature: u.emailSignature ?? undefined,
+  };
+}
+
+export function mapNotification(n: Prisma.NotificationGetPayload<object>): Notification {
+  return {
+    id: n.id,
+    type: n.type as Notification["type"],
+    title: n.title,
+    body: n.body,
+    conversationId: n.conversationId ?? undefined,
+    read: n.read,
+    createdAt: n.createdAt.toISOString(),
   };
 }
 

@@ -21,6 +21,7 @@ import {
   type CreateUserInput,
   type ChannelType,
   type Message,
+  type Notification,
   type UpdateContactInput,
   type UpdateInboxInput,
   type UpdateIntegrationSettingsInput,
@@ -141,6 +142,24 @@ export function useUpdateMyPreferences() {
   });
 }
 export const useViews = () => useQuery({ queryKey: ["views"], queryFn: api.views });
+
+/* ---- Bell notifications ---- */
+export const useNotifications = () =>
+  useQuery({ queryKey: ["notifications"], queryFn: api.notifications });
+
+/** Mark some (by id) or all notifications read; flips them locally right away. */
+export function useMarkNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids?: string[]) => api.markNotificationsRead(ids),
+    onMutate: (ids) => {
+      qc.setQueryData<Notification[]>(["notifications"], (cur) =>
+        cur?.map((n) => (!ids || ids.includes(n.id) ? { ...n, read: true } : n)),
+      );
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
 export const useInboxes = () => useQuery({ queryKey: ["inboxes"], queryFn: api.inboxes });
 export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: api.teams });
 export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
@@ -662,15 +681,24 @@ export function useRealtime(openConversationId: string | null) {
     // Assignment/status/snooze change the lists → refresh them (infrequent).
     const onConversation = () => invalidateLists();
     const onAssigned = () => invalidateLists();
+    // A bell notification (mention / snooze due) → prepend it and give a cue.
+    const onNotification = (p: { notification: Notification }) => {
+      qc.setQueryData<Notification[]>(["notifications"], (cur) =>
+        [p.notification, ...(cur ?? []).filter((n) => n.id !== p.notification.id)].slice(0, 50),
+      );
+      playReceived();
+    };
     socket.on(ServerEvent.MessageCreated, onCreated);
     socket.on(ServerEvent.MessageUpdated, onUpdated);
     socket.on(ServerEvent.ConversationAssigned, onAssigned);
     socket.on(ServerEvent.ConversationUpdated, onConversation);
+    socket.on(ServerEvent.Notification, onNotification);
     return () => {
       socket.off(ServerEvent.MessageCreated, onCreated);
       socket.off(ServerEvent.MessageUpdated, onUpdated);
       socket.off(ServerEvent.ConversationAssigned, onAssigned);
       socket.off(ServerEvent.ConversationUpdated, onConversation);
+      socket.off(ServerEvent.Notification, onNotification);
     };
   }, [qc]);
 

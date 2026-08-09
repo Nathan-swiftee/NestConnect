@@ -17,6 +17,7 @@ import type {
   Message,
   MessagePage,
   MessageStatus,
+  Notification,
   Participant,
   ParticipantRole,
   Priority,
@@ -793,6 +794,48 @@ export class MemoryStore extends Store {
     rec.unread = false;
     rec.unreadCount = 0;
     return this.summary(rec);
+  }
+
+  async listDueSnoozed(): Promise<Conversation[]> {
+    const now = Date.now();
+    return this.conversations
+      .filter((r) => r.status === "snoozed" && r.snoozedUntil && new Date(r.snoozedUntil).getTime() <= now)
+      .map((r) => this.summary(r));
+  }
+
+  // ---- Notifications ----
+  private notifications: Array<Notification & { userId: string }> = [];
+
+  async createNotification(input: {
+    userId: string;
+    type: Notification["type"];
+    title: string;
+    body?: string;
+    conversationId?: string | null;
+  }): Promise<Notification> {
+    const notif: Notification & { userId: string } = {
+      id: `notif_${++this.idSeq}`,
+      userId: input.userId,
+      type: input.type,
+      title: input.title,
+      body: input.body ?? "",
+      conversationId: input.conversationId ?? undefined,
+      read: false,
+      createdAt: new Date().toISOString(),
+    };
+    this.notifications.unshift(notif);
+    return notif;
+  }
+
+  async listNotifications(userId: string, limit = 50): Promise<Notification[]> {
+    return this.notifications.filter((n) => n.userId === userId).slice(0, limit);
+  }
+
+  async markNotificationsRead(userId: string, ids?: string[]): Promise<void> {
+    for (const n of this.notifications) {
+      if (n.userId !== userId) continue;
+      if (!ids || ids.includes(n.id)) n.read = true;
+    }
   }
 
   async setMessageChannelId(messageId: string, channelMsgId: string): Promise<void> {

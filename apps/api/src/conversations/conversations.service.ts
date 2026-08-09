@@ -17,6 +17,7 @@ import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { ChannelDispatcher } from "../channels/channel-dispatcher";
 import type { OutboundTemplate } from "../channels/channel-provider";
 import { OutboundQueue } from "../queue/outbound-queue";
+import { NotificationsService } from "../notifications/notifications.service";
 import { sanitizeOutboundHtml, htmlToText } from "../channels/email/html-sanitize";
 
 /** WhatsApp's 24-hour customer-service window: open while the last WhatsApp
@@ -60,6 +61,7 @@ export class ConversationsService {
     private readonly realtime: RealtimeGateway,
     private readonly dispatcher: ChannelDispatcher,
     private readonly queue: OutboundQueue,
+    private readonly notifications: NotificationsService,
   ) {}
 
   list(view: string, userId: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
@@ -187,6 +189,12 @@ export class ConversationsService {
 
     // Broadcast immediately so every open client updates the thread + previews.
     this.realtime.emitMessageCreated(id, message, conv.orgId);
+
+    // An internal note can @-mention teammates → raise a bell notification for
+    // each (fire-and-forget; a failed notification never fails the note).
+    if (input.internal) {
+      void this.notifications.notifyMentions(conv, body, author.name, author.id);
+    }
 
     // Real (non-internal) replies are enqueued for durable delivery. The message
     // is already persisted (status "queued"); the queue drives it to sent/failed

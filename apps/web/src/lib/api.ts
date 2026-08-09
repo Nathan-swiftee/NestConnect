@@ -28,6 +28,7 @@ import type {
   UpdateInboxInput,
   UpdateIntegrationSettingsInput,
   UpdateTeamInput,
+  Notification,
   UpdateMyPreferencesInput,
   UpdateUserInput,
   User,
@@ -92,6 +93,9 @@ export const api = {
   me: () => get<MeResponse>("/me"),
   // The current user's own personal settings (availability + email signature).
   updateMyPreferences: (input: UpdateMyPreferencesInput) => patch<User>("/me/preferences", input),
+  // Bell notifications.
+  notifications: () => get<Notification[]>("/notifications"),
+  markNotificationsRead: (ids?: string[]) => post<{ ok: boolean }>("/notifications/read", ids ? { ids } : {}),
   views: () => get<SidebarViews>("/views"),
   inboxes: () => get<Inbox[]>("/inboxes"),
   createInbox: (input: CreateInboxInput) => post<Inbox>("/inboxes", input),
