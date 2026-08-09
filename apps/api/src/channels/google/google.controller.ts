@@ -118,14 +118,16 @@ export class GoogleController {
       if (existing) {
         inbox = (await this.store.updateInbox(existing.id, { channelConfig })) ?? existing;
       } else {
-        const teams = await this.store.listTeams();
+        // Created unrouted on purpose: the admin picks the team(s) + strategy
+        // right after connecting (the UI opens the channel editor), rather than
+        // blindly routing new mail to every team.
         inbox = await this.store.createInbox({
           orgId,
           type: "email",
           name: email,
           handle: email,
-          teamIds: teams.map((t) => t.id),
-          routingStrategy: "round_robin",
+          teamIds: [],
+          routingStrategy: "manual",
           channelConfig,
         });
       }

@@ -263,7 +263,8 @@ function StatusTick({ status }: { status: MessageStatus }) {
 function EmailHtml({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(80);
-  const [showImages, setShowImages] = useState(false);
+  // Remote images show by default; the bar below lets you hide them per message.
+  const [showImages, setShowImages] = useState(true);
   const hasBlocked = html.includes("data-blocked-src");
 
   const srcDoc = useMemo(() => {
@@ -302,11 +303,13 @@ function EmailHtml({ html }: { html: string }) {
 
   return (
     <div className="emailhtml">
-      {hasBlocked && !showImages && (
-        <button type="button" className="emailhtml__imgbar" onClick={() => setShowImages(true)}>
+      {hasBlocked && (
+        <button type="button" className="emailhtml__imgbar" onClick={() => setShowImages((s) => !s)}>
           <ImageIcon />
-          <span className="emailhtml__imgtxt">Images hidden for your privacy</span>
-          <span className="emailhtml__show">Show images</span>
+          <span className="emailhtml__imgtxt">
+            {showImages ? "Remote images shown" : "Images hidden for your privacy"}
+          </span>
+          <span className="emailhtml__show">{showImages ? "Hide" : "Show images"}</span>
         </button>
       )}
       <iframe

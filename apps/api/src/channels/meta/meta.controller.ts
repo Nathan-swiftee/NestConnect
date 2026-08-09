@@ -92,14 +92,15 @@ export class MetaController {
       if (existing) {
         await this.store.updateInbox(existing.id, { name, channelConfig });
       } else {
-        const teams = await this.store.listTeams();
+        // Created unrouted — the admin sets the team(s) + strategy in the editor
+        // that opens right after connecting, instead of routing to every team.
         await this.store.createInbox({
           orgId,
           type: "whatsapp",
           name,
           handle: number.phoneNumberId,
-          teamIds: teams.map((t) => t.id),
-          routingStrategy: "round_robin",
+          teamIds: [],
+          routingStrategy: "manual",
           channelConfig,
         });
       }

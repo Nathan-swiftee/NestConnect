@@ -190,7 +190,21 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
   const del = useDeleteInbox();
   const [connecting, setConnecting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // After a one-click (OAuth) connect the new inbox is unrouted — open its editor
+  // as soon as it appears so the admin chooses where it routes.
+  const [routeHandle, setRouteHandle] = useState<string | null>(null);
   const teamName = (id: string) => teams.data?.find((t) => t.id === id)?.name ?? id;
+
+  useEffect(() => {
+    if (!routeHandle) return;
+    const match = inboxes.data?.find((i) => i.handle.toLowerCase() === routeHandle.toLowerCase());
+    if (match) {
+      setConnecting(false);
+      setEditingId(match.id);
+      setRouteHandle(null);
+      onToast("Connected — choose where this inbox routes");
+    }
+  }, [routeHandle, inboxes.data, onToast]);
 
   const remove = (id: string, name: string) => {
     if (!window.confirm(`Delete “${name}”? This removes the channel and its conversations.`)) return;
@@ -214,7 +228,13 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
         )}
       </div>
 
-      {connecting && <ConnectChannel onDone={() => setConnecting(false)} onToast={onToast} />}
+      {connecting && (
+        <ConnectChannel
+          onDone={() => setConnecting(false)}
+          onConnected={(handle) => setRouteHandle(handle)}
+          onToast={onToast}
+        />
+      )}
 
       <div className="setlist">
         {inboxes.data?.map((i) => {
@@ -375,7 +395,15 @@ function ChannelEditor({
   );
 }
 
-function ConnectChannel({ onDone, onToast }: { onDone: () => void; onToast: (msg: string) => void }) {
+function ConnectChannel({
+  onDone,
+  onConnected,
+  onToast,
+}: {
+  onDone: () => void;
+  onConnected: (handle: string) => void;
+  onToast: (msg: string) => void;
+}) {
   const teams = useTeams();
   const create = useCreateInbox();
   const qc = useQueryClient();
@@ -410,10 +438,16 @@ function ConnectChannel({ onDone, onToast }: { onDone: () => void; onToast: (msg
       if (data.ok) {
         qc.invalidateQueries({ queryKey: ["inboxes"] });
         qc.invalidateQueries({ queryKey: ["views"] });
-        const who = data.provider === "whatsapp" ? "WhatsApp" : "Gmail";
-        const detail = data.number ?? data.email ?? "";
-        onToast(`${who} connected${detail ? ` (${detail})` : ""}`);
-        onDone();
+        const handle = data.email ?? data.number ?? "";
+        // Hand the new inbox's handle up so its routing editor opens; if we can't
+        // identify it, just close the connect flow with a confirmation.
+        if (handle) {
+          onConnected(handle);
+        } else {
+          const who = data.provider === "whatsapp" ? "WhatsApp" : "Gmail";
+          onToast(`${who} connected`);
+          onDone();
+        }
       } else {
         onToast(data.error || "Couldn't connect the channel");
       }
