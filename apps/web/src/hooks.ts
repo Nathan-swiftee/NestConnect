@@ -30,8 +30,15 @@ import {
 } from "@ding/schemas";
 import { api } from "./lib/api";
 import { getSocket } from "./lib/socket";
-import { isSoundOn, playReceived, subscribeSound, toggleSound } from "./lib/sound";
+import { isSoundOn, playReceived, playSent, subscribeSound, toggleSound } from "./lib/sound";
 import { effectiveTheme } from "./lib/theme";
+
+/** Statuses that mean an outbound message actually left our system — the point
+ *  at which the "sent" cue should play (never on queued/sending/failed). */
+const SENT_CUE_STATUSES = new Set<Message["status"]>(["sent", "delivered", "read"]);
+/** Message ids we've already sounded, so the sent cue fires once per message
+ *  (a message climbs sent → delivered → read, all as separate updates). */
+const sentCuePlayed = new Set<string>();
 
 export const useSession = () =>
   useQuery({ queryKey: ["session"], queryFn: api.session, retry: false, staleTime: 30_000 });
@@ -616,15 +623,27 @@ export function useRealtime(openConversationId: string | null) {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
     };
+    // Play the outbound "sent" cue exactly once, when a message first reaches a
+    // success status — so the WhatsApp/email sound means "actually sent", not
+    // "queued". Never fires on failure. The channel picks the sound.
+    const maybePlaySentCue = (conversationId: string, m: Message) => {
+      if (m.direction !== "out" || m.internal) return;
+      if (!SENT_CUE_STATUSES.has(m.status) || sentCuePlayed.has(m.id)) return;
+      sentCuePlayed.add(m.id);
+      const conv = qc.getQueryData<ConversationWithMessages>(["conversation", conversationId]);
+      playSent(m.channel ?? conv?.channel);
+    };
     // A brand-new message changes list previews/counts/order → patch thread + refresh lists.
     const onCreated = (p: { conversationId: string; message: Message }) => {
       if (p.message.direction === "in" && !p.message.internal) playReceived();
+      else maybePlaySentCue(p.conversationId, p.message);
       patchThread(p.conversationId, p.message);
       invalidateLists();
     };
     // A status tick (sent→delivered→read) only moves the ticks — patch the thread
     // in place and do NOT refetch the lists (this is the frequent, cheap path).
     const onUpdated = (p: { conversationId: string; message: Message }) => {
+      maybePlaySentCue(p.conversationId, p.message);
       patchThread(p.conversationId, p.message);
     };
     // Assignment/status/snooze change the lists → refresh them (infrequent).

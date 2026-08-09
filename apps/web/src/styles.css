@@ -522,6 +522,14 @@ input,textarea{font:inherit}
 .msg.out .bubblewrap{align-items:flex-end}
 .msg.in .bubblewrap{align-items:flex-start}
 
+/* Email headers at the top of an (outbound) email bubble — subject + Cc/Bcc,
+   the way an email surfaces them, divided from the body by a hairline. */
+.emailmeta{margin:0 0 6px;padding-bottom:6px;font-size:12px;line-height:1.35;
+  border-bottom:1px solid color-mix(in srgb,currentColor 18%,transparent)}
+.emailmeta__subj{font-weight:750;word-break:break-word}
+.emailmeta__row{margin-top:2px;color:color-mix(in srgb,currentColor 62%,transparent);word-break:break-word}
+.emailmeta__lbl{font-weight:700;margin-right:6px;opacity:.8}
+
 /* quoted-reply preview stacked at the top of a bubble */
 .quoted{display:flex;gap:8px;align-items:stretch;width:100%;text-align:left;cursor:pointer;
   margin-bottom:5px;padding:5px 9px;border-radius:6px;overflow:hidden;border:0;

@@ -217,6 +217,11 @@ export function parseReactions(raw: unknown): Message["reactions"] {
 }
 
 export function mapMessage(m: MessageRow): Message {
+  const dm = m.deliveryMeta as { subject?: string; cc?: string[]; bcc?: string[] } | null;
+  const email =
+    dm && (dm.subject || dm.cc?.length || dm.bcc?.length)
+      ? { subject: dm.subject, cc: dm.cc, bcc: dm.bcc }
+      : undefined;
   return {
     id: m.id,
     conversationId: m.conversationId,
@@ -236,6 +241,7 @@ export function mapMessage(m: MessageRow): Message {
     bodyHtml: m.bodyHtml ?? undefined,
     attemptCount: m.attemptCount ?? 0,
     failureReason: m.failureReason ?? undefined,
+    email,
     createdAt: m.createdAt.toISOString(),
   };
 }

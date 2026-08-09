@@ -13,7 +13,7 @@ import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { useHoverGlide } from "../lib/useHoverGlide";
-import { playSent, unlock } from "../lib/sound";
+import { unlock } from "../lib/sound";
 import { TemplatePicker } from "./TemplatePicker";
 import {
   channelMeta,
@@ -427,6 +427,23 @@ function MessageBubble({
             (isEmailHtml ? " bubble--email" : "")
           }
         >
+          {m.email && (m.email.subject || m.email.cc?.length || m.email.bcc?.length) && (
+            <div className="emailmeta">
+              {m.email.subject && <div className="emailmeta__subj">{m.email.subject}</div>}
+              {m.email.cc?.length ? (
+                <div className="emailmeta__row">
+                  <span className="emailmeta__lbl">Cc</span>
+                  {m.email.cc.join(", ")}
+                </div>
+              ) : null}
+              {m.email.bcc?.length ? (
+                <div className="emailmeta__row">
+                  <span className="emailmeta__lbl">Bcc</span>
+                  {m.email.bcc.join(", ")}
+                </div>
+              ) : null}
+            </div>
+          )}
           {quoted && (
             <button
               type="button"
@@ -1334,7 +1351,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         },
       },
     );
-    if (!internal) playSent(composeChannel);
     stopTyping();
     setText("");
     setHtml("");

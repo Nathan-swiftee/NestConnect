@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { ChannelType, Template, TemplateApproval, TemplateCategory } from "@ding/schemas";
 import { useSendMessage, useTemplates } from "../hooks";
-import { playSent, unlock } from "../lib/sound";
+import { unlock } from "../lib/sound";
 import { BackIcon, BoltIcon, SendIcon, XIcon } from "../lib/icons";
 import { useScrollLock } from "../lib/useScrollLock";
 
@@ -119,8 +119,8 @@ export function TemplatePicker({ conversationId, channel, onClose, onToast }: Pr
       { id: conversationId, body: "", template: { id: selected.id, params }, channel },
       {
         onSuccess: () => {
-          // Templates are a WhatsApp feature → the WhatsApp send cue.
-          playSent(channel ?? "whatsapp");
+          // The WhatsApp "sent" cue plays on the confirmed send (via realtime),
+          // not here on enqueue.
           onToast("Template sent");
           onClose();
         },

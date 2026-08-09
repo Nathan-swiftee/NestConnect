@@ -39,11 +39,13 @@ function fillTemplate(body: string, params: string[]): string {
 /** Assemble the persisted send hints, omitting empty parts (undefined when none). */
 function buildDeliveryMeta(
   template?: OutboundTemplate,
+  subject?: string,
   cc?: string[],
   bcc?: string[],
 ): OutboundDeliveryMeta | undefined {
   const meta: OutboundDeliveryMeta = {};
   if (template) meta.template = template;
+  if (subject) meta.subject = subject;
   if (cc?.length) meta.cc = cc;
   if (bcc?.length) meta.bcc = bcc;
   return Object.keys(meta).length ? meta : undefined;
@@ -152,9 +154,12 @@ export class ConversationsService {
     // (re)delivery can be reconstructed from the DB alone after a restart.
     const cc = input.internal ? undefined : input.cc?.filter((a) => a.trim());
     const bcc = input.internal ? undefined : input.bcc?.filter((a) => a.trim());
+    // Record the subject on email sends so the message can show it (the thread's
+    // subject was just updated above from any edit).
+    const emailSubject = !input.internal && sendingEmail ? conv.subject ?? undefined : undefined;
     const deliveryMeta: OutboundDeliveryMeta | undefined = input.internal
       ? undefined
-      : buildDeliveryMeta(template, cc, bcc);
+      : buildDeliveryMeta(template, emailSubject, cc, bcc);
     // Idempotency key doubles as the delivery job id, so duplicate sends collapse.
     const idempotencyKey = input.internal ? undefined : randomUUID();
 

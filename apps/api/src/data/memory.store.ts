@@ -660,6 +660,16 @@ export class MemoryStore extends Store {
       attachments,
       reactions: [],
       quotedMsgId: input.quotedMsgId,
+      // Surface the email headers on the message so the bubble can show them.
+      email:
+        input.deliveryMeta &&
+        (input.deliveryMeta.subject || input.deliveryMeta.cc?.length || input.deliveryMeta.bcc?.length)
+          ? {
+              subject: input.deliveryMeta.subject,
+              cc: input.deliveryMeta.cc,
+              bcc: input.deliveryMeta.bcc,
+            }
+          : undefined,
       ...(input.internal ? {} : { attemptCount: 0 }),
       createdAt: new Date().toISOString(),
     };

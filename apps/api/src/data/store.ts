@@ -88,6 +88,8 @@ export interface StoredAttachmentRef {
  *  the DB alone after a restart — no reliance on in-flight job payloads. */
 export interface OutboundDeliveryMeta {
   template?: { name: string; language: string; params: string[] };
+  /** Email subject this message was sent with (email channel only). */
+  subject?: string;
   cc?: string[];
   bcc?: string[];
 }

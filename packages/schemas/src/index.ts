@@ -218,6 +218,15 @@ export const messageSchema = z.object({
   attemptCount: z.number().int().nonnegative().optional(),
   /** Human-readable reason shown in the UI once an outbound send has failed. */
   failureReason: z.string().nullable().optional(),
+  /** Email headers this message carried (email channel only), surfaced on the
+   *  bubble the way an email shows its subject + Cc. */
+  email: z
+    .object({
+      subject: z.string().optional(),
+      cc: z.array(z.string()).optional(),
+      bcc: z.array(z.string()).optional(),
+    })
+    .optional(),
   createdAt: z.string(), // ISO-8601
 });
 export type Message = z.infer<typeof messageSchema>;
