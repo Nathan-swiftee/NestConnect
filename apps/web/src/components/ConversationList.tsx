@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useConversations, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
 import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
-import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon } from "../lib/icons";
+import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon, PanelLeftIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
+import { applyListWidth, getListWidth, setListWidth, resetListWidth, LIST_MIN, LIST_MAX } from "../lib/layout";
 
 type Filter = "all" | "unread" | "mine" | "unassigned" | "groups" | "closed";
 
@@ -17,9 +18,13 @@ interface Props {
   onOpenCmdk: () => void;
   onCompose: () => void;
   onOpenDrawer?: () => void;
+  /** Desktop only: true when the inbox sidebar is collapsed, so the list shows
+   *  a button to bring it back. */
+  sidebarCollapsed?: boolean;
+  onExpandSidebar?: () => void;
 }
 
-export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onCompose, onOpenDrawer }: Props) {
+export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onCompose, onOpenDrawer, sidebarCollapsed, onExpandSidebar }: Props) {
   const listQuery = useConversations(view);
   const { data, isLoading } = listQuery;
   const teams = useTeams();
@@ -124,13 +129,56 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
     }
   }, [virtualRows, shown.length, pager.hasNextPage, pager.isFetchingNextPage, pager.fetchNextPage]);
 
+  // Drag the right edge to widen/narrow the list. The width lives in a CSS var
+  // written straight to the DOM per frame — no React re-render while dragging —
+  // and is persisted to localStorage only on release.
+  const [resizing, setResizing] = useState(false);
+  // Bumped on keyboard/reset changes so aria-valuenow re-reads the live width
+  // (drag itself stays re-render-free — the CSS var drives the visual resize).
+  const [, bumpWidth] = useState(0);
+  const startResize = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = getListWidth();
+    setResizing(true);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => applyListWidth(startW + (ev.clientX - startX));
+    const onUp = () => {
+      setResizing(false);
+      setListWidth(getListWidth());
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+  const nudgeResize = (e: ReactKeyboardEvent) => {
+    if (e.key === "ArrowLeft") setListWidth(getListWidth() - 16);
+    else if (e.key === "ArrowRight") setListWidth(getListWidth() + 16);
+    else return;
+    e.preventDefault();
+    bumpWidth((n) => n + 1);
+  };
+  const resetResize = () => {
+    resetListWidth();
+    bumpWidth((n) => n + 1);
+  };
+
   return (
-    <section className="list" aria-label="Conversations">
+    <section className={"list" + (resizing ? " is-resizing" : "")} aria-label="Conversations">
       <div className="list__head">
         <div className="list__title">
           <button className="list__burger" onClick={onOpenDrawer} aria-label="Open menu" title="Menu">
             <MenuIcon />
           </button>
+          {sidebarCollapsed && onExpandSidebar && (
+            <button className="list__expand" onClick={onExpandSidebar} aria-label="Show inboxes" title="Show inboxes">
+              <PanelLeftIcon />
+            </button>
+          )}
           <h1>{title}</h1>
           <span className="badge">{count}</span>
           <button
@@ -297,6 +345,23 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
           </div>
         )}
         {pager.isFetchingNextPage && <div className="empty">Loading more…</div>}
+      </div>
+
+      <div
+        className={"list__resizer" + (resizing ? " active" : "")}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize conversation list"
+        aria-valuenow={getListWidth()}
+        aria-valuemin={LIST_MIN}
+        aria-valuemax={LIST_MAX}
+        tabIndex={0}
+        title="Drag to resize · double-click to reset"
+        onPointerDown={startResize}
+        onDoubleClick={resetResize}
+        onKeyDown={nudgeResize}
+      >
+        <span className="list__resizer-bar" />
       </div>
     </section>
   );

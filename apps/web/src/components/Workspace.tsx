@@ -10,6 +10,7 @@ import { Settings } from "./Settings";
 import { Customers } from "./Customers";
 import { useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
+import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/layout";
 
 export function Workspace() {
   const isMobile = useMediaQuery("(max-width: 820px)");
@@ -27,6 +28,11 @@ export function Workspace() {
   const [section, setSection] = useState<"inbox" | "customers" | "settings">("inbox");
   const [focusContact, setFocusContact] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+
+  // The collapse only applies to the inline desktop sidebar; ≤1023 it's a drawer.
+  const sidebarHidden = !isCompact && sidebarCollapsed;
+  useEffect(() => writeSidebarCollapsed(sidebarCollapsed), [sidebarCollapsed]);
 
   useRealtime(selectedId);
   useSnoozeSweep();
@@ -119,6 +125,8 @@ export function Workspace() {
                 onClose={isCompact ? () => setDrawerOpen(false) : undefined}
                 onOpenSettings={() => { setSection("settings"); setDrawerOpen(false); }}
                 onOpenCustomers={() => { setSection("customers"); setDrawerOpen(false); }}
+                isCollapsed={sidebarHidden}
+                onToggleCollapse={isCompact ? undefined : () => setSidebarCollapsed((v) => !v)}
               />
               <ConversationList
                 view={view}
@@ -129,6 +137,8 @@ export function Workspace() {
                 onOpenCmdk={() => setCmdkOpen(true)}
                 onCompose={() => setComposeOpen(true)}
                 onOpenDrawer={() => setDrawerOpen(true)}
+                sidebarCollapsed={sidebarHidden}
+                onExpandSidebar={() => setSidebarCollapsed(false)}
               />
               <Thread
                 conversationId={selectedId}
