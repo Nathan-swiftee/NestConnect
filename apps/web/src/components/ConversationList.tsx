@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useConversations, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
-import { relativeTime, initials, slaCountdown, timeUntil, avatarBg } from "../lib/format";
+import { relativeTime, slaCountdown, timeUntil } from "../lib/format";
+import { Avatar } from "./Avatar";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon, PanelLeftIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
@@ -280,12 +281,11 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                     className={"conv" + (c.unread ? " unread" : "") + (selectedId === c.id ? " active" : "")}
                     onClick={() => onSelect(c.id)}
                   >
-              <div className="av" style={{ background: avatarBg(c.contact.displayName, c.contact.avatarColor) }}>
-                {initials(c.contact.displayName)}
+              <Avatar name={c.contact.displayName} email={c.contact.email} color={c.contact.avatarColor} className="av">
                 <span className="ch" style={{ background: cm.color }}>
                   <Glyph />
                 </span>
-              </div>
+              </Avatar>
               <div className="conv__main">
                 <div className="conv__top">
                   <span className="conv__name">{c.contact.displayName}</span>

@@ -7,10 +7,11 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages, usePeople } from "../hooks";
 import { api } from "../lib/api";
 import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
+import { Avatar } from "./Avatar";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
 import { TemplatePicker } from "./TemplatePicker";
@@ -58,7 +59,7 @@ interface Props {
 }
 
 function renderMention(body: string): JSX.Element[] {
-  return body.split(/(@\w+)/g).map((part, i) =>
+  return body.split(/(@[\w.+-]+)/g).map((part, i) =>
     part.startsWith("@") ? (
       <span key={i} className="men">
         {part}
@@ -730,6 +731,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const snooze = useSnooze();
   const { mutate: markRead } = useMarkRead();
   const { mutate: react } = useReact();
+  const { data: people } = usePeople();
 
   const [text, setText] = useState("");
   // The message being quoted in a reply (shown as a cue above the composer), and
@@ -748,6 +750,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [menu, setMenu] = useState(false);
   const [snoozeMenu, setSnoozeMenu] = useState(false);
   const [internal, setInternal] = useState(false);
+  // @-mention autocomplete for internal notes: the active "@query" being typed
+  // (with the '@' index in `text`), and the highlighted candidate.
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const [mentionSel, setMentionSel] = useState(0);
   // The channel the composer is currently replying on. null → follow the
   // conversation's own channel; set (via the channel switcher) to reply on
   // another channel the customer is reachable on, within this one open thread.
@@ -1196,6 +1202,52 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setEmojiOpen(false);
   };
 
+  // ─── @-mention autocomplete (internal notes) ───
+  // Teammates matching the current @query — empty unless a note @token is open.
+  const mentionList = mention
+    ? (people ?? [])
+        .map((m) => m.user)
+        .filter((u) => {
+          const q = mention.query.toLowerCase();
+          if (!q) return true;
+          return u.name.toLowerCase().includes(q) || u.email.split("@")[0].toLowerCase().includes(q);
+        })
+        .slice(0, 6)
+    : [];
+
+  // On each note keystroke, detect an "@query" ending at the caret and open the
+  // picker. Only in note mode — customers can't be @-mentioned.
+  const onNoteInput = (value: string, caret: number) => {
+    setText(value);
+    signalTyping();
+    const m = internal ? /(?:^|\s)@([\w.+-]*)$/.exec(value.slice(0, caret)) : null;
+    if (m) {
+      setMention({ query: m[1], start: caret - m[1].length - 1 });
+      setMentionSel(0);
+    } else {
+      setMention(null);
+    }
+  };
+
+  // Replace the open "@query" with the teammate's handle (@email-local-part —
+  // the token the server matches to route the note to their @Mentions inbox).
+  const insertMention = (u: { name: string; email: string }) => {
+    if (!mention) return;
+    const handle = "@" + u.email.split("@")[0].toLowerCase() + " ";
+    const before = text.slice(0, mention.start);
+    const after = text.slice(mention.start + 1 + mention.query.length);
+    setText(before + handle + after);
+    setMention(null);
+    const caret = (before + handle).length;
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(caret, caret);
+      }
+    });
+  };
+
   const handleSend = () => {
     if (!canSend || composeLocked) return;
     const body = text.trim();
@@ -1242,6 +1294,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     editor?.commands.clearContent();
     clearStaged();
     setInternal(false);
+    setMention(null);
     setReplyTo(null);
     setCc("");
     setBcc("");
@@ -1519,9 +1572,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </button>
         )}
         <div className="thread__id">
-          <div className="av" style={{ background: avatarBg(conv.contact.displayName, conv.contact.avatarColor), width: 40, height: 40, fontSize: 14 }}>
-            {initials(conv.contact.displayName)}
-          </div>
+          <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="av" size={40} fontSize={14} />
           <div className="who">
             <h2>{conv.contact.displayName}</h2>
             {conv.subject && conv.subject !== conv.contact.displayName && (
@@ -1912,6 +1963,31 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   ))}
                 </div>
               )}
+              {internal && mention && mentionList.length > 0 && (
+                <div className="mentionpop" role="listbox" aria-label="Mention a teammate">
+                  {mentionList.map((u, i) => (
+                    <button
+                      key={u.email}
+                      type="button"
+                      role="option"
+                      aria-selected={i === mentionSel}
+                      className={"mentionpop__row" + (i === mentionSel ? " sel" : "")}
+                      onMouseEnter={() => setMentionSel(i)}
+                      // Keep focus on the textarea so the caret restore lands.
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        insertMention(u);
+                      }}
+                    >
+                      <Avatar name={u.name} email={u.email} color={u.avatarColor} className="mentionpop__av" />
+                      <span className="mentionpop__meta">
+                        <b>{u.name}</b>
+                        <small>@{u.email.split("@")[0].toLowerCase()}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <button
                 type="button"
                 className={"tool tool--emoji" + (emojiOpen ? " on" : "")}
@@ -1940,13 +2016,34 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   ref={taRef}
                   value={text}
                   rows={1}
-                  onChange={(e) => {
-                    setText(e.target.value);
-                    signalTyping();
-                  }}
+                  onChange={(e) => onNoteInput(e.target.value, e.target.selectionStart ?? e.target.value.length)}
                   onBlur={stopTyping}
                   onPaste={onTextareaPaste}
                   onKeyDown={(e) => {
+                    // While the @-mention picker is open, the arrow/enter/tab keys
+                    // drive it instead of the textarea (or sending).
+                    if (mention && mentionList.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setMentionSel((i) => (i + 1) % mentionList.length);
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setMentionSel((i) => (i - 1 + mentionList.length) % mentionList.length);
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        e.preventDefault();
+                        insertMention(mentionList[mentionSel]);
+                        return;
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setMention(null);
+                        return;
+                      }
+                    }
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
                       handleSend();

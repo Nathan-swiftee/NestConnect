@@ -4,9 +4,9 @@ import type { Contact } from "@ding/schemas";
 import { useContacts } from "../hooks";
 import { api } from "../lib/api";
 import { channelMeta, XIcon, BackIcon, SearchIcon } from "../lib/icons";
-import { avatarBg } from "../lib/format";
 import { useScrollLock } from "../lib/useScrollLock";
 import { useHoverGlide } from "../lib/useHoverGlide";
+import { Avatar } from "./Avatar";
 
 type Channel = "whatsapp" | "email";
 
@@ -135,9 +135,7 @@ export function Compose({
               <BackIcon /> Choose a different customer
             </button>
             <div className="compose__who">
-              <span className="compose__av" style={{ background: avatarBg(selected.displayName, selected.avatarColor) }}>
-                {selected.displayName.slice(0, 2).toUpperCase()}
-              </span>
+              <Avatar name={selected.displayName} email={selected.email} color={selected.avatarColor} className="compose__av" />
               <span className="compose__whom">
                 <b>{selected.displayName}</b>
                 {selected.company && <small>{selected.company}</small>}
@@ -184,9 +182,7 @@ export function Compose({
                   ) : (
                     filtered.map((c) => (
                       <button type="button" key={c.id} className="compose__row" onClick={() => setSelected(c)}>
-                        <span className="compose__av" style={{ background: avatarBg(c.displayName, c.avatarColor) }}>
-                          {c.displayName.slice(0, 2).toUpperCase()}
-                        </span>
+                        <Avatar name={c.displayName} email={c.email} color={c.avatarColor} className="compose__av" />
                         <span className="compose__rowm">
                           <b>{c.displayName}</b>
                           <small>{c.company || c.email || c.phone || ""}</small>

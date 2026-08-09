@@ -18,7 +18,8 @@ import {
   useUpdateContact,
 } from "../hooks";
 import { useQueryClient } from "@tanstack/react-query";
-import { initials, relativeTime, slaCountdown, avatarBg } from "../lib/format";
+import { relativeTime, slaCountdown } from "../lib/format";
+import { Avatar } from "./Avatar";
 import { api } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { channelMeta, CheckIcon, ChevronDown, ChevronRight, PhoneIcon, MailIcon, ProfileIcon, XIcon } from "../lib/icons";
@@ -447,9 +448,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
       )}
       <div className="panel__scroll">
         <div className="cust">
-          <div className="big" style={{ background: avatarBg(conv.contact.displayName, conv.contact.avatarColor) }}>
-            {conv.contact.displayName.slice(0, 2).toUpperCase()}
-          </div>
+          <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="big" />
           <h3>{conv.contact.displayName}</h3>
           <div className="co">
             {isGroup ? (
@@ -506,9 +505,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
               <div className="members">
                 {conv.participants.map((p) => (
                   <div key={p.id} className="member">
-                    <span className="mav" style={{ background: avatarBg(p.contact.displayName, p.contact.avatarColor) }}>
-                      {initials(p.contact.displayName)}
-                    </span>
+                    <Avatar name={p.contact.displayName} email={p.contact.email} color={p.contact.avatarColor} className="mav" />
                     <span className="mname">{p.contact.displayName}</span>
                     {p.role === "admin" && <span className="mrole">admin</span>}
                     <button
