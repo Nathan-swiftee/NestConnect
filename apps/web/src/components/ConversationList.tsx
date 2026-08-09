@@ -267,7 +267,8 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             {virtualRows.map((vr) => {
               const c = shown[vr.index];
               if (!c) return null;
-              const cm = channelMeta(c.channel);
+              // Badge the most recent channel used (a thread can span channels).
+              const cm = channelMeta(c.lastChannel ?? c.channel);
               const owned = !!c.assigneeUserId;
               const Glyph = cm.Glyph;
               return (

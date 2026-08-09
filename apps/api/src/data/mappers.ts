@@ -85,7 +85,11 @@ export function mapTemplate(t: Prisma.TemplateGetPayload<object>): Template {
 type ContactWithIdentities = Prisma.ContactGetPayload<{ include: { identities: true } }>;
 type InboxWithTeams = Prisma.InboxGetPayload<{ include: { teams: true } }>;
 type ConversationSummaryRow = Prisma.ConversationGetPayload<{
-  include: { contact: { include: { identities: true } }; labels: { include: { label: true } } };
+  include: {
+    contact: { include: { identities: true } };
+    labels: { include: { label: true } };
+    messages: true;
+  };
 }>;
 type MessageRow = Prisma.MessageGetPayload<{ include: { attachments: true } }>;
 type AttachmentRow = Prisma.AttachmentGetPayload<object>;
@@ -268,6 +272,8 @@ export function mapConversation(c: ConversationSummaryRow): Conversation {
     lastActivityAt: c.lastActivityAt.toISOString(),
     seq: c.seq,
     preview: c.preview,
+    // Channel of the latest customer-facing message (falls back to the origin).
+    lastChannel: ((c.messages?.[0]?.channel as ChannelType | null | undefined) ?? (c.channel as ChannelType)),
     waWindow: computeWaWindow(c.channel, c.lastInboundAt),
   };
 }

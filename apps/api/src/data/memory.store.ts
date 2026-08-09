@@ -492,10 +492,13 @@ export class MemoryStore extends Store {
       lastInboundAt ??
       [...messages].reverse().find((m) => m.direction === "in")?.createdAt ??
       null;
+    // The most recent customer-facing message's channel drives the list badge.
+    const lastMsg = [...messages].reverse().find((m) => !m.internal);
     return {
       ...rest,
       snoozedUntil: rest.snoozedUntil ?? null,
       unreadCount: rest.unreadCount ?? 0,
+      lastChannel: lastMsg?.channel ?? rest.channel,
       waWindow: computeWaWindow(rest.channel, lastInbound),
     };
   }

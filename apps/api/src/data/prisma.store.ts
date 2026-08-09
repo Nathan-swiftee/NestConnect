@@ -65,6 +65,9 @@ import {
 const convInclude = {
   contact: { include: { identities: true } },
   labels: { include: { label: true } },
+  // The most recent customer-facing message, purely so the summary can report
+  // its channel (the list badge shows the last channel used, not the origin).
+  messages: { where: { internal: false }, orderBy: { seq: "desc" }, take: 1 },
 } satisfies Prisma.ConversationInclude;
 
 /** Keyset cursor for the (lastActivityAt desc, id desc) conversation ordering. */

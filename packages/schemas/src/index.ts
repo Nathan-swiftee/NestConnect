@@ -271,6 +271,10 @@ export const conversationSchema = z.object({
   lastActivityAt: z.string(),
   seq: z.number().int().nonnegative().default(0),
   preview: z.string().default(""),
+  /** Channel of the most recent customer-facing message — a thread can span
+   *  channels, and the list badge shows this rather than the origin `channel`.
+   *  Falls back to `channel` when there are no customer messages yet. */
+  lastChannel: channelTypeSchema.optional(),
   /**
    * WhatsApp's 24-hour customer-service window (whatsapp channels only; null on
    * email). `open` = you may free-type; when closed you may only send an

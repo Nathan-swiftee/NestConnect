@@ -1060,8 +1060,24 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     );
   }
 
-  const cm = channelMeta(conv.channel);
-  const Glyph = cm.Glyph;
+  // Every channel this thread actually spans — the header badges each one, since
+  // a conversation can move between WhatsApp and email. Newest-used first;
+  // internal notes carry no channel, and a message with none rides the thread's own.
+  const threadChannels: ChannelType[] = (() => {
+    const seen = new Set<ChannelType>();
+    const out: ChannelType[] = [];
+    for (let i = conv.messages.length - 1; i >= 0; i--) {
+      const m = conv.messages[i];
+      if (m.internal) continue;
+      const ch = (m.channel ?? conv.channel) as ChannelType;
+      if (!seen.has(ch)) {
+        seen.add(ch);
+        out.push(ch);
+      }
+    }
+    if (out.length === 0) out.push(conv.channel);
+    return out;
+  })();
   // ─── Reply channel (cross-channel thread) ───
   // The thread's own channel is its identity; the *composer* may target any
   // channel the customer is reachable on, within this one open thread. The
@@ -1610,10 +1626,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               <div className="who-subject">{conv.subject}</div>
             )}
             <div className="who-sub">
-              <span className="pill" title={cm.label} aria-label={cm.label}>
-                <span className="pill-ic" style={{ color: cm.color }}>
-                  <Glyph />
-                </span>
+              <span className="pill" aria-label={threadChannels.map((ch) => channelMeta(ch).label).join(" + ")}>
+                {threadChannels.map((ch) => {
+                  const m = channelMeta(ch);
+                  const G = m.Glyph;
+                  return (
+                    <span key={ch} className="pill-ic" style={{ color: m.color }} title={m.label}>
+                      <G />
+                    </span>
+                  );
+                })}
               </span>
               <span className="who-presence">{sub}</span>
             </div>
