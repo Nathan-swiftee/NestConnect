@@ -865,6 +865,40 @@ export class PrismaStore extends Store {
     }
   }
 
+  async rerouteInboxConversations(inboxId: string): Promise<number> {
+    const inbox = await this.prisma.inbox.findUnique({ where: { id: inboxId }, include: { teams: true } });
+    if (!inbox) return 0;
+    const teamIds = inbox.teams.map((t) => t.teamId);
+    const valid = new Set(teamIds);
+    const primary = teamIds[0] ?? null;
+    const rows = await this.prisma.conversation.findMany({
+      where: { inboxId, status: { in: ["open", "pending"] } },
+      include: { contact: true },
+    });
+    let moved = 0;
+    for (const c of rows) {
+      // Leave chats already sitting on a team the channel still serves.
+      if (c.assignedTeamId && valid.has(c.assignedTeamId)) continue;
+      const ownerTeam = c.contact.ownerTeamId ?? null;
+      const ownerUser = c.contact.ownerUserId ?? null;
+      const teamId = ownerTeam ?? primary;
+      const userId = ownerUser; // a pinned person keeps the chat; else it queues
+      try {
+        await this.prisma.conversation.update({
+          where: { id: c.id },
+          data: {
+            team: teamId ? { connect: { id: teamId } } : { disconnect: true },
+            assignee: userId ? { connect: { id: userId } } : { disconnect: true },
+          },
+        });
+        moved++;
+      } catch {
+        // Skip a conversation that fails to update rather than aborting the batch.
+      }
+    }
+    return moved;
+  }
+
   async setStatus(conversationId: string, status: ConversationStatus): Promise<Conversation | undefined> {
     try {
       const row = await this.prisma.conversation.update({

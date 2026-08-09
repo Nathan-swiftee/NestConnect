@@ -1333,6 +1333,8 @@ input,textarea{font:inherit}
 .invitebox__head{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .invitebox__head b{font-size:14px}
 .invitebox p{margin:0;font-size:13px;color:var(--text-muted)}
+.reroutecheck{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.4;color:var(--text-muted);cursor:pointer;margin:-2px 0 2px}
+.reroutecheck input{margin-top:2px;flex:0 0 auto}
 .setupcard__sub{display:flex;flex-direction:column;gap:3px;padding-top:14px;margin-top:2px;border-top:1px solid var(--border)}
 .setupcard__sub b{font-size:13.5px}
 .setupcard__sub small{color:var(--text-faint);line-height:1.5}

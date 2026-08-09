@@ -755,6 +755,31 @@ export class MemoryStore extends Store {
     return this.summary(rec);
   }
 
+  async rerouteInboxConversations(inboxId: string): Promise<number> {
+    const inbox = this.inbox(inboxId);
+    if (!inbox) return 0;
+    const valid = new Set(inbox.teamIds);
+    const primary = inbox.teamIds[0] ?? null;
+    let moved = 0;
+    for (const c of this.conversations) {
+      if (c.inboxId !== inboxId) continue;
+      if (c.status !== "open" && c.status !== "pending") continue;
+      // Leave chats already sitting on a team the channel still serves.
+      if (c.assignedTeamId && valid.has(c.assignedTeamId)) continue;
+      const ownerTeam = c.contact.ownerTeamId ?? null;
+      const ownerUser = c.contact.ownerUserId ?? null;
+      if (ownerTeam) {
+        c.assignedTeamId = ownerTeam;
+        c.assigneeUserId = ownerUser;
+      } else {
+        c.assignedTeamId = primary;
+        c.assigneeUserId = ownerUser; // a pinned person keeps the chat; else queue
+      }
+      moved++;
+    }
+    return moved;
+  }
+
   async setStatus(conversationId: string, status: ConversationStatus): Promise<Conversation | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;

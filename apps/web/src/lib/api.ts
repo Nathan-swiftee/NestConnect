@@ -101,6 +101,8 @@ export const api = {
   createInbox: (input: CreateInboxInput) => post<Inbox>("/inboxes", input),
   updateInbox: (id: string, input: UpdateInboxInput) => patch<Inbox>(`/inboxes/${id}`, input),
   deleteInbox: (id: string) => del<{ ok: boolean }>(`/inboxes/${id}`),
+  // Move a channel's still-open conversations onto its (new) routing.
+  rerouteInbox: (id: string) => post<{ moved: number }>(`/inboxes/${id}/reroute`, {}),
   // settings
   teams: () => get<Team[]>("/settings/teams"),
   people: () => get<Member[]>("/settings/people"),

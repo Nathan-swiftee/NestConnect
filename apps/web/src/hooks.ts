@@ -101,6 +101,18 @@ export function useDeleteInbox() {
   });
 }
 
+export function useRerouteInbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rerouteInbox(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["conversation"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
 export function useCreateGroup() {
   const qc = useQueryClient();
   return useMutation({

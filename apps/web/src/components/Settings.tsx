@@ -16,6 +16,7 @@ import {
   useMe,
   usePeople,
   useReorderTeams,
+  useRerouteInbox,
   useSyncTemplates,
   useTeams,
   useTemplates,
@@ -300,16 +301,20 @@ function ChannelEditor({
 }) {
   const teams = useTeams();
   const update = useUpdateInbox();
+  const reroute = useRerouteInbox();
   const kind = CHANNEL_KINDS.find((k) => k.type === inbox.type);
   const [name, setName] = useState(inbox.name);
   const [teamIds, setTeamIds] = useState<string[]>(inbox.teamIds);
   const [strategy, setStrategy] = useState<RoutingStrategy>(inbox.routingStrategy);
   const [cfg, setCfg] = useState<Record<string, string>>({});
+  const [moveOpen, setMoveOpen] = useState(false);
 
   const setField = (k: string, v: string) => setCfg((c) => ({ ...c, [k]: v }));
   const toggleTeam = (id: string) =>
     setTeamIds((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
   const valid = name.trim().length > 0 && teamIds.length > 0;
+  // Did the team routing actually change? (order-independent)
+  const teamsChanged = [...teamIds].sort().join(",") !== [...inbox.teamIds].sort().join(",");
 
   const save = () => {
     const channelConfig: Record<string, string> = {};
@@ -317,6 +322,7 @@ function ChannelEditor({
       const v = (cfg[f.key] ?? "").trim();
       if (v) channelConfig[f.key] = v;
     }
+    const wantsMove = teamsChanged && moveOpen;
     update.mutate(
       {
         id: inbox.id,
@@ -328,7 +334,21 @@ function ChannelEditor({
         },
       },
       {
-        onSuccess: () => { onToast("Channel updated"); onDone(); },
+        onSuccess: () => {
+          if (wantsMove) {
+            // Team routing changed and the admin opted in → move existing open chats.
+            reroute.mutate(inbox.id, {
+              onSuccess: (r) => {
+                onToast(r.moved ? `Channel updated — ${r.moved} open chat${r.moved === 1 ? "" : "s"} moved` : "Channel updated");
+                onDone();
+              },
+              onError: () => { onToast("Channel updated, but couldn't move existing chats"); onDone(); },
+            });
+          } else {
+            onToast("Channel updated");
+            onDone();
+          }
+        },
         onError: () => onToast("Only admins & managers can edit channels"),
       },
     );
@@ -361,6 +381,12 @@ function ChannelEditor({
           ))}
         </div>
       </div>
+      {teamsChanged && (
+        <label className="reroutecheck">
+          <input type="checkbox" checked={moveOpen} onChange={(e) => setMoveOpen(e.target.checked)} />
+          <span>Also move this channel’s open conversations to the new routing (chats on a team it no longer serves).</span>
+        </label>
+      )}
       {kind && (
         <div className="connect__creds">
           <div className="connect__credhead">Update credentials <em>— leave blank to keep current</em></div>
@@ -386,7 +412,7 @@ function ChannelEditor({
         </button>
         <div className="setform__footactions">
           <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
-          <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || !valid}>
+          <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || reroute.isPending || !valid}>
             Save changes
           </button>
         </div>

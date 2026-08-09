@@ -118,6 +118,14 @@ export class WorkspaceController {
     return { ok: true };
   }
 
+  /** Move this channel's still-open conversations onto its current routing. */
+  @Post("inboxes/:id/reroute")
+  async rerouteInbox(@CurrentUserId() userId: string, @Param("id") id: string) {
+    await this.requireManager(userId);
+    const moved = await this.store.rerouteInboxConversations(id);
+    return { moved };
+  }
+
   @Post("settings/teams")
   async createTeam(
     @CurrentUserId() userId: string,

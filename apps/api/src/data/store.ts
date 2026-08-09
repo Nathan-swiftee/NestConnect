@@ -288,6 +288,14 @@ export abstract class Store {
     byUserId?: string,
   ): Promise<Conversation | undefined>;
 
+  /**
+   * Move an inbox's open/pending conversations that sit on a team it no longer
+   * routes to onto its current primary team (per-customer pins still win). Used
+   * when an admin changes a channel's routing and wants existing chats to follow.
+   * Returns how many were moved.
+   */
+  abstract rerouteInboxConversations(inboxId: string): Promise<number>;
+
   /** Change a conversation's status (close/resolve, reopen, snooze). */
   abstract setStatus(
     conversationId: string,
