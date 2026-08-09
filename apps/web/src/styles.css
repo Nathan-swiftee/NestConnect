@@ -1081,13 +1081,6 @@ input,textarea{font:inherit}
 .mock__typing span:nth-child(2){animation-delay:.18s}
 .mock__typing span:nth-child(3){animation-delay:.36s}
 @keyframes mockDots{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:1}}
-/* floating channel orbs hugging the window edges */
-.hero__orb{position:absolute;z-index:3;width:46px;height:46px;border-radius:15px;display:grid;place-items:center;
-  color:#fff;box-shadow:var(--shadow-pop);border:1px solid rgba(255,255,255,.45)}
-.hero__orb svg{width:25px;height:25px}
-.hero__orb--wa{background:var(--wa);top:-19px;right:30px;animation:mockBob 5.5s ease-in-out infinite}
-.hero__orb--mail{background:var(--email);bottom:22px;left:-22px;animation:mockBob 6.5s ease-in-out infinite .7s}
-@keyframes mockBob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-11px) rotate(4deg)}}
 
 /* ── right panel + form ── */
 .login__panel{display:flex;align-items:center;justify-content:center;padding:40px 28px;overflow:auto;background:var(--bg)}
@@ -1103,7 +1096,7 @@ input,textarea{font:inherit}
 }
 @media (prefers-reduced-motion:reduce){
   .hero__glow::before,.hero__glow::after,.hero__sheen,.mock__win,.hero__accent,
-  .hero__orb,.mock__typing span,.mock__ticks{animation:none}
+  .mock__typing span,.mock__ticks{animation:none}
   .mock__row,.mock__typing{opacity:1;transform:none;animation:none}
 }
 

@@ -33,23 +33,16 @@ export function LoginScreen() {
           </div>
 
           <h2 className="hero__title">
-            Positive culture,
+            Every conversation.
             <br />
-            <span className="hero__accent">snappy service.</span>
+            <span className="hero__accent">One inbox.</span>
           </h2>
           <p className="hero__lead">
-            Every WhatsApp and email conversation in one calm, shared inbox — so your team stays in
-            sync and every customer gets a fast, human reply.
+            WhatsApp, email, and every channel in a single shared inbox. Assign, reply, and resolve
+            as one team.
           </p>
 
           <div className="hero__mock">
-            <i className="hero__orb hero__orb--wa">
-              <wa.Glyph />
-            </i>
-            <i className="hero__orb hero__orb--mail">
-              <email.Glyph />
-            </i>
-
             <div className="mock__win">
               <div className="mock__bar">
                 <span className="mock__dot" />
