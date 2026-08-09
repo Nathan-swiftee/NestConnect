@@ -13,7 +13,8 @@
     "clean": "rm -rf dist",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "db:encrypt-secrets": "tsx prisma/encrypt-secrets.ts"
   },
   "dependencies": {
     "@ding/schemas": "workspace:*",
@@ -22,10 +23,13 @@
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/platform-socket.io": "^10.4.15",
     "@nestjs/serve-static": "^4.0.2",
+    "@nestjs/throttler": "^6.3.0",
     "@nestjs/websockets": "^10.4.15",
     "@socket.io/redis-adapter": "^8.3.0",
     "bcryptjs": "^2.4.3",
+    "bullmq": "^5.34.0",
     "cookie-parser": "^1.4.7",
+    "helmet": "^8.0.0",
     "dotenv": "^16.4.7",
     "ioredis": "^5.4.2",
     "jsonwebtoken": "^9.0.2",

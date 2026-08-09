@@ -8,12 +8,14 @@ import type {
   Contact,
   ContactWithConversations,
   Conversation,
+  ConversationPage,
   ConversationStatus,
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
   Member,
   Message,
+  MessagePage,
   MessageStatus,
   Participant,
   ParticipantRole,
@@ -25,17 +27,21 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
-import { isInboxConnected } from "@ding/schemas";
+import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE } from "@ding/schemas";
 import { env } from "../config/env";
-import { canAdvanceStatus, computeWaWindow, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
+import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
   type AppendInboundInput,
   type AttachmentInput,
+  type MessageStatusChange,
+  type OutboundDeliveryMeta,
+  type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
   type ViewItem,
+  type WebhookDiagnostic,
 } from "./store";
 
 const AVATAR_PALETTE = [
@@ -46,6 +52,25 @@ const AVATAR_PALETTE = [
   "linear-gradient(135deg,#F59E0B,#EF4444)",
   "linear-gradient(135deg,#14B8A6,#0EA5E9)",
 ];
+
+/** Recency ordering matching the Postgres store: lastActivityAt desc, id desc. */
+function byRecencyDesc(a: { lastActivityAt: string; id: string }, b: { lastActivityAt: string; id: string }): number {
+  return b.lastActivityAt.localeCompare(a.lastActivityAt) || b.id.localeCompare(a.id);
+}
+function encodeMemCursor(r: { lastActivityAt: string; id: string }): string {
+  return Buffer.from(`${r.lastActivityAt}::${r.id}`).toString("base64url");
+}
+function safeDecode(cursor: string): string {
+  try {
+    return Buffer.from(cursor, "base64url").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+function clampLimit(requested: number | undefined, fallback: number): number {
+  const n = requested ?? fallback;
+  return Math.min(Math.max(Math.trunc(n) || fallback, 1), 100);
+}
 
 /** Zero-infrastructure store backed by in-memory fixtures. Default in dev. */
 @Injectable()
@@ -68,6 +93,19 @@ export class MemoryStore extends Store {
   private mediaRefs = new Map<string, StoredAttachmentRef>();
   /** Uploaded-but-not-yet-sent attachments (composer staging), keyed by id. */
   private pendingUploads = new Map<string, Attachment>();
+  /** In-memory webhook diagnostics log (newest first, bounded). */
+  private webhookDiagnostics: WebhookDiagnostic[] = [];
+  /** Backend-only outbound delivery bookkeeping, keyed by message id. */
+  private outboundMeta = new Map<
+    string,
+    {
+      idempotencyKey?: string;
+      deliveryMeta?: OutboundDeliveryMeta;
+      lastAttemptAt?: number;
+      providerError?: string;
+      providerErrorCode?: string;
+    }
+  >();
   private idSeq = 10_000;
 
   constructor() {
@@ -87,6 +125,10 @@ export class MemoryStore extends Store {
 
   get demoUserId(): string {
     return DEMO_USER_ID;
+  }
+
+  async healthCheck(): Promise<boolean> {
+    return true; // in-memory store is healthy whenever the process is up
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -466,18 +508,25 @@ export class MemoryStore extends Store {
     ).length;
   }
 
-  async listConversations(view: string, userId: string): Promise<Conversation[]> {
+  async listConversations(
+    view: string,
+    userId: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage> {
     const userTeams = this.membership[userId] ?? [];
-    return this.conversations
+    const sorted = this.conversations
       .filter((r) => this.matchesView(r, view, userId, userTeams))
-      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
-      .map((r) => this.summary(r));
+      .sort(byRecencyDesc);
+    return this.pageConversations(sorted, opts);
   }
 
-  async searchConversations(query: string): Promise<Conversation[]> {
+  async searchConversations(
+    query: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage> {
     const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return this.conversations
+    if (!q) return { items: [], nextCursor: null };
+    const sorted = this.conversations
       .filter(
         (r) =>
           r.contact.displayName.toLowerCase().includes(q) ||
@@ -486,9 +535,29 @@ export class MemoryStore extends Store {
           (r.preview ?? "").toLowerCase().includes(q) ||
           r.messages.some((m) => (m.body ?? "").toLowerCase().includes(q)),
       )
-      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
-      .slice(0, 30)
-      .map((r) => this.summary(r));
+      .sort(byRecencyDesc);
+    return this.pageConversations(sorted, opts);
+  }
+
+  /** Slice a pre-sorted record list into one cursor page. */
+  private pageConversations(
+    sorted: ConversationRecord[],
+    opts?: { cursor?: string; limit?: number },
+  ): ConversationPage {
+    const limit = clampLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
+    let start = 0;
+    if (opts?.cursor) {
+      const decoded = safeDecode(opts.cursor);
+      const idx = sorted.findIndex((r) => `${r.lastActivityAt}::${r.id}` === decoded);
+      start = idx >= 0 ? idx + 1 : 0;
+    }
+    const page = sorted.slice(start, start + limit);
+    const hasMore = start + limit < sorted.length;
+    const last = page[page.length - 1];
+    return {
+      items: page.map((r) => this.summary(r)),
+      nextCursor: hasMore && last ? encodeMemCursor(last) : null,
+    };
   }
 
   async views(userId: string): Promise<SidebarViews> {
@@ -530,12 +599,39 @@ export class MemoryStore extends Store {
   async getConversation(id: string): Promise<ConversationWithMessages | undefined> {
     const rec = this.conversations.find((c) => c.id === id);
     if (!rec) return undefined;
-    return { ...this.summary(rec), messages: rec.messages, participants: rec.participants ?? [] };
+    // Only the most-recent page of messages — never the full lifetime thread.
+    const hasMoreMessages = rec.messages.length > MESSAGES_PAGE_SIZE;
+    const messages = hasMoreMessages ? rec.messages.slice(-MESSAGES_PAGE_SIZE) : rec.messages;
+    return { ...this.summary(rec), messages, hasMoreMessages, participants: rec.participants ?? [] };
+  }
+
+  async listMessages(
+    conversationId: string,
+    opts?: { before?: string; limit?: number },
+  ): Promise<MessagePage> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return { items: [], nextCursor: null };
+    const limit = clampLimit(opts?.limit, MESSAGES_PAGE_SIZE);
+    const beforeSeq = opts?.before != null ? Number(opts.before) : Infinity;
+    const older = rec.messages.filter((m) => m.seq < beforeSeq); // ascending by seq
+    const hasMore = older.length > limit;
+    const page = older.slice(Math.max(0, older.length - limit)); // most-recent `limit` older msgs
+    const oldest = page[0];
+    return { items: page, nextCursor: hasMore && oldest ? String(oldest.seq) : null };
   }
 
   async addMessage(
     conversationId: string,
-    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: {
+      body: string;
+      bodyHtml?: string;
+      internal: boolean;
+      attachmentIds?: string[];
+      quotedMsgId?: string;
+      channel?: ChannelType;
+      idempotencyKey?: string;
+      deliveryMeta?: OutboundDeliveryMeta;
+    },
     author: User,
   ): Promise<Message | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
@@ -552,21 +648,30 @@ export class MemoryStore extends Store {
       authorName: author.name,
       body: input.body,
       bodyHtml: input.bodyHtml,
-      // A real reply starts queued and climbs the ladder as the channel
-      // confirms it (sent → delivered → read); notes have no delivery ladder.
+      // A real reply starts queued and climbs the ladder as the channel confirms
+      // it (queued → sending → sent → delivered → read); notes have no ladder.
       status: input.internal ? "sent" : "queued",
       internal: input.internal,
       messageType,
+      channel: input.channel,
       attachments,
       reactions: [],
       quotedMsgId: input.quotedMsgId,
+      ...(input.internal ? {} : { attemptCount: 0 }),
       createdAt: new Date().toISOString(),
     };
+    if (!input.internal && (input.idempotencyKey || input.deliveryMeta)) {
+      this.outboundMeta.set(message.id, {
+        idempotencyKey: input.idempotencyKey,
+        deliveryMeta: input.deliveryMeta,
+      });
+    }
     rec.messages.push(message);
-    rec.lastActivityAt = message.createdAt;
     rec.unread = false;
     rec.unreadCount = 0;
     if (!input.internal) {
+      // Only a real (non-note) message advances the card's time + list order.
+      rec.lastActivityAt = message.createdAt;
       rec.preview = input.body || previewForType(messageType);
       // Replying to a snoozed conversation wakes it back into the active queue.
       if (rec.status === "snoozed") {
@@ -620,7 +725,7 @@ export class MemoryStore extends Store {
     if (!rec) return undefined;
     if (input.assigneeUserId !== undefined) rec.assigneeUserId = input.assigneeUserId;
     if (input.assignedTeamId !== undefined) rec.assignedTeamId = input.assignedTeamId;
-    rec.lastActivityAt = new Date().toISOString();
+    // Assignment must not reorder the list or reset the card time.
     return this.summary(rec);
   }
 
@@ -628,10 +733,9 @@ export class MemoryStore extends Store {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;
     rec.status = status;
-    // Reopening surfaces the thread again; closing clears the unread flag.
+    // Closing clears the unread flag; a status change doesn't reorder the list.
     if (status === "closed") { rec.unread = false; rec.unreadCount = 0; }
     if (status !== "snoozed") rec.snoozedUntil = null;
-    rec.lastActivityAt = new Date().toISOString();
     return this.summary(rec);
   }
 
@@ -656,7 +760,6 @@ export class MemoryStore extends Store {
     rec.snoozedUntil = until;
     rec.unread = false;
     rec.unreadCount = 0;
-    rec.lastActivityAt = new Date().toISOString();
     return this.summary(rec);
   }
 
@@ -670,19 +773,151 @@ export class MemoryStore extends Store {
     }
   }
 
+  /* ---- durable outbound delivery ---- */
+
+  private findMsg(messageId: string): { rec: ConversationRecord; m: Message } | undefined {
+    for (const rec of this.conversations) {
+      const m = rec.messages.find((x) => x.id === messageId);
+      if (m) return { rec, m };
+    }
+    return undefined;
+  }
+
+  async getOutboundMessage(messageId: string): Promise<OutboundMessageRef | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    return {
+      messageId,
+      conversationId: hit.rec.id,
+      status: hit.m.status,
+      channelMsgId: hit.m.channelMsgId ?? undefined,
+      internal: hit.m.internal,
+      deliveryMeta: this.outboundMeta.get(messageId)?.deliveryMeta,
+    };
+  }
+
+  async markMessageSending(messageId: string): Promise<MessageStatusChange | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    if (hit.m.status !== "queued" && hit.m.status !== "sending") return undefined;
+    hit.m.status = "sending";
+    hit.m.attemptCount = (hit.m.attemptCount ?? 0) + 1;
+    const meta = this.outboundMeta.get(messageId) ?? {};
+    meta.lastAttemptAt = Date.now();
+    this.outboundMeta.set(messageId, meta);
+    return { conversationId: hit.rec.id, message: hit.m };
+  }
+
+  async markMessageSent(
+    messageId: string,
+    channelMsgId?: string,
+  ): Promise<MessageStatusChange | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    if (hit.m.status === "failed") return undefined;
+    if (channelMsgId && !hit.m.channelMsgId) hit.m.channelMsgId = channelMsgId;
+    if (canAdvanceStatus(hit.m.status, "sent")) hit.m.status = "sent";
+    hit.m.failureReason = undefined;
+    const meta = this.outboundMeta.get(messageId);
+    if (meta) {
+      meta.providerError = undefined;
+      meta.providerErrorCode = undefined;
+    }
+    return { conversationId: hit.rec.id, message: hit.m };
+  }
+
+  async recordSendFailure(
+    messageId: string,
+    info: { error?: string; code?: string; permanent: boolean; reason?: string },
+  ): Promise<MessageStatusChange | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    const meta = this.outboundMeta.get(messageId) ?? {};
+    meta.providerError = info.error ? info.error.slice(0, 500) : undefined;
+    meta.providerErrorCode = info.code;
+    this.outboundMeta.set(messageId, meta);
+    if (info.permanent && canAdvanceStatus(hit.m.status, "failed")) {
+      hit.m.status = "failed";
+      hit.m.failureReason = info.reason ?? "Message could not be delivered";
+    }
+    return { conversationId: hit.rec.id, message: hit.m };
+  }
+
+  async listStuckOutbound(
+    olderThanMs: number,
+  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>> {
+    const cutoff = Date.now() - olderThanMs;
+    const out: Array<{ messageId: string; conversationId: string; idempotencyKey?: string }> = [];
+    for (const rec of this.conversations) {
+      for (const m of rec.messages) {
+        if (m.direction !== "out" || m.internal) continue;
+        if (m.status !== "queued" && m.status !== "sending") continue;
+        const meta = this.outboundMeta.get(m.id);
+        if (meta?.lastAttemptAt == null || meta.lastAttemptAt <= cutoff) {
+          out.push({ messageId: m.id, conversationId: rec.id, idempotencyKey: meta?.idempotencyKey });
+        }
+      }
+    }
+    return out;
+  }
+
+  async resetMessageForRetry(
+    messageId: string,
+    idempotencyKey: string,
+  ): Promise<MessageStatusChange | undefined> {
+    const hit = this.findMsg(messageId);
+    if (!hit) return undefined;
+    if (hit.m.direction !== "out" || hit.m.internal || hit.m.status !== "failed") return undefined;
+    hit.m.status = "queued";
+    hit.m.failureReason = undefined;
+    const meta = this.outboundMeta.get(messageId) ?? {};
+    meta.idempotencyKey = idempotencyKey;
+    meta.providerError = undefined;
+    meta.providerErrorCode = undefined;
+    meta.lastAttemptAt = undefined;
+    this.outboundMeta.set(messageId, meta);
+    return { conversationId: hit.rec.id, message: hit.m };
+  }
+
   /* ---- ingestion ---- */
 
-  async getInboxByWhatsAppPhoneId(_phoneNumberId: string): Promise<Inbox | undefined> {
-    void _phoneNumberId;
-    return this.inboxes.find((i) => i.type === "whatsapp");
+  async getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined> {
+    const wa = this.inboxes.filter((i) => i.type === "whatsapp" || i.type === "whatsapp_group");
+    const byConfig = wa.find((i) => this.inboxConfig.get(i.id)?.phoneNumberId === phoneNumberId);
+    if (byConfig) return byConfig;
+    // Dev convenience: a single WhatsApp inbox with no configured number handles
+    // simulated inbound (the simulate tools don't send a real phone id). If more
+    // than one is unconfigured it's ambiguous — don't guess.
+    const unconfigured = wa.filter((i) => !this.inboxConfig.get(i.id)?.phoneNumberId);
+    return unconfigured.length === 1 ? unconfigured[0] : undefined;
   }
 
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const a = address.trim().toLowerCase();
-    return (
-      this.inboxes.find((i) => i.type === "email" && i.handle.toLowerCase() === a) ??
-      this.inboxes.find((i) => i.type === "email")
-    );
+    // Deterministic match on the inbox address only — no arbitrary fallback.
+    return this.inboxes.find((i) => i.type === "email" && i.handle.toLowerCase() === a);
+  }
+
+  async recordWebhookDiagnostic(input: {
+    channel: string;
+    kind: string;
+    reference?: string;
+    detail?: string;
+  }): Promise<void> {
+    this.webhookDiagnostics.unshift({
+      id: `whd_${++this.idSeq}`,
+      channel: input.channel,
+      kind: input.kind,
+      reference: input.reference,
+      detail: input.detail,
+      createdAt: new Date().toISOString(),
+    });
+    // Keep the in-memory log bounded.
+    if (this.webhookDiagnostics.length > 200) this.webhookDiagnostics.length = 200;
+  }
+
+  async listWebhookDiagnostics(limit = 100): Promise<WebhookDiagnostic[]> {
+    return this.webhookDiagnostics.slice(0, Math.min(Math.max(limit, 1), 500));
   }
 
   async findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined> {
@@ -727,12 +962,15 @@ export class MemoryStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
-    const open = this.conversations.find(
-      (c) =>
-        c.inboxId === params.inboxId &&
-        c.contact.id === params.contact.id &&
-        (c.status === "open" || c.status === "pending"),
-    );
+    // Unify by CONTACT across channels while a thread is open (closed → new chat).
+    const open = [...this.conversations]
+      .sort(byRecencyDesc)
+      .find(
+        (c) =>
+          c.orgId === params.orgId &&
+          c.contact.id === params.contact.id &&
+          (c.status === "open" || c.status === "pending"),
+      );
     if (open) return { conversation: this.summary(open), created: false };
 
     const now = new Date().toISOString();
@@ -777,6 +1015,7 @@ export class MemoryStore extends Store {
       status: "delivered",
       internal: false,
       channelMsgId: input.channelMsgId,
+      channel: input.channel,
       messageType: input.messageType ?? "text",
       attachments: this.storeAttachments(input.attachments),
       reactions: [],
@@ -785,8 +1024,8 @@ export class MemoryStore extends Store {
     };
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
-    // Inbound (re)opens the WhatsApp 24-hour customer-service window.
-    rec.lastInboundAt = message.createdAt;
+    // Only a WhatsApp inbound (re)opens the WhatsApp 24-hour window.
+    if (isWaChannel(input.channel ?? rec.channel)) rec.lastInboundAt = message.createdAt;
     rec.unread = true;
     rec.unreadCount = (rec.unreadCount ?? 0) + 1;
     rec.preview = input.body || previewForType(input.messageType);
@@ -802,6 +1041,21 @@ export class MemoryStore extends Store {
 
   async getAttachment(id: string): Promise<StoredAttachmentRef | undefined> {
     return this.mediaRefs.get(id);
+  }
+
+  async getAttachmentAccess(
+    id: string,
+  ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined> {
+    const ref = this.mediaRefs.get(id);
+    if (!ref) return undefined;
+    // A sent attachment belongs to its conversation's org (the access boundary);
+    // a staged upload isn't attached to a conversation yet → no org.
+    for (const rec of this.conversations) {
+      if (rec.messages.some((m) => m.attachments?.some((a) => a.id === id))) {
+        return { ...ref, orgId: rec.orgId };
+      }
+    }
+    return { ...ref };
   }
 
   /** Persist attachment refs (for serving) and return the client-facing shape. */

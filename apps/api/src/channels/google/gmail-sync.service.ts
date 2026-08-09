@@ -47,17 +47,28 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     private readonly media: MediaService,
   ) {}
 
+  /** True when there is nothing to poll (mock mode or polling switched off). */
+  get isPollingDisabled(): boolean {
+    return this.google.isMock || env.gmail.pollSeconds <= 0;
+  }
+
   onApplicationBootstrap(): void {
-    if (this.google.isMock) {
-      this.logger.log("Gmail polling disabled (mock mode)");
+    if (this.isPollingDisabled) {
+      this.logger.log(
+        this.google.isMock
+          ? "Gmail polling disabled (mock mode)"
+          : "Gmail background polling disabled (GMAIL_POLL_SECONDS=0)",
+      );
       return;
     }
-    if (env.gmail.pollSeconds <= 0) {
-      this.logger.log("Gmail background polling disabled (GMAIL_POLL_SECONDS=0)");
+    // With Redis, polling runs as a single cluster-wide repeatable queue job
+    // (see BullOutboundQueue) instead of a fragile per-node timer.
+    if (env.usingRedis) {
+      this.logger.log("Gmail polling handled by the durable queue (Redis)");
       return;
     }
-    // The background timer is a safety net only: it skips inboxes that have an
-    // active push subscription, since those arrive instantly via the webhook.
+    // No Redis (dev/self-host-lite): fall back to an in-process safety-net timer.
+    // It skips inboxes with an active push subscription (those arrive instantly).
     this.timer = setInterval(
       () => void this.syncAll({ skipPushCovered: true }),
       env.gmail.pollSeconds * 1000,

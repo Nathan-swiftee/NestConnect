@@ -1,8 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
-import type { Message, Attachment, MessageStatus } from "@ding/schemas";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Underline from "@tiptap/extension-underline";
+import Link from "@tiptap/extension-link";
+import Placeholder from "@tiptap/extension-placeholder";
+import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages } from "../hooks";
 import { api } from "../lib/api";
 import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft } from "../lib/format";
@@ -194,6 +199,21 @@ function AttachmentView({ att, onImage }: { att: Attachment; onImage: (url: stri
   );
 }
 
+const WA_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** The WhatsApp 24-hour window derived from a thread's own messages. Used when
+ *  the composer targets WhatsApp on a thread whose primary channel is *not*
+ *  WhatsApp (a cross-channel reply) — the server-computed `conv.waWindow` already
+ *  covers the WhatsApp-primary case. Open while the last WhatsApp inbound is
+ *  under 24h old; closed (template required) when there's never been one. */
+function computeWaWindow(messages: Message[]): WaWindow {
+  const lastWaInbound = [...messages]
+    .reverse()
+    .find((m) => m.direction === "in" && (m.channel === "whatsapp" || m.channel === "whatsapp_group"));
+  if (!lastWaInbound) return { open: false, expiresAt: null };
+  const expires = new Date(lastWaInbound.createdAt).getTime() + WA_WINDOW_MS;
+  return { open: Date.now() < expires, expiresAt: new Date(expires).toISOString() };
+}
+
 /** Outbound delivery ticks: the full WhatsApp ladder
  *  Queued → Sent → Delivered → Read (blue), plus a red Failed indicator.
  *  Maps a message's status to a glyph, a tick class, and a human title. */
@@ -356,11 +376,15 @@ function MessageBubble({
   quoted,
   onImage,
   actions,
+  convChannel,
 }: {
   m: Message;
   quoted?: Message;
   onImage: (url: string) => void;
   actions?: MsgActions;
+  /** The conversation's own channel — a message on a different one (cross-channel
+   *  reply) carries a small badge so the mixed thread stays legible. */
+  convChannel: ChannelType;
 }) {
   const out = m.direction === "out";
   const atts = m.attachments ?? [];
@@ -383,6 +407,9 @@ function MessageBubble({
     .join(",  ") + (mine ? " · tap to remove yours" : "");
   // A rich email body renders in its own sandboxed frame (below any media).
   const isEmailHtml = !!m.bodyHtml;
+  // A message sent/received on a channel other than the thread's own is badged.
+  const crossMeta = m.channel && m.channel !== convChannel ? channelMeta(m.channel) : null;
+  const CrossGlyph = crossMeta?.Glyph;
 
   return (
     <div className={"msg " + (out ? "out" : "in")} data-mid={m.id}>
@@ -426,6 +453,11 @@ function MessageBubble({
           <span
             className={"stamp" + (isEmailHtml || blockStamp ? " stamp--block" : overlay ? " stamp--over" : "")}
           >
+            {crossMeta && CrossGlyph && (
+              <span className="stamp__chan" style={{ color: crossMeta.color }} title={`Via ${crossMeta.label}`}>
+                <CrossGlyph />
+              </span>
+            )}
             {clockTime(m.createdAt)}
             {out && !m.internal && <StatusTick status={m.status} />}
           </span>
@@ -689,6 +721,7 @@ function StagedChip({
 
 export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed }: Props) {
   const { data: conv } = useConversation(conversationId);
+  const { loadOlder, loading: loadingOlder } = useLoadOlderMessages(conversationId);
   const { data: me } = useMe();
   const { data: teams } = useTeams();
   const send = useSendMessage();
@@ -703,7 +736,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // which message's quick-reaction bar is open. Both reset when the thread changes.
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [reactFor, setReactFor] = useState<string | null>(null);
-  // Rich-text HTML for an email reply (mirrors the contentEditable editor).
+  // Rich-text HTML for an email reply (mirrors the Tiptap editor's content).
   const [html, setHtml] = useState("");
   // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -715,6 +748,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [menu, setMenu] = useState(false);
   const [snoozeMenu, setSnoozeMenu] = useState(false);
   const [internal, setInternal] = useState(false);
+  // The channel the composer is currently replying on. null → follow the
+  // conversation's own channel; set (via the channel switcher) to reply on
+  // another channel the customer is reachable on, within this one open thread.
+  const [composeChannelState, setComposeChannelState] = useState<ChannelType | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   // Ticks so the WhatsApp 24-hour window countdown stays live without a reload.
@@ -732,7 +769,30 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const replyBtnRef = useRef<HTMLButtonElement>(null);
   const noteBtnRef = useRef<HTMLButtonElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
+  // Latest typing-signal fn, so the editor's (once-created) onUpdate calls the
+  // current one without a stale closure.
+  const typingSignalRef = useRef<() => void>(() => {});
+  // Maintained rich-text editor for email replies (replaces document.execCommand).
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: false }), // email bodies don't need headings
+      Underline,
+      Link.configure({
+        openOnClick: false,
+        autolink: true,
+        HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
+      }),
+      Placeholder.configure({ placeholder: "Write a reply…" }),
+    ],
+    editorProps: {
+      attributes: { class: "richedit", role: "textbox", "aria-multiline": "true" },
+    },
+    onUpdate: ({ editor }) => {
+      setHtml(editor.getHTML());
+      setText(editor.getText());
+      typingSignalRef.current();
+    },
+  });
   // Conversations we've already auto-opened the template picker for (cold WA starts).
   const autoTemplateRef = useRef<Set<string>>(new Set());
   const modeThumbRef = useRef<HTMLSpanElement>(null);
@@ -785,8 +845,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setShowCc(false);
     setCc("");
     setBcc("");
-    if (editorRef.current) editorRef.current.innerHTML = "";
-  }, [conversationId]);
+    setComposeChannelState(null);
+    editor?.commands.clearContent();
+  }, [conversationId, editor]);
 
   // Starting a *new* WhatsApp conversation lands on a cold, window-closed thread
   // where an approved template is the only way to open the conversation — so
@@ -970,10 +1031,27 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
 
   const cm = channelMeta(conv.channel);
   const Glyph = cm.Glyph;
-  const isEmail = conv.channel === "email";
+  // ─── Reply channel (cross-channel thread) ───
+  // The thread's own channel is its identity; the *composer* may target any
+  // channel the customer is reachable on, within this one open thread. The
+  // compose channel defaults to the conversation's own and is switched below
+  // (never for a group — a group can't be answered on another channel).
+  const convIsEmail = conv.channel === "email";
+  const isGroup = conv.channel === "whatsapp_group";
+  const composeChannel: ChannelType = (!isGroup && composeChannelState) || conv.channel;
+  const composeMeta = channelMeta(composeChannel);
+  const ComposeGlyph = composeMeta.Glyph;
+  const isEmail = composeChannel === "email";
+  // Channels this customer can be reached on within this thread (1:1 only).
+  const switchable: ChannelType[] = [];
+  if (!isGroup) {
+    if (conv.contact.phone) switchable.push("whatsapp");
+    if (conv.contact.email) switchable.push("email");
+  }
+  const canSwitchChannel = switchable.length > 1;
   const isClosed = conv.status === "closed";
   const owned = !!conv.assigneeUserId;
-  const sub = isEmail
+  const sub = convIsEmail
     ? (conv.contact.email ?? "")
     : conv.channel === "whatsapp_group"
       ? "group · active now"
@@ -985,9 +1063,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const canRecord = typeof MediaRecorder !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
 
   // ─── WhatsApp 24-hour window ───
-  // `waWindow` is null on email (no restriction). On WhatsApp it says whether
-  // you may still free-type; once closed, only an approved template gets through.
-  const isWhatsApp = conv.channel === "whatsapp" || conv.channel === "whatsapp_group";
+  // Everything below tracks the *compose* channel, so a cross-channel reply is
+  // gated correctly. `waWindow` is null on email (no restriction). On WhatsApp it
+  // says whether you may still free-type; once closed, only a template gets through.
+  const isWhatsApp = composeChannel === "whatsapp" || composeChannel === "whatsapp_group";
   // Email replies compose in a rich-text editor; notes + other channels stay plain.
   const isRich = isEmail && !internal;
   // The subject an email reply will carry (mirrors the server's Re: prefixing).
@@ -998,7 +1077,14 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     : "Re: your message";
   // Resolve a quoted reply's target message by id for in-bubble rendering.
   const msgById = new Map(conv.messages.map((m) => [m.id, m]));
-  const waWindow = conv.waWindow;
+  // The WhatsApp window that applies to the compose channel: the server-computed
+  // one when replying on the thread's own WhatsApp channel; else derived from the
+  // thread's WhatsApp inbounds (a cross-channel WhatsApp reply). Null off WhatsApp.
+  const waWindow: WaWindow | null = !isWhatsApp
+    ? null
+    : composeChannel === conv.channel
+      ? conv.waWindow
+      : computeWaWindow(conv.messages);
   const windowClosed = isWhatsApp && !!waWindow && !waWindow.open;
   const msLeft = waWindow?.expiresAt ? new Date(waWindow.expiresAt).getTime() - now : null;
   const showCountdown = isWhatsApp && waWindow?.open === true && msLeft != null;
@@ -1044,6 +1130,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     if (typingStopRef.current != null) window.clearTimeout(typingStopRef.current);
     typingStopRef.current = window.setTimeout(stopTyping, 2500);
   };
+  // Keep the editor's onUpdate pointing at the current signalTyping closure.
+  typingSignalRef.current = signalTyping;
 
   // Start (or switch) a quoted reply to a message: force Reply mode and focus
   // the composer. Notes can't quote a customer message out to WhatsApp.
@@ -1071,40 +1159,23 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     window.setTimeout(() => el.classList.remove("msg--flash"), 1200);
   };
 
-  // Apply a rich-text command to the email editor, keeping focus + state in sync.
-  const format = (cmd: string) => {
-    const el = editorRef.current;
-    if (!el) return;
-    el.focus();
-    if (cmd === "createLink") {
-      const url = window.prompt("Link URL");
-      if (!url) return;
-      document.execCommand("createLink", false, /^https?:\/\//i.test(url) ? url : `https://${url}`);
-    } else {
-      document.execCommand(cmd);
+  // Toggle a link on the current selection via the editor (replaces execCommand).
+  const toggleLink = () => {
+    if (!editor) return;
+    if (editor.isActive("link")) {
+      editor.chain().focus().unsetLink().run();
+      return;
     }
-    setHtml(el.innerHTML);
-    setText(el.textContent ?? "");
-  };
-
-  // Mirror the editor's content into state (drives canSend + html) and keep the
-  // agent-presence typing indicator alive.
-  const onEditorInput = () => {
-    const el = editorRef.current;
-    if (!el) return;
-    setHtml(el.innerHTML);
-    setText(el.textContent ?? "");
-    signalTyping();
+    const url = window.prompt("Link URL");
+    if (!url) return;
+    const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+    editor.chain().focus().setLink({ href }).run();
   };
 
   // Insert an emoji at the caret of whichever composer input is active.
   const insertEmoji = (emoji: string) => {
-    if (isRich && editorRef.current) {
-      const el = editorRef.current;
-      el.focus();
-      document.execCommand("insertText", false, emoji);
-      setHtml(el.innerHTML);
-      setText(el.textContent ?? "");
+    if (isRich && editor) {
+      editor.chain().focus().insertContent(emoji).run();
     } else {
       const ta = taRef.current;
       if (ta) {
@@ -1148,6 +1219,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         bodyHtml,
         cc: ccList.length ? ccList : undefined,
         bcc: bccList.length ? bccList : undefined,
+        // Only send an override when replying off the conversation's own channel.
+        channel: !internal && composeChannel !== conv.channel ? composeChannel : undefined,
       },
       {
         onError: (err) => {
@@ -1165,7 +1238,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     stopTyping();
     setText("");
     setHtml("");
-    if (editorRef.current) editorRef.current.innerHTML = "";
+    editor?.commands.clearContent();
     clearStaged();
     setInternal(false);
     setReplyTo(null);
@@ -1560,6 +1633,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       )}
 
       <div className={"msgs" + (isClosed ? " is-closed" : "")}>
+        {conv.hasMoreMessages && (
+          <div className="loadolder">
+            <button className="loadolder__btn" onClick={() => void loadOlder()} disabled={loadingOlder}>
+              {loadingOlder ? "Loading earlier messages…" : "Load earlier messages"}
+            </button>
+          </div>
+        )}
         {groupMessagesByDay(conv.messages).map((group) => (
           <section className="daygroup" key={group.key}>
             <div className="daysep">{group.label}</div>
@@ -1580,10 +1660,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <MessageBubble
                   key={m.id}
                   m={m}
+                  convChannel={conv.channel}
                   quoted={m.quotedMsgId ? msgById.get(m.quotedMsgId) : undefined}
                   onImage={setLightbox}
                   actions={
-                    isWhatsApp
+                    conv.channel === "whatsapp" || conv.channel === "whatsapp_group"
                       ? {
                           contactName: conv.contact.displayName,
                           reactOpen: reactFor === m.id,
@@ -1645,8 +1726,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 className={"modebtn" + (!internal ? " active" : "")}
                 onClick={() => setInternal(false)}
               >
-                <span className="modebtn__ic" style={!internal ? { color: cm.color } : undefined}>
-                  <Glyph />
+                <span className="modebtn__ic" style={!internal ? { color: composeMeta.color } : undefined}>
+                  <ComposeGlyph />
                 </span>
                 Reply
               </button>
@@ -1664,6 +1745,29 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 Note
               </button>
             </div>
+            {canSwitchChannel && !internal && (
+              <div className="chanpick" role="group" aria-label="Reply channel">
+                {switchable.map((ch) => {
+                  const meta = channelMeta(ch);
+                  const ChG = meta.Glyph;
+                  const active = composeChannel === ch;
+                  return (
+                    <button
+                      key={ch}
+                      type="button"
+                      className={"chanpick__b" + (active ? " active" : "")}
+                      style={active ? { color: meta.color } : undefined}
+                      onClick={() => setComposeChannelState(ch)}
+                      title={`Reply via ${meta.label}`}
+                      aria-pressed={active}
+                    >
+                      <ChG />
+                      <span className="chanpick__lbl">{meta.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <span className="compctx">{ctxNode}</span>
           </div>
           {isEmail && !internal && (
@@ -1740,24 +1844,24 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           )}
           {isRich && !composeLocked && !recording && (
             <div className="richbar" role="toolbar" aria-label="Formatting">
-              <button type="button" className="richbar__b" title="Bold" aria-label="Bold" onMouseDown={(e) => e.preventDefault()} onClick={() => format("bold")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("bold") ? " on" : "")} title="Bold" aria-label="Bold" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBold().run()}>
                 <b>B</b>
               </button>
-              <button type="button" className="richbar__b" title="Italic" aria-label="Italic" onMouseDown={(e) => e.preventDefault()} onClick={() => format("italic")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("italic") ? " on" : "")} title="Italic" aria-label="Italic" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleItalic().run()}>
                 <i>I</i>
               </button>
-              <button type="button" className="richbar__b" title="Underline" aria-label="Underline" onMouseDown={(e) => e.preventDefault()} onClick={() => format("underline")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("underline") ? " on" : "")} title="Underline" aria-label="Underline" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleUnderline().run()}>
                 <u>U</u>
               </button>
               <span className="richbar__sep" aria-hidden="true" />
-              <button type="button" className="richbar__b" title="Bulleted list" aria-label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => format("insertUnorderedList")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("bulletList") ? " on" : "")} title="Bulleted list" aria-label="Bulleted list" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleBulletList().run()}>
                 •&nbsp;—
               </button>
-              <button type="button" className="richbar__b" title="Numbered list" aria-label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => format("insertOrderedList")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("orderedList") ? " on" : "")} title="Numbered list" aria-label="Numbered list" onMouseDown={(e) => e.preventDefault()} onClick={() => editor?.chain().focus().toggleOrderedList().run()}>
                 1.&nbsp;—
               </button>
               <span className="richbar__sep" aria-hidden="true" />
-              <button type="button" className="richbar__b" title="Insert link" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={() => format("createLink")}>
+              <button type="button" className={"richbar__b" + (editor?.isActive("link") ? " on" : "")} title="Insert link" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={toggleLink}>
                 🔗
               </button>
             </div>
@@ -1826,16 +1930,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <EmojiIcon />
               </button>
               {isRich ? (
-                <div
-                  ref={editorRef}
-                  className="richedit"
-                  contentEditable
-                  suppressContentEditableWarning
-                  role="textbox"
-                  aria-multiline="true"
+                <EditorContent
+                  editor={editor}
+                  className="richedit-host"
                   aria-label={`Reply to ${conv.contact.displayName}`}
-                  data-placeholder={`Reply to ${conv.contact.displayName}…`}
-                  onInput={onEditorInput}
                   onBlur={stopTyping}
                   onKeyDown={(e) => {
                     // Enter adds a line; ⌘/Ctrl+Enter sends (email convention).

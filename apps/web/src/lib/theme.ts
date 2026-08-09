@@ -1,7 +1,7 @@
 const SURFACE = { light: "#FFFFFF", dark: "#0E1512" } as const;
 
 /** The theme actually in effect (explicit toggle wins over the OS setting). */
-function effectiveTheme(): "light" | "dark" {
+export function effectiveTheme(): "light" | "dark" {
   const attr = document.documentElement.getAttribute("data-theme");
   if (attr === "light" || attr === "dark") return attr;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
@@ -20,4 +20,6 @@ export function toggleTheme(): void {
   const next = effectiveTheme() === "dark" ? "light" : "dark";
   root.setAttribute("data-theme", next);
   syncThemeColor();
+  // Let subscribed UI (the toggle's sun/moon icon) re-render.
+  window.dispatchEvent(new Event("themechange"));
 }

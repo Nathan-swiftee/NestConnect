@@ -31,6 +31,7 @@ enum MessageDirection {
 
 enum MessageStatus {
   queued
+  sending
   sent
   delivered
   read
@@ -255,6 +256,10 @@ model Message {
   authorUserId   String?
   authorName     String?
   body           String
+  // The channel this specific message was sent/received on. Lets one open
+  // conversation carry messages across channels (WhatsApp, email …). Null on
+  // legacy rows → falls back to the conversation's channel.
+  channel        ChannelType?
   // Sanitized HTML body for rich email (rendered in a sandboxed iframe); the
   // plain `body` above stays the fallback + preview text.
   bodyHtml       String?
@@ -267,6 +272,20 @@ model Message {
   reactions      Json?
   // Id of the message this one quotes/replies to (same conversation).
   quotedMsgId    String?
+  // ---- durable outbound delivery bookkeeping (out messages only) ----
+  // How many provider send attempts have been made, and when the last one ran.
+  attemptCount   Int              @default(0)
+  lastAttemptAt  DateTime?
+  // Last provider/transport error message + code (diagnostics; backend-only).
+  providerError  String?
+  providerErrorCode String?
+  // Human-readable reason once the send has permanently failed (shown in the UI).
+  failureReason  String?
+  // Dedup key for the delivery job (also the BullMQ jobId) — prevents double sends.
+  idempotencyKey String?
+  // Channel-specific send hints needed to (re)deliver from the DB alone after a
+  // restart: { template?: { name, language, params }, cc?, bcc? }.
+  deliveryMeta   Json?
   createdAt      DateTime         @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id])
@@ -276,6 +295,10 @@ model Message {
   @@index([conversationId, seq])
   // Backs inbound idempotency + delivery-status lookups (both hit channelMsgId).
   @@index([channelMsgId])
+  // Dedup outbound sends by idempotency key.
+  @@unique([idempotencyKey])
+  // Restart recovery scans for still-in-flight outbound messages.
+  @@index([direction, status])
 }
 
 model Attachment {
@@ -394,4 +417,19 @@ model AppSetting {
   value String
 
   @@id([orgId, key])
+}
+
+// Diagnostics for inbound webhooks that could not be handled deterministically —
+// e.g. an event for a phone number/address we don't manage, or a bad signature.
+// Deliberately org-less: these are recorded before (or because) tenant
+// resolution failed, so they must not be pinned to an arbitrary org.
+model WebhookDiagnostic {
+  id        String   @id @default(cuid())
+  channel   String // whatsapp | whatsapp_group | email | gmail
+  kind      String // unmapped_inbox | bad_signature | unmapped_group
+  reference String? // phone number id / email address / group id
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

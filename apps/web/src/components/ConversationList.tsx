@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useConversations, useSearchConversations, useRefresh, useTeams } from "../hooks";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useConversations, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
 import { relativeTime, initials, slaCountdown, timeUntil } from "../lib/format";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon } from "../lib/icons";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
 
-type Filter = "all" | "unread" | "unassigned" | "groups" | "closed";
+type Filter = "all" | "unread" | "mine" | "unassigned" | "groups" | "closed";
 
 interface Props {
   view: string;
@@ -19,8 +20,10 @@ interface Props {
 }
 
 export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onCompose, onOpenDrawer }: Props) {
-  const { data, isLoading } = useConversations(view);
+  const listQuery = useConversations(view);
+  const { data, isLoading } = listQuery;
   const teams = useTeams();
+  const myId = useSession().data?.user.id;
   const teamName = (id?: string | null) => (id ? teams.data?.find((t) => t.id === id)?.name : undefined);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
@@ -41,6 +44,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
         // Closed lives only under its own filter; every other filter hides it.
         if (filter === "closed" ? !closed : closed) return false;
         if (filter === "unread" && !c.unread) return false;
+        if (filter === "mine" && c.assigneeUserId !== myId) return false;
         if (filter === "unassigned" && c.assigneeUserId) return false;
         if (filter === "groups" && c.channel !== "whatsapp_group") return false;
         return true;
@@ -49,6 +53,9 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   // "Mine" is all-assigned-to-me and "Queue" is all-unassigned, so an Unassigned
   // filter is redundant in both.
   const showUnassigned = view !== "mine" && view !== "grabs";
+  // A "Yours" filter (assigned to me) is useful in shared team/channel inboxes,
+  // where a mix of agents' conversations live; redundant in the personal views.
+  const showMine = view.startsWith("team:") || view.startsWith("inbox:");
   // A team inbox already scopes to one team, so the per-card team label is redundant there.
   const showTeamTag = !view.startsWith("team:");
   // Per-filter counts (WhatsApp-style) — computed from the view's data, ignoring search.
@@ -58,14 +65,17 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
       ? active.length
       : key === "unread"
         ? active.filter((c) => c.unread).length
-        : key === "unassigned"
-          ? active.filter((c) => !c.assigneeUserId).length
-          : key === "groups"
-            ? active.filter((c) => c.channel === "whatsapp_group").length
-            : (data ?? []).filter((c) => c.status === "closed").length;
+        : key === "mine"
+          ? active.filter((c) => c.assigneeUserId === myId).length
+          : key === "unassigned"
+            ? active.filter((c) => !c.assigneeUserId).length
+            : key === "groups"
+              ? active.filter((c) => c.channel === "whatsapp_group").length
+              : (data ?? []).filter((c) => c.status === "closed").length;
   const filters: { key: Filter; label: string; count: number }[] = [
     { key: "all" as Filter, label: "All" },
     { key: "unread" as Filter, label: "Unread" },
+    ...(showMine ? [{ key: "mine" as Filter, label: "Yours" }] : []),
     ...(showUnassigned ? [{ key: "unassigned" as Filter, label: "Unassigned" }] : []),
     ...(hasGroups ? [{ key: "groups" as Filter, label: "Groups" }] : []),
     { key: "closed" as Filter, label: "Closed" },
@@ -73,10 +83,14 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
 
   // Fall back to All if the active filter isn't available in the current view/data.
   useEffect(() => {
-    if ((filter === "unassigned" && !showUnassigned) || (filter === "groups" && !hasGroups)) {
+    if (
+      (filter === "unassigned" && !showUnassigned) ||
+      (filter === "mine" && !showMine) ||
+      (filter === "groups" && !hasGroups)
+    ) {
       setFilter("all");
     }
-  }, [filter, showUnassigned, hasGroups]);
+  }, [filter, showUnassigned, showMine, hasGroups]);
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const thumbRef = useRef<HTMLSpanElement>(null);
   const { containerRef: chipsRef, thumbRef: chipHoverRef, hoverProps } = useHoverGlide<HTMLDivElement>(".chip", "x");
@@ -89,6 +103,26 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
       thumb.style.width = `${btn.offsetWidth}px`;
     }
   }, [filter, hasGroups]);
+
+  // Virtualize the row list so only the visible rows mount, however long the
+  // (paginated) list grows. Rows self-measure, so variable heights are fine.
+  const rowVirtualizer = useVirtualizer({
+    count: shown.length,
+    getScrollElement: () => convsRef.current,
+    estimateSize: () => 78,
+    overscan: 8,
+    getItemKey: (i) => shown[i].id,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  // The active paginator (search vs the view list) — fetch the next page as the
+  // last rows come into view, so we never load the whole inbox up front.
+  const pager = searching ? search : listQuery;
+  useEffect(() => {
+    const last = virtualRows[virtualRows.length - 1];
+    if (last && last.index >= shown.length - 6 && pager.hasNextPage && !pager.isFetchingNextPage) {
+      void pager.fetchNextPage();
+    }
+  }, [virtualRows, shown.length, pager.hasNextPage, pager.isFetchingNextPage, pager.fetchNextPage]);
 
   return (
     <section className="list" aria-label="Conversations">
@@ -179,16 +213,25 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                     : "Nothing here — inbox zero."}
           </div>
         )}
-        {shown.map((c) => {
-          const cm = channelMeta(c.channel);
-          const owned = !!c.assigneeUserId;
-          const Glyph = cm.Glyph;
-          return (
-            <button
-              key={c.id}
-              className={"conv" + (c.unread ? " unread" : "") + (selectedId === c.id ? " active" : "")}
-              onClick={() => onSelect(c.id)}
-            >
+        {shown.length > 0 && (
+          <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+            {virtualRows.map((vr) => {
+              const c = shown[vr.index];
+              if (!c) return null;
+              const cm = channelMeta(c.channel);
+              const owned = !!c.assigneeUserId;
+              const Glyph = cm.Glyph;
+              return (
+                <div
+                  key={vr.key}
+                  data-index={vr.index}
+                  ref={rowVirtualizer.measureElement}
+                  style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vr.start}px)` }}
+                >
+                  <button
+                    className={"conv" + (c.unread ? " unread" : "") + (selectedId === c.id ? " active" : "")}
+                    onClick={() => onSelect(c.id)}
+                  >
               <div className="av" style={{ background: c.contact.avatarColor }}>
                 {initials(c.contact.displayName)}
                 <span className="ch" style={{ background: cm.color }}>
@@ -247,9 +290,13 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                   )}
                 </div>
               </div>
-            </button>
-          );
-        })}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {pager.isFetchingNextPage && <div className="empty">Loading more…</div>}
       </div>
     </section>
   );

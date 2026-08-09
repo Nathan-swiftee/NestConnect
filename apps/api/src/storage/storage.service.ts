@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { createReadStream, existsSync } from "node:fs";
+import type { Readable } from "node:stream";
 import { dirname, join, normalize, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { env } from "../config/env";
@@ -81,6 +82,43 @@ export class StorageService {
       this.logger.warn(`Failed to read media ${key}: ${String(err)}`);
       return null;
     }
+  }
+
+  /**
+   * A short-lived presigned GET URL when media lives in R2, else null (disk).
+   * With a URL the client downloads straight from R2 — the object never passes
+   * through this process, and Range/seek is handled by R2.
+   */
+  async presignedGetUrl(
+    key: string,
+    opts?: { expiresSeconds?: number; downloadName?: string },
+  ): Promise<string | null> {
+    const r2 = await this.r2();
+    if (!r2) return null;
+    return r2.presignGet(
+      key,
+      opts?.expiresSeconds ?? 300,
+      opts?.downloadName ? { downloadName: opts.downloadName } : undefined,
+    );
+  }
+
+  /** Size of a locally-stored object (disk driver only), or null if missing. */
+  async diskStat(key: string): Promise<{ size: number } | null> {
+    try {
+      const s = await stat(this.resolve(key));
+      return { size: s.size };
+    } catch {
+      return null;
+    }
+  }
+
+  /** A streaming reader for a locally-stored object, optionally a byte range —
+   *  so large files are never buffered whole in memory. */
+  diskReadStream(key: string, start?: number, end?: number): Readable {
+    const path = this.resolve(key);
+    return start != null && end != null
+      ? createReadStream(path, { start, end })
+      : createReadStream(path);
   }
 
   /** Resolve a key under the base dir, refusing any path-traversal escape. */

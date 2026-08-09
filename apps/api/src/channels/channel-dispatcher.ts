@@ -1,20 +1,31 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import type { ConversationWithMessages, Message, MessageStatus } from "@ding/schemas";
+import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { Store } from "../data/store";
 import { MediaService } from "../storage/media.service";
-import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { redactSecrets } from "../crypto/redact";
 import {
   CHANNEL_PROVIDERS,
   ChannelProvider,
+  isRetryableStatus,
   type OutboundMedia,
   type OutboundTemplate,
   type SendContext,
 } from "./channel-provider";
 
 /**
- * Sends outbound messages through the right channel provider and reconciles
- * delivery status back onto the message (moving the ticks). Channel-agnostic:
- * it picks the recipient address and threading context by channel.
+ * The result of a single provider send attempt, in the domain's terms. The
+ * delivery layer (queue/worker) turns this into status writes + retries; the
+ * dispatcher itself performs no persistence and schedules no timers.
+ */
+export type DeliveryOutcome =
+  | { ok: true; channelMsgId?: string; simulated: boolean }
+  | { ok: false; retryable: boolean; reason: string; error?: string; code?: string };
+
+/**
+ * Sends an outbound message through the right channel provider and reports the
+ * outcome. Channel-agnostic: it picks the recipient address and threading
+ * context by channel, then calls the provider. It is deliberately side-effect
+ * free with respect to message state so it can be driven by a durable job queue.
  */
 @Injectable()
 export class ChannelDispatcher {
@@ -24,41 +35,48 @@ export class ChannelDispatcher {
     @Inject(CHANNEL_PROVIDERS) private readonly providers: ChannelProvider[],
     private readonly store: Store,
     private readonly media: MediaService,
-    private readonly realtime: RealtimeGateway,
   ) {}
 
-  async dispatchOutbound(
+  /** Attempt one send. Returns a structured outcome; never throws for a normal
+   *  provider rejection (only genuinely unexpected errors propagate). */
+  async attemptSend(
     conversation: ConversationWithMessages,
     message: Message,
     template?: OutboundTemplate,
     opts?: { cc?: string[]; bcc?: string[] },
-  ): Promise<void> {
+  ): Promise<DeliveryOutcome> {
+    // A message may be sent on a different channel than the conversation's own
+    // (cross-channel reply within one open thread). Resolve the effective channel
+    // and the inbox to send from.
+    const channel = message.channel ?? conversation.channel;
+    const sendingInboxId =
+      channel === conversation.channel
+        ? conversation.inboxId
+        : (await this.firstInboxOfType(channel)) ?? conversation.inboxId;
+
     // Email is served by more than one provider (Gmail vs generic), chosen by
-    // the inbox's connected provider. Other channels ignore the context.
+    // the sending inbox's connected provider. Other channels ignore the context.
     const ctx =
-      conversation.channel === "email"
-        ? { provider: (await this.store.getInboxConfig(conversation.inboxId))?.provider }
+      channel === "email"
+        ? { provider: (await this.store.getInboxConfig(sendingInboxId))?.provider }
         : undefined;
-    const provider = this.providers.find((p) => p.supports(conversation.channel, ctx));
+    const provider = this.providers.find((p) => p.supports(channel, ctx));
     if (!provider) {
-      // Channel not wired for sending yet — don't leave the message pending forever.
-      this.logger.warn(`No provider for ${conversation.channel} — marking ${message.id} failed`);
-      await this.fail(message.id);
-      return;
+      // Channel not wired for sending — a configuration error, not worth retrying.
+      return { ok: false, retryable: false, reason: `No provider configured for ${channel}` };
     }
 
-    const to = conversation.channel === "email" ? conversation.contact.email : conversation.contact.phone;
+    const to = channel === "email" ? conversation.contact.email : conversation.contact.phone;
     if (!to) {
-      this.logger.warn(`Conversation ${conversation.id} has no ${conversation.channel} address to send to`);
-      await this.fail(message.id);
-      return;
+      return { ok: false, retryable: false, reason: `Conversation has no ${channel} address` };
     }
 
     let context: SendContext | undefined;
-    if (conversation.channel === "email") {
+    if (channel === "email") {
+      // Thread only onto prior EMAIL messages (a WhatsApp wamid is not a Message-ID).
       const prior = [...conversation.messages]
         .reverse()
-        .find((m) => m.channelMsgId && m.id !== message.id);
+        .find((m) => m.channelMsgId && m.id !== message.id && (m.channel ?? conversation.channel) === "email");
       context = {
         subject: conversation.subject ?? undefined,
         toName: conversation.contact.displayName,
@@ -79,29 +97,35 @@ export class ChannelDispatcher {
       cc: opts?.cc,
       bcc: opts?.bcc,
       conversation,
+      inboxId: sendingInboxId,
       context,
       media,
       template,
       replyToChannelMsgId,
     });
-    if (result.channelMsgId) {
-      await this.store.setMessageChannelId(message.id, result.channelMsgId);
+
+    if (result.ok) {
+      return { ok: true, channelMsgId: result.channelMsgId, simulated: Boolean(result.simulated) };
     }
-    if (!result.ok) {
-      this.logger.warn(`Send failed on ${conversation.channel}: ${result.error}`);
-      // The provider rejected the send — most return no channel id, so fail by
-      // internal id (falling back to the id path when we do have one).
-      if (result.channelMsgId) await this.transition(result.channelMsgId, "failed", 0);
-      else await this.fail(message.id);
-      return;
-    }
-    // The provider accepted it → "sent" (single grey tick). Real channels then
-    // move delivered/read via status webhooks; the mock fakes that ladder.
-    void this.transition(result.channelMsgId, "sent", 0);
-    if (result.simulated && result.channelMsgId) {
-      void this.transition(result.channelMsgId, "delivered", 1400);
-      void this.transition(result.channelMsgId, "read", 3200);
-    }
+    const retryable = result.retryable ?? isRetryableStatus(result.httpStatus);
+    this.logger.warn(
+      `Send failed on ${channel} (${retryable ? "transient" : "permanent"}): ${redactSecrets(result.error)}`,
+    );
+    return {
+      ok: false,
+      retryable,
+      reason: shortReason(channel, result),
+      error: result.error,
+      code: result.errorCode,
+    };
+  }
+
+  /** The org's first inbox of a given channel type — the send-from inbox for a
+   *  cross-channel reply (its provider creds / from-address are used). */
+  private async firstInboxOfType(channel: ChannelType): Promise<string | undefined> {
+    const type = channel === "whatsapp_group" ? "whatsapp" : channel;
+    const inboxes = await this.store.listInboxes();
+    return inboxes.find((i) => i.type === type)?.id;
   }
 
   /** Send a read receipt for an inbound message on a channel that supports it. */
@@ -161,21 +185,14 @@ export class ChannelDispatcher {
     }
     return out.length ? out : undefined;
   }
+}
 
-  /** Flip an outbound message to failed by internal id and broadcast the change. */
-  private async fail(messageId: string): Promise<void> {
-    const failed = await this.store.failMessage(messageId);
-    if (failed) this.realtime.emitMessageUpdated(failed.conversationId, failed.message);
-  }
-
-  private transition(channelMsgId: string | undefined, status: MessageStatus, delay: number): Promise<void> {
-    if (!channelMsgId) return Promise.resolve();
-    return new Promise((resolve) => {
-      setTimeout(async () => {
-        const updated = await this.store.updateMessageStatusByChannelId(channelMsgId, status);
-        if (updated) this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
-        resolve();
-      }, delay);
-    });
-  }
+/** A short, user-facing failure reason derived from a provider send result. */
+function shortReason(channel: string, result: { httpStatus?: number; errorCode?: string }): string {
+  const label = channel === "email" ? "Email" : "WhatsApp";
+  if (result.httpStatus === 401 || result.httpStatus === 403) return `${label}: authentication rejected`;
+  if (result.httpStatus === 429) return `${label}: rate limited`;
+  if (result.httpStatus && result.httpStatus >= 500) return `${label}: provider error (${result.httpStatus})`;
+  if (result.httpStatus && result.httpStatus >= 400) return `${label}: rejected (${result.httpStatus})`;
+  return `${label}: delivery failed`;
 }

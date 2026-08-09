@@ -64,7 +64,12 @@ export function signV4(input: SigV4Input): string {
 
 /** Encode an object key for the URL path, preserving `/` separators. */
 function encodeKey(key: string): string {
-  return key.split("/").map(encodeURIComponent).join("/");
+  return key.split("/").map(rfc3986).join("/");
+}
+
+/** Strict RFC-3986 encoding (SigV4 requires the extra chars encodeURIComponent leaves). */
+function rfc3986(s: string): string {
+  return encodeURIComponent(s).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 }
 
 function amzNow(): string {
@@ -97,6 +102,53 @@ export class R2Driver {
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`R2 GET ${key} → ${res.status}`);
     return Buffer.from(await res.arrayBuffer());
+  }
+
+  /**
+   * A short-lived presigned GET URL (SigV4 query auth). The client fetches the
+   * object straight from R2 — so bytes never pass through this process, Range
+   * requests are served by R2, and the URL is unguessable and expires. Optional
+   * `downloadName` forces a download via response-content-disposition.
+   */
+  presignGet(key: string, expiresSeconds = 300, opts?: { downloadName?: string }): string {
+    const amzDate = amzNow();
+    const dateStamp = amzDate.slice(0, 8);
+    const scope = `${dateStamp}/auto/s3/aws4_request`;
+    const path = `/${this.cfg.bucket}/${encodeKey(key)}`;
+    const params: Record<string, string> = {
+      "X-Amz-Algorithm": "AWS4-HMAC-SHA256",
+      "X-Amz-Credential": `${this.cfg.accessKeyId}/${scope}`,
+      "X-Amz-Date": amzDate,
+      "X-Amz-Expires": String(expiresSeconds),
+      "X-Amz-SignedHeaders": "host",
+    };
+    if (opts?.downloadName) {
+      params["response-content-disposition"] = `attachment; filename="${opts.downloadName}"`;
+    }
+    const canonicalQuery = Object.keys(params)
+      .sort()
+      .map((k) => `${rfc3986(k)}=${rfc3986(params[k])}`)
+      .join("&");
+    const canonicalRequest = [
+      "GET",
+      path,
+      canonicalQuery,
+      `host:${this.host}\n`,
+      "host",
+      "UNSIGNED-PAYLOAD",
+    ].join("\n");
+    const stringToSign = [
+      "AWS4-HMAC-SHA256",
+      amzDate,
+      scope,
+      sha256hex(canonicalRequest),
+    ].join("\n");
+    const kDate = hmac(`AWS4${this.cfg.secretAccessKey}`, dateStamp);
+    const kRegion = hmac(kDate, "auto");
+    const kService = hmac(kRegion, "s3");
+    const kSigning = hmac(kService, "aws4_request");
+    const signature = createHmac("sha256", kSigning).update(stringToSign).digest("hex");
+    return `https://${this.host}${path}?${canonicalQuery}&X-Amz-Signature=${signature}`;
   }
 
   private signed(method: "GET" | "PUT", key: string, body?: Buffer, contentType?: string) {

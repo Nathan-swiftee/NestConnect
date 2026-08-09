@@ -25,7 +25,7 @@ export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 export const messageDirectionSchema = z.enum(["in", "out"]);
 export type MessageDirection = z.infer<typeof messageDirectionSchema>;
 
-export const messageStatusSchema = z.enum(["queued", "sent", "delivered", "read", "failed"]);
+export const messageStatusSchema = z.enum(["queued", "sending", "sent", "delivered", "read", "failed"]);
 export type MessageStatus = z.infer<typeof messageStatusSchema>;
 
 export const authorTypeSchema = z.enum(["contact", "user", "system"]);
@@ -200,6 +200,9 @@ export const messageSchema = z.object({
   internal: z.boolean().default(false),
   /** Provider-side id (e.g. WhatsApp wamid) for reconciling delivery/read status. */
   channelMsgId: z.string().nullable().optional(),
+  /** The channel this message was sent/received on (a thread can span channels).
+   *  Absent → the conversation's own channel. */
+  channel: channelTypeSchema.nullable().optional(),
   /** What the message carries; "text" unless it has media. */
   messageType: messageTypeSchema.default("text"),
   /** Media files attached to the message (images, files, voice notes, …). */
@@ -211,6 +214,10 @@ export const messageSchema = z.object({
   reactions: z.array(reactionSchema).default([]),
   /** Id of the message this one quotes/replies to (resolved within the thread). */
   quotedMsgId: z.string().nullable().optional(),
+  /** Outbound send attempts made so far (absent for inbound/internal). */
+  attemptCount: z.number().int().nonnegative().optional(),
+  /** Human-readable reason shown in the UI once an outbound send has failed. */
+  failureReason: z.string().nullable().optional(),
   createdAt: z.string(), // ISO-8601
 });
 export type Message = z.infer<typeof messageSchema>;
@@ -273,13 +280,37 @@ export const conversationSchema = z.object({
 });
 export type Conversation = z.infer<typeof conversationSchema>;
 
-/** A conversation plus its messages — the thread view payload. */
+/** A conversation plus its (most-recent page of) messages — the thread payload. */
 export const conversationWithMessagesSchema = conversationSchema.extend({
   messages: z.array(messageSchema),
+  /** True when older messages exist beyond the returned page (load on scroll-up). */
+  hasMoreMessages: z.boolean().default(false),
   /** Group members (whatsapp_group only; empty otherwise). */
   participants: z.array(participantSchema).default([]),
 });
 export type ConversationWithMessages = z.infer<typeof conversationWithMessagesSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Cursor pagination                                                   */
+/* ------------------------------------------------------------------ */
+
+/** A page of conversations (list/search). `nextCursor` is null on the last page. */
+export const conversationPageSchema = z.object({
+  items: z.array(conversationSchema),
+  nextCursor: z.string().nullable().default(null),
+});
+export type ConversationPage = z.infer<typeof conversationPageSchema>;
+
+/** A page of older thread messages (scroll-up history). */
+export const messagePageSchema = z.object({
+  items: z.array(messageSchema),
+  nextCursor: z.string().nullable().default(null),
+});
+export type MessagePage = z.infer<typeof messagePageSchema>;
+
+/** Default page sizes shared by the API and the client. */
+export const CONVERSATIONS_PAGE_SIZE = 30;
+export const MESSAGES_PAGE_SIZE = 40;
 
 /* ------------------------------------------------------------------ */
 /* API request payloads                                                */
@@ -355,6 +386,9 @@ export const sendMessageInputSchema = z
       .optional(),
     /** Quote/reply to an earlier message in the thread (by its id). */
     quotedMsgId: z.string().optional(),
+    /** Reply on a specific channel the contact is reachable on (cross-channel
+     *  thread). Defaults to the conversation's own channel when omitted. */
+    channel: channelTypeSchema.optional(),
     /** Rich HTML body for an email reply (sanitized server-side before send). */
     bodyHtml: z.string().optional(),
     /** Additional email recipients (email channel only). */

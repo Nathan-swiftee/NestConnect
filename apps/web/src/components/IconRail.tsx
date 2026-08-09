@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLogout, useMe, useSound } from "../hooks";
+import { useLogout, useMe, useSound, useTheme } from "../hooks";
 import { initials } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 import {
@@ -9,6 +9,7 @@ import {
   InsightsIcon,
   SettingsIcon,
   ThemeIcon,
+  SunIcon,
   SoundOnIcon,
   SoundOffIcon,
 } from "../lib/icons";
@@ -26,6 +27,7 @@ export function IconRail({
   const me = data?.user;
   const logout = useLogout();
   const sound = useSound();
+  const theme = useTheme();
   const [menu, setMenu] = useState(false);
 
   return (
@@ -65,8 +67,12 @@ export function IconRail({
       >
         {sound.on ? <SoundOnIcon /> : <SoundOffIcon />}
       </button>
-      <button className="railbtn" title="Toggle theme" onClick={toggleTheme}>
-        <ThemeIcon />
+      <button
+        className="railbtn"
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+        onClick={toggleTheme}
+      >
+        {theme === "dark" ? <SunIcon /> : <ThemeIcon />}
       </button>
       <div className="rail-avatar">
         <button

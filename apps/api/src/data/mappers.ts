@@ -4,7 +4,6 @@ import type {
   ChannelType,
   Contact,
   Conversation,
-  ConversationWithMessages,
   Inbox,
   Message,
   MessageStatus,
@@ -25,6 +24,11 @@ import { isInboxConnected } from "@ding/schemas";
 /** WhatsApp's customer-service window is 24 hours from the last inbound message. */
 const WA_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/** Whether a channel is one of the WhatsApp channels (1:1 or group). */
+export function isWaChannel(channel: string | null | undefined): boolean {
+  return channel === "whatsapp" || channel === "whatsapp_group";
+}
+
 /**
  * Compute the WhatsApp 24-hour window for a conversation. Only WhatsApp channels
  * have a window; everything else returns null. With no inbound yet the window is
@@ -41,8 +45,8 @@ export function computeWaWindow(
   return { open: Date.now() < expiresAt.getTime(), expiresAt: expiresAt.toISOString() };
 }
 
-/** The delivery ladder order: queued → sent → delivered → read. */
-const STATUS_ORDER: MessageStatus[] = ["queued", "sent", "delivered", "read"];
+/** The delivery ladder order: queued → sending → sent → delivered → read. */
+const STATUS_ORDER: MessageStatus[] = ["queued", "sending", "sent", "delivered", "read"];
 
 /**
  * Whether a message may move from `current` to `next`. Status only ever advances
@@ -82,14 +86,6 @@ type ContactWithIdentities = Prisma.ContactGetPayload<{ include: { identities: t
 type InboxWithTeams = Prisma.InboxGetPayload<{ include: { teams: true } }>;
 type ConversationSummaryRow = Prisma.ConversationGetPayload<{
   include: { contact: { include: { identities: true } }; labels: { include: { label: true } } };
-}>;
-type ConversationFullRow = Prisma.ConversationGetPayload<{
-  include: {
-    contact: { include: { identities: true } };
-    labels: { include: { label: true } };
-    messages: { include: { attachments: true } };
-    participants: { include: { contact: { include: { identities: true } } } };
-  };
 }>;
 type MessageRow = Prisma.MessageGetPayload<{ include: { attachments: true } }>;
 type AttachmentRow = Prisma.AttachmentGetPayload<object>;
@@ -228,11 +224,14 @@ export function mapMessage(m: MessageRow): Message {
     status: m.status as MessageStatus,
     internal: m.internal,
     channelMsgId: m.channelMsgId ?? undefined,
+    channel: (m.channel as ChannelType | null) ?? undefined,
     messageType: (m.messageType as MessageType) ?? "text",
     attachments: (m.attachments ?? []).map(mapAttachment),
     reactions: parseReactions(m.reactions),
     quotedMsgId: m.quotedMsgId ?? undefined,
     bodyHtml: m.bodyHtml ?? undefined,
+    attemptCount: m.attemptCount ?? 0,
+    failureReason: m.failureReason ?? undefined,
     createdAt: m.createdAt.toISOString(),
   };
 }
@@ -273,10 +272,3 @@ export function mapConversation(c: ConversationSummaryRow): Conversation {
   };
 }
 
-export function mapConversationWithMessages(c: ConversationFullRow): ConversationWithMessages {
-  return {
-    ...mapConversation(c),
-    messages: [...c.messages].sort((a, b) => a.seq - b.seq).map(mapMessage),
-    participants: c.participants.map(mapParticipant),
-  };
-}

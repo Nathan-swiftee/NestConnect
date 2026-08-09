@@ -1,22 +1,52 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type {
   AssignConversationInput,
   Conversation,
+  ConversationPage,
   ConversationWithMessages,
   Message,
+  MessagePage,
   SendMessageInput,
   UpdatePriorityInput,
   UpdateStatusInput,
 } from "@ding/schemas";
-import { Store } from "../data/store";
+import { Store, type OutboundDeliveryMeta } from "../data/store";
+import { isWaChannel } from "../data/mappers";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { ChannelDispatcher } from "../channels/channel-dispatcher";
 import type { OutboundTemplate } from "../channels/channel-provider";
+import { OutboundQueue } from "../queue/outbound-queue";
 import { sanitizeOutboundHtml, htmlToText } from "../channels/email/html-sanitize";
+
+/** WhatsApp's 24-hour customer-service window: open while the last WhatsApp
+ *  inbound in the thread is under 24h old. Computed from the messages (with a
+ *  fallback to the conversation's channel for legacy rows) so a cross-channel
+ *  thread — which may be email-primary — is handled correctly. */
+const WA_WINDOW_MS = 24 * 60 * 60 * 1000;
+function waWindowOpenFromMessages(messages: Message[], convChannel: string): boolean {
+  const lastWaInbound = [...messages]
+    .reverse()
+    .find((m) => m.direction === "in" && isWaChannel(m.channel ?? convChannel));
+  return lastWaInbound ? Date.now() - new Date(lastWaInbound.createdAt).getTime() < WA_WINDOW_MS : false;
+}
 
 /** Fill a template body's {{1}}, {{2}} … positional variables from `params`. */
 function fillTemplate(body: string, params: string[]): string {
   return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_m, n) => params[Number(n) - 1] ?? `{{${n}}}`);
+}
+
+/** Assemble the persisted send hints, omitting empty parts (undefined when none). */
+function buildDeliveryMeta(
+  template?: OutboundTemplate,
+  cc?: string[],
+  bcc?: string[],
+): OutboundDeliveryMeta | undefined {
+  const meta: OutboundDeliveryMeta = {};
+  if (template) meta.template = template;
+  if (cc?.length) meta.cc = cc;
+  if (bcc?.length) meta.bcc = bcc;
+  return Object.keys(meta).length ? meta : undefined;
 }
 
 @Injectable()
@@ -25,15 +55,21 @@ export class ConversationsService {
     private readonly store: Store,
     private readonly realtime: RealtimeGateway,
     private readonly dispatcher: ChannelDispatcher,
+    private readonly queue: OutboundQueue,
   ) {}
 
-  list(view: string, userId: string): Promise<Conversation[]> {
-    return this.store.listConversations(view, userId);
+  list(view: string, userId: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
+    return this.store.listConversations(view, userId, opts);
   }
 
   /** Global search across all conversations (contact, subject, preview, body). */
-  search(query: string): Promise<Conversation[]> {
-    return this.store.searchConversations(query);
+  search(query: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
+    return this.store.searchConversations(query, opts);
+  }
+
+  /** Older messages in a thread (scroll-up history), before a seq cursor. */
+  messages(conversationId: string, opts?: { before?: string; limit?: number }): Promise<MessagePage> {
+    return this.store.listMessages(conversationId, opts);
   }
 
   async get(id: string): Promise<ConversationWithMessages> {
@@ -49,6 +85,22 @@ export class ConversationsService {
     const conv = await this.store.getConversation(id);
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
 
+    // Cross-channel reply: the agent may answer on any channel the customer is
+    // reachable on, within this one open thread. The effective channel defaults
+    // to the conversation's own; an explicit override must have an address on file.
+    const channelOverride = input.channel && input.channel !== conv.channel ? input.channel : undefined;
+    const effectiveChannel = channelOverride ?? conv.channel;
+    const sendingEmail = effectiveChannel === "email";
+    const sendingWa = isWaChannel(effectiveChannel);
+    if (!input.internal && channelOverride) {
+      if (sendingEmail && !conv.contact.email) {
+        throw new BadRequestException("This customer has no email address on file.");
+      }
+      if (sendingWa && !conv.contact.phone) {
+        throw new BadRequestException("This customer has no WhatsApp number on file.");
+      }
+    }
+
     // A template send: resolve it and render the body from its variables.
     let template: OutboundTemplate | undefined;
     let body = input.body;
@@ -59,51 +111,82 @@ export class ConversationsService {
       template = { name: tpl.name, language: tpl.language, params: input.template.params };
     }
 
-    // A rich email reply carries HTML from the composer — sanitize it with the
-    // outbound scrub (keeps the agent's own images/links, strips scripts) before
-    // it's stored or sent, and derive the plain-text body from it when the
-    // composer only produced formatted content. HTML is email-only.
+    // A rich email reply carries HTML from the composer — sanitize it (keeps the
+    // agent's own images/links, strips scripts) before it's stored or sent, and
+    // derive the plain-text body from it when the composer only produced HTML.
     let bodyHtml: string | undefined;
-    if (input.bodyHtml && !input.internal && !template && conv.channel === "email") {
+    if (input.bodyHtml && !input.internal && !template && sendingEmail) {
       bodyHtml = sanitizeOutboundHtml(input.bodyHtml) || undefined;
       if (bodyHtml && !body.trim()) body = htmlToText(bodyHtml);
     }
 
-    // Enforce WhatsApp's 24-hour window: a free-form reply is only allowed while
-    // the window is open — once closed, an approved template is the only way in.
-    if (!input.internal && !template && conv.waWindow && !conv.waWindow.open) {
-      throw new BadRequestException(
-        "This WhatsApp conversation's 24-hour window has closed — send an approved template to reply.",
-      );
+    // Enforce WhatsApp's 24-hour window when replying on WhatsApp. For a
+    // WhatsApp-primary thread use its computed window (unchanged behaviour); for
+    // a cross-channel thread compute it from the last WhatsApp inbound message.
+    if (!input.internal && !template && sendingWa) {
+      const open = isWaChannel(conv.channel)
+        ? (conv.waWindow?.open ?? false)
+        : waWindowOpenFromMessages(conv.messages, conv.channel);
+      if (!open) {
+        throw new BadRequestException(
+          "This WhatsApp conversation's 24-hour window has closed — send an approved template to reply.",
+        );
+      }
     }
+
+    // Build the channel-specific send hints, persisted with the message so a
+    // (re)delivery can be reconstructed from the DB alone after a restart.
+    const cc = input.internal ? undefined : input.cc?.filter((a) => a.trim());
+    const bcc = input.internal ? undefined : input.bcc?.filter((a) => a.trim());
+    const deliveryMeta: OutboundDeliveryMeta | undefined = input.internal
+      ? undefined
+      : buildDeliveryMeta(template, cc, bcc);
+    // Idempotency key doubles as the delivery job id, so duplicate sends collapse.
+    const idempotencyKey = input.internal ? undefined : randomUUID();
 
     const message = await this.store.addMessage(
       id,
-      { body, bodyHtml, internal: input.internal, attachmentIds: input.attachmentIds, quotedMsgId: input.quotedMsgId },
+      {
+        body,
+        bodyHtml,
+        internal: input.internal,
+        attachmentIds: input.attachmentIds,
+        quotedMsgId: input.quotedMsgId,
+        channel: channelOverride,
+        idempotencyKey,
+        deliveryMeta,
+      },
       author,
     );
     if (!message) throw new NotFoundException(`Conversation ${id} not found`);
 
     // Broadcast immediately so every open client updates the thread + previews.
-    this.realtime.emitMessageCreated(id, message);
+    this.realtime.emitMessageCreated(id, message, conv.orgId);
 
-    // Dispatch real (non-internal) replies out through the channel provider.
+    // Real (non-internal) replies are enqueued for durable delivery. The message
+    // is already persisted (status "queued"); the queue drives it to sent/failed
+    // with retries, so a crash here never loses it — the recovery sweep re-drives
+    // any message left queued/sending.
     if (!input.internal) {
       // An agent reply meets the first-response SLA — stop the clock.
       const cleared = await this.store.setSla(id, null);
       if (cleared) this.realtime.emitConversationUpdated(cleared);
-      // Re-read so the dispatch sees the just-appended message in the thread.
-      const fresh = await this.store.getConversation(id);
-      if (fresh) {
-        const cc = input.cc?.filter((a) => a.trim());
-        const bcc = input.bcc?.filter((a) => a.trim());
-        void this.dispatcher.dispatchOutbound(fresh, message, template, {
-          cc: cc?.length ? cc : undefined,
-          bcc: bcc?.length ? bcc : undefined,
-        });
-      }
+      await this.queue.enqueueDelivery({ messageId: message.id, conversationId: id }, idempotencyKey);
     }
     return message;
+  }
+
+  /** Manually retry a failed outbound message: reset it to queued and re-enqueue. */
+  async retryMessage(messageId: string): Promise<Message> {
+    const key = randomUUID();
+    const change = await this.store.resetMessageForRetry(messageId, key);
+    if (!change) throw new BadRequestException("Message is not in a retryable state");
+    this.realtime.emitMessageUpdated(change.conversationId, change.message);
+    await this.queue.enqueueDelivery(
+      { messageId, conversationId: change.conversationId },
+      key,
+    );
+    return change.message;
   }
 
   async assign(id: string, input: AssignConversationInput, byUserId: string): Promise<Conversation> {

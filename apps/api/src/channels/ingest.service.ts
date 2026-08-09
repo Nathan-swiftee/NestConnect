@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { GROUP_MAX_MEMBERS, type Conversation, type MessageType } from "@ding/schemas";
 import { Store, type AttachmentInput } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { TenantContext } from "../tenancy/tenant-context";
 import { RoutingService } from "./routing.service";
 import { sanitizeEmailHtml } from "./email/html-sanitize";
 
@@ -45,6 +46,7 @@ export class IngestService {
     private readonly store: Store,
     private readonly routing: RoutingService,
     private readonly realtime: RealtimeGateway,
+    private readonly tenant: TenantContext,
   ) {}
 
   async ingestWhatsApp(input: WhatsAppInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
@@ -58,6 +60,12 @@ export class IngestService {
     const inbox = await this.store.getInboxByWhatsAppPhoneId(input.phoneNumberId);
     if (!inbox) {
       this.logger.warn(`No inbox mapped for WhatsApp phone id ${input.phoneNumberId}`);
+      await this.store.recordWebhookDiagnostic({
+        channel: "whatsapp",
+        kind: "unmapped_inbox",
+        reference: input.phoneNumberId,
+        detail: `Inbound WhatsApp for an unmapped phone number id (from ${input.from})`,
+      });
       return undefined;
     }
 
@@ -92,11 +100,12 @@ export class IngestService {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.channelMsgId,
+      channel: "whatsapp",
       messageType: input.messageType,
       attachments: input.attachments,
       quotedMsgId: input.quotedMsgId,
     });
-    if (message) this.realtime.emitMessageCreated(conv.id, message);
+    if (message) this.realtime.emitMessageCreated(conv.id, message, inbox.orgId);
 
     return { conversationId: conv.id, created };
   }
@@ -119,11 +128,18 @@ export class IngestService {
     const conversationId = await this.store.findConversationByChannelRef(input.groupId);
     if (!conversationId) {
       this.logger.warn(`No group conversation for WhatsApp group ${input.groupId}`);
+      await this.store.recordWebhookDiagnostic({
+        channel: "whatsapp_group",
+        kind: "unmapped_group",
+        reference: input.groupId,
+        detail: `Inbound WhatsApp group message for an unknown group (from ${input.from})`,
+      });
       return undefined;
     }
     const conv = await this.store.getConversation(conversationId);
+    const orgId = conv?.orgId ?? this.tenant.defaultOrgId;
     const contact = await this.store.upsertContactByIdentity({
-      orgId: conv?.orgId ?? "org_swiftee",
+      orgId,
       kind: "phone",
       value: input.from,
       displayName: input.name || input.from,
@@ -137,11 +153,12 @@ export class IngestService {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.channelMsgId,
+      channel: "whatsapp_group",
       messageType: input.messageType,
       attachments: input.attachments,
       quotedMsgId: input.quotedMsgId,
     });
-    if (message) this.realtime.emitMessageCreated(conversationId, message);
+    if (message) this.realtime.emitMessageCreated(conversationId, message, orgId);
     return { conversationId, created: false };
   }
 
@@ -156,6 +173,12 @@ export class IngestService {
     const inbox = await this.store.getInboxByEmailAddress(input.toAddress);
     if (!inbox) {
       this.logger.warn(`No inbox mapped for email address ${input.toAddress}`);
+      await this.store.recordWebhookDiagnostic({
+        channel: "email",
+        kind: "unmapped_inbox",
+        reference: input.toAddress,
+        detail: `Inbound email to an unmanaged address (from ${input.from})`,
+      });
       return undefined;
     }
 
@@ -203,10 +226,11 @@ export class IngestService {
       body: input.text,
       bodyHtml: bodyHtml || undefined,
       channelMsgId: input.messageId,
+      channel: "email",
       messageType: input.messageType,
       attachments: input.attachments,
     });
-    if (message) this.realtime.emitMessageCreated(conversationId, message);
+    if (message) this.realtime.emitMessageCreated(conversationId, message, inbox.orgId);
 
     return { conversationId, created };
   }

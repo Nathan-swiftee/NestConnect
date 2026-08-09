@@ -5,12 +5,14 @@ import type {
   Contact,
   ContactWithConversations,
   Conversation,
+  ConversationPage,
   ConversationStatus,
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
   Member,
   Message,
+  MessagePage,
   MessageStatus,
   MessageType,
   Participant,
@@ -67,6 +69,8 @@ export interface AppendInboundInput {
   /** Sanitized HTML body for a rich inbound email (already scrubbed). */
   bodyHtml?: string;
   channelMsgId?: string;
+  /** The channel this inbound message arrived on (thread may span channels). */
+  channel?: ChannelType;
   messageType?: MessageType;
   attachments?: AttachmentInput[];
   /** Id of the message this inbound one quotes/replies to (already resolved). */
@@ -80,6 +84,40 @@ export interface StoredAttachmentRef {
   filename: string;
 }
 
+/** Channel-specific hints persisted so an outbound message can be (re)sent from
+ *  the DB alone after a restart — no reliance on in-flight job payloads. */
+export interface OutboundDeliveryMeta {
+  template?: { name: string; language: string; params: string[] };
+  cc?: string[];
+  bcc?: string[];
+}
+
+/** The minimal record the delivery worker needs to (re)send an outbound message. */
+export interface OutboundMessageRef {
+  messageId: string;
+  conversationId: string;
+  status: MessageStatus;
+  channelMsgId?: string;
+  internal: boolean;
+  deliveryMeta?: OutboundDeliveryMeta;
+}
+
+/** A message status change to broadcast (returned by the delivery-state writers). */
+export interface MessageStatusChange {
+  conversationId: string;
+  message: Message;
+}
+
+/** A recorded inbound-webhook problem (unmapped account, bad signature, …). */
+export interface WebhookDiagnostic {
+  id: string;
+  channel: string;
+  kind: string;
+  reference?: string;
+  detail?: string;
+  createdAt: string;
+}
+
 /**
  * The data-access contract for the platform. Two implementations exist:
  * `MemoryStore` (zero-infra fixtures) and `PrismaStore` (Postgres). Services
@@ -89,6 +127,9 @@ export interface StoredAttachmentRef {
 export abstract class Store {
   /** The current demo user until real auth resolves identity per-request. */
   abstract get demoUserId(): string;
+
+  /** Cheap liveness probe of the persistence layer (SELECT 1 / no-op). */
+  abstract healthCheck(): Promise<boolean>;
 
   abstract getUser(id: string): Promise<User | undefined>;
   abstract findUserByEmail(email: string): Promise<User | undefined>;
@@ -177,14 +218,41 @@ export abstract class Store {
   /** Remove a person, detaching their team memberships and clearing assignments. */
   abstract deleteUser(id: string): Promise<void>;
   abstract views(userId: string): Promise<SidebarViews>;
-  abstract listConversations(view: string, userId: string): Promise<Conversation[]>;
-  /** Search across all conversations by contact, subject, preview and message body. */
-  abstract searchConversations(query: string): Promise<Conversation[]>;
+  /** A cursor page of conversations for a view (most-recent first). */
+  abstract listConversations(
+    view: string,
+    userId: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage>;
+  /** A cursor page of search results (contact, subject, preview, message body). */
+  abstract searchConversations(
+    query: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage>;
+  /** A conversation with its most-recent page of messages (+ hasMoreMessages). */
   abstract getConversation(id: string): Promise<ConversationWithMessages | undefined>;
+  /** Older messages in a thread, before `opts.before` (a seq cursor). For scroll-up. */
+  abstract listMessages(
+    conversationId: string,
+    opts?: { before?: string; limit?: number },
+  ): Promise<MessagePage>;
 
   abstract addMessage(
     conversationId: string,
-    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: {
+      body: string;
+      bodyHtml?: string;
+      internal: boolean;
+      attachmentIds?: string[];
+      quotedMsgId?: string;
+      /** Reply on a specific channel (cross-channel thread); defaults to the
+       *  conversation's channel. */
+      channel?: ChannelType;
+      /** Dedup key for the delivery job (also the queue jobId). */
+      idempotencyKey?: string;
+      /** Channel-specific send hints, persisted for restart-safe (re)delivery. */
+      deliveryMeta?: OutboundDeliveryMeta;
+    },
     author: User,
   ): Promise<Message | undefined>;
 
@@ -233,6 +301,44 @@ export abstract class Store {
   /** Record a provider-side id on an outbound message (for status reconciliation). */
   abstract setMessageChannelId(messageId: string, channelMsgId: string): Promise<void>;
 
+  /* ---- durable outbound delivery ---- */
+
+  /** Everything the delivery worker needs to (re)send a message by its id. */
+  abstract getOutboundMessage(messageId: string): Promise<OutboundMessageRef | undefined>;
+
+  /** Begin a send attempt: status→sending, attemptCount++, lastAttemptAt=now.
+   *  Returns undefined if the message is gone or already past the sending stage. */
+  abstract markMessageSending(messageId: string): Promise<MessageStatusChange | undefined>;
+
+  /** Provider accepted the send: persist its channel id (if any) and advance to
+   *  "sent", clearing any recorded error. Guarded by the status ladder. */
+  abstract markMessageSent(
+    messageId: string,
+    channelMsgId?: string,
+  ): Promise<MessageStatusChange | undefined>;
+
+  /** Record a failed send attempt. `permanent` flips the message to failed
+   *  (terminal) with `reason`; otherwise it stays in flight for the queue to
+   *  retry, and only the diagnostics (error/code) are recorded. */
+  abstract recordSendFailure(
+    messageId: string,
+    info: { error?: string; code?: string; permanent: boolean; reason?: string },
+  ): Promise<MessageStatusChange | undefined>;
+
+  /** Outbound messages still in flight (queued/sending) whose last attempt is
+   *  older than `olderThanMs` — used to re-enqueue after a restart/crash. The
+   *  idempotency key rides along so the re-enqueue reuses the same job identity. */
+  abstract listStuckOutbound(
+    olderThanMs: number,
+  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>>;
+
+  /** Reset a failed message to queued for a manual retry (new idempotency key,
+   *  failure fields cleared). Returns undefined if it isn't in a retryable state. */
+  abstract resetMessageForRetry(
+    messageId: string,
+    idempotencyKey: string,
+  ): Promise<MessageStatusChange | undefined>;
+
   /** Clear a conversation's unread flag + count (agent opened/read it). */
   abstract clearUnread(conversationId: string): Promise<Conversation | undefined>;
 
@@ -240,6 +346,15 @@ export abstract class Store {
 
   abstract getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined>;
   abstract getInboxByEmailAddress(address: string): Promise<Inbox | undefined>;
+
+  /* ---- webhook diagnostics (unmapped/unverified inbound) ---- */
+  abstract recordWebhookDiagnostic(input: {
+    channel: string;
+    kind: string;
+    reference?: string;
+    detail?: string;
+  }): Promise<void>;
+  abstract listWebhookDiagnostics(limit?: number): Promise<WebhookDiagnostic[]>;
   abstract getMembers(teamId: string): Promise<User[]>;
 
   /** Threading: find the conversation owning any message with one of these provider ids. */
@@ -271,6 +386,13 @@ export abstract class Store {
 
   /** Backend-only: the storage key + mime of an attachment, for serving media. */
   abstract getAttachment(id: string): Promise<StoredAttachmentRef | undefined>;
+
+  /** Media access info for the serving endpoint: the storage ref plus the org
+   *  that owns it (via its message's conversation), for the authorization check.
+   *  `orgId` is undefined for a staged upload not yet attached to a conversation. */
+  abstract getAttachmentAccess(
+    id: string,
+  ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined>;
 
   abstract updateMessageStatusByChannelId(
     channelMsgId: string,

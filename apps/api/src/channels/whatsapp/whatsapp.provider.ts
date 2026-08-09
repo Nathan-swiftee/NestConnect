@@ -120,7 +120,9 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   }
 
   async sendText(params: SendParams): Promise<SendResult> {
-    const creds = await this.credsFor(params.conversation.inboxId);
+    // Use the sending inbox (may differ from the conversation's for a
+    // cross-channel reply) to resolve this number's credentials.
+    const creds = await this.credsFor(params.inboxId ?? params.conversation.inboxId);
     const media = params.media ?? [];
     if (!creds) {
       const what = params.template
@@ -216,12 +218,23 @@ export class WhatsAppCloudProvider extends ChannelProvider {
         headers: { authorization: `Bearer ${creds.accessToken}`, "content-type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const json = (await res.json()) as { messages?: Array<{ id: string }>; error?: unknown };
-      if (!res.ok) return { ok: false, error: JSON.stringify(json.error ?? json) };
+      const json = (await res.json()) as {
+        messages?: Array<{ id: string }>;
+        error?: { code?: number; message?: string };
+      };
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: JSON.stringify(json.error ?? json),
+          errorCode: json.error?.code != null ? String(json.error.code) : undefined,
+          httpStatus: res.status,
+        };
+      }
       // Real WhatsApp reports delivered/read via status webhooks, so don't fake it.
       return { ok: true, channelMsgId: json.messages?.[0]?.id, simulated: false };
     } catch (err) {
-      return { ok: false, error: String(err) };
+      // Network/transport error before any HTTP response — transient, worth a retry.
+      return { ok: false, error: String(err), retryable: true };
     }
   }
 

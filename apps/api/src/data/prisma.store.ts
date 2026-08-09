@@ -9,12 +9,14 @@ import type {
   Contact,
   ContactWithConversations,
   Conversation,
+  ConversationPage,
   ConversationStatus,
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
   Member,
   Message,
+  MessagePage,
   MessageStatus,
   Participant,
   ParticipantRole,
@@ -26,13 +28,15 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
+import { CONVERSATIONS_PAGE_SIZE, MESSAGES_PAGE_SIZE } from "@ding/schemas";
+import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 import {
   canAdvanceStatus,
+  isWaChannel,
   mapAttachment,
   mapContact,
   mapConversation,
-  mapConversationWithMessages,
   mapInbox,
   mapMessage,
   mapParticipant,
@@ -44,19 +48,53 @@ import {
   previewForType,
 } from "./mappers";
 import { PrismaService } from "./prisma.service";
+import { SecretEncryptionService } from "../crypto/secret-encryption.service";
 import {
   Store,
   type AppendInboundInput,
   type AttachmentInput,
+  type MessageStatusChange,
+  type OutboundDeliveryMeta,
+  type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
   type ViewItem,
+  type WebhookDiagnostic,
 } from "./store";
 
 const convInclude = {
   contact: { include: { identities: true } },
   labels: { include: { label: true } },
 } satisfies Prisma.ConversationInclude;
+
+/** Keyset cursor for the (lastActivityAt desc, id desc) conversation ordering. */
+function encodeConvCursor(row: { lastActivityAt: Date; id: string }): string {
+  return Buffer.from(`${row.lastActivityAt.toISOString()}::${row.id}`).toString("base64url");
+}
+function decodeConvCursor(cursor?: string): { t: Date; id: string } | undefined {
+  if (!cursor) return undefined;
+  try {
+    const [t, id] = Buffer.from(cursor, "base64url").toString("utf8").split("::");
+    const date = new Date(t);
+    return id && !Number.isNaN(date.getTime()) ? { t: date, id } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** Clamp a requested page size into a sane range. */
+function pageLimit(requested: number | undefined, fallback: number): number {
+  const n = requested ?? fallback;
+  return Math.min(Math.max(Math.trunc(n) || fallback, 1), 100);
+}
+/** Keyset predicate: rows strictly after the cursor in (lastActivityAt, id) desc. */
+function keysetBefore(cur: { t: Date; id: string }): Prisma.ConversationWhereInput {
+  return {
+    OR: [
+      { lastActivityAt: { lt: cur.t } },
+      { AND: [{ lastActivityAt: cur.t }, { id: { lt: cur.id } }] },
+    ],
+  };
+}
 
 const AVATAR_PALETTE = [
   "linear-gradient(135deg,#F97316,#DB2777)",
@@ -70,12 +108,24 @@ const AVATAR_PALETTE = [
 /** Postgres-backed store (active when DATABASE_URL is set). */
 @Injectable()
 export class PrismaStore extends Store {
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: SecretEncryptionService,
+  ) {
     super();
   }
 
   get demoUserId(): string {
     return DEMO_USER_ID;
+  }
+
+  async healthCheck(): Promise<boolean> {
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -114,7 +164,10 @@ export class PrismaStore extends Store {
         name: params.name,
         handle: params.handle,
         routingStrategy: params.routingStrategy,
-        channelConfig: params.channelConfig ?? undefined,
+        // Encrypt credential fields (accessToken/providerToken/refreshToken) at rest.
+        channelConfig: params.channelConfig
+          ? this.crypto.encryptChannelConfig(params.channelConfig)
+          : undefined,
         teams: { create: params.teamIds.map((teamId) => ({ teamId })) },
       },
       include: { teams: true },
@@ -133,9 +186,15 @@ export class PrismaStore extends Store {
   ): Promise<Inbox | undefined> {
     const existing = await this.prisma.inbox.findUnique({ where: { id } });
     if (!existing) return undefined;
+    // Merge new (plaintext) fields over the stored config, encrypting the
+    // incoming secret fields. Existing secret fields are already ciphertext and
+    // are preserved as-is (encrypt() is idempotent, so no double-encryption).
     const mergedConfig =
       params.channelConfig !== undefined
-        ? { ...((existing.channelConfig as Record<string, string> | null) ?? {}), ...params.channelConfig }
+        ? {
+            ...((existing.channelConfig as Record<string, string> | null) ?? {}),
+            ...this.crypto.encryptChannelConfig(params.channelConfig),
+          }
         : undefined;
     const updated = await this.prisma.inbox.update({
       where: { id },
@@ -187,21 +246,25 @@ export class PrismaStore extends Store {
       where: { id },
       select: { channelConfig: true },
     });
-    return (row?.channelConfig as Record<string, string> | null) ?? undefined;
+    const config = (row?.channelConfig as Record<string, string> | null) ?? undefined;
+    // Decrypt credential fields so callers (providers) get plaintext tokens.
+    return config ? this.crypto.decryptChannelConfig(config) : undefined;
   }
 
   async getAppSetting(orgId: string, key: string): Promise<string | undefined> {
     const row = await this.prisma.appSetting.findUnique({
       where: { orgId_key: { orgId, key } },
     });
-    return row?.value ?? undefined;
+    if (row?.value == null) return undefined;
+    return this.crypto.decryptAppSetting(key, row.value);
   }
 
   async setAppSetting(orgId: string, key: string, value: string): Promise<void> {
+    const stored = this.crypto.encryptAppSetting(key, value);
     await this.prisma.appSetting.upsert({
       where: { orgId_key: { orgId, key } },
-      create: { orgId, key, value },
-      update: { value },
+      create: { orgId, key, value: stored },
+      update: { value: stored },
     });
   }
 
@@ -509,36 +572,62 @@ export class PrismaStore extends Store {
     return { id: "__none__" };
   }
 
-  async listConversations(view: string, userId: string): Promise<Conversation[]> {
+  async listConversations(
+    view: string,
+    userId: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage> {
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
-    const rows = await this.prisma.conversation.findMany({
-      where: this.buildWhere(view, userId, userTeams, token),
-      include: convInclude,
-      orderBy: { lastActivityAt: "desc" },
-    });
-    return rows.map(mapConversation);
+    const limit = pageLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
+    const cur = decodeConvCursor(opts?.cursor);
+    const base = this.buildWhere(view, userId, userTeams, token);
+    const where: Prisma.ConversationWhereInput = cur
+      ? { AND: [base, keysetBefore(cur)] }
+      : base;
+    return this.pageConversations(where, limit);
   }
 
-  async searchConversations(query: string): Promise<Conversation[]> {
+  async searchConversations(
+    query: string,
+    opts?: { cursor?: string; limit?: number },
+  ): Promise<ConversationPage> {
     const q = query.trim();
-    if (!q) return [];
+    if (!q) return { items: [], nextCursor: null };
+    const limit = pageLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
+    const cur = decodeConvCursor(opts?.cursor);
+    const match: Prisma.ConversationWhereInput = {
+      orgId: ORG_ID,
+      OR: [
+        { subject: { contains: q, mode: "insensitive" } },
+        { preview: { contains: q, mode: "insensitive" } },
+        { contact: { displayName: { contains: q, mode: "insensitive" } } },
+        { contact: { company: { contains: q, mode: "insensitive" } } },
+        { messages: { some: { body: { contains: q, mode: "insensitive" } } } },
+      ],
+    };
+    const where: Prisma.ConversationWhereInput = cur ? { AND: [match, keysetBefore(cur)] } : match;
+    return this.pageConversations(where, limit);
+  }
+
+  /** Run one keyset page of conversations and derive the next cursor. */
+  private async pageConversations(
+    where: Prisma.ConversationWhereInput,
+    limit: number,
+  ): Promise<ConversationPage> {
     const rows = await this.prisma.conversation.findMany({
-      where: {
-        orgId: ORG_ID,
-        OR: [
-          { subject: { contains: q, mode: "insensitive" } },
-          { preview: { contains: q, mode: "insensitive" } },
-          { contact: { displayName: { contains: q, mode: "insensitive" } } },
-          { contact: { company: { contains: q, mode: "insensitive" } } },
-          { messages: { some: { body: { contains: q, mode: "insensitive" } } } },
-        ],
-      },
+      where,
       include: convInclude,
-      orderBy: { lastActivityAt: "desc" },
-      take: 30,
+      orderBy: [{ lastActivityAt: "desc" }, { id: "desc" }],
+      take: limit + 1, // one extra row tells us whether another page exists
     });
-    return rows.map(mapConversation);
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const last = page[page.length - 1];
+    return {
+      items: page.map(mapConversation),
+      nextCursor: hasMore && last ? encodeConvCursor(last) : null,
+    };
   }
 
   async views(userId: string): Promise<SidebarViews> {
@@ -601,16 +690,64 @@ export class PrismaStore extends Store {
       where: { id },
       include: {
         ...convInclude,
-        messages: { include: { attachments: true } },
         participants: { include: { contact: { include: { identities: true } } } },
       },
     });
-    return row ? mapConversationWithMessages(row) : undefined;
+    if (!row) return undefined;
+    // Load only the most-recent page of messages (one extra row reveals whether
+    // older history exists) — never the full lifetime thread.
+    const latest = await this.prisma.message.findMany({
+      where: { conversationId: id },
+      include: { attachments: true },
+      orderBy: { seq: "desc" },
+      take: MESSAGES_PAGE_SIZE + 1,
+    });
+    const hasMoreMessages = latest.length > MESSAGES_PAGE_SIZE;
+    const page = (hasMoreMessages ? latest.slice(0, MESSAGES_PAGE_SIZE) : latest).reverse();
+    return {
+      ...mapConversation(row),
+      messages: page.map(mapMessage),
+      hasMoreMessages,
+      participants: row.participants.map(mapParticipant),
+    };
+  }
+
+  async listMessages(
+    conversationId: string,
+    opts?: { before?: string; limit?: number },
+  ): Promise<MessagePage> {
+    const limit = pageLimit(opts?.limit, MESSAGES_PAGE_SIZE);
+    const beforeSeq = opts?.before != null ? Number(opts.before) : undefined;
+    const older = await this.prisma.message.findMany({
+      where: {
+        conversationId,
+        ...(beforeSeq != null && Number.isFinite(beforeSeq) ? { seq: { lt: beforeSeq } } : {}),
+      },
+      include: { attachments: true },
+      orderBy: { seq: "desc" },
+      take: limit + 1,
+    });
+    const hasMore = older.length > limit;
+    const page = (hasMore ? older.slice(0, limit) : older).reverse(); // ascending for prepend
+    const oldest = page[0];
+    return {
+      items: page.map(mapMessage),
+      nextCursor: hasMore && oldest ? String(oldest.seq) : null,
+    };
   }
 
   async addMessage(
     conversationId: string,
-    input: { body: string; bodyHtml?: string; internal: boolean; attachmentIds?: string[]; quotedMsgId?: string },
+    input: {
+      body: string;
+      bodyHtml?: string;
+      internal: boolean;
+      attachmentIds?: string[];
+      quotedMsgId?: string;
+      channel?: ChannelType;
+      idempotencyKey?: string;
+      deliveryMeta?: OutboundDeliveryMeta;
+    },
     author: User,
   ): Promise<Message | undefined> {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
@@ -640,11 +777,15 @@ export class PrismaStore extends Store {
           body: input.body,
           bodyHtml: input.bodyHtml ?? null,
           // A real reply starts queued and climbs the delivery ladder as the
-          // channel confirms it (sent → delivered → read); notes have no ladder.
+          // channel confirms it (queued → sending → sent → delivered → read);
+          // notes have no ladder.
           status: input.internal ? "sent" : "queued",
           internal: input.internal,
           messageType,
+          channel: input.channel ?? null,
           quotedMsgId: input.quotedMsgId ?? null,
+          idempotencyKey: input.idempotencyKey ?? null,
+          deliveryMeta: (input.deliveryMeta as Prisma.InputJsonValue) ?? undefined,
           ...(staged.length ? { attachments: { connect: staged.map((a) => ({ id: a.id })) } } : {}),
         },
         include: { attachments: true },
@@ -653,10 +794,10 @@ export class PrismaStore extends Store {
         where: { id: conversationId },
         data: {
           seq,
-          lastActivityAt: new Date(),
           unread: false,
           unreadCount: 0,
-          ...(input.internal ? {} : { preview }),
+          // Only a real (non-note) message advances the card's time + list order.
+          ...(input.internal ? {} : { lastActivityAt: new Date(), preview }),
           ...(wakeSnooze ? { status: "open", snoozedUntil: null } : {}),
           ...(assignOnReply ? { assigneeUserId: author.id } : {}),
         },
@@ -675,7 +816,9 @@ export class PrismaStore extends Store {
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },
     byUserId?: string,
   ): Promise<Conversation | undefined> {
-    const data: Prisma.ConversationUpdateInput = { lastActivityAt: new Date() };
+    // Assignment must NOT reorder the list or reset the card's time — only real
+    // messages do that.
+    const data: Prisma.ConversationUpdateInput = {};
     if (input.assigneeUserId !== undefined)
       data.assignee = input.assigneeUserId
         ? { connect: { id: input.assigneeUserId } }
@@ -708,7 +851,6 @@ export class PrismaStore extends Store {
         where: { id: conversationId },
         data: {
           status,
-          lastActivityAt: new Date(),
           ...(status === "closed" ? { unread: false, unreadCount: 0 } : {}),
           ...(status !== "snoozed" ? { snoozedUntil: null } : {}),
         },
@@ -750,7 +892,7 @@ export class PrismaStore extends Store {
     try {
       const row = await this.prisma.conversation.update({
         where: { id: conversationId },
-        data: { status: "snoozed", snoozedUntil: new Date(until), unread: false, unreadCount: 0, lastActivityAt: new Date() },
+        data: { status: "snoozed", snoozedUntil: new Date(until), unread: false, unreadCount: 0 },
         include: convInclude,
       });
       return mapConversation(row);
@@ -767,6 +909,141 @@ export class PrismaStore extends Store {
     }
   }
 
+  /* ---- durable outbound delivery ---- */
+
+  async getOutboundMessage(messageId: string): Promise<OutboundMessageRef | undefined> {
+    const m = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: {
+        id: true,
+        conversationId: true,
+        status: true,
+        channelMsgId: true,
+        internal: true,
+        deliveryMeta: true,
+      },
+    });
+    if (!m) return undefined;
+    return {
+      messageId: m.id,
+      conversationId: m.conversationId,
+      status: m.status as MessageStatus,
+      channelMsgId: m.channelMsgId ?? undefined,
+      internal: m.internal,
+      deliveryMeta: (m.deliveryMeta as OutboundDeliveryMeta | null) ?? undefined,
+    };
+  }
+
+  async markMessageSending(messageId: string): Promise<MessageStatusChange | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    const current = msg.status as MessageStatus;
+    // Only a queued message (or one already mid-attempt on a retry) enters "sending".
+    if (current !== "queued" && current !== "sending") return undefined;
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { status: "sending", attemptCount: { increment: 1 }, lastAttemptAt: new Date() },
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  async markMessageSent(
+    messageId: string,
+    channelMsgId?: string,
+  ): Promise<MessageStatusChange | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    const current = msg.status as MessageStatus;
+    if (current === "failed") return undefined; // never resurrect a failed message
+    const data: Prisma.MessageUpdateInput = {
+      providerError: null,
+      providerErrorCode: null,
+      failureReason: null,
+    };
+    // Set the channel id once so out-of-order status webhooks can reconcile.
+    if (channelMsgId && !msg.channelMsgId) data.channelMsgId = channelMsgId;
+    // Advance to "sent" unless a delivered/read webhook already beat us there.
+    if (canAdvanceStatus(current, "sent")) data.status = "sent";
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data,
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  async recordSendFailure(
+    messageId: string,
+    info: { error?: string; code?: string; permanent: boolean; reason?: string },
+  ): Promise<MessageStatusChange | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    const current = msg.status as MessageStatus;
+    const data: Prisma.MessageUpdateInput = {
+      providerError: info.error ? info.error.slice(0, 500) : null,
+      providerErrorCode: info.code ?? null,
+    };
+    // A permanent failure flips the message to failed — but only if the ladder
+    // allows it (a delivered/read message stays; we just keep the diagnostics).
+    if (info.permanent && canAdvanceStatus(current, "failed")) {
+      data.status = "failed";
+      data.failureReason = info.reason ?? "Message could not be delivered";
+    }
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data,
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  async listStuckOutbound(
+    olderThanMs: number,
+  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>> {
+    const cutoff = new Date(Date.now() - olderThanMs);
+    const rows = await this.prisma.message.findMany({
+      where: {
+        direction: "out",
+        internal: false,
+        status: { in: ["queued", "sending"] },
+        OR: [{ lastAttemptAt: null }, { lastAttemptAt: { lte: cutoff } }],
+      },
+      select: { id: true, conversationId: true, idempotencyKey: true },
+      orderBy: { createdAt: "asc" },
+      take: 500,
+    });
+    return rows.map((r) => ({
+      messageId: r.id,
+      conversationId: r.conversationId,
+      idempotencyKey: r.idempotencyKey ?? undefined,
+    }));
+  }
+
+  async resetMessageForRetry(
+    messageId: string,
+    idempotencyKey: string,
+  ): Promise<MessageStatusChange | undefined> {
+    const msg = await this.prisma.message.findUnique({ where: { id: messageId } });
+    if (!msg) return undefined;
+    // Only a failed outbound message may be manually retried.
+    if (msg.direction !== "out" || msg.internal || (msg.status as MessageStatus) !== "failed") {
+      return undefined;
+    }
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        status: "queued",
+        failureReason: null,
+        providerError: null,
+        providerErrorCode: null,
+        idempotencyKey,
+      },
+      include: { attachments: true },
+    });
+    return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
   /* ---- ingestion ---- */
 
   async getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined> {
@@ -774,11 +1051,21 @@ export class PrismaStore extends Store {
       where: { orgId: ORG_ID, type: { in: ["whatsapp", "whatsapp_group"] } },
       include: { teams: true },
     });
+    // Deterministic: the inbox whose configured number matches this one.
     const byConfig = rows.find(
       (i) => (i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId === phoneNumberId,
     );
-    const target = byConfig ?? rows.find((i) => i.type === "whatsapp") ?? rows[0];
-    return target ? mapInbox(target) : undefined;
+    if (byConfig) return mapInbox(byConfig);
+    // Single-number env fallback: the globally-configured number maps to the one
+    // WhatsApp inbox that has no per-inbox number of its own. Still deterministic
+    // (keyed on the incoming number equalling env) — never an arbitrary inbox.
+    if (env.whatsapp.phoneNumberId && env.whatsapp.phoneNumberId === phoneNumberId) {
+      const envInbox = rows.find(
+        (i) => !(i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId,
+      );
+      if (envInbox) return mapInbox(envInbox);
+    }
+    return undefined; // no deterministic match — caller records a diagnostic
   }
 
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
@@ -787,8 +1074,41 @@ export class PrismaStore extends Store {
       include: { teams: true },
     });
     const a = address.trim().toLowerCase();
-    const match = rows.find((i) => i.handle.toLowerCase() === a) ?? rows[0];
+    // Deterministic match on the inbox address only — never fall back to an
+    // arbitrary inbox for mail addressed to an account we don't manage.
+    const match = rows.find((i) => i.handle.toLowerCase() === a);
     return match ? mapInbox(match) : undefined;
+  }
+
+  async recordWebhookDiagnostic(input: {
+    channel: string;
+    kind: string;
+    reference?: string;
+    detail?: string;
+  }): Promise<void> {
+    await this.prisma.webhookDiagnostic.create({
+      data: {
+        channel: input.channel,
+        kind: input.kind,
+        reference: input.reference ?? null,
+        detail: input.detail ?? null,
+      },
+    });
+  }
+
+  async listWebhookDiagnostics(limit = 100): Promise<WebhookDiagnostic[]> {
+    const rows = await this.prisma.webhookDiagnostic.findMany({
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Math.max(limit, 1), 500),
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      channel: r.channel,
+      kind: r.kind,
+      reference: r.reference ?? undefined,
+      detail: r.detail ?? undefined,
+      createdAt: r.createdAt.toISOString(),
+    }));
   }
 
   async findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined> {
@@ -839,9 +1159,13 @@ export class PrismaStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
+    // Unify by CONTACT across channels while a thread is open: an inbound on any
+    // channel (or an agent reaching out on another) threads into the customer's
+    // one open conversation. Once it's closed, the next message starts a new chat.
     const open = await this.prisma.conversation.findFirst({
-      where: { inboxId: params.inboxId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
+      where: { orgId: params.orgId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
       include: convInclude,
+      orderBy: { lastActivityAt: "desc" },
     });
     if (open) return { conversation: mapConversation(open), created: false };
 
@@ -887,6 +1211,7 @@ export class PrismaStore extends Store {
           bodyHtml: input.bodyHtml ?? null,
           status: "delivered",
           channelMsgId: input.channelMsgId,
+          channel: input.channel ?? null,
           messageType: input.messageType ?? "text",
           quotedMsgId: input.quotedMsgId ?? null,
           ...(input.attachments?.length
@@ -900,8 +1225,11 @@ export class PrismaStore extends Store {
         data: {
           seq,
           lastActivityAt: new Date(),
-          // An inbound message (re)opens the WhatsApp 24-hour window.
-          lastInboundAt: new Date(),
+          // Only a WhatsApp inbound (re)opens the WhatsApp 24-hour window — an
+          // email arriving in a cross-channel thread must not extend it.
+          ...(isWaChannel(input.channel ?? (conv.channel as ChannelType))
+            ? { lastInboundAt: new Date() }
+            : {}),
           unread: true,
           unreadCount: { increment: 1 },
           preview: input.body || previewForType(input.messageType),
@@ -915,6 +1243,27 @@ export class PrismaStore extends Store {
   async getAttachment(id: string): Promise<StoredAttachmentRef | undefined> {
     const a = await this.prisma.attachment.findUnique({ where: { id } });
     return a ? { storageKey: a.r2Key, mime: a.mime, filename: a.filename } : undefined;
+  }
+
+  async getAttachmentAccess(
+    id: string,
+  ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined> {
+    const a = await this.prisma.attachment.findUnique({
+      where: { id },
+      select: {
+        r2Key: true,
+        mime: true,
+        filename: true,
+        message: { select: { conversation: { select: { orgId: true } } } },
+      },
+    });
+    if (!a) return undefined;
+    return {
+      storageKey: a.r2Key,
+      mime: a.mime,
+      filename: a.filename,
+      orgId: a.message?.conversation.orgId,
+    };
   }
 
   async updateMessageStatusByChannelId(

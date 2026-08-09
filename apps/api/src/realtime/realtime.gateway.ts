@@ -22,8 +22,8 @@ import {
   type ServerToClientEvents,
 } from "@ding/schemas";
 import { env } from "../config/env";
-import { ORG_ID } from "../data/fixtures";
 import { Store } from "../data/store";
+import { TenantContext } from "../tenancy/tenant-context";
 
 type DingServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type DingSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -50,7 +50,10 @@ export class RealtimeGateway
 {
   private readonly logger = new Logger(RealtimeGateway.name);
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly tenant: TenantContext,
+  ) {}
 
   @WebSocketServer()
   server!: DingServer;
@@ -121,21 +124,25 @@ export class RealtimeGateway
     });
   }
 
-  /* ---- server-side emit helpers, called by services ---- */
+  /* ---- server-side emit helpers, called by services ----
+   * Events go to the owning org's room, so nothing ever crosses a tenant
+   * boundary. Conversation-carrying emits derive the org from the conversation;
+   * message emits take the org from the caller (falling back to the single-tenant
+   * default when a caller doesn't yet thread it — the TenantContext seam). */
 
-  emitMessageCreated(conversationId: string, message: Message) {
-    this.server.to(orgRoom(ORG_ID)).emit(ServerEvent.MessageCreated, { conversationId, message });
+  emitMessageCreated(conversationId: string, message: Message, orgId: string = this.tenant.defaultOrgId) {
+    this.server.to(orgRoom(orgId)).emit(ServerEvent.MessageCreated, { conversationId, message });
   }
 
-  emitMessageUpdated(conversationId: string, message: Message) {
-    this.server.to(orgRoom(ORG_ID)).emit(ServerEvent.MessageUpdated, { conversationId, message });
+  emitMessageUpdated(conversationId: string, message: Message, orgId: string = this.tenant.defaultOrgId) {
+    this.server.to(orgRoom(orgId)).emit(ServerEvent.MessageUpdated, { conversationId, message });
   }
 
   emitConversationAssigned(conversation: Conversation, by?: string, reason?: string) {
-    this.server.to(orgRoom(ORG_ID)).emit(ServerEvent.ConversationAssigned, { conversation, by, reason });
+    this.server.to(orgRoom(conversation.orgId)).emit(ServerEvent.ConversationAssigned, { conversation, by, reason });
   }
 
   emitConversationUpdated(conversation: Conversation) {
-    this.server.to(orgRoom(ORG_ID)).emit(ServerEvent.ConversationUpdated, { conversation });
+    this.server.to(orgRoom(conversation.orgId)).emit(ServerEvent.ConversationUpdated, { conversation });
   }
 }
