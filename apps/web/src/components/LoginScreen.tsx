@@ -1,63 +1,154 @@
 import { useState, type FormEvent } from "react";
 import { useLogin } from "../hooks";
-import { Logo } from "../lib/icons";
+import { Logo, channelMeta, CheckDouble, SendIcon } from "../lib/icons";
+
+const wa = channelMeta("whatsapp");
+const email = channelMeta("email");
 
 export function LoginScreen() {
   const login = useLogin();
-  const [email, setEmail] = useState("nathan@swiftee.co.uk");
+  const [emailAddr, setEmailAddr] = useState("nathan@swiftee.co.uk");
   const [password, setPassword] = useState("");
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    login.mutate({ email, password });
+    login.mutate({ email: emailAddr, password });
   };
 
   return (
     <div className="login">
-      <form className="login__card" onSubmit={submit}>
-        <div className="login__brand">
-          <div className="brandmark">
-            <Logo />
+      {/* ── Left: brushed hero with an animated, living app mockup ── */}
+      <section className="login__hero" aria-hidden="true">
+        <div className="hero__glow" />
+        <div className="hero__sheen" />
+
+        <div className="hero__content">
+          <div className="hero__brand">
+            <div className="brandmark">
+              <Logo />
+            </div>
+            <span className="wordmark">
+              Nest <span className="dot">Connect</span>
+            </span>
           </div>
-          <span className="wordmark">
-            Nest <span className="dot">Connect</span>
-          </span>
+
+          <h2 className="hero__title">
+            Positive culture,
+            <br />
+            <span className="hero__accent">snappy service.</span>
+          </h2>
+          <p className="hero__lead">
+            Every WhatsApp and email conversation in one calm, shared inbox — so your team stays in
+            sync and every customer gets a fast, human reply.
+          </p>
+
+          <div className="hero__mock">
+            <i className="hero__orb hero__orb--wa">
+              <wa.Glyph />
+            </i>
+            <i className="hero__orb hero__orb--mail">
+              <email.Glyph />
+            </i>
+
+            <div className="mock__win">
+              <div className="mock__bar">
+                <span className="mock__dot" />
+                <span className="mock__dot" />
+                <span className="mock__dot" />
+                <span className="mock__title">Shared inbox</span>
+                <span className="mock__badges">
+                  <i className="mock__badge mock__badge--wa">
+                    <wa.Glyph />
+                  </i>
+                  <i className="mock__badge mock__badge--mail">
+                    <email.Glyph />
+                  </i>
+                </span>
+              </div>
+
+              <div className="mock__body">
+                <div className="mock__row mock__row--in">
+                  <span className="mock__av">A</span>
+                  <div className="mock__bub">
+                    Hey! Any update on my order? 😊
+                    <span className="mock__time">9:41</span>
+                  </div>
+                </div>
+
+                <div className="mock__row mock__row--out">
+                  <div className="mock__bub mock__bub--out">
+                    Just shipped — landing tomorrow 🚀
+                    <span className="mock__ticks">
+                      <CheckDouble />
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mock__typing">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+              </div>
+
+              <div className="mock__composer">
+                <span className="mock__inputpill">Type a reply…</span>
+                <span className="mock__send">
+                  <SendIcon />
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-        <h1>Sign in to Nest Connect</h1>
-        <p className="login__sub">Your omnichannel team inbox</p>
+      </section>
 
-        <label className="field">
-          <span>Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="username"
-            required
-          />
-        </label>
-        <label className="field">
-          <span>Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            placeholder="••••••••"
-            required
-          />
-        </label>
+      {/* ── Right: the sign-in form ── */}
+      <section className="login__panel">
+        <form className="login__card" onSubmit={submit}>
+          <div className="login__brand">
+            <div className="brandmark">
+              <Logo />
+            </div>
+            <span className="wordmark">
+              Nest <span className="dot">Connect</span>
+            </span>
+          </div>
+          <h1>Welcome back</h1>
+          <p className="login__sub">Sign in to your team inbox</p>
 
-        {login.isError && <div className="login__err">Invalid email or password.</div>}
+          <label className="field">
+            <span>Email</span>
+            <input
+              type="email"
+              value={emailAddr}
+              onChange={(e) => setEmailAddr(e.target.value)}
+              autoComplete="username"
+              required
+            />
+          </label>
+          <label className="field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              placeholder="••••••••"
+              required
+            />
+          </label>
 
-        <button className="login__btn" type="submit" disabled={login.isPending}>
-          {login.isPending ? "Signing in…" : "Sign in"}
-        </button>
+          {login.isError && <div className="login__err">Invalid email or password.</div>}
 
-        <div className="login__hint">
-          Demo login — <b>nathan@swiftee.co.uk</b> / <b>ding1234</b>
-        </div>
-      </form>
+          <button className="login__btn" type="submit" disabled={login.isPending}>
+            {login.isPending ? "Signing in…" : "Sign in"}
+          </button>
+
+          <div className="login__hint">
+            Demo login — <b>nathan@swiftee.co.uk</b> / <b>ding1234</b>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

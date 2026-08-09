@@ -996,13 +996,117 @@ input,textarea{font:inherit}
 
 .center-note{display:grid;place-items:center;height:100%;color:var(--text-faint);font-size:13px;padding:20px;text-align:center}
 
-/* login */
-.login{height:100dvh;display:grid;place-items:center;padding:20px;overflow:auto;
-  background:radial-gradient(1100px 560px at 50% -12%, var(--brand-tint), transparent 60%), var(--bg)}
-.login__card{width:min(400px,92vw);background:var(--surface);border:1px solid var(--border);border-radius:var(--r-24);box-shadow:var(--shadow-lg);padding:30px 28px;display:flex;flex-direction:column;gap:12px}
-.login__brand{display:flex;align-items:center;gap:10px}
-.login__card h1{margin:8px 0 0;font-size:20px;font-weight:750;letter-spacing:-.02em}
-.login__sub{margin:0 0 6px;color:var(--text-muted);font-size:13px}
+/* ─── login — split hero + form ─────────────────────────────────────
+   Left: a light "brushed" panel with an animated, living app mockup.
+   Right: a clean sign-in card. Collapses to just the card on mobile. */
+.login{height:100dvh;display:grid;grid-template-columns:1.06fr .94fr;overflow:hidden;background:var(--bg)}
+
+/* per-theme brushed highlight/line strength (only bit that can't be a shared token) */
+.login__hero{--sheen:rgba(255,255,255,.55);--brush:rgba(13,21,18,.022)}
+@media (prefers-color-scheme:dark){.login__hero{--sheen:rgba(255,255,255,.05);--brush:rgba(0,0,0,.20)}}
+:root[data-theme="light"] .login__hero{--sheen:rgba(255,255,255,.55);--brush:rgba(13,21,18,.022)}
+:root[data-theme="dark"] .login__hero{--sheen:rgba(255,255,255,.05);--brush:rgba(0,0,0,.20)}
+
+.login__hero{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;
+  padding:clamp(40px,5vw,72px);
+  background:linear-gradient(158deg,var(--surface),var(--surface-2))}
+/* static brushed texture: soft brand blooms + fine metal striations */
+.login__hero::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(78% 58% at 14% 6%, var(--brand-tint), transparent 55%),
+    radial-gradient(74% 66% at 88% 96%, color-mix(in srgb,var(--brand) 13%,transparent), transparent 60%),
+    repeating-linear-gradient(116deg, var(--sheen) 0 1.5px, var(--brush) 1.5px 3.5px)}
+/* two slow-drifting light blooms for depth */
+.hero__glow{position:absolute;inset:0;pointer-events:none;z-index:0}
+.hero__glow::before,.hero__glow::after{content:"";position:absolute;border-radius:50%;filter:blur(64px)}
+.hero__glow::before{width:44%;aspect-ratio:1;left:-8%;top:-10%;
+  background:radial-gradient(circle,var(--brand-tint),transparent 70%);animation:heroDrift1 17s ease-in-out infinite}
+.hero__glow::after{width:38%;aspect-ratio:1;right:-6%;bottom:-8%;
+  background:radial-gradient(circle,color-mix(in srgb,var(--brand) 22%,transparent),transparent 70%);animation:heroDrift2 21s ease-in-out infinite}
+@keyframes heroDrift1{0%,100%{transform:translate(0,0)}50%{transform:translate(24px,18px)}}
+@keyframes heroDrift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-26px,-16px)}}
+/* a single soft glint that sweeps across, brushed-metal style */
+.hero__sheen{position:absolute;inset:-30% -20%;pointer-events:none;z-index:1;
+  background:linear-gradient(114deg,transparent 42%,var(--sheen) 49%,transparent 57%);
+  transform:translateX(-40%);animation:heroSheen 11s var(--ease) infinite}
+@keyframes heroSheen{0%,8%{transform:translateX(-45%)}60%,100%{transform:translateX(65%)}}
+
+.hero__content{position:relative;z-index:2;width:min(540px,100%);display:flex;flex-direction:column;gap:20px}
+.hero__brand{display:flex;align-items:center;gap:11px}
+.hero__title{margin:2px 0 0;font-size:clamp(30px,3.7vw,46px);font-weight:800;letter-spacing:-.032em;line-height:1.04;color:var(--text)}
+.hero__accent{background:linear-gradient(100deg,var(--brand-strong),var(--brand),#43D6AB,var(--brand-strong));
+  background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;
+  animation:heroShimmer 7s linear infinite}
+@keyframes heroShimmer{to{background-position:220% 0}}
+.hero__lead{margin:0;max-width:45ch;font-size:clamp(14px,1.25vw,16px);line-height:1.55;color:var(--text-muted)}
+
+/* ── animated app mockup ── */
+.hero__mock{position:relative;margin-top:10px;width:min(430px,100%);align-self:flex-start}
+.mock__win{position:relative;z-index:2;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-20);box-shadow:var(--shadow-lg);overflow:hidden;transform-origin:center;
+  animation:mockFloat 8s ease-in-out infinite}
+@keyframes mockFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
+.mock__bar{display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+.mock__dot{width:9px;height:9px;border-radius:50%}
+.mock__dot:nth-child(1){background:#F5928B}
+.mock__dot:nth-child(2){background:#F6C264}
+.mock__dot:nth-child(3){background:#7FD59B}
+.mock__title{margin-left:5px;font-size:12px;font-weight:650;color:var(--text-muted)}
+.mock__badges{margin-left:auto;display:flex;gap:6px}
+.mock__badge{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;color:#fff}
+.mock__badge svg{width:13px;height:13px}
+.mock__badge--wa{background:var(--wa)}
+.mock__badge--mail{background:var(--email)}
+.mock__body{padding:16px 15px;display:flex;flex-direction:column;gap:11px;min-height:150px}
+.mock__composer{display:flex;align-items:center;gap:9px;padding:11px 13px;border-top:1px solid var(--border);background:var(--surface)}
+.mock__inputpill{flex:1;padding:8px 13px;border-radius:var(--r-full);background:var(--surface-2);color:var(--text-faint);font-size:12px}
+.mock__send{width:30px;height:30px;flex:none;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center}
+.mock__send svg{width:16px;height:16px}
+.mock__row{display:flex;align-items:flex-end;gap:8px;opacity:0;animation:mockIn .6s var(--ease) forwards}
+.mock__row--in{animation-delay:.4s}
+.mock__row--out{flex-direction:row-reverse;animation-delay:1s}
+@keyframes mockIn{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}
+.mock__av{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center;
+  font-size:11px;font-weight:700;color:#fff;background:#E08B4C}
+.mock__bub{position:relative;max-width:76%;padding:8px 11px;border-radius:14px;font-size:12.5px;line-height:1.4;
+  background:var(--surface-2);color:var(--text);border-bottom-left-radius:5px}
+.mock__bub--out{background:var(--brand);color:#fff;border-bottom-left-radius:14px;border-bottom-right-radius:5px}
+.mock__time{margin-left:8px;font-size:10px;font-weight:600;color:var(--text-faint);vertical-align:1px}
+.mock__ticks{display:inline-flex;margin-left:7px;vertical-align:-1px;color:#BFE7FF;animation:mockRead .5s var(--ease) 2s both}
+.mock__ticks svg{width:16px;height:11px}
+@keyframes mockRead{from{color:rgba(255,255,255,.75);transform:scale(.85)}to{color:#BFE7FF;transform:none}}
+.mock__typing{align-self:flex-start;display:flex;gap:4px;padding:10px 12px;border-radius:14px;border-bottom-left-radius:5px;
+  background:var(--surface-2);opacity:0;animation:mockIn .6s var(--ease) 1.7s forwards}
+.mock__typing span{width:6px;height:6px;border-radius:50%;background:var(--text-faint);animation:mockDots 1.3s ease-in-out infinite}
+.mock__typing span:nth-child(2){animation-delay:.18s}
+.mock__typing span:nth-child(3){animation-delay:.36s}
+@keyframes mockDots{0%,60%,100%{transform:translateY(0);opacity:.35}30%{transform:translateY(-4px);opacity:1}}
+/* floating channel orbs hugging the window edges */
+.hero__orb{position:absolute;z-index:3;width:46px;height:46px;border-radius:15px;display:grid;place-items:center;
+  color:#fff;box-shadow:var(--shadow-pop);border:1px solid rgba(255,255,255,.45)}
+.hero__orb svg{width:25px;height:25px}
+.hero__orb--wa{background:var(--wa);top:-19px;right:30px;animation:mockBob 5.5s ease-in-out infinite}
+.hero__orb--mail{background:var(--email);bottom:22px;left:-22px;animation:mockBob 6.5s ease-in-out infinite .7s}
+@keyframes mockBob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-11px) rotate(4deg)}}
+
+/* ── right panel + form ── */
+.login__panel{display:flex;align-items:center;justify-content:center;padding:40px 28px;overflow:auto;background:var(--bg)}
+.login__card{width:min(380px,100%);display:flex;flex-direction:column;gap:13px}
+.login__brand{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.login__card h1{margin:8px 0 0;font-size:24px;font-weight:800;letter-spacing:-.025em}
+.login__sub{margin:0 0 8px;color:var(--text-muted);font-size:13.5px}
+
+@media (max-width:900px){
+  .login{grid-template-columns:1fr}
+  .login__hero{display:none}
+  .login__panel{background:radial-gradient(1000px 520px at 50% -14%,var(--brand-tint),transparent 60%),var(--bg)}
+}
+@media (prefers-reduced-motion:reduce){
+  .hero__glow::before,.hero__glow::after,.hero__sheen,.mock__win,.hero__accent,
+  .hero__orb,.mock__typing span,.mock__ticks{animation:none}
+  .mock__row,.mock__typing{opacity:1;transform:none;animation:none}
+}
+
 .field{display:flex;flex-direction:column;gap:6px;font-size:12.5px;font-weight:600;color:var(--text-muted)}
 .login__err{color:var(--danger);font-size:12.5px;font-weight:600;background:var(--danger-tint);padding:8px 11px;border-radius:var(--r-8)}
 .login__btn{margin-top:6px;padding:12px;border-radius:var(--r-12);font-weight:700;font-size:14px;color:#fff;
