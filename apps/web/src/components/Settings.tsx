@@ -25,7 +25,7 @@ import {
   useUpdateTemplate,
   useUpdateUser,
 } from "../hooks";
-import { initials } from "../lib/format";
+import { initials, avatarBg } from "../lib/format";
 import { TEMPLATE_CATEGORIES, approvalMeta, countVariables } from "./TemplatePicker";
 import {
   channelMeta,
@@ -937,7 +937,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
           return (
             <div className="setmember" key={m.user.id}>
               <div className="setrow">
-                <span className="av" style={{ background: m.user.avatarColor, width: 34, height: 34, fontSize: 12 }}>
+                <span className="av" style={{ background: avatarBg(m.user.name, m.user.avatarColor), width: 34, height: 34, fontSize: 12 }}>
                   {initials(m.user.name)}
                 </span>
                 <div className="setrow__main">

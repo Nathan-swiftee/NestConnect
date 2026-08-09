@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useAssign, useConversations, useMe, useSnooze, useTeams } from "../hooks";
 import { channelMeta, BackIcon, ProfileIcon, RouteIcon, SnoozeIcon, SearchIcon } from "../lib/icons";
 import { useScrollLock } from "../lib/useScrollLock";
+import { useHoverGlide } from "../lib/useHoverGlide";
 
 interface Props {
   conversationId: string | null;
@@ -32,6 +33,7 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
   const inputRef = useRef<HTMLInputElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   useScrollLock(boxRef);
+  const { containerRef: listRef, thumbRef: glideRef, hoverProps: listHover } = useHoverGlide<HTMLDivElement>(".cmditem", "xy");
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -169,7 +171,8 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
             placeholder={mode === "route" ? "Route to which team?" : "Search conversations, route, assign, snooze…"}
           />
         </div>
-        <div className="cmdk__list">
+        <div className="cmdk__list" ref={listRef} {...listHover}>
+          <span className="glide" ref={glideRef} aria-hidden="true" />
           {groups.map(([group, items]) => (
             <div key={group}>
               <div className="cmdk__grp">{group}</div>

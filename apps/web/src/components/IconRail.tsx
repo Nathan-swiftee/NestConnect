@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLogout, useMe, useSound, useTheme } from "../hooks";
-import { initials } from "../lib/format";
+import { initials, avatarBg } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 import {
   Logo,
@@ -78,7 +78,7 @@ export function IconRail({
         <button
           className="avatar-me"
           title={me ? me.name : "You"}
-          style={{ background: me?.avatarColor }}
+          style={{ background: avatarBg(me?.name ?? "", me?.avatarColor) }}
           onClick={() => setMenu((v) => !v)}
         >
           {me ? initials(me.name) : "··"}

@@ -8,7 +8,7 @@ import {
   useTeams,
   useUpdateContact,
 } from "../hooks";
-import { initials, relativeTime } from "../lib/format";
+import { initials, relativeTime, avatarBg } from "../lib/format";
 import { TagEditor } from "./TagEditor";
 import {
   channelMeta,
@@ -390,7 +390,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
               return (
                 <div className="setmember" key={c.id} ref={c.id === focusContactId ? focusRef : undefined}>
                   <div className="setrow">
-                    <span className="av" style={{ background: c.avatarColor, width: 38, height: 38, fontSize: 13 }}>
+                    <span className="av" style={{ background: avatarBg(c.displayName, c.avatarColor), width: 38, height: 38, fontSize: 13 }}>
                       {initials(c.displayName)}
                     </span>
                     <div className="setrow__main">

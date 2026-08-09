@@ -10,7 +10,7 @@ import { ClientEvent, ServerEvent } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages } from "../hooks";
 import { api } from "../lib/api";
 import { getSocket } from "../lib/socket";
-import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft } from "../lib/format";
+import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { playSent, unlock } from "../lib/sound";
 import { TemplatePicker } from "./TemplatePicker";
@@ -1519,7 +1519,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </button>
         )}
         <div className="thread__id">
-          <div className="av" style={{ background: conv.contact.avatarColor, width: 40, height: 40, fontSize: 14 }}>
+          <div className="av" style={{ background: avatarBg(conv.contact.displayName, conv.contact.avatarColor), width: 40, height: 40, fontSize: 14 }}>
             {initials(conv.contact.displayName)}
           </div>
           <div className="who">
@@ -1552,7 +1552,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           <button className="assignbtn" onClick={() => { setMenu((v) => !v); setSnoozeMenu(false); }}>
             {owned ? (
               <>
-                <span className="mini" style={{ background: me?.user.avatarColor }}>
+                <span className="mini" style={{ background: avatarBg(me?.user.name ?? "", me?.user.avatarColor) }}>
                   {me ? initials(me.user.name) : ""}
                 </span>
                 <span className="lbl">Assigned to you</span>

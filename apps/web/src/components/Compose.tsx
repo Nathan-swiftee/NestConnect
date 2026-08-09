@@ -4,7 +4,9 @@ import type { Contact } from "@ding/schemas";
 import { useContacts } from "../hooks";
 import { api } from "../lib/api";
 import { channelMeta, XIcon, BackIcon, SearchIcon } from "../lib/icons";
+import { avatarBg } from "../lib/format";
 import { useScrollLock } from "../lib/useScrollLock";
+import { useHoverGlide } from "../lib/useHoverGlide";
 
 type Channel = "whatsapp" | "email";
 
@@ -65,6 +67,7 @@ export function Compose({
   const { data: contacts } = useContacts();
   const boxRef = useRef<HTMLDivElement>(null);
   useScrollLock(boxRef);
+  const { containerRef: listRef, thumbRef: glideRef, hoverProps: listHover } = useHoverGlide<HTMLDivElement>(".compose__row", "xy");
   const [tab, setTab] = useState<"pick" | "new">("pick");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Contact | null>(null);
@@ -132,7 +135,7 @@ export function Compose({
               <BackIcon /> Choose a different customer
             </button>
             <div className="compose__who">
-              <span className="compose__av" style={{ background: selected.avatarColor }}>
+              <span className="compose__av" style={{ background: avatarBg(selected.displayName, selected.avatarColor) }}>
                 {selected.displayName.slice(0, 2).toUpperCase()}
               </span>
               <span className="compose__whom">
@@ -174,13 +177,14 @@ export function Compose({
                   <SearchIcon />
                   <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers by name, company, email or phone…" aria-label="Search customers" />
                 </div>
-                <div className="compose__list">
+                <div className="compose__list" ref={listRef} {...listHover}>
+                  <span className="glide" ref={glideRef} aria-hidden="true" />
                   {filtered.length === 0 ? (
                     <p className="compose__empty">No customers match — try “New customer”.</p>
                   ) : (
                     filtered.map((c) => (
                       <button type="button" key={c.id} className="compose__row" onClick={() => setSelected(c)}>
-                        <span className="compose__av" style={{ background: c.avatarColor }}>
+                        <span className="compose__av" style={{ background: avatarBg(c.displayName, c.avatarColor) }}>
                           {c.displayName.slice(0, 2).toUpperCase()}
                         </span>
                         <span className="compose__rowm">

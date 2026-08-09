@@ -276,6 +276,10 @@ input,textarea{font:inherit}
 /* keep scroll inside these panes — no chaining/rubber-band that drags the
    thread header or list header out of place on touch devices */
 .convs,.msgs,.side__scroll,.panel__scroll,.cmdk__list,.modal__body,.compose__list,.tpl-list{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+/* The overlays lock touch (touch-action:none on .cmdk/.modal) so the page can't
+   drift behind them; re-enable vertical panning on their own scroll regions so
+   the list — not the page — scrolls under a finger on mobile. */
+.cmdk__list,.modal__body,.compose__list,.tpl-list{touch-action:pan-y}
 .empty{padding:40px 20px;text-align:center;color:var(--text-faint);font-size:13px}
 .conv{width:100%;display:grid;grid-template-columns:44px 1fr;gap:11px;padding:12px 15px;text-align:left;border-bottom:1px solid var(--border);position:relative;transition:background .14s}
 .conv:hover{background:var(--surface)}
@@ -657,8 +661,7 @@ input,textarea{font:inherit}
 .compose__search input{flex:1;border:0;background:none;outline:none;color:var(--text);font-size:14px}
 .compose__list{max-height:min(46vh,340px);overflow-y:auto;display:flex;flex-direction:column;gap:2px}
 .compose__empty{color:var(--text-faint);font-size:13px;padding:18px 4px;text-align:center}
-.compose__row{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:var(--r-12);cursor:pointer;text-align:left;transition:background .12s}
-.compose__row:hover{background:var(--surface-2)}
+.compose__row{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:var(--r-12);cursor:pointer;text-align:left}
 .compose__av{width:34px;height:34px;flex:0 0 34px;border-radius:var(--r-full);display:grid;place-items:center;color:#fff;font-size:12px;font-weight:800}
 .compose__rowm{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .compose__rowm b{font-size:13.5px;font-weight:650}
@@ -906,7 +909,7 @@ input,textarea{font:inherit}
 /* command palette — floating polished glass */
 /* Only a whisper of scrim so the palette's glass refracts the live app behind it
    (like the assign dropdown), instead of sitting on a flat grey wash. */
-.cmdk{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 30%,transparent);backdrop-filter:saturate(120%) blur(2px);-webkit-backdrop-filter:saturate(120%) blur(2px);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;animation:overlayIn .2s ease}
+.cmdk{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 30%,transparent);backdrop-filter:saturate(120%) blur(2px);-webkit-backdrop-filter:saturate(120%) blur(2px);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;touch-action:none;animation:overlayIn .2s ease}
 /* Cap the box to the viewport and let the list be the flex scroll region, so it
    scrolls within the popup on every screen (incl. mobile) instead of overflowing. */
 .cmdk__box{margin-top:12vh;width:min(560px,92vw);max-height:76vh;display:flex;flex-direction:column;border-radius:var(--r-20);overflow:hidden;animation:sheetIn .26s var(--ease)}
@@ -915,10 +918,19 @@ input,textarea{font:inherit}
 .cmdk__in input{flex:1;border:0;background:none;outline:none;color:var(--text);font-size:15px}
 .cmdk__list{padding:8px;flex:1;min-height:0;overflow-y:auto}
 .cmdk__grp{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);padding:9px 10px 4px}
-.cmditem{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:var(--r-12);width:100%;text-align:left;transition:background .12s}
-.cmditem:hover,.cmditem.sel{background:var(--brand-tint)}
-.cmditem .ic{width:30px;height:30px;border-radius:var(--r-8);background:var(--surface-2);display:grid;place-items:center;color:var(--text-muted);flex:0 0 30px}
+.cmditem{position:relative;z-index:1;display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:var(--r-12);width:100%;text-align:left;transition:background .12s}
+/* the keyboard-selected row keeps the solid brand tint; hover is the glide below */
+.cmditem.sel{background:var(--brand-tint)}
+.cmditem .ic{width:30px;height:30px;border-radius:var(--r-8);background:var(--surface-2);display:grid;place-items:center;color:var(--text-muted);flex:0 0 30px;transition:background .14s,color .14s}
 .cmditem:hover .ic,.cmditem.sel .ic{background:var(--brand);color:#fff}
+
+/* Hover-glide capsule for pop-up lists — same feel as the sidebar/nav hover.
+   Lives inside the (position:relative) scroll list so it tracks under the cursor
+   and scrolls with the rows. */
+.cmdk__list,.compose__list{position:relative}
+.glide{position:absolute;top:0;left:0;z-index:0;border-radius:var(--r-12);background:var(--surface-2);opacity:0;pointer-events:none;will-change:transform,width,height;
+  transition:transform .2s cubic-bezier(.4,0,.2,1),width .2s cubic-bezier(.4,0,.2,1),height .2s cubic-bezier(.4,0,.2,1),opacity .16s ease}
+.compose__row{position:relative;z-index:1}
 .cmditem .ic svg{width:16px;height:16px}
 .cmditem .lbl{flex:1;min-width:0;font-weight:600}
 .cmditem .lbl small{display:block;font-weight:500;color:var(--text-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -966,7 +978,7 @@ input,textarea{font:inherit}
 /* modal — a sheet of thick polished glass, floating forward */
 /* Light, bg-tinted frosted scrim (not a dark wash) so the glass box on top reads
    like the app's dropdowns/menus rather than a muddy dark panel. */
-.modal{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 45%,transparent);backdrop-filter:saturate(120%) blur(4px);-webkit-backdrop-filter:saturate(120%) blur(4px);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;animation:overlayIn .2s ease}
+.modal{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 45%,transparent);backdrop-filter:saturate(120%) blur(4px);-webkit-backdrop-filter:saturate(120%) blur(4px);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;touch-action:none;animation:overlayIn .2s ease}
 .modal__box{margin-top:9vh;width:min(460px,94vw);border-radius:var(--r-20);overflow:hidden;display:flex;flex-direction:column;animation:sheetIn .26s var(--ease)}
 .modal__head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--glass-line)}
 .modal__head h2{margin:0;font-size:16px;font-weight:750}

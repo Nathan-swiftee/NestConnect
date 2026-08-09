@@ -16,7 +16,7 @@ import {
   XIcon,
   channelMeta,
 } from "../lib/icons";
-import { initials } from "../lib/format";
+import { initials, avatarBg } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 
 interface Props {
@@ -259,7 +259,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
 
       <div className="side__foot">
         <div className="side__me">
-          <span className="av" style={{ background: me?.avatarColor, width: 34, height: 34, fontSize: 12 }}>
+          <span className="av" style={{ background: avatarBg(me?.name ?? "", me?.avatarColor), width: 34, height: 34, fontSize: 12 }}>
             {me ? initials(me.name) : "··"}
           </span>
           <div className="side__me-id">
