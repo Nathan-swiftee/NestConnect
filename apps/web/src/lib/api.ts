@@ -174,6 +174,9 @@ export const api = {
   // React to a message with an emoji (empty string removes the agent's reaction).
   react: (conversationId: string, messageId: string, emoji: string) =>
     post<Message>(`/conversations/${conversationId}/messages/${messageId}/react`, { emoji }),
+  // Re-queue a failed outbound message for another delivery attempt.
+  retryMessage: (conversationId: string, messageId: string) =>
+    post<Message>(`/conversations/${conversationId}/messages/${messageId}/retry`, {}),
   // WhatsApp message templates (for replying once a 24-hour window has closed)
   templates: () => get<Template[]>("/templates"),
   createTemplate: (input: CreateTemplateInput) => post<Template>("/templates", input),

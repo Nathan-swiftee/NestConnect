@@ -32,6 +32,16 @@ export class EmailProvider extends ChannelProvider {
     const subject = this.replySubject(params.context?.subject);
 
     if (!this.isLive) {
+      // No Postmark token → email sending isn't configured. Fail honestly so the
+      // agent sees it; only the explicit dev flag fakes a successful send.
+      if (!env.mockMessaging) {
+        return {
+          ok: false,
+          retryable: false,
+          error: "Email sending is not configured (missing Postmark token)",
+          errorCode: "not_connected",
+        };
+      }
       this.logger.log(`[mock] Email → ${params.to} · "${subject}"`);
       return { ok: true, channelMsgId: messageId };
     }

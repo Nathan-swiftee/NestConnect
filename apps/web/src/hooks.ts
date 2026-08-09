@@ -396,6 +396,19 @@ export function useReact() {
   });
 }
 
+/** Retry a failed outbound send: re-queues the message for delivery. The status
+ *  ticks then flow back over the socket (sending → sent | failed again). */
+export function useRetryMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { conversationId: string; messageId: string }) =>
+      api.retryMessage(v.conversationId, v.messageId),
+    onSuccess: (_msg, v) => {
+      qc.invalidateQueries({ queryKey: ["conversation", v.conversationId] });
+    },
+  });
+}
+
 /** Mark a conversation read: clears the unread badge and sends a WhatsApp read
  *  receipt (blue ticks) for the customer's latest message. Idempotent server-side. */
 export function useMarkRead() {

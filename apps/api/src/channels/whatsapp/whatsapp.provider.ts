@@ -125,6 +125,17 @@ export class WhatsAppCloudProvider extends ChannelProvider {
     const creds = await this.credsFor(params.inboxId ?? params.conversation.inboxId);
     const media = params.media ?? [];
     if (!creds) {
+      // No live credentials for this number. In production (and by default) this
+      // is a real, non-retryable failure the agent must see; only the explicit
+      // dev flag fakes a successful send.
+      if (!env.mockMessaging) {
+        return {
+          ok: false,
+          retryable: false,
+          error: "WhatsApp number is not connected (missing access token / phone-number-id)",
+          errorCode: "not_connected",
+        };
+      }
       const what = params.template
         ? `template "${params.template.name}" [${params.template.params.join(", ")}]`
         : media.length

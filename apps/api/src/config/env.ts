@@ -26,7 +26,8 @@ export const env = {
     verifyToken: process.env.WHATSAPP_VERIFY_TOKEN ?? "ding-dev-verify",
     // App secret → validates X-Hub-Signature-256 on inbound webhooks (optional in dev).
     appSecret: process.env.WHATSAPP_APP_SECRET ?? "",
-    // Access token + phone number id → enables live sending (else the provider mocks).
+    // Access token + phone number id → enables live sending. Without them a send
+    // fails (or is faked only when MOCK_MESSAGING=true in dev).
     token: process.env.WHATSAPP_TOKEN ?? "",
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
     apiVersion: process.env.WHATSAPP_API_VERSION ?? "v21.0",
@@ -45,7 +46,8 @@ export const env = {
   // SHA-256. Unset ⇒ encryption disabled (secrets stored as plaintext).
   secretKey: process.env.SECRET_ENCRYPTION_KEY ?? "",
   email: {
-    // Postmark server token → enables live sending (else the provider mocks).
+    // Postmark server token → enables live sending. Without it a send fails
+    // (or is faked only when MOCK_MESSAGING=true in dev).
     postmarkToken: process.env.POSTMARK_TOKEN ?? "",
     // Address outbound email is sent from, and the domain used to mint Message-IDs.
     from: process.env.EMAIL_FROM ?? "support@swiftee.co.uk",
@@ -85,6 +87,14 @@ export const env = {
   },
   get emailLive() {
     return Boolean(this.email.postmarkToken);
+  },
+  /** Dev/demo escape hatch. When MOCK_MESSAGING=true (and NOT production), a send
+   *  on an unconnected channel is faked so the flow is exercisable without live
+   *  credentials. Off by default and force-off in production, where an
+   *  unconnected channel fails the send — surfaced to the agent — instead of
+   *  silently pretending the message went out. */
+  get mockMessaging() {
+    return !this.isProd && process.env.MOCK_MESSAGING === "true";
   },
   get isProd() {
     return process.env.NODE_ENV === "production";

@@ -7,7 +7,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages, usePeople } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages, usePeople, useRetryMessage } from "../hooks";
 import { api } from "../lib/api";
 import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
@@ -378,6 +378,7 @@ function MessageBubble({
   onImage,
   actions,
   convChannel,
+  onRetry,
 }: {
   m: Message;
   quoted?: Message;
@@ -386,6 +387,8 @@ function MessageBubble({
   /** The conversation's own channel — a message on a different one (cross-channel
    *  reply) carries a small badge so the mixed thread stays legible. */
   convChannel: ChannelType;
+  /** Re-attempt delivery of this message (shown only on a failed outbound send). */
+  onRetry?: (messageId: string) => void;
 }) {
   const out = m.direction === "out";
   const atts = m.attachments ?? [];
@@ -463,6 +466,18 @@ function MessageBubble({
             {out && !m.internal && <StatusTick status={m.status} />}
           </span>
         </div>
+
+        {out && m.status === "failed" && (
+          <div className="msgfail" role="alert">
+            <AlertIcon />
+            <span className="msgfail__txt">{m.failureReason || "Not delivered"}</span>
+            {onRetry && (
+              <button type="button" className="msgfail__retry" onClick={() => onRetry(m.id)}>
+                Retry
+              </button>
+            )}
+          </div>
+        )}
 
         {actions && !actions.reactOpen && (
           <div className="msg__act" role="group" aria-label="Message actions">
@@ -731,6 +746,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const snooze = useSnooze();
   const { mutate: markRead } = useMarkRead();
   const { mutate: react } = useReact();
+  const { mutate: retry } = useRetryMessage();
   const { data: people } = usePeople();
 
   const [text, setText] = useState("");
@@ -1153,6 +1169,15 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const applyReaction = (messageId: string, emoji: string) => {
     react({ conversationId: conv.id, messageId, emoji });
     setReactFor(null);
+  };
+
+  // Re-attempt a failed send; a genuinely un-retryable one (e.g. channel still
+  // not connected) surfaces as a toast rather than silently doing nothing.
+  const retrySend = (messageId: string) => {
+    retry(
+      { conversationId: conv.id, messageId },
+      { onError: () => onToast("Couldn’t retry — check the channel is connected in Settings.") },
+    );
   };
 
   // Scroll to a quoted message and flash it so the reply's target is obvious.
@@ -1715,6 +1740,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   convChannel={conv.channel}
                   quoted={m.quotedMsgId ? msgById.get(m.quotedMsgId) : undefined}
                   onImage={setLightbox}
+                  onRetry={retrySend}
                   actions={
                     conv.channel === "whatsapp" || conv.channel === "whatsapp_group"
                       ? {

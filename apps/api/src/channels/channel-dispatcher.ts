@@ -190,6 +190,7 @@ export class ChannelDispatcher {
 /** A short, user-facing failure reason derived from a provider send result. */
 function shortReason(channel: string, result: { httpStatus?: number; errorCode?: string }): string {
   const label = channel === "email" ? "Email" : "WhatsApp";
+  if (result.errorCode === "not_connected") return `${label} isn’t connected`;
   if (result.httpStatus === 401 || result.httpStatus === 403) return `${label}: authentication rejected`;
   if (result.httpStatus === 429) return `${label}: rate limited`;
   if (result.httpStatus && result.httpStatus >= 500) return `${label}: provider error (${result.httpStatus})`;

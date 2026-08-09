@@ -283,7 +283,7 @@ input,textarea{font:inherit}
 .empty{padding:40px 20px;text-align:center;color:var(--text-faint);font-size:13px}
 .conv{width:100%;display:grid;grid-template-columns:44px 1fr;gap:11px;padding:12px 15px;text-align:left;position:relative;transition:background .14s}
 /* WhatsApp-style divider: indented past the avatar, never running edge-to-edge */
-.conv::after{content:"";position:absolute;left:70px;right:0;bottom:0;height:1px;background:var(--border)}
+.conv::after{content:"";position:absolute;left:70px;right:15px;bottom:0;height:1px;background:var(--border)}
 .conv:hover{background:var(--surface-2)}
 .conv.active{background:var(--brand-tint)}
 .conv.active::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand)}
@@ -504,6 +504,15 @@ input,textarea{font:inherit}
 .msg .tick.pending svg,.msg .tick.failed svg{width:13px;height:13px}
 .msg .tick.pending{opacity:.75}
 .tick.failed{color:var(--danger)}
+/* Undelivered outbound: a red line under the bubble stating why, with a retry. */
+.msgfail{display:flex;align-items:center;gap:6px;margin-top:3px;padding:0 2px;
+  font-size:11.5px;font-weight:600;color:var(--danger);align-self:flex-end;max-width:100%}
+.msgfail svg{width:13px;height:13px;flex:0 0 13px}
+.msgfail__txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msgfail__retry{flex:0 0 auto;color:var(--danger);font-weight:750;text-decoration:underline;
+  text-underline-offset:2px;padding:2px 3px;border-radius:var(--r-8);transition:opacity .12s}
+.msgfail__retry:hover{opacity:.7}
+.msgfail__retry:active{transform:scale(.94)}
 
 /* ─── Reactions, quoted replies & per-message actions (Phase 5) ───────
    Each bubble lives in a positioning wrapper so the hover toolbar / emoji
