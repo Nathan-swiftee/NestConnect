@@ -1,7 +1,8 @@
-import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLogout, useMe, useSound, useTeams, useViews } from "../hooks";
 import {
   ChevronRight,
+  ChevronsLeftIcon,
   ContactsIcon,
   InboxIcon,
   SnoozeIcon,
@@ -23,9 +24,12 @@ interface Props {
   onClose?: () => void;
   onOpenSettings?: () => void;
   onOpenCustomers?: () => void;
+  /** Desktop only: collapse the sidebar to the icon rail. */
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers }: Props) {
+export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, isCollapsed, onToggleCollapse }: Props) {
   const { data } = useViews();
   const { data: meData } = useMe();
   const { data: teamList } = useTeams();
@@ -98,18 +102,39 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
     if (hoverRef.current) hoverRef.current.style.opacity = "0";
   };
 
-  if (!data) return <aside className="side" aria-label="Inboxes" />;
+  // When collapsed, take the (still-mounted, so it can animate) sidebar out of
+  // the tab order and hide it from assistive tech.
+  const asideRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = asideRef.current;
+    if (!el) return;
+    if (isCollapsed) el.setAttribute("inert", "");
+    else el.removeAttribute("inert");
+  }, [isCollapsed]);
+
+  if (!data)
+    return <aside ref={asideRef} className={"side" + (isCollapsed ? " is-collapsed" : "")} aria-label="Inboxes" />;
 
   const inbound = data.my.find((m) => m.key === "inbound");
   const subs = data.my.filter((m) => m.key !== "inbound");
 
   return (
-    <aside className="side" aria-label="Inboxes">
+    <aside ref={asideRef} className={"side" + (isCollapsed ? " is-collapsed" : "")} aria-label="Inboxes">
       <div className="side__head">
         <span className="wordmark">
           Nest <span className="dot">Connect</span>
         </span>
         <span className="side__sub">Swiftee</span>
+        {onToggleCollapse && (
+          <button
+            className="side__collapse"
+            onClick={onToggleCollapse}
+            aria-label="Collapse inboxes"
+            title="Collapse inboxes"
+          >
+            <ChevronsLeftIcon />
+          </button>
+        )}
         {onClose && (
           <button className="side__close" onClick={onClose} aria-label="Close menu" title="Close">
             <XIcon />

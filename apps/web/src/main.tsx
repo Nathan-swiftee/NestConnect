@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { syncThemeColor } from "./lib/theme";
 import { initViewport } from "./lib/viewport";
+import { initLayout } from "./lib/layout";
 import "./styles.css";
 
 syncThemeColor();
@@ -11,6 +12,8 @@ syncThemeColor();
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", syncThemeColor);
 // Pin the app shell to the visual viewport so the mobile keyboard can't push the header off-screen.
 initViewport();
+// Restore the saved conversation-list width before first paint (no resize flash).
+initLayout();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
