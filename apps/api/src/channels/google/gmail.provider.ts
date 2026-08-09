@@ -11,6 +11,7 @@ import {
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
 import { buildMime, gmail, GmailApiError } from "./gmail-api";
 import { textToHtml } from "../email/html-sanitize";
+import { subjectLine } from "../email/email.provider";
 
 /**
  * Sends outbound email through a Gmail-connected inbox using the Gmail API and
@@ -42,7 +43,7 @@ export class GmailProvider extends ChannelProvider {
     const fromAddress = config[GMAIL_CONFIG.email] || env.email.from;
     const domain = fromAddress.split("@")[1] || env.email.domain;
     const messageId = `<ding.${params.conversation.id}.${Date.now()}@${domain}>`;
-    const subject = this.replySubject(params.context?.subject);
+    const subject = subjectLine(params.context);
     const attachments = (params.media ?? []).map((m) => ({
       filename: m.filename,
       mime: m.mime,
@@ -87,9 +88,4 @@ export class GmailProvider extends ChannelProvider {
     }
   }
 
-  private replySubject(subject?: string): string {
-    const s = (subject ?? "").trim();
-    if (!s) return "Re: your message";
-    return /^re:/i.test(s) ? s : `Re: ${s}`;
-  }
 }

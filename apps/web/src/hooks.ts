@@ -321,6 +321,8 @@ export function useSendMessage() {
       quotedMsgId?: string;
       /** Rich HTML body for an email reply (sanitized server-side). */
       bodyHtml?: string;
+      /** Subject line for an email send (sets the thread's subject). */
+      subject?: string;
       /** Cc / Bcc recipients on an email reply. */
       cc?: string[];
       bcc?: string[];
@@ -331,6 +333,7 @@ export function useSendMessage() {
         template: v.template,
         quotedMsgId: v.quotedMsgId,
         bodyHtml: v.bodyHtml,
+        subject: v.subject,
         cc: v.cc,
         bcc: v.bcc,
         channel: v.channel,

@@ -875,6 +875,19 @@ export class PrismaStore extends Store {
     }
   }
 
+  async setSubject(conversationId: string, subject: string | null): Promise<Conversation | undefined> {
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { subject },
+        include: convInclude,
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
   async setSla(conversationId: string, dueAt: string | null): Promise<Conversation | undefined> {
     try {
       const row = await this.prisma.conversation.update({

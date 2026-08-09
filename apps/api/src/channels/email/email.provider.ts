@@ -29,7 +29,7 @@ export class EmailProvider extends ChannelProvider {
 
   async sendText(params: SendParams): Promise<SendResult> {
     const messageId = `<ding.${params.conversation.id}.${Date.now()}@${env.email.domain}>`;
-    const subject = this.replySubject(params.context?.subject);
+    const subject = subjectLine(params.context);
 
     if (!this.isLive) {
       // No Postmark token → email sending isn't configured. Fail honestly so the
@@ -94,9 +94,17 @@ export class EmailProvider extends ChannelProvider {
     }
   }
 
-  private replySubject(subject?: string): string {
-    const s = (subject ?? "").trim();
-    if (!s) return "Re: your message";
-    return /^re:/i.test(s) ? s : `Re: ${s}`;
-  }
+}
+
+/**
+ * The subject line to send: a reply (has an In-Reply-To) carries "Re:"; a fresh
+ * thread keeps the agent's subject verbatim. Shared by the Postmark + Gmail
+ * providers so both channels thread and label subjects identically.
+ */
+export function subjectLine(context?: { subject?: string; inReplyTo?: string }): string {
+  const s = (context?.subject ?? "").trim();
+  const isReply = Boolean(context?.inReplyTo);
+  if (!s) return isReply ? "Re: your message" : "(no subject)";
+  if (!isReply) return s;
+  return /^re:/i.test(s) ? s : `Re: ${s}`;
 }

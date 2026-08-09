@@ -155,6 +155,7 @@ export const api = {
       template?: { id: string; params: string[] };
       quotedMsgId?: string;
       bodyHtml?: string;
+      subject?: string;
       cc?: string[];
       bcc?: string[];
       channel?: ChannelType;
@@ -167,6 +168,7 @@ export const api = {
       ...(extras?.template ? { template: extras.template } : {}),
       ...(extras?.quotedMsgId ? { quotedMsgId: extras.quotedMsgId } : {}),
       ...(extras?.bodyHtml ? { bodyHtml: extras.bodyHtml } : {}),
+      ...(extras?.subject !== undefined ? { subject: extras.subject } : {}),
       ...(extras?.cc?.length ? { cc: extras.cc } : {}),
       ...(extras?.bcc?.length ? { bcc: extras.bcc } : {}),
       ...(extras?.channel ? { channel: extras.channel } : {}),

@@ -134,6 +134,20 @@ export class ConversationsService {
       }
     }
 
+    // An edited subject (email only) becomes the thread's subject before we
+    // enqueue, so the delivery — which reloads the conversation by id — sends
+    // with it and the header/list reflect it immediately.
+    if (sendingEmail && !input.internal && input.subject !== undefined) {
+      const next = input.subject.trim();
+      if ((next || null) !== (conv.subject ?? null)) {
+        const updated = await this.store.setSubject(id, next || null);
+        if (updated) {
+          conv.subject = updated.subject;
+          this.realtime.emitConversationUpdated(updated);
+        }
+      }
+    }
+
     // Build the channel-specific send hints, persisted with the message so a
     // (re)delivery can be reconstructed from the DB alone after a restart.
     const cc = input.internal ? undefined : input.cc?.filter((a) => a.trim());

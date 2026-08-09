@@ -289,6 +289,13 @@ export abstract class Store {
     priority: Priority,
   ): Promise<Conversation | undefined>;
 
+  /** Set (or clear, with null) a conversation's subject — the email thread's
+   *  subject line, editable from the composer. */
+  abstract setSubject(
+    conversationId: string,
+    subject: string | null,
+  ): Promise<Conversation | undefined>;
+
   /** Set (or clear) a conversation's first-response SLA due time (ISO or null). */
   abstract setSla(
     conversationId: string,

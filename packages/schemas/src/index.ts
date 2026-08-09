@@ -391,6 +391,9 @@ export const sendMessageInputSchema = z
     channel: channelTypeSchema.optional(),
     /** Rich HTML body for an email reply (sanitized server-side before send). */
     bodyHtml: z.string().optional(),
+    /** Subject line for an email send (email channel only). Sets the thread's
+     *  subject; a reply carries "Re:" automatically, a fresh email does not. */
+    subject: z.string().max(255).optional(),
     /** Additional email recipients (email channel only). */
     cc: z.array(z.string()).optional(),
     bcc: z.array(z.string()).optional(),

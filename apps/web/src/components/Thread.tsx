@@ -761,6 +761,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [showCc, setShowCc] = useState(false);
   const [cc, setCc] = useState("");
   const [bcc, setBcc] = useState("");
+  // The editable email subject (the thread's subject; empty on a fresh email).
+  const [subjectDraft, setSubjectDraft] = useState(conv?.subject ?? "");
   // Another agent typing on THIS conversation ("{who} is typing…"); null when idle.
   const [typingWho, setTypingWho] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
@@ -868,6 +870,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setComposeChannelState(null);
     editor?.commands.clearContent();
   }, [conversationId, editor]);
+
+  // Keep the editable email subject synced to the thread: it resets when
+  // switching threads and reflects a subject set elsewhere. conv.subject only
+  // changes on a send, so this never clobbers an in-progress edit.
+  useEffect(() => {
+    setSubjectDraft(conv?.subject ?? "");
+  }, [conversationId, conv?.subject]);
 
   // Starting a *new* WhatsApp conversation lands on a cold, window-closed thread
   // where an approved template is the only way to open the conversation — so
@@ -1092,12 +1101,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const isWhatsApp = composeChannel === "whatsapp" || composeChannel === "whatsapp_group";
   // Email replies compose in a rich-text editor; notes + other channels stay plain.
   const isRich = isEmail && !internal;
-  // The subject an email reply will carry (mirrors the server's Re: prefixing).
-  const emailSubject = conv.subject
-    ? /^re:/i.test(conv.subject)
-      ? conv.subject
-      : `Re: ${conv.subject}`
-    : "Re: your message";
   // Resolve a quoted reply's target message by id for in-bubble rendering.
   const msgById = new Map(conv.messages.map((m) => [m.id, m]));
   // The WhatsApp window that applies to the compose channel: the server-computed
@@ -1285,6 +1288,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     const parseAddrs = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
     const ccList = isEmail && !internal ? parseAddrs(cc) : [];
     const bccList = isEmail && !internal ? parseAddrs(bcc) : [];
+    // The email thread's subject (verbatim topic; the server adds "Re:" on a reply).
+    const subject = isEmail && !internal ? subjectDraft.trim() : undefined;
     unlock();
     const attachmentIds = readyAtts.map((s) => s.attachment!.id);
     send.mutate(
@@ -1295,6 +1300,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         attachmentIds: attachmentIds.length ? attachmentIds : undefined,
         quotedMsgId,
         bodyHtml,
+        subject,
         cc: ccList.length ? ccList : undefined,
         bcc: bccList.length ? bccList : undefined,
         // Only send an override when replying off the conversation's own channel.
@@ -1843,7 +1849,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             <div className="emailhdr">
               <div className="emailhdr__row">
                 <span className="emailhdr__lbl">Subject</span>
-                <span className="emailhdr__subj" title={emailSubject}>{emailSubject}</span>
+                <input
+                  className="emailhdr__in"
+                  value={subjectDraft}
+                  onChange={(e) => setSubjectDraft(e.target.value)}
+                  placeholder="Add a subject"
+                  aria-label="Email subject"
+                />
                 <button
                   type="button"
                   className={"emailhdr__cc" + (showCc ? " on" : "")}
