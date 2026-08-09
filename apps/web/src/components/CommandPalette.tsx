@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { createPortal } from "react-dom";
 import { useAssign, useConversations, useMe, useSnooze, useTeams } from "../hooks";
 import { channelMeta, BackIcon, ProfileIcon, RouteIcon, SnoozeIcon, SearchIcon } from "../lib/icons";
+import { useScrollLock } from "../lib/useScrollLock";
 
 interface Props {
   conversationId: string | null;
@@ -28,6 +30,8 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"root" | "route">("root");
   const inputRef = useRef<HTMLInputElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  useScrollLock(boxRef);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -140,9 +144,9 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
     setQuery("");
   };
 
-  return (
+  return createPortal(
     <div className="cmdk" onClick={onClose}>
-      <div className="cmdk__box" onClick={(e) => e.stopPropagation()}>
+      <div className="cmdk__box" ref={boxRef} onClick={(e) => e.stopPropagation()}>
         <div className="cmdk__in">
           {mode === "route" ? (
             <button className="cmdk__back" onClick={goBack} title="Back" aria-label="Back">
@@ -190,6 +194,7 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
           {matches.length === 0 && <div className="empty">No matches</div>}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

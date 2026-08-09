@@ -766,8 +766,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const typingStopRef = useRef<number | null>(null); // idle timer that emits typing:false
   const typingClearRef = useRef<number | null>(null); // auto-clears the incoming indicator
   const waTypingRef = useRef(0); // last time we pinged WhatsApp's typing indicator (ms epoch)
-  const replyBtnRef = useRef<HTMLButtonElement>(null);
-  const noteBtnRef = useRef<HTMLButtonElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   // Latest typing-signal fn, so the editor's (once-created) onUpdate calls the
   // current one without a stale closure.
@@ -896,16 +894,18 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     };
   }, [reactFor]);
 
-  // Slide the Reply|Note thumb under the active tab. Written to the DOM directly
-  // (no state → no extra render) so the slide starts on the same frame as the click.
+  // Slide the mode thumb under the active tab (a channel, or Note). Positioned by
+  // querying the active button — the compose channel isn't resolved until after
+  // the loading guards below, so we can't thread a ref through per tab. Written to
+  // the DOM directly (no state) so the slide starts on the click's own frame.
   useLayoutEffect(() => {
-    const btn = internal ? noteBtnRef.current : replyBtnRef.current;
     const thumb = modeThumbRef.current;
+    const btn = modeRef.current?.querySelector<HTMLElement>(".modebtn.active");
     if (btn && thumb) {
       thumb.style.transform = `translateX(${btn.offsetLeft}px)`;
       thumb.style.width = `${btn.offsetWidth}px`;
     }
-  }, [internal, conversationId, conv?.status]);
+  }, [internal, composeChannelState, conversationId, conv?.status]);
 
   // Mirror staged items into a ref so teardown can revoke URLs without re-binding.
   useEffect(() => {
@@ -1039,8 +1039,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const convIsEmail = conv.channel === "email";
   const isGroup = conv.channel === "whatsapp_group";
   const composeChannel: ChannelType = (!isGroup && composeChannelState) || conv.channel;
-  const composeMeta = channelMeta(composeChannel);
-  const ComposeGlyph = composeMeta.Glyph;
   const isEmail = composeChannel === "email";
   // Channels this customer can be reached on within this thread (1:1 only).
   const switchable: ChannelType[] = [];
@@ -1048,7 +1046,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     if (conv.contact.phone) switchable.push("whatsapp");
     if (conv.contact.email) switchable.push("email");
   }
-  const canSwitchChannel = switchable.length > 1;
+  // The reply-target channels shown in the composer's mode switcher (before the
+  // Note tab). A group can only be answered on its own channel; a 1:1 lists every
+  // channel the customer is reachable on (falling back to the thread's own).
+  const replyTargets: ChannelType[] = isGroup || switchable.length === 0 ? [conv.channel] : switchable;
   const isClosed = conv.status === "closed";
   const owned = !!conv.assigneeUserId;
   const sub = convIsEmail
@@ -1715,26 +1716,37 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           onDrop={onComposerDrop}
         >
           <div className="compbar">
+            {/* One 3-way switcher: reply on each reachable channel, or add a Note. */}
             <div className="compmode" role="tablist" ref={modeRef} {...modeHover}>
               <span className="seg-hover" ref={modeHoverRef} />
               <span className="seg-thumb" ref={modeThumbRef} />
+              {replyTargets.map((ch) => {
+                const meta = channelMeta(ch);
+                const ChG = meta.Glyph;
+                const active = !internal && composeChannel === ch;
+                return (
+                  <button
+                    key={ch}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className={"modebtn" + (active ? " active" : "")}
+                    onClick={() => {
+                      setInternal(false);
+                      setComposeChannelState(ch === conv.channel ? null : ch);
+                    }}
+                    title={replyTargets.length > 1 ? `Reply via ${meta.label}` : undefined}
+                  >
+                    <span className="modebtn__ic" style={active ? { color: meta.color } : undefined}>
+                      <ChG />
+                    </span>
+                    {replyTargets.length > 1 ? meta.label : "Reply"}
+                  </button>
+                );
+              })}
               <button
                 type="button"
                 role="tab"
-                ref={replyBtnRef}
-                aria-selected={!internal}
-                className={"modebtn" + (!internal ? " active" : "")}
-                onClick={() => setInternal(false)}
-              >
-                <span className="modebtn__ic" style={!internal ? { color: composeMeta.color } : undefined}>
-                  <ComposeGlyph />
-                </span>
-                Reply
-              </button>
-              <button
-                type="button"
-                role="tab"
-                ref={noteBtnRef}
                 aria-selected={internal}
                 className={"modebtn modenote" + (internal ? " active" : "")}
                 onClick={() => setInternal(true)}
@@ -1745,29 +1757,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 Note
               </button>
             </div>
-            {canSwitchChannel && !internal && (
-              <div className="chanpick" role="group" aria-label="Reply channel">
-                {switchable.map((ch) => {
-                  const meta = channelMeta(ch);
-                  const ChG = meta.Glyph;
-                  const active = composeChannel === ch;
-                  return (
-                    <button
-                      key={ch}
-                      type="button"
-                      className={"chanpick__b" + (active ? " active" : "")}
-                      style={active ? { color: meta.color } : undefined}
-                      onClick={() => setComposeChannelState(ch)}
-                      title={`Reply via ${meta.label}`}
-                      aria-pressed={active}
-                    >
-                      <ChG />
-                      <span className="chanpick__lbl">{meta.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
             <span className="compctx">{ctxNode}</span>
           </div>
           {isEmail && !internal && (

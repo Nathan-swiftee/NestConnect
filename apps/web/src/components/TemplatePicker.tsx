@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState, type JSX } from "react";
+import { useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { createPortal } from "react-dom";
 import type { Template, TemplateApproval, TemplateCategory } from "@ding/schemas";
 import { useSendMessage, useTemplates } from "../hooks";
 import { playSent, unlock } from "../lib/sound";
 import { BackIcon, BoltIcon, SendIcon, XIcon } from "../lib/icons";
+import { useScrollLock } from "../lib/useScrollLock";
 
 /* Shared template presentation helpers — reused by Settings › Templates. */
 
@@ -78,6 +80,8 @@ function TemplateBadges({ tpl }: { tpl: Template }) {
 export function TemplatePicker({ conversationId, onClose, onToast }: Props) {
   const { data: templates, isLoading } = useTemplates();
   const send = useSendMessage();
+  const boxRef = useRef<HTMLDivElement>(null);
+  useScrollLock(boxRef);
   const [selected, setSelected] = useState<Template | null>(null);
   const [params, setParams] = useState<string[]>([]);
 
@@ -121,10 +125,11 @@ export function TemplatePicker({ conversationId, onClose, onToast }: Props) {
 
   const list = templates ?? [];
 
-  return (
+  return createPortal(
     <div className="modal" onClick={onClose}>
       <div
         className="modal__box"
+        ref={boxRef}
         role="dialog"
         aria-modal="true"
         aria-label="Send a template"
@@ -230,6 +235,7 @@ export function TemplatePicker({ conversationId, onClose, onToast }: Props) {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

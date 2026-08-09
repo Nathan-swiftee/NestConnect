@@ -275,7 +275,7 @@ input,textarea{font:inherit}
 @keyframes listIn{from{opacity:0;transform:translate3d(12px,2px,0)}to{opacity:1;transform:none}}
 /* keep scroll inside these panes — no chaining/rubber-band that drags the
    thread header or list header out of place on touch devices */
-.convs,.msgs,.side__scroll,.panel__scroll,.cmdk__list,.modal__body{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.convs,.msgs,.side__scroll,.panel__scroll,.cmdk__list,.modal__body,.compose__list,.tpl-list{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
 .empty{padding:40px 20px;text-align:center;color:var(--text-faint);font-size:13px}
 .conv{width:100%;display:grid;grid-template-columns:44px 1fr;gap:11px;padding:12px 15px;text-align:left;border-bottom:1px solid var(--border);position:relative;transition:background .14s}
 .conv:hover{background:var(--surface)}
@@ -663,8 +663,9 @@ input,textarea{font:inherit}
 .compose__rowm{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .compose__rowm b{font-size:13.5px;font-weight:650}
 .compose__rowm small{font-size:12px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.compose__rowchans{flex:0 0 auto;display:flex;gap:4px}
-.compose__dot{width:8px;height:8px;border-radius:var(--r-full)}
+.compose__rowchans{flex:0 0 auto;display:flex;align-items:center;gap:7px}
+.compose__chico{width:20px;height:20px;display:grid;place-items:center}
+.compose__chico svg{width:15px;height:15px;display:block}
 .compose__back{display:inline-flex;align-items:center;gap:6px;color:var(--text-muted);font-size:12.5px;font-weight:600;margin-bottom:12px;transition:color .12s}
 .compose__back:hover{color:var(--text)}
 .compose__back svg{width:14px;height:14px}
@@ -741,12 +742,6 @@ input,textarea{font:inherit}
   background:color-mix(in srgb,var(--text) 7%,transparent);will-change:transform,width;
   transition:transform .2s cubic-bezier(.4,0,.2,1),width .2s cubic-bezier(.4,0,.2,1),opacity .16s ease}
 /* Reply-channel switcher (cross-channel thread) — a compact segmented control */
-.chanpick{display:inline-flex;align-items:center;gap:2px;background:var(--surface-2);border-radius:var(--r-full);padding:2px;flex:0 0 auto}
-.chanpick__b{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:650;color:var(--text-muted);padding:5px 10px;border-radius:var(--r-full);transition:color .15s,background .15s,box-shadow .15s}
-.chanpick__b svg{width:14px;height:14px;display:block}
-.chanpick__b:hover{color:var(--text)}
-.chanpick__b.active{background:var(--surface);box-shadow:inset 0 1px 0 var(--glass-hi),0 2px 8px -3px rgba(13,21,18,.28),0 0 0 1px var(--glass-brd)}
-@media (max-width:560px){.chanpick__lbl{display:none}}
 .compctx{margin-left:auto;font-size:11.5px;font-weight:600;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Cross-channel badge on a message stamp (a reply sent on another channel) */
 .stamp__chan{display:inline-flex;align-items:center;margin-right:1px;vertical-align:-2px}
@@ -911,12 +906,14 @@ input,textarea{font:inherit}
 /* command palette — floating polished glass */
 /* Only a whisper of scrim so the palette's glass refracts the live app behind it
    (like the assign dropdown), instead of sitting on a flat grey wash. */
-.cmdk{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 30%,transparent);backdrop-filter:saturate(120%) blur(2px);-webkit-backdrop-filter:saturate(120%) blur(2px);display:flex;align-items:flex-start;justify-content:center;z-index:50;animation:overlayIn .2s ease}
-.cmdk__box{margin-top:12vh;width:min(560px,92vw);border-radius:var(--r-20);overflow:hidden;animation:sheetIn .26s var(--ease)}
+.cmdk{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 30%,transparent);backdrop-filter:saturate(120%) blur(2px);-webkit-backdrop-filter:saturate(120%) blur(2px);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;animation:overlayIn .2s ease}
+/* Cap the box to the viewport and let the list be the flex scroll region, so it
+   scrolls within the popup on every screen (incl. mobile) instead of overflowing. */
+.cmdk__box{margin-top:12vh;width:min(560px,92vw);max-height:76vh;display:flex;flex-direction:column;border-radius:var(--r-20);overflow:hidden;animation:sheetIn .26s var(--ease)}
 .cmdk__in{display:flex;align-items:center;gap:11px;padding:15px 17px;border-bottom:1px solid var(--glass-line)}
 .cmdk__in svg{width:18px;height:18px;color:var(--text-faint)}
 .cmdk__in input{flex:1;border:0;background:none;outline:none;color:var(--text);font-size:15px}
-.cmdk__list{padding:8px;max-height:340px;overflow-y:auto}
+.cmdk__list{padding:8px;flex:1;min-height:0;overflow-y:auto}
 .cmdk__grp{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);padding:9px 10px 4px}
 .cmditem{display:flex;align-items:center;gap:12px;padding:10px 11px;border-radius:var(--r-12);width:100%;text-align:left;transition:background .12s}
 .cmditem:hover,.cmditem.sel{background:var(--brand-tint)}
@@ -967,7 +964,9 @@ input,textarea{font:inherit}
 .rail-menu button.danger:hover{background:var(--danger-tint)}
 
 /* modal — a sheet of thick polished glass, floating forward */
-.modal{position:fixed;inset:0;background:rgba(6,12,10,.42);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);display:flex;align-items:flex-start;justify-content:center;z-index:50;animation:overlayIn .2s ease}
+/* Light, bg-tinted frosted scrim (not a dark wash) so the glass box on top reads
+   like the app's dropdowns/menus rather than a muddy dark panel. */
+.modal{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 45%,transparent);backdrop-filter:saturate(120%) blur(4px);-webkit-backdrop-filter:saturate(120%) blur(4px);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;animation:overlayIn .2s ease}
 .modal__box{margin-top:9vh;width:min(460px,94vw);border-radius:var(--r-20);overflow:hidden;display:flex;flex-direction:column;animation:sheetIn .26s var(--ease)}
 .modal__head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--glass-line)}
 .modal__head h2{margin:0;font-size:16px;font-weight:750}
@@ -1422,6 +1421,8 @@ button.tpl-row:active{transform:scale(.99)}
   /* the snooze menu drops from the top like the others (its desktop top:100%
      would sit below the viewport once the menu is position:fixed) */
   .menu.snoozemenu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:12px;min-width:0}
+  /* command palette fits the phone viewport; its list scrolls inside the box */
+  .cmdk__box{margin-top:calc(8px + env(safe-area-inset-top));width:calc(100vw - 16px);max-height:calc(var(--app-h,100dvh) - 16px - env(safe-area-inset-top))}
   /* header, messages and composer are in normal flow — the header/composer
      carry the safe-area insets, and .msgs is a plain flex-scroll region. */
   .assignbtn .lbl,.resolvebtn .lbl,.thread__head .who-presence{display:none}

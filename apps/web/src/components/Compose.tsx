@@ -1,10 +1,23 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Contact } from "@ding/schemas";
 import { useContacts } from "../hooks";
 import { api } from "../lib/api";
 import { channelMeta, XIcon, BackIcon, SearchIcon } from "../lib/icons";
+import { useScrollLock } from "../lib/useScrollLock";
 
 type Channel = "whatsapp" | "email";
+
+/** A channel's glyph in its brand colour — the per-customer "reachable on" cue. */
+function ChanIcon({ channel }: { channel: Channel }) {
+  const cm = channelMeta(channel);
+  const Glyph = cm.Glyph;
+  return (
+    <span className="compose__chico" style={{ color: cm.color }} title={cm.label}>
+      <Glyph />
+    </span>
+  );
+}
 
 /** One channel a customer can be started on (disabled when they lack the address). */
 function ChannelPick({
@@ -50,6 +63,8 @@ export function Compose({
   onToast: (msg: string) => void;
 }) {
   const { data: contacts } = useContacts();
+  const boxRef = useRef<HTMLDivElement>(null);
+  useScrollLock(boxRef);
   const [tab, setTab] = useState<"pick" | "new">("pick");
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Contact | null>(null);
@@ -102,9 +117,9 @@ export function Compose({
   const waHint = "Pick an approved template";
   const emailHint = "Write a new email";
 
-  return (
+  return createPortal(
     <div className="modal" onClick={onClose}>
-      <div className="modal__box compose" onClick={(e) => e.stopPropagation()}>
+      <div className="modal__box compose" ref={boxRef} onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <h2>New message</h2>
           <button type="button" className="modal__x" onClick={onClose} aria-label="Close"><XIcon /></button>
@@ -173,8 +188,8 @@ export function Compose({
                           <small>{c.company || c.email || c.phone || ""}</small>
                         </span>
                         <span className="compose__rowchans">
-                          {c.phone && <span className="compose__dot" style={{ background: channelMeta("whatsapp").color }} title="WhatsApp" />}
-                          {c.email && <span className="compose__dot" style={{ background: channelMeta("email").color }} title="Email" />}
+                          {c.phone && <ChanIcon channel="whatsapp" />}
+                          {c.email && <ChanIcon channel="email" />}
                         </span>
                       </button>
                     ))
@@ -204,6 +219,7 @@ export function Compose({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
