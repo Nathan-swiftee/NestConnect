@@ -421,6 +421,14 @@ function MessageBubble({
   // A message sent/received on a channel other than the thread's own is badged.
   const crossMeta = m.channel && m.channel !== convChannel ? channelMeta(m.channel) : null;
   const CrossGlyph = crossMeta?.Glyph;
+  // Outbound (non-internal) messages carry a "SENT BY {agent}" label in their
+  // meta row — so a shared inbox shows who replied, on WhatsApp and email alike.
+  // It needs the flow (block) stamp layout, not the compact absolute overlay,
+  // to fit a variable-width name beside the time + ticks.
+  const namedMeta = out && !m.internal && !!m.authorName;
+  // The inline WhatsApp-style overlay (+ its reserved spacer) is only used when
+  // the stamp isn't already a block row or an image chip.
+  const inlineStamp = !(isEmailHtml || blockStamp || namedMeta || overlay);
 
   return (
     <div className={"msg " + (out ? "out" : "in")} data-mid={m.id}>
@@ -475,13 +483,18 @@ function MessageBubble({
             showText && (
               <span className="txt">
                 {bodyText}
-                <span className="stampspace" aria-hidden="true" />
+                {inlineStamp && <span className="stampspace" aria-hidden="true" />}
               </span>
             )
           )}
           <span
-            className={"stamp" + (isEmailHtml || blockStamp ? " stamp--block" : overlay ? " stamp--over" : "")}
+            className={"stamp" + (isEmailHtml || blockStamp || namedMeta ? " stamp--block" : overlay ? " stamp--over" : "")}
           >
+            {namedMeta && (
+              <span className="stamp__by" title={`Sent by ${m.authorName}`}>
+                Sent by {m.authorName}
+              </span>
+            )}
             {crossMeta && CrossGlyph && (
               <span className="stamp__chan" style={{ color: crossMeta.color }} title={`Via ${crossMeta.label}`}>
                 <CrossGlyph />

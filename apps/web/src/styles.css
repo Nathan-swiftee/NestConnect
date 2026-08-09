@@ -499,6 +499,11 @@ input,textarea{font:inherit}
 /* … or its own row beneath voice notes, files and stickers */
 .msg .bubble .stamp.stamp--block{position:static;display:flex;justify-content:flex-end;margin-top:4px;padding:0 3px 1px}
 .msg .bubble.bubble--plain .stamp.stamp--block{color:var(--text-muted);padding:2px 2px 0}
+/* "SENT BY {agent}" — thin uppercase label sitting to the left of the time +
+   ticks on every outbound (agent-sent) message, WhatsApp and email alike. */
+.stamp__by{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-transform:uppercase;font-weight:300;font-size:10px;letter-spacing:.05em}
+.stamp__by::after{content:"·";margin-left:6px;font-weight:400}
 /* ─── Outbound delivery ticks: Queued → Sent → Delivered → Read → Failed ───
    Sent/Delivered/Read reuse the wide check glyphs (sized by .msg .tick svg);
    the queued clock + failed alert are square, so size them true and colour the
