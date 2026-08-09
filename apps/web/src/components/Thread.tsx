@@ -873,9 +873,49 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const recStartRef = useRef(0);
   const recCancelRef = useRef(false);
 
+  // Scroll behaviour:
+  //  • Opening a thread → jump to the OLDEST UNREAD message (top-aligned), so you
+  //    start reading where you left off — not at a smooth-scrolled guess that
+  //    lands mid-reflow as images / email frames size up. Instant, and corrected
+  //    once after late reflow. Falls back to the newest when nothing's unread.
+  //  • A new message in the already-open thread → smooth-scroll to the bottom.
+  const openedRef = useRef<string | null>(null);
+  const lastLenRef = useRef(0);
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conv?.messages.length, conversationId]);
+    if (!conv) return;
+    const len = conv.messages.length;
+    const opening = openedRef.current !== conversationId;
+    if (!opening) {
+      if (len > lastLenRef.current) endRef.current?.scrollIntoView({ behavior: "smooth" });
+      lastLenRef.current = len;
+      return;
+    }
+    openedRef.current = conversationId ?? null;
+    lastLenRef.current = len;
+    // Oldest unread = the first of the last `unreadCount` inbound messages.
+    let targetId: string | null = null;
+    let remaining = conv.unreadCount ?? 0;
+    if (remaining > 0) {
+      for (let i = len - 1; i >= 0; i--) {
+        const m = conv.messages[i];
+        if (m.direction === "in" && !m.internal && --remaining === 0) {
+          targetId = m.id;
+          break;
+        }
+      }
+    }
+    const jump = () => {
+      const el = targetId && document.querySelector<HTMLElement>(`[data-mid="${targetId}"]`);
+      if (el) el.scrollIntoView({ block: "start", behavior: "auto" });
+      else endRef.current?.scrollIntoView({ behavior: "auto" });
+    };
+    const raf = requestAnimationFrame(jump);
+    const correct = window.setTimeout(jump, 220); // re-settle after late reflow
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(correct);
+    };
+  }, [conv, conversationId]);
 
   // Close the image lightbox on Esc while it's open.
   useEffect(() => {
