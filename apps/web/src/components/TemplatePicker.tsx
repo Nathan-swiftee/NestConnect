@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
-import type { Template, TemplateApproval, TemplateCategory } from "@ding/schemas";
+import type { ChannelType, Template, TemplateApproval, TemplateCategory } from "@ding/schemas";
 import { useSendMessage, useTemplates } from "../hooks";
 import { playSent, unlock } from "../lib/sound";
 import { BackIcon, BoltIcon, SendIcon, XIcon } from "../lib/icons";
@@ -58,6 +58,11 @@ function renderPreview(body: string, params: string[]): JSX.Element[] {
 
 interface Props {
   conversationId: string;
+  /** The channel to send the template on. Templates are a WhatsApp feature, so
+   *  in a cross-channel thread (e.g. an email-origin conversation) this carries
+   *  the composer's WhatsApp selection — without it the send would fall back to
+   *  the conversation's own channel and mis-route (e.g. out via email). */
+  channel?: ChannelType;
   onClose: () => void;
   onToast: (msg: string) => void;
 }
@@ -77,7 +82,7 @@ function TemplateBadges({ tpl }: { tpl: Template }) {
   );
 }
 
-export function TemplatePicker({ conversationId, onClose, onToast }: Props) {
+export function TemplatePicker({ conversationId, channel, onClose, onToast }: Props) {
   const { data: templates, isLoading } = useTemplates();
   const send = useSendMessage();
   const boxRef = useRef<HTMLDivElement>(null);
@@ -111,7 +116,7 @@ export function TemplatePicker({ conversationId, onClose, onToast }: Props) {
     if (!selected || !ready || send.isPending) return;
     unlock();
     send.mutate(
-      { id: conversationId, body: "", template: { id: selected.id, params } },
+      { id: conversationId, body: "", template: { id: selected.id, params }, channel },
       {
         onSuccess: () => {
           playSent();

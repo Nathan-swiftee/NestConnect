@@ -2159,7 +2159,12 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       )}
 
       {picker && (
-        <TemplatePicker conversationId={conv.id} onClose={() => setPicker(false)} onToast={onToast} />
+        <TemplatePicker
+          conversationId={conv.id}
+          channel={composeChannel}
+          onClose={() => setPicker(false)}
+          onToast={onToast}
+        />
       )}
     </main>
   );
