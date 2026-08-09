@@ -26,11 +26,34 @@ const dayAt = (d: number, hh: number, mm: number) => {
 };
 
 async function main() {
+  // Is this a brand-new database? Checked BEFORE we ensure the org row exists.
+  const firstRun =
+    (await prisma.organization.findUnique({ where: { id: ORG }, select: { id: true } })) === null;
+
   await prisma.organization.upsert({
     where: { id: ORG },
     update: {},
     create: { id: ORG, name: "Swiftee", region: "uk" },
   });
+
+  // Legacy fix (runs every deploy; a no-op once migrated): a WhatsApp group used
+  // to get its own `whatsapp_group` inbox. Groups now live under their WhatsApp
+  // number, so move any such conversations onto the number and drop the inbox.
+  const legacyGroupInboxes = await prisma.inbox.findMany({ where: { orgId: ORG, type: "whatsapp_group" } });
+  for (const gi of legacyGroupInboxes) {
+    await prisma.conversation.updateMany({ where: { inboxId: gi.id }, data: { inboxId: "inbox_wa" } });
+    await prisma.inboxTeam.deleteMany({ where: { inboxId: gi.id } });
+    await prisma.inbox.delete({ where: { id: gi.id } });
+  }
+
+  // Everything below is demo/baseline data seeded ONLY into a fresh database.
+  // Re-running the seed on every deploy must NEVER resurrect what an admin has
+  // since deleted — a removed channel, user, team, label or template — so once
+  // the workspace exists we stop here and leave their data exactly as it is.
+  if (!firstRun) {
+    console.log("✓ Seed: existing workspace — baseline data left as-is.");
+    return;
+  }
 
   const users = [
     { id: "usr_nathan", name: "Nathan A", email: "nathan@swiftee.co.uk", role: "admin" as const, avatarColor: "linear-gradient(135deg,#3B82F6,#8B5CF6)", online: true },
@@ -89,17 +112,6 @@ async function main() {
         create: { inboxId: i.id, teamId },
       });
     }
-  }
-
-  // Legacy fix: a WhatsApp group used to get its own `whatsapp_group` inbox.
-  // Groups now live under their WhatsApp number, so move any conversations off
-  // a legacy group inbox onto the number and drop the standalone inbox. Runs
-  // every deploy; a no-op once migrated.
-  const legacyGroupInboxes = await prisma.inbox.findMany({ where: { orgId: ORG, type: "whatsapp_group" } });
-  for (const gi of legacyGroupInboxes) {
-    await prisma.conversation.updateMany({ where: { inboxId: gi.id }, data: { inboxId: "inbox_wa" } });
-    await prisma.inboxTeam.deleteMany({ where: { inboxId: gi.id } });
-    await prisma.inbox.delete({ where: { id: gi.id } });
   }
 
   const labels = [
