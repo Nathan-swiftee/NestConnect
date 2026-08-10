@@ -1177,6 +1177,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const replyTargets: ChannelType[] = isGroup || switchable.length === 0 ? [conv.channel] : switchable;
   const isClosed = conv.status === "closed";
   const owned = !!conv.assigneeUserId;
+  const assignedToMe = conv.assigneeUserId === me?.user.id;
+  // Resolve who the conversation is actually assigned to (name + avatar colour),
+  // so the header shows the real owner — not the viewer — when it's someone else's.
+  const assigneeUser = conv.assigneeUserId
+    ? people?.find((p) => p.user.id === conv.assigneeUserId)?.user
+    : undefined;
+  const assigneeName = assigneeUser?.name ?? conv.assigneeName ?? "a teammate";
   const sub = convIsEmail
     ? (conv.contact.email ?? "")
     : conv.channel === "whatsapp_group"
@@ -1730,13 +1737,26 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               <span className="lbl">Resolve</span>
             </button>
           )}
-          <button className="assignbtn" onClick={() => { setMenu((v) => !v); setSnoozeMenu(false); }}>
+          <button
+            className="assignbtn"
+            onClick={() => { setMenu((v) => !v); setSnoozeMenu(false); }}
+            title={!owned ? "Take this conversation" : assignedToMe ? "Assigned to you" : `Assigned to ${assigneeName}`}
+          >
             {owned ? (
               <>
-                <span className="mini" style={{ background: avatarBg(me?.user.name ?? "", me?.user.avatarColor) }}>
-                  {me ? initials(me.user.name) : ""}
+                <span
+                  className="mini"
+                  style={{
+                    background: assignedToMe
+                      ? avatarBg(me?.user.name ?? "", me?.user.avatarColor)
+                      : avatarBg(assigneeName, assigneeUser?.avatarColor),
+                  }}
+                >
+                  {assignedToMe ? (me ? initials(me.user.name) : "") : initials(assigneeName)}
                 </span>
-                <span className="lbl">Assigned to you</span>
+                <span className="lbl">
+                  {assignedToMe ? "Assigned to you" : `Assigned to ${assigneeName.split(" ")[0]}`}
+                </span>
               </>
             ) : (
               <>
