@@ -60,6 +60,6 @@ import { IntegrationsController } from "../settings/integrations.controller";
     ChannelDispatcher,
     OutboundDeliveryService,
   ],
-  exports: [ChannelDispatcher, OutboundDeliveryService, GmailSyncService],
+  exports: [ChannelDispatcher, OutboundDeliveryService, GmailSyncService, MetaOAuthService],
 })
 export class ChannelsModule {}

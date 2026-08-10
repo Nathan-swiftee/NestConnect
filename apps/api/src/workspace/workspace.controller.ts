@@ -32,6 +32,7 @@ import { Store } from "../data/store";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
 import { Mailer } from "../mail/mailer.service";
+import { MetaOAuthService } from "../channels/meta/meta-oauth.service";
 import { sanitizeOutboundHtml } from "../channels/email/html-sanitize";
 import { env } from "../config/env";
 
@@ -41,7 +42,21 @@ export class WorkspaceController {
   constructor(
     private readonly store: Store,
     private readonly mailer: Mailer,
+    private readonly metaOAuth: MetaOAuthService,
   ) {}
+
+  /** Subscribe a WhatsApp number's WhatsApp Business Account to our app so its
+   *  inbound messages + delivery statuses reach our webhook. The one-click OAuth
+   *  connect already does this; this covers the manual "paste a token" path, which
+   *  otherwise leaves the WABA unsubscribed (no inbound, no ticks). Needs the WABA
+   *  id — no-op (logged) without it. Non-fatal: never blocks saving the channel. */
+  private async subscribeWhatsAppWebhook(inboxId: string, type: string): Promise<void> {
+    if (type !== "whatsapp" && type !== "whatsapp_group") return;
+    const config = await this.store.getInboxConfig(inboxId);
+    const wabaId = config?.wabaId;
+    const accessToken = config?.accessToken;
+    if (wabaId && accessToken) await this.metaOAuth.subscribeApp(wabaId, accessToken);
+  }
 
   @Get("me")
   me(@CurrentUserId() userId: string) {
@@ -96,7 +111,9 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(createInboxInputSchema)) body: CreateInboxInput,
   ) {
     const me = await this.requireManager(userId);
-    return this.store.createInbox({ orgId: me.orgId, ...body });
+    const inbox = await this.store.createInbox({ orgId: me.orgId, ...body });
+    await this.subscribeWhatsAppWebhook(inbox.id, inbox.type);
+    return inbox;
   }
 
   @Patch("inboxes/:id")
@@ -108,6 +125,7 @@ export class WorkspaceController {
     await this.requireManager(userId);
     const inbox = await this.store.updateInbox(id, body);
     if (!inbox) throw new NotFoundException("Channel not found");
+    await this.subscribeWhatsAppWebhook(inbox.id, inbox.type);
     return inbox;
   }
 
