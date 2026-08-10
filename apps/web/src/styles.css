@@ -631,8 +631,15 @@ input,textarea{font:inherit}
    A formatted email renders in its own sandboxed iframe, presented as a white
    "email card" (emails are authored for a white canvas) in both themes — no
    chat tail, wider than a normal bubble. */
-.msg:has(.bubble--email){max-width:min(620px,94%)}
-.msg .bubble.bubble--email{width:min(600px,100%);max-width:100%;padding:8px 10px 6px}
+/* Emails are documents, not chat lines — let them use most of the thread width
+   (they'd waste a wide pane capped at a chat-bubble size). The iframe is fluid,
+   so the content reflows to fill. */
+.msg:has(.bubble--email){width:min(900px,96%);max-width:96%}
+/* the wrap is fit-content by default (chat bubbles hug their text); an email
+   card must instead fill the wider .msg, or the iframe collapses to its ~300px
+   intrinsic width */
+.msg:has(.bubble--email) .bubblewrap{width:100%}
+.msg .bubble.bubble--email{width:100%;max-width:100%;padding:8px 10px 6px}
 .msg.in .bubble.bubble--email,
 .msg.out .bubble.bubble--email{background:#fff;color:#1a1a1a;box-shadow:0 1px 2px rgba(13,21,18,.16)}
 .msg .bubble.bubble--email::before,
