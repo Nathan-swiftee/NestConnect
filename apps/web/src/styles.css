@@ -423,6 +423,7 @@ input,textarea{font:inherit}
   :root:not([data-theme="light"]) .msg.out .bubble{--bub:#005C4B;color:#E9EDEF}
   :root:not([data-theme="light"]) .msg.out .bubble .stamp{color:rgba(233,237,239,.6)}
   :root:not([data-theme="light"]) .compmode .seg-thumb{background:color-mix(in srgb,var(--elevated),#fff 7%);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 2px 10px -3px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06)}
+  :root:not([data-theme="light"]) .compmode{background:rgba(0,0,0,.22);box-shadow:inset 0 1px 2px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.04)}
 }
 .msg .sender{font-size:11px;font-weight:700;color:var(--brand-strong);padding:0 4px 1px}
 .thread-empty{align-self:center;margin:auto;color:var(--text-faint);font-size:13px}
@@ -812,7 +813,9 @@ input,textarea{font:inherit}
 .composer{flex:0 0 auto;position:relative;z-index:6;padding:12px 18px 16px;
   background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 16px -20px rgba(13,21,18,.5)}
 .compbar{display:flex;align-items:center;gap:10px;margin-bottom:9px}
-.compmode{position:relative;display:inline-flex;padding:3px 0;gap:6px;flex:0 0 auto}
+.compmode{position:relative;display:inline-flex;padding:3px;gap:4px;flex:0 0 auto;background:var(--surface-2);border-radius:var(--r-full);box-shadow:inset 0 1px 2px rgba(13,21,18,.06),inset 0 0 0 1px var(--glass-brd)}
+/* dark: a darker recessed groove so the raised (lighter) thumb still pops */
+:root[data-theme="dark"] .compmode{background:rgba(0,0,0,.22);box-shadow:inset 0 1px 2px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.04)}
 .modebtn{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:650;color:var(--text-muted);padding:6px 14px;border-radius:var(--r-full);transition:color .15s ease .08s}
 .modebtn__ic{display:inline-grid;place-items:center}
 .modebtn__ic svg{width:14px;height:14px;display:block}
@@ -1708,6 +1711,8 @@ button.tpl-row:active{transform:scale(.99)}
   /* refresh is hidden on mobile (it held the margin-left:auto), so the bell now
      anchors the top-right group (bell + command menu + new message). */
   .list__title .notif{margin-left:auto}
+  /* ⌘K command-menu shortcut is desktop-only (no hardware keyboard on phones) */
+  .list__title .kbd{display:none}
   /* the composer channel/note switcher goes icon-only on mobile to save width */
   .compmode .modebtn__lbl{display:none}
   .compmode .modebtn{padding:6px 11px}
