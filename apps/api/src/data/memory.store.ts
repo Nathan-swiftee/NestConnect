@@ -674,6 +674,7 @@ export class MemoryStore extends Store {
       direction: "out",
       authorType: "user",
       authorName: author.name,
+      authorUserId: author.id,
       body: input.body,
       bodyHtml: input.bodyHtml,
       // A real reply starts queued and climbs the ladder as the channel confirms

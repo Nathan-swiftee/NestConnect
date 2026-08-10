@@ -1827,15 +1827,20 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             <div className="daysep">{group.label}</div>
             {group.items.map((m) =>
               m.internal ? (
-                <div key={m.id} className="note">
-                  <div className="ic">
-                    <NoteIcon />
-                  </div>
-                  <div className="body">
-                    <div className="h">
-                      Internal note<span className="t">{relativeTime(m.createdAt)}</span>
+                <div
+                  key={m.id}
+                  className={"note" + (m.authorUserId === me?.user.id ? " note--out" : " note--in")}
+                >
+                  <div className="note__bubble">
+                    <div className="note__head">
+                      <span className="note__ic" aria-hidden="true">
+                        <NoteIcon />
+                      </span>
+                      <b className="note__who">{m.authorName ?? "Teammate"}</b>
+                      <span className="note__tag">Internal</span>
+                      <span className="note__t">{relativeTime(m.createdAt)}</span>
                     </div>
-                    <div>{renderMention(m.body)}</div>
+                    <div className="note__body">{renderMention(m.body)}</div>
                   </div>
                 </div>
               ) : (

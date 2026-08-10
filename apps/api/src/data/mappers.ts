@@ -245,6 +245,7 @@ export function mapMessage(m: MessageRow): Message {
     direction: m.direction as Message["direction"],
     authorType: m.authorType as Message["authorType"],
     authorName: m.authorName ?? undefined,
+    authorUserId: m.authorUserId ?? undefined,
     body: m.body,
     status: m.status as MessageStatus,
     internal: m.internal,

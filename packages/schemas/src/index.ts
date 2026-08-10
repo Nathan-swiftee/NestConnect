@@ -199,6 +199,9 @@ export const messageSchema = z.object({
   direction: messageDirectionSchema,
   authorType: authorTypeSchema,
   authorName: z.string().optional(),
+  /** The authoring agent's user id (outbound messages + internal notes); absent
+   *  for inbound/system. Lets the UI tell your own note from a teammate's. */
+  authorUserId: z.string().nullable().optional(),
   body: z.string(),
   status: messageStatusSchema.default("sent"),
   /** Internal-lane note — never delivered to the customer. */
