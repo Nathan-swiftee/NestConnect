@@ -517,10 +517,10 @@ input,textarea{font:inherit}
 /* … or its own row beneath voice notes, files and stickers */
 .msg .bubble .stamp.stamp--block{position:static;display:flex;justify-content:flex-end;margin-top:4px;padding:0 3px 1px}
 .msg .bubble.bubble--plain .stamp.stamp--block{color:var(--text-muted);padding:2px 2px 0}
-/* "SENT BY {agent}" — thin uppercase label sitting to the left of the time +
-   ticks on every outbound (agent-sent) message, WhatsApp and email alike. */
+/* "Sent by {agent}" — a quiet mixed-case byline to the left of the time + ticks
+   on every outbound (agent-sent) message, WhatsApp and email alike. */
 .stamp__by{max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  text-transform:uppercase;font-weight:300;font-size:10px;letter-spacing:.05em}
+  font-weight:400;font-size:10.5px;letter-spacing:normal}
 .stamp__by::after{content:"·";margin-left:6px;font-weight:400}
 /* ─── Outbound delivery ticks: Queued → Sent → Delivered → Read → Failed ───
    Sent/Delivered/Read reuse the wide check glyphs (sized by .msg .tick svg);
@@ -585,22 +585,27 @@ input,textarea{font:inherit}
 .reacts--mine:hover{background:color-mix(in srgb,var(--elevated),var(--text) 7%)}
 .reacts--mine:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
 
-/* hover toolbar + emoji picker, floated just above the bubble's near corner */
-.msg__act,.react-pop{position:absolute;top:-6px;z-index:20;display:flex;align-items:center;gap:2px;
+/* hover toolbar + emoji picker: parked at the bubble's side, vertically centred
+   — not floating above it. A top-floated bar sat in the gap between messages, so
+   reaching up for it left the bubble's hover region and it vanished before the
+   cursor got there. At the side it butts right up to the bubble edge (a 2px
+   overlap + a transparent bridge in the padding), keeping one continuous hover
+   surface from bubble to buttons so it never drops out mid-reach. */
+.msg__act,.react-pop{position:absolute;top:50%;z-index:20;display:flex;align-items:center;gap:2px;
   padding:3px;border-radius:var(--r-full);background:var(--elevated);
   box-shadow:0 6px 18px -6px rgba(0,0,0,.34),0 0 0 1px var(--border)}
-.msg.in .msg__act,.msg.in .react-pop{left:2px}
-.msg.out .msg__act,.msg.out .react-pop{right:2px}
-.msg__act{transform:translateY(-100%) scale(.94);opacity:0;pointer-events:none;
+.msg.in .msg__act,.msg.in .react-pop{left:calc(100% - 2px);padding-left:9px}
+.msg.out .msg__act,.msg.out .react-pop{right:calc(100% - 2px);padding-right:9px}
+.msg__act{transform:translateY(-50%) scale(.94);opacity:0;pointer-events:none;
   transition:opacity .12s var(--ease),transform .12s var(--ease)}
-.msg:hover .msg__act,.msg:focus-within .msg__act{opacity:1;pointer-events:auto;transform:translateY(-100%) scale(1)}
+.msg:hover .msg__act,.msg:focus-within .msg__act{opacity:1;pointer-events:auto;transform:translateY(-50%) scale(1)}
 .msg__actbtn{width:28px;height:28px;border-radius:var(--r-full);display:grid;place-items:center;
   color:var(--text-muted);transition:background .12s,color .12s}
 .msg__actbtn:hover{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
 .msg__actbtn:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
 .msg__actbtn svg{width:16px;height:16px}
-.react-pop{transform:translateY(-100%);animation:reactPop .13s var(--ease)}
-@keyframes reactPop{from{opacity:0;transform:translateY(-100%) scale(.9)}to{opacity:1;transform:translateY(-100%) scale(1)}}
+.react-pop{transform:translateY(-50%);animation:reactPop .13s var(--ease)}
+@keyframes reactPop{from{opacity:0;transform:translateY(-50%) scale(.9)}to{opacity:1;transform:translateY(-50%) scale(1)}}
 .react-pop__e{width:30px;height:30px;border-radius:var(--r-full);display:grid;place-items:center;
   font-size:18px;line-height:1;transition:background .1s,transform .1s var(--ease)}
 .react-pop__e:hover{background:color-mix(in srgb,var(--text) 10%,transparent);transform:scale(1.18)}
