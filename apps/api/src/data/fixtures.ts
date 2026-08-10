@@ -61,7 +61,12 @@ const DEMO_DOC_ATT: Message["attachments"] = [
 
 /** A conversation plus its message history, as held in the store. `waWindow` is
  *  derived at read time from `lastInboundAt`, so it isn't stored on the record. */
-export type ConversationRecord = Omit<Conversation, "snoozedUntil" | "unreadCount" | "waWindow"> & {
+// `assigneeName` is a display field resolved from `assigneeUserId` at summary
+// time — the stored record keeps only the id, never the denormalised name.
+export type ConversationRecord = Omit<
+  Conversation,
+  "snoozedUntil" | "unreadCount" | "waWindow" | "assigneeName"
+> & {
   snoozedUntil?: string | null;
   unreadCount?: number;
   /** Most recent inbound message time (drives the WhatsApp 24-hour window). */

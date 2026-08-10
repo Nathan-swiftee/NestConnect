@@ -89,6 +89,7 @@ type ConversationSummaryRow = Prisma.ConversationGetPayload<{
   include: {
     contact: { include: { identities: true } };
     labels: { include: { label: true } };
+    assignee: { select: { name: true } };
     messages: true;
   };
 }>;
@@ -283,6 +284,7 @@ export function mapConversation(c: ConversationSummaryRow): Conversation {
     channelRef: c.channelRef ?? undefined,
     status: c.status as Conversation["status"],
     assigneeUserId: c.assigneeUserId,
+    assigneeName: c.assignee?.name ?? null,
     assignedTeamId: c.assignedTeamId,
     priority: c.priority as Priority,
     labels: c.labels.map((cl) => ({ id: cl.label.id, name: cl.label.name, color: cl.label.color })),

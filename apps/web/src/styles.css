@@ -314,6 +314,9 @@ input,textarea{font:inherit}
 .conv.active .tag.owner{background:var(--surface)}
 .tag.grab{background:var(--surface-2);color:var(--text-muted)}
 .conv.active .tag.grab{background:var(--surface)}
+/* owned by another agent — shows their name, distinct from the brand "Yours" */
+.tag.assigned{background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text);font-weight:650}
+.conv.active .tag.assigned{background:var(--surface)}
 /* which team the conversation is routed to */
 .teamtag{font-size:10.5px;font-weight:650;padding:2px 9px;border-radius:var(--r-full);background:color-mix(in srgb,var(--text) 6%,transparent);color:var(--text-muted);white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}
 .sla{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums}

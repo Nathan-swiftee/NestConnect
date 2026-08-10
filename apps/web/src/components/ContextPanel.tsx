@@ -13,6 +13,7 @@ import {
   useConversation,
   usePeople,
   useRemoveParticipant,
+  useSession,
   useSetPriority,
   useTeams,
   useUpdateContact,
@@ -263,11 +264,17 @@ function AssignmentBlock({
   teamName: (id: string) => string;
   onToast: (m: string) => void;
 }) {
+  const { data: session } = useSession();
+  const assignee = conv.assigneeUserId
+    ? conv.assigneeUserId === session?.user.id
+      ? "You"
+      : conv.assigneeName ?? "Assigned"
+    : "Unassigned";
   return (
     <Block title="Assignment">
       <div className="kv">
         <span className="k">Assignee</span>
-        <span className="v">{conv.assigneeUserId ? "You" : "Unassigned"}</span>
+        <span className="v">{assignee}</span>
       </div>
       <div className="kv">
         <span className="k">Team</span>

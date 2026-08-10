@@ -273,6 +273,10 @@ export const conversationSchema = z.object({
   channelRef: z.string().nullable().optional(),
   status: conversationStatusSchema.default("open"),
   assigneeUserId: z.string().nullable().default(null),
+  /** The assignee's display name, resolved server-side so the UI can show the
+   *  real owner (e.g. "Assigned to Priya") instead of a viewer-relative "You".
+   *  Null when unassigned. */
+  assigneeName: z.string().nullable().default(null),
   assignedTeamId: z.string().nullable().default(null),
   priority: prioritySchema.default("normal"),
   labels: z.array(labelSchema).default([]),

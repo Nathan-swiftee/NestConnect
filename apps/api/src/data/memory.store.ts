@@ -519,6 +519,10 @@ export class MemoryStore extends Store {
       ...rest,
       snoozedUntil: rest.snoozedUntil ?? null,
       unreadCount: rest.unreadCount ?? 0,
+      // Resolve the assignee's name so the UI shows the real owner, not just "You".
+      assigneeName: rest.assigneeUserId
+        ? this.users.find((u) => u.id === rest.assigneeUserId)?.name ?? null
+        : null,
       lastChannel: lastMsg?.channel ?? rest.channel,
       waWindow: computeWaWindow(rest.channel, lastInbound),
     };

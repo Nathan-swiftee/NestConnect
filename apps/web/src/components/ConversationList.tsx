@@ -271,7 +271,10 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
               if (!c) return null;
               // Badge the most recent channel used (a thread can span channels).
               const cm = channelMeta(c.lastChannel ?? c.channel);
-              const owned = !!c.assigneeUserId;
+              // Ownership is viewer-relative: "Yours" only when it's assigned to
+              // me; a teammate's chat shows their name; unassigned shows "Queue".
+              const mine = !!c.assigneeUserId && c.assigneeUserId === myId;
+              const assignedOther = !!c.assigneeUserId && !mine;
               const Glyph = cm.Glyph;
               return (
                 <div
@@ -317,8 +320,11 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                     )
                   ) : (
                     <>
-                      <span className={"tag " + (owned ? "owner" : "grab")}>
-                        {owned ? "Yours" : "Queue"}
+                      <span
+                        className={"tag " + (mine ? "owner" : assignedOther ? "assigned" : "grab")}
+                        title={assignedOther && c.assigneeName ? `Assigned to ${c.assigneeName}` : undefined}
+                      >
+                        {mine ? "Yours" : assignedOther ? c.assigneeName?.split(" ")[0] ?? "Assigned" : "Queue"}
                       </span>
                       {showTeamTag && teamName(c.assignedTeamId) && (
                         <span className="teamtag" title={`Routed to ${teamName(c.assignedTeamId)}`}>
