@@ -101,15 +101,38 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const thumbRef = useRef<HTMLSpanElement>(null);
   const { containerRef: chipsRef, thumbRef: chipHoverRef, hoverProps } = useHoverGlide<HTMLDivElement>(".chip", "x");
+  // A signature of the chip set + their live counts. Chip labels carry counts
+  // ("All 3"), so their widths change when the view's counts change even though
+  // `filter` doesn't — the thumb must re-measure then, or it sits on stale metrics.
+  const filterSig = filters.map((f) => `${f.key}:${f.count}`).join("|");
   // Move the thumb directly on the DOM (no state → no extra render → no flash).
   useLayoutEffect(() => {
-    const btn = chipRefs.current[filter];
-    const thumb = thumbRef.current;
-    if (btn && thumb) {
-      thumb.style.transform = `translateX(${btn.offsetLeft}px)`;
-      thumb.style.width = `${btn.offsetWidth}px`;
+    const position = () => {
+      const btn = chipRefs.current[filter];
+      const thumb = thumbRef.current;
+      if (btn && thumb && btn.offsetWidth) {
+        thumb.style.transform = `translateX(${btn.offsetLeft}px)`;
+        thumb.style.width = `${btn.offsetWidth}px`;
+      }
+    };
+    position();
+    // On first mount the metrics aren't settled yet (pane transition, web-font
+    // reflow), so a single sync measure can land the thumb on the wrong chip
+    // until the next click. Re-measure after layout + after fonts load, and
+    // whenever the chips row resizes (list drag / device rotate).
+    const raf = requestAnimationFrame(() => requestAnimationFrame(position));
+    document.fonts?.ready?.then(position).catch(() => {});
+    let ro: ResizeObserver | undefined;
+    const container = chipsRef.current;
+    if (container && typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => position());
+      ro.observe(container);
     }
-  }, [filter, hasGroups]);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro?.disconnect();
+    };
+  }, [filter, hasGroups, filterSig]);
 
   // Virtualize the row list so only the visible rows mount, however long the
   // (paginated) list grows. Rows self-measure, so variable heights are fine.
