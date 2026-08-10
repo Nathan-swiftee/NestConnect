@@ -128,9 +128,13 @@ export const api = {
   contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),
   createContact: (input: CreateContactInput) => post<Contact>("/contacts", input),
   updateContact: (id: string, input: UpdateContactInput) => patch<Contact>(`/contacts/${id}`, input),
-  // Open (or start) this customer's conversation on another channel.
-  reachContact: (contactId: string, channel: "whatsapp" | "email") =>
-    post<{ conversationId: string; created: boolean }>(`/contacts/${contactId}/reach`, { channel }),
+  // Open (or start) this customer's conversation on another channel. An explicit
+  // inboxId picks which number/inbox to send from when several are connected.
+  reachContact: (contactId: string, channel: "whatsapp" | "email", inboxId?: string) =>
+    post<{ conversationId: string; created: boolean }>(`/contacts/${contactId}/reach`, {
+      channel,
+      ...(inboxId ? { inboxId } : {}),
+    }),
   // conversations (cursor-paginated — one page per call, never the whole inbox)
   conversations: (view: string, cursor?: string) =>
     get<ConversationPage>(

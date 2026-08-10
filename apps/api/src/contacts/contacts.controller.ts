@@ -82,7 +82,12 @@ export class ContactsController {
       throw new BadRequestException("This customer has no email address on file.");
     }
 
-    const inbox = (await this.store.listInboxes()).find((i) => i.type === body.channel);
+    const inboxes = await this.store.listInboxes();
+    // Honour an explicit inbox (the composer's "send from" choice when several of
+    // the same channel are connected); otherwise fall back to the first.
+    const inbox = body.inboxId
+      ? inboxes.find((i) => i.id === body.inboxId && i.type === body.channel)
+      : inboxes.find((i) => i.type === body.channel);
     if (!inbox) {
       throw new BadRequestException(`No ${body.channel} inbox is connected yet.`);
     }

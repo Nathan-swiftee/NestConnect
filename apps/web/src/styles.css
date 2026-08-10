@@ -743,6 +743,16 @@ input,textarea{font:inherit}
 .compose__chanm{display:flex;flex-direction:column;gap:1px}
 .compose__chanm b{font-size:13.5px;font-weight:650}
 .compose__chanm small{font-size:12px;color:var(--text-muted)}
+/* "Send from which inbox?" picker — shown when a channel has several connected. */
+.compose__inboxes{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.compose__inboxlead{margin:0 2px 2px;font-size:12.5px;font-weight:600;color:var(--text-muted)}
+.compose__inbox{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:var(--r-12);background:var(--surface-2);text-align:left;transition:background .12s,transform .1s var(--ease)}
+.compose__inbox:hover:not(:disabled){background:var(--brand-tint)}
+.compose__inbox:active:not(:disabled){transform:scale(.99)}
+.compose__inbox:disabled{opacity:.5;cursor:default}
+.compose__inboxm{display:flex;flex-direction:column;gap:1px;min-width:0}
+.compose__inboxm b{font-size:13.5px;font-weight:650}
+.compose__inboxm small{font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* Global search: a clear button in the box + a results note in place of chips. */
 .search__clear{flex:0 0 auto;width:20px;height:20px;border-radius:var(--r-full);display:grid;place-items:center;

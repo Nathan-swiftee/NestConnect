@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Contact } from "@ding/schemas";
-import { useContacts } from "../hooks";
+import type { Contact, Inbox } from "@ding/schemas";
+import { useContacts, useInboxes } from "../hooks";
 import { api } from "../lib/api";
 import { channelMeta, XIcon, BackIcon, SearchIcon } from "../lib/icons";
 import { useScrollLock } from "../lib/useScrollLock";
@@ -65,6 +65,7 @@ export function Compose({
   onToast: (msg: string) => void;
 }) {
   const { data: contacts } = useContacts();
+  const { data: inboxes } = useInboxes();
   const boxRef = useRef<HTMLDivElement>(null);
   useScrollLock(boxRef);
   const { containerRef: listRef, thumbRef: glideRef, hoverProps: listHover } = useHoverGlide<HTMLDivElement>(".compose__row", "xy");
@@ -72,6 +73,9 @@ export function Compose({
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Contact | null>(null);
   const [busy, setBusy] = useState<Channel | null>(null);
+  // When a channel has several connected inboxes, the user picks which to send from.
+  const [pickInboxFor, setPickInboxFor] = useState<Channel | null>(null);
+  const inboxesFor = (ch: Channel): Inbox[] => (inboxes ?? []).filter((i) => i.type === ch);
   // New-customer fields.
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -85,10 +89,10 @@ export function Compose({
     })
     .slice(0, 50);
 
-  const start = async (contact: Contact, channel: Channel) => {
+  const start = async (contact: Contact, channel: Channel, inboxId?: string) => {
     setBusy(channel);
     try {
-      const { conversationId } = await api.reachContact(contact.id, channel);
+      const { conversationId } = await api.reachContact(contact.id, channel, inboxId);
       onOpen(conversationId);
     } catch {
       const need = channel === "email" ? "an email address" : "a phone number";
@@ -97,7 +101,7 @@ export function Compose({
     }
   };
 
-  const createAndStart = async (channel: Channel) => {
+  const createAndStart = async (channel: Channel, inboxId?: string) => {
     if (!name.trim()) {
       onToast("Give the customer a name first.");
       return;
@@ -109,7 +113,7 @@ export function Compose({
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
       });
-      const { conversationId } = await api.reachContact(contact.id, channel);
+      const { conversationId } = await api.reachContact(contact.id, channel, inboxId);
       onOpen(conversationId);
     } catch {
       onToast("Couldn't start that conversation. Check the details and try again.");
@@ -119,6 +123,49 @@ export function Compose({
 
   const waHint = "Pick an approved template";
   const emailHint = "Write a new email";
+
+  // Channel buttons — but when a channel has several connected inboxes, first let
+  // the user choose which one to send from. Shared by the existing/new flows.
+  const chooseChannel = (ch: Channel, onStart: (ch: Channel, inboxId?: string) => void) => {
+    const list = inboxesFor(ch);
+    if (list.length > 1) setPickInboxFor(ch);
+    else onStart(ch, list[0]?.id);
+  };
+  const renderChannels = (canWa: boolean, canEmail: boolean, onStart: (ch: Channel, inboxId?: string) => void) => {
+    if (pickInboxFor) {
+      const list = inboxesFor(pickInboxFor);
+      const label = pickInboxFor === "whatsapp" ? "WhatsApp number" : "email inbox";
+      return (
+        <div className="compose__inboxes">
+          <button type="button" className="compose__back" onClick={() => setPickInboxFor(null)}>
+            <BackIcon /> Back
+          </button>
+          <p className="compose__inboxlead">Send from which {label}?</p>
+          {list.map((i) => (
+            <button
+              type="button"
+              key={i.id}
+              className="compose__inbox"
+              disabled={busy != null}
+              onClick={() => onStart(pickInboxFor, i.id)}
+            >
+              <ChanIcon channel={pickInboxFor} />
+              <span className="compose__inboxm">
+                <b>{i.name}</b>
+                <small>{i.handle}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <div className="compose__chans">
+        <ChannelPick channel="whatsapp" disabled={!canWa} busy={busy === "whatsapp"} hint={waHint} onPick={() => chooseChannel("whatsapp", onStart)} />
+        <ChannelPick channel="email" disabled={!canEmail} busy={busy === "email"} hint={emailHint} onPick={() => chooseChannel("email", onStart)} />
+      </div>
+    );
+  };
 
   return createPortal(
     <div className="modal" onClick={onClose}>
@@ -131,7 +178,7 @@ export function Compose({
         {selected ? (
           // ── Step 2: choose the channel to reach the picked customer on ──
           <div className="modal__body">
-            <button type="button" className="compose__back" onClick={() => setSelected(null)}>
+            <button type="button" className="compose__back" onClick={() => { setPickInboxFor(null); setSelected(null); }}>
               <BackIcon /> Choose a different customer
             </button>
             <div className="compose__who">
@@ -141,22 +188,7 @@ export function Compose({
                 {selected.company && <small>{selected.company}</small>}
               </span>
             </div>
-            <div className="compose__chans">
-              <ChannelPick
-                channel="whatsapp"
-                disabled={!selected.phone}
-                busy={busy === "whatsapp"}
-                hint={waHint}
-                onPick={() => start(selected, "whatsapp")}
-              />
-              <ChannelPick
-                channel="email"
-                disabled={!selected.email}
-                busy={busy === "email"}
-                hint={emailHint}
-                onPick={() => start(selected, "email")}
-              />
-            </div>
+            {renderChannels(!!selected.phone, !!selected.email, (ch, inboxId) => start(selected, ch, inboxId))}
           </div>
         ) : (
           <div className="modal__body">
@@ -210,10 +242,7 @@ export function Compose({
                   <span>Email</span>
                   <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" inputMode="email" />
                 </label>
-                <div className="compose__chans">
-                  <ChannelPick channel="whatsapp" disabled={!phone.trim()} busy={busy === "whatsapp"} hint={waHint} onPick={() => createAndStart("whatsapp")} />
-                  <ChannelPick channel="email" disabled={!email.trim()} busy={busy === "email"} hint={emailHint} onPick={() => createAndStart("email")} />
-                </div>
+                {renderChannels(!!phone.trim(), !!email.trim(), (ch, inboxId) => createAndStart(ch, inboxId))}
               </div>
             )}
           </div>
