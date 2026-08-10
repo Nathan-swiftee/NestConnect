@@ -302,6 +302,34 @@ function EmailHtml({ html }: { html: string }) {
     return () => timers.forEach((t) => window.clearTimeout(t));
   }, [srcDoc]);
 
+  // The sandboxed iframe swallows wheel events, so scrolling while hovering the
+  // email would scroll the page instead of the conversation (until you click
+  // into the thread). Forward the wheel from inside the frame to the thread's
+  // scroll container so hovering the email scrolls the chat straight away.
+  useEffect(() => {
+    const iframe = ref.current;
+    const scroller = iframe?.closest(".msgs") as HTMLElement | null;
+    if (!iframe || !scroller) return;
+    let doc: Document | null = null;
+    const onWheel = (e: WheelEvent) => {
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? scroller.clientHeight : 1;
+      scroller.scrollTop += e.deltaY * unit;
+      scroller.scrollLeft += e.deltaX * unit;
+      e.preventDefault();
+    };
+    const attach = () => {
+      doc?.removeEventListener("wheel", onWheel);
+      doc = iframe.contentDocument;
+      doc?.addEventListener("wheel", onWheel, { passive: false });
+    };
+    attach();
+    iframe.addEventListener("load", attach);
+    return () => {
+      doc?.removeEventListener("wheel", onWheel);
+      iframe.removeEventListener("load", attach);
+    };
+  }, [srcDoc]);
+
   return (
     <div className="emailhtml">
       {hasBlocked && (
