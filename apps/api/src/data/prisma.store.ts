@@ -955,6 +955,20 @@ export class PrismaStore extends Store {
     }
   }
 
+  async setConversationInbox(conversationId: string, inboxId: string): Promise<Conversation | undefined> {
+    const cur = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { inboxId: true },
+    });
+    if (!cur || cur.inboxId === inboxId) return undefined; // unknown or already there
+    const row = await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { inboxId },
+      include: convInclude,
+    });
+    return mapConversation(row);
+  }
+
   async setSla(conversationId: string, dueAt: string | null): Promise<Conversation | undefined> {
     try {
       const row = await this.prisma.conversation.update({

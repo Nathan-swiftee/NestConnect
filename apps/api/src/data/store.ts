@@ -322,6 +322,15 @@ export abstract class Store {
     subject: string | null,
   ): Promise<Conversation | undefined>;
 
+  /** Point a conversation at a different channel inbox — used when a customer's
+   *  most-recent message arrives on another channel of the same thread, so the
+   *  chat shows under the channel they're actually using now (not the origin).
+   *  A no-op that returns undefined when the inbox is already set. */
+  abstract setConversationInbox(
+    conversationId: string,
+    inboxId: string,
+  ): Promise<Conversation | undefined>;
+
   /** Set (or clear) a conversation's first-response SLA due time (ISO or null). */
   abstract setSla(
     conversationId: string,

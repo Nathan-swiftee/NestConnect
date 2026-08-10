@@ -817,6 +817,13 @@ export class MemoryStore extends Store {
     return this.summary(rec);
   }
 
+  async setConversationInbox(conversationId: string, inboxId: string): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec || rec.inboxId === inboxId) return undefined; // unknown or already there
+    rec.inboxId = inboxId;
+    return this.summary(rec);
+  }
+
   async setSla(conversationId: string, dueAt: string | null): Promise<Conversation | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;

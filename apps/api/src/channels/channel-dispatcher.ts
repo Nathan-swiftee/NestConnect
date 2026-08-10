@@ -47,10 +47,16 @@ export class ChannelDispatcher {
   ): Promise<DeliveryOutcome> {
     // A message may be sent on a different channel than the conversation's own
     // (cross-channel reply within one open thread). Resolve the effective channel
-    // and the inbox to send from.
+    // and the inbox to send from. The conversation's inbox tracks the customer's
+    // most-recent channel, which can differ from the origin `channel`, so compare
+    // the target channel against the inbox's *type* (whatsapp_group ≡ whatsapp):
+    // send from that inbox when it serves the channel, else the channel's primary
+    // inbox. For a conversation that never went cross-channel this is unchanged.
     const channel = message.channel ?? conversation.channel;
+    const waNorm = (t: ChannelType): ChannelType => (t === "whatsapp_group" ? "whatsapp" : t);
+    const convInbox = await this.store.getInbox(conversation.inboxId);
     const sendingInboxId =
-      channel === conversation.channel
+      convInbox && waNorm(convInbox.type) === waNorm(channel)
         ? conversation.inboxId
         : (await this.firstInboxOfType(channel)) ?? conversation.inboxId;
 
