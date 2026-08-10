@@ -47,6 +47,7 @@ import {
   StopIcon,
   TrashIcon,
   RefreshIcon,
+  EditIcon,
 } from "../lib/icons";
 
 interface Props {
@@ -801,6 +802,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [bcc, setBcc] = useState("");
   // The editable email subject (the thread's subject; empty on a fresh email).
   const [subjectDraft, setSubjectDraft] = useState(conv?.subject ?? "");
+  // Subject shows compact ("Subject: …" + pencil) until you tap to edit it.
+  const [editingSubject, setEditingSubject] = useState(false);
   // Another agent typing on THIS conversation ("{who} is typing…"); null when idle.
   const [typingWho, setTypingWho] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
@@ -1973,13 +1976,35 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             <div className="emailhdr">
               <div className="emailhdr__row">
                 <span className="emailhdr__lbl">Subject</span>
-                <input
-                  className="emailhdr__in"
-                  value={subjectDraft}
-                  onChange={(e) => setSubjectDraft(e.target.value)}
-                  placeholder="Add a subject"
-                  aria-label="Email subject"
-                />
+                {editingSubject ? (
+                  <input
+                    className="emailhdr__in"
+                    value={subjectDraft}
+                    onChange={(e) => setSubjectDraft(e.target.value)}
+                    placeholder="Add a subject"
+                    aria-label="Email subject"
+                    autoFocus
+                    onBlur={() => setEditingSubject(false)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "Escape") {
+                        e.preventDefault();
+                        setEditingSubject(false);
+                      }
+                    }}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className="emailhdr__subjbtn"
+                    onClick={() => setEditingSubject(true)}
+                    title="Edit subject"
+                  >
+                    <span className={"emailhdr__subj" + (subjectDraft.trim() ? "" : " placeholder")}>
+                      {subjectDraft.trim() || "Add a subject"}
+                    </span>
+                    <EditIcon />
+                  </button>
+                )}
                 <button
                   type="button"
                   className={"emailhdr__cc" + (showCc ? " on" : "")}
