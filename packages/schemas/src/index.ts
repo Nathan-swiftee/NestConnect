@@ -57,6 +57,9 @@ export const userSchema = z.object({
   email: z.string().email(),
   role: roleSchema,
   avatarColor: z.string().optional(),
+  /** Uploaded profile photo URL (served via /api/media/:id). Falls back to
+   *  Gravatar, then coloured initials, when absent. */
+  avatarUrl: z.string().nullable().optional(),
   online: z.boolean().default(false),
   /** Manual "accepting work" flag — an unavailable agent is skipped by
    *  round-robin auto-assignment (distinct from `online` presence). */
@@ -531,6 +534,22 @@ export const updateMyPreferencesInputSchema = z.object({
   emailSignature: z.string().max(20000).nullable().optional(),
 });
 export type UpdateMyPreferencesInput = z.infer<typeof updateMyPreferencesInputSchema>;
+
+/** A user editing their OWN profile — name, login email, and photo. */
+export const updateMyProfileInputSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  email: z.string().email().optional(),
+  /** Uploaded photo URL (from POST /media). Empty string / null clears it. */
+  avatarUrl: z.string().max(2000).nullable().optional(),
+});
+export type UpdateMyProfileInput = z.infer<typeof updateMyProfileInputSchema>;
+
+/** A user changing their OWN password — current is re-verified server-side. */
+export const changePasswordInputSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(200),
+});
+export type ChangePasswordInput = z.infer<typeof changePasswordInputSchema>;
 
 export const createContactInputSchema = z.object({
   displayName: z.string().min(1),

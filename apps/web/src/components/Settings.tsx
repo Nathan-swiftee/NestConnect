@@ -1064,7 +1064,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
             <div className="setmember" key={m.user.id}>
               <div className="setrow">
                 <span className="av" style={{ background: avatarBg(m.user.name, m.user.avatarColor), width: 34, height: 34, fontSize: 12 }}>
-                  {initials(m.user.name)}
+                  {m.user.avatarUrl ? <img className="av__photo" src={m.user.avatarUrl} alt="" /> : initials(m.user.name)}
                 </span>
                 <div className="setrow__main">
                   <b>{m.user.name}{isSelf && <span className="youtag">You</span>}</b>

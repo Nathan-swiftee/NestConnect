@@ -73,4 +73,13 @@ export class AuthService {
       return undefined;
     }
   }
+
+  /** Change a user's password after re-verifying the current one. Returns false
+   *  if the current password is wrong (or the account has no password set). */
+  async changePassword(userId: string, current: string, next: string): Promise<boolean> {
+    const hash = await this.store.getPasswordHash(userId);
+    if (!hash || !(await bcrypt.compare(current, hash))) return false;
+    await this.store.setUserPassword(userId, next);
+    return true;
+  }
 }

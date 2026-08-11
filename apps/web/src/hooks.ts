@@ -26,6 +26,8 @@ import {
   type UpdateInboxInput,
   type UpdateIntegrationSettingsInput,
   type UpdateMyPreferencesInput,
+  type UpdateMyProfileInput,
+  type ChangePasswordInput,
   type UpdateTeamInput,
   type UpdateTemplateInput,
   type UpdateUserInput,
@@ -151,6 +153,25 @@ export function useUpdateMyPreferences() {
       qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["people"] });
     },
+  });
+}
+
+/** Update the current user's own profile (name, login email, photo). */
+export function useUpdateMyProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdateMyProfileInput) => api.updateMyProfile(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["people"] });
+    },
+  });
+}
+
+/** Change the current user's own password (current is re-verified server-side). */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (input: ChangePasswordInput) => api.changePassword(input),
   });
 }
 export const useViews = () => useQuery({ queryKey: ["views"], queryFn: api.views });

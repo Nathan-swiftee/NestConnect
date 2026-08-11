@@ -509,6 +509,29 @@ export class PrismaStore extends Store {
     }
   }
 
+  async updateMyProfile(
+    userId: string,
+    params: { name?: string; email?: string; avatarUrl?: string | null },
+  ): Promise<User | undefined> {
+    try {
+      const data: Prisma.UserUpdateInput = {};
+      if (params.name !== undefined) data.name = params.name;
+      if (params.email !== undefined) data.email = params.email;
+      if (params.avatarUrl !== undefined) data.avatarUrl = params.avatarUrl;
+      const u = await this.prisma.user.update({ where: { id: userId }, data });
+      return mapUser(u);
+    } catch {
+      return undefined;
+    }
+  }
+
+  async setUserPassword(userId: string, password: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: bcrypt.hashSync(password, 8) },
+    });
+  }
+
   async deleteUser(id: string): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await tx.teamMember.deleteMany({ where: { userId: id } });

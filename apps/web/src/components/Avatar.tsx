@@ -12,6 +12,7 @@ export function Avatar({
   name,
   email,
   color,
+  src,
   size,
   fontSize,
   className = "av",
@@ -20,12 +21,15 @@ export function Avatar({
   name: string;
   email?: string | null;
   color?: string | null;
+  /** An explicit photo URL (e.g. an uploaded profile photo) — wins over Gravatar. */
+  src?: string | null;
   size?: number;
   fontSize?: number;
   className?: string;
   children?: ReactNode;
 }) {
-  const url = useGravatar(email);
+  const gravatar = useGravatar(email);
+  const url = src || gravatar;
   const [loaded, setLoaded] = useState(false);
   // A new url (thread/contact switch) starts unloaded again.
   useEffect(() => setLoaded(false), [url]);

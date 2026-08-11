@@ -233,6 +233,14 @@ export abstract class Store {
     userId: string,
     params: { available?: boolean; emailSignature?: string | null },
   ): Promise<User | undefined>;
+  /** A user updating their OWN profile (name, login email, photo). Email
+   *  uniqueness within the org is enforced by the caller. */
+  abstract updateMyProfile(
+    userId: string,
+    params: { name?: string; email?: string; avatarUrl?: string | null },
+  ): Promise<User | undefined>;
+  /** Set a user's password to a new plaintext value (hashed in the store). */
+  abstract setUserPassword(userId: string, password: string): Promise<void>;
   /** Remove a person, detaching their team memberships and clearing assignments. */
   abstract deleteUser(id: string): Promise<void>;
   abstract views(userId: string): Promise<SidebarViews>;

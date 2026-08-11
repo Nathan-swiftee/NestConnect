@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   ForbiddenException,
@@ -16,6 +17,7 @@ import {
   reorderTeamsInputSchema,
   updateInboxInputSchema,
   updateMyPreferencesInputSchema,
+  updateMyProfileInputSchema,
   updateTeamInputSchema,
   updateUserInputSchema,
   type CreateInboxInput,
@@ -24,6 +26,7 @@ import {
   type ReorderTeamsInput,
   type UpdateInboxInput,
   type UpdateMyPreferencesInput,
+  type UpdateMyProfileInput,
   type UpdateTeamInput,
   type UpdateUserInput,
   type User,
@@ -78,6 +81,30 @@ export class WorkspaceController {
       params.emailSignature = clean || null;
     }
     const user = await this.store.updateMyPreferences(userId, params);
+    if (!user) throw new NotFoundException("Current user not found");
+    return user;
+  }
+
+  /** A user updating their OWN profile — name, login email, photo. */
+  @Patch("me/profile")
+  async updateMyProfile(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(updateMyProfileInputSchema)) body: UpdateMyProfileInput,
+  ): Promise<User> {
+    const params: { name?: string; email?: string; avatarUrl?: string | null } = {};
+    if (body.name !== undefined) params.name = body.name.trim();
+    if (body.email !== undefined) {
+      const email = body.email.trim().toLowerCase();
+      // Login is by email — keep it unique within the org.
+      const existing = await this.store.findUserByEmail(email);
+      if (existing && existing.id !== userId) {
+        throw new ConflictException("That email address is already in use.");
+      }
+      params.email = email;
+    }
+    // Empty string clears the photo (back to Gravatar / initials).
+    if (body.avatarUrl !== undefined) params.avatarUrl = body.avatarUrl?.trim() || null;
+    const user = await this.store.updateMyProfile(userId, params);
     if (!user) throw new NotFoundException("Current user not found");
     return user;
   }

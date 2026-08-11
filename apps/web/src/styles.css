@@ -1259,6 +1259,25 @@ input,textarea{font:inherit}
 .pers-avail__dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px}
 .pers-avail.is-on .pers-avail__dot{background:var(--wa)}
 .pers-avail.is-off .pers-avail__dot{background:var(--amber)}
+/* Profile block — photo + name/email; and the password grid */
+.pers-role{margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.02em;color:var(--brand-strong);
+  background:var(--brand-tint);padding:2px 9px;border-radius:var(--r-full)}
+.pers-prof{display:flex;align-items:center;gap:16px;margin-top:12px}
+.pers-prof__av{flex:0 0 auto;box-shadow:0 0 0 1px var(--border)}
+.pers-prof__actions{display:flex;flex-direction:column;gap:6px;min-width:0}
+.pers-prof__btns{display:flex;flex-wrap:wrap;gap:8px}
+.pers-prof__btns .btn-ghost{border:1px solid var(--border)}
+.pers-prof__remove{color:var(--danger)}
+.pers-prof__actions .pers-field__hint{margin-left:0}
+.pers-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.pers-grid .pers-col-full{grid-column:1 / -1}
+.pers-pw__foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
+.pers-pw__foot .btn-ghost{border:1px solid var(--border);white-space:nowrap}
+.pers-pw__warn{color:var(--danger);font-size:12px;font-weight:600}
+@media (max-width:560px){
+  .pers-grid{grid-template-columns:1fr}
+  .pers-prof{flex-wrap:wrap}
+}
 .sig-editor{margin-top:10px;border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface-2);overflow:hidden;transition:border-color .15s,box-shadow .15s}
 .sig-editor:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-ring)}
 .sig-editor .richbar{margin:0;padding:7px 9px;border-bottom:1px solid var(--border);background:var(--surface)}

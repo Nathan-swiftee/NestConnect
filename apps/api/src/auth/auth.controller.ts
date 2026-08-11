@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Post, Res, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Post, Res, UnauthorizedException } from "@nestjs/common";
 import type { Response } from "express";
 import {
+  changePasswordInputSchema,
   forgotPasswordInputSchema,
   loginInputSchema,
   setPasswordInputSchema,
+  type ChangePasswordInput,
   type ForgotPasswordInput,
   type LoginInput,
   type SetPasswordInput,
@@ -91,5 +93,16 @@ export class AuthController {
   @Get("session")
   session(@CurrentUserId() userId: string) {
     return this.store.me(userId);
+  }
+
+  /** Change your own password — the current one is re-verified server-side. */
+  @Post("change-password")
+  async changePassword(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(changePasswordInputSchema)) body: ChangePasswordInput,
+  ) {
+    const ok = await this.auth.changePassword(userId, body.currentPassword, body.newPassword);
+    if (!ok) throw new BadRequestException("Your current password is incorrect.");
+    return { ok: true };
   }
 }

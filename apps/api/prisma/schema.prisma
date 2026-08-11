@@ -87,6 +87,9 @@ model User {
   email        String
   role         Role     @default(agent)
   avatarColor  String?
+  // Uploaded profile photo, served via /api/media/:id. Falls back to Gravatar,
+  // then coloured initials, when null.
+  avatarUrl    String?
   online       Boolean  @default(false)
   // Manual "accepting work" flag (distinct from `online` presence) — an
   // unavailable agent is skipped by round-robin auto-assignment.

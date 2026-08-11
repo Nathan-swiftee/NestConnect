@@ -94,7 +94,7 @@ export function IconRail({
           style={{ background: avatarBg(me?.name ?? "", me?.avatarColor) }}
           onClick={() => setMenu((v) => !v)}
         >
-          {me ? initials(me.name) : "··"}
+          {me?.avatarUrl ? <img className="av__photo" src={me.avatarUrl} alt="" /> : me ? initials(me.name) : "··"}
           <span className={"pres" + (available ? "" : " pres--away")} />
         </button>
         {menu && (

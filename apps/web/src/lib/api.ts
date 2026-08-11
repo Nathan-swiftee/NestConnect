@@ -30,6 +30,8 @@ import type {
   UpdateTeamInput,
   Notification,
   UpdateMyPreferencesInput,
+  UpdateMyProfileInput,
+  ChangePasswordInput,
   UpdateUserInput,
   User,
 } from "@ding/schemas";
@@ -95,6 +97,10 @@ export const api = {
   me: () => get<MeResponse>("/me"),
   // The current user's own personal settings (availability + email signature).
   updateMyPreferences: (input: UpdateMyPreferencesInput) => patch<User>("/me/preferences", input),
+  // The current user's own profile — name, login email, photo.
+  updateMyProfile: (input: UpdateMyProfileInput) => patch<User>("/me/profile", input),
+  // Change your own password (current one is re-verified server-side).
+  changePassword: (input: ChangePasswordInput) => post<{ ok: boolean }>("/auth/change-password", input),
   // Bell notifications.
   notifications: () => get<Notification[]>("/notifications"),
   markNotificationsRead: (ids?: string[]) => post<{ ok: boolean }>("/notifications/read", ids ? { ids } : {}),

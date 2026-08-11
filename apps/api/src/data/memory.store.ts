@@ -415,6 +415,22 @@ export class MemoryStore extends Store {
     return user;
   }
 
+  async updateMyProfile(
+    userId: string,
+    params: { name?: string; email?: string; avatarUrl?: string | null },
+  ): Promise<User | undefined> {
+    const user = this.users.find((u) => u.id === userId);
+    if (!user) return undefined;
+    if (params.name !== undefined) user.name = params.name;
+    if (params.email !== undefined) user.email = params.email;
+    if (params.avatarUrl !== undefined) user.avatarUrl = params.avatarUrl ?? undefined;
+    return user;
+  }
+
+  async setUserPassword(userId: string, password: string): Promise<void> {
+    this.passwords.set(userId, bcrypt.hashSync(password, 8));
+  }
+
   async deleteUser(id: string): Promise<void> {
     this.users = this.users.filter((u) => u.id !== id);
     delete this.membership[id];
