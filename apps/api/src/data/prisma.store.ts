@@ -689,6 +689,11 @@ export class PrismaStore extends Store {
   async views(userId: string): Promise<SidebarViews> {
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
+    // Admins & managers oversee the whole workspace: they see every team and
+    // channel in the shared section, regardless of their own team memberships.
+    // Personal queues (My Inbound / Mine / Queue) stay membership-scoped for all.
+    const me = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    const elevated = me?.role === "admin" || me?.role === "manager";
     const count = (view: string) =>
       this.prisma.conversation.count({ where: this.buildWhere(view, userId, userTeams, token, true) });
     const dueSnoozed = () =>
@@ -705,7 +710,7 @@ export class PrismaStore extends Store {
     ];
 
     const teamRows = await this.prisma.team.findMany({
-      where: { id: { in: userTeams } },
+      where: elevated ? { orgId: ORG_ID } : { id: { in: userTeams } },
       orderBy: [{ order: "asc" }, { name: "asc" }],
     });
     const teams: ViewItem[] = [];
@@ -714,7 +719,7 @@ export class PrismaStore extends Store {
     }
 
     const inboxRows = await this.prisma.inbox.findMany({
-      where: { teams: { some: { teamId: { in: userTeams } } } },
+      where: elevated ? { orgId: ORG_ID } : { teams: { some: { teamId: { in: userTeams } } } },
       include: { teams: true },
     });
     const inboxes: ViewItem[] = [];

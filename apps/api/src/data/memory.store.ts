@@ -606,6 +606,11 @@ export class MemoryStore extends Store {
 
   async views(userId: string): Promise<SidebarViews> {
     const userTeams = this.membership[userId] ?? [];
+    // Admins & managers oversee the whole workspace: they see every team and
+    // channel in the shared section, regardless of their own team memberships.
+    // Personal queues (My Inbound / Mine / Queue) stay membership-scoped for all.
+    const role = this.users.find((u) => u.id === userId)?.role;
+    const elevated = role === "admin" || role === "manager";
     const count = (view: string) =>
       this.conversations.filter((r) => this.matchesView(r, view, userId, userTeams, true)).length;
     const my: ViewItem[] = [
@@ -617,10 +622,10 @@ export class MemoryStore extends Store {
     ];
     const teams: ViewItem[] = [...this.teams]
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      .filter((t) => userTeams.includes(t.id))
+      .filter((t) => elevated || userTeams.includes(t.id))
       .map((t) => ({ key: `team:${t.id}`, title: t.name, count: count(`team:${t.id}`) }));
     const inboxes: ViewItem[] = this.inboxes
-      .filter((i) => i.teamIds.some((t) => userTeams.includes(t)))
+      .filter((i) => elevated || i.teamIds.some((t) => userTeams.includes(t)))
       .map((i) => {
         const groups =
           i.type === "whatsapp"
