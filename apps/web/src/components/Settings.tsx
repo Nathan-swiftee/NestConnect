@@ -1,6 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useHoverGlide } from "../lib/useHoverGlide";
 import type { ChannelType, Inbox, Role, RoutingStrategy, Team, Template, TemplateCategory } from "@ding/schemas";
 import {
   useCreateInbox,
@@ -30,11 +29,13 @@ import { initials, avatarBg } from "../lib/format";
 import { api } from "../lib/api";
 import { TEMPLATE_CATEGORIES, approvalMeta, countVariables } from "./TemplatePicker";
 import {
+  BoltIcon,
   channelMeta,
   ChevronDown,
   ChevronUp,
   EditIcon,
   GmailGlyph,
+  InboxIcon,
   MailIcon,
   PlusIcon,
   RefreshIcon,
@@ -46,20 +47,71 @@ import {
   XIcon,
 } from "../lib/icons";
 
-type Tab = "channels" | "teams" | "people" | "setup" | "templates";
+/** A settings destination. Leaves are grouped into the left-rail primary
+ *  sections; each section surfaces its leaves as the top sub-navigation. */
+type Leaf = "channels" | "templates" | "teams" | "people" | "connections" | "storage" | "email";
+type SetupSub = "connections" | "storage" | "email";
 
 interface Props {
   onClose: () => void;
   onToast: (msg: string) => void;
 }
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "channels", label: "Channels" },
-  { key: "teams", label: "Teams" },
-  { key: "people", label: "People" },
-  { key: "templates", label: "Templates" },
-  { key: "setup", label: "Setup" },
+interface NavSection {
+  key: string;
+  label: string;
+  Icon: ComponentType;
+  leaves: { key: Leaf; label: string }[];
+}
+
+/** Left-rail sections (primary nav) → their sub-nav leaves (secondary nav).
+ *  A section's first leaf is what its rail button opens. */
+const NAV: NavSection[] = [
+  {
+    key: "messaging",
+    label: "Messaging",
+    Icon: InboxIcon,
+    leaves: [
+      { key: "channels", label: "Channels" },
+      { key: "templates", label: "Templates" },
+    ],
+  },
+  {
+    key: "org",
+    label: "Organisation",
+    Icon: TeamGlyph,
+    leaves: [
+      { key: "teams", label: "Teams" },
+      { key: "people", label: "People" },
+    ],
+  },
+  {
+    key: "integrations",
+    label: "Integrations",
+    Icon: BoltIcon,
+    leaves: [
+      { key: "connections", label: "Connections" },
+      { key: "storage", label: "Storage" },
+      { key: "email", label: "Email" },
+    ],
+  },
 ];
+
+/** Per-sub heading + blurb for the Integrations panes (one component, three sub-tabs). */
+const SETUP_HEAD: Record<SetupSub, { h: string; p: string }> = {
+  connections: {
+    h: "Connections",
+    p: "App-level OAuth credentials behind one-click channel connections, set once for the whole workspace.",
+  },
+  storage: {
+    h: "Storage",
+    p: "Where sent & received media — photos, files and voice notes — is stored.",
+  },
+  email: {
+    h: "Email",
+    p: "The app’s own transactional email: invites, password resets and the test send.",
+  },
+};
 
 const ROLES: { value: Role; label: string }[] = [
   { value: "agent", label: "Agent" },
@@ -82,26 +134,13 @@ function summariseTeams(names: string[], max = 2): string {
 }
 
 export function Settings({ onClose, onToast }: Props) {
-  const [tab, setTab] = useState<Tab>("channels");
-  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const tabThumbRef = useRef<HTMLSpanElement>(null);
-  const { containerRef: tabsRef, thumbRef: tabHoverRef, hoverProps: tabHover } = useHoverGlide<HTMLElement>(".settabs__btn", "xy");
-  // Slide the tab thumb to the active tab — works for both the vertical (desktop)
-  // and horizontal (mobile) layouts by matching its full box.
-  useLayoutEffect(() => {
-    const move = () => {
-      const btn = tabRefs.current[tab];
-      const thumb = tabThumbRef.current;
-      if (btn && thumb) {
-        thumb.style.transform = `translate(${btn.offsetLeft}px, ${btn.offsetTop}px)`;
-        thumb.style.width = `${btn.offsetWidth}px`;
-        thumb.style.height = `${btn.offsetHeight}px`;
-      }
-    };
-    move();
-    window.addEventListener("resize", move);
-    return () => window.removeEventListener("resize", move);
-  }, [tab]);
+  const [active, setActive] = useState<Leaf>("channels");
+  // The active primary section is whichever one owns the active leaf.
+  const section = NAV.find((s) => s.leaves.some((l) => l.key === active)) ?? NAV[0];
+  // Keep one pane key per section so switching *sub*-tabs within Integrations
+  // doesn't remount SetupPane (it holds unsaved form state); switching sections
+  // still swaps the key and plays the pane-in transition.
+  const paneKey = section.key === "integrations" ? "integrations" : active;
 
   return (
     <div className="settings" role="region" aria-label="Settings">
@@ -112,28 +151,50 @@ export function Settings({ onClose, onToast }: Props) {
         </button>
       </header>
       <div className="settings__body">
-        <nav className="settings__tabs" ref={tabsRef} {...tabHover}>
-          <span className="settabs__hover" ref={tabHoverRef} />
-          <span className="settabs__thumb" ref={tabThumbRef} />
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              ref={(el) => {
-                tabRefs.current[t.key] = el;
-              }}
-              className={"settabs__btn" + (tab === t.key ? " active" : "")}
-              onClick={() => setTab(t.key)}
-            >
-              {t.label}
-            </button>
-          ))}
+        <nav className="settings__nav" aria-label="Settings sections">
+          {NAV.map((s) => {
+            const on = s.key === section.key;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                className={"setnav__item" + (on ? " active" : "")}
+                aria-current={on ? "page" : undefined}
+                onClick={() => setActive(s.leaves[0].key)}
+              >
+                <span className="setnav__ic">
+                  <s.Icon />
+                </span>
+                <span className="setnav__lbl">{s.label}</span>
+              </button>
+            );
+          })}
         </nav>
-        <div className="settings__pane" key={tab}>
-          {tab === "channels" && <ChannelsPane onToast={onToast} />}
-          {tab === "teams" && <TeamsPane onToast={onToast} />}
-          {tab === "people" && <PeoplePane onToast={onToast} />}
-          {tab === "templates" && <TemplatesPane onToast={onToast} />}
-          {tab === "setup" && <SetupPane onToast={onToast} />}
+
+        <div className="settings__main">
+          <nav className="settings__sub" aria-label={`${section.label} settings`}>
+            {section.leaves.map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                className={"setsub__btn" + (active === l.key ? " active" : "")}
+                aria-current={active === l.key ? "page" : undefined}
+                onClick={() => setActive(l.key)}
+              >
+                {l.label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="settings__pane" key={paneKey}>
+            {active === "channels" && <ChannelsPane onToast={onToast} />}
+            {active === "templates" && <TemplatesPane onToast={onToast} />}
+            {active === "teams" && <TeamsPane onToast={onToast} />}
+            {active === "people" && <PeoplePane onToast={onToast} />}
+            {(active === "connections" || active === "storage" || active === "email") && (
+              <SetupPane sub={active} onToast={onToast} />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1272,7 +1333,7 @@ function TemplateForm({
 /* Setup — app-level integration credentials                          */
 /* ------------------------------------------------------------------ */
 
-function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
+function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => void }) {
   const integrations = useIntegrations();
   const update = useUpdateIntegrations();
   const google = integrations.data?.google;
@@ -1467,11 +1528,13 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
     <div className="setpane">
       <div className="setpane__head">
         <div>
-          <h2>Setup</h2>
-          <p>App-level credentials that power one-click channel connections, set once for the whole workspace.</p>
+          <h2>{SETUP_HEAD[sub].h}</h2>
+          <p>{SETUP_HEAD[sub].p}</p>
         </div>
       </div>
 
+      {sub === "connections" && (
+      <>
       <div className="setupcard">
         <div className="setupcard__head">
           <span className="setrow__ic" style={{ color: "#EA4335" }}>
@@ -1644,7 +1707,10 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
           </button>
         </div>
       </div>
+      </>
+      )}
 
+      {sub === "storage" && (
       <div className="setupcard">
         <div className="setupcard__head">
           <span className="setrow__ic" style={{ color: "#F6821F" }}>
@@ -1725,7 +1791,9 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
           </button>
         </div>
       </div>
+      )}
 
+      {sub === "email" && (
       <div className="setupcard">
         <div className="setupcard__head">
           <span className="setrow__ic" style={{ color: "#EA4335" }}>
@@ -1792,6 +1860,7 @@ function SetupPane({ onToast }: { onToast: (msg: string) => void }) {
           </button>
         </div>
       </div>
+      )}
     </div>
   );
 }
