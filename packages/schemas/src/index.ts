@@ -550,8 +550,10 @@ export type UpdateUserInput = z.infer<typeof updateUserInputSchema>;
 /** A user editing their OWN personal settings (no admin rights needed). */
 export const updateMyPreferencesInputSchema = z.object({
   available: z.boolean().optional(),
-  /** Rich-text (HTML) signature; empty string clears it. */
-  emailSignature: z.string().max(20000).nullable().optional(),
+  /** Rich-text (HTML) signature; empty string clears it. Images are hosted (a
+   *  short https URL, not inline base64), so this only needs headroom for
+   *  formatting markup and the occasional pasted data-URL. */
+  emailSignature: z.string().max(200000).nullable().optional(),
 });
 export type UpdateMyPreferencesInput = z.infer<typeof updateMyPreferencesInputSchema>;
 

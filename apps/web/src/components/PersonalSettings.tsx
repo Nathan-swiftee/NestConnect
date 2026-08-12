@@ -1,17 +1,97 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import TextStyle from "@tiptap/extension-text-style";
+import Color from "@tiptap/extension-color";
+import FontFamily from "@tiptap/extension-font-family";
+import TextAlign from "@tiptap/extension-text-align";
 import type { UpdateMyProfileInput } from "@ding/schemas";
 import { useMe, useUpdateMyPreferences, useUpdateMyProfile, useChangePassword } from "../hooks";
 import { useScrollLock } from "../lib/useScrollLock";
 import { api } from "../lib/api";
 import { XIcon } from "../lib/icons";
 import { Avatar } from "./Avatar";
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    fontSize: {
+      /** Set an inline font-size (e.g. "18px") on the current selection. */
+      setFontSize: (size: string) => ReturnType;
+      /** Clear any inline font-size. */
+      unsetFontSize: () => ReturnType;
+    };
+  }
+}
+
+/**
+ * TipTap v2 ships no official font-size extension, so this tiny mark hangs a
+ * `fontSize` attribute off `textStyle` and (de)serialises it as inline
+ * `style="font-size:…"` — exactly what Gmail emits, so pasted sizes survive.
+ */
+const FontSize = Extension.create<{ types: string[] }>({
+  name: "fontSize",
+  addOptions() {
+    return { types: ["textStyle"] };
+  },
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          fontSize: {
+            default: null,
+            parseHTML: (element: HTMLElement) => element.style.fontSize || null,
+            renderHTML: (attributes: { fontSize?: string | null }) =>
+              attributes.fontSize ? { style: `font-size: ${attributes.fontSize}` } : {},
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setFontSize:
+        (size: string) =>
+        ({ chain }) =>
+          chain().setMark("textStyle", { fontSize: size }).run(),
+      unsetFontSize:
+        () =>
+        ({ chain }) =>
+          chain().setMark("textStyle", { fontSize: null }).removeEmptyTextStyle().run(),
+    };
+  },
+});
+
+/**
+ * The stock Image node drops width/height on serialise, so a sized image
+ * silently reverts. This keeps both attributes (from the tag or an inline
+ * style) and renders them back out, so sizing survives `getHTML()`.
+ */
+const SizedImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("width") || element.style.width || null,
+        renderHTML: (attributes: { width?: string | number | null }) =>
+          attributes.width ? { width: attributes.width } : {},
+      },
+      height: {
+        default: null,
+        parseHTML: (element: HTMLElement) => element.getAttribute("height") || element.style.height || null,
+        renderHTML: (attributes: { height?: string | number | null }) =>
+          attributes.height ? { height: attributes.height } : {},
+      },
+    };
+  },
+});
 
 /** A picture-frame glyph for the "insert image" toolbar button. */
 function ImageGlyph() {
@@ -20,6 +100,20 @@ function ImageGlyph() {
       <rect x="3" y="4" width="18" height="16" rx="2" />
       <circle cx="8.5" cy="9.5" r="1.5" />
       <path d="M4 17l4.5-4.5a2 2 0 0 1 2.8 0L17 18" />
+    </svg>
+  );
+}
+
+/** Text-alignment glyphs (the short lines shift to hint the alignment). */
+function AlignGlyph({ dir }: { dir: "left" | "center" | "right" }) {
+  const paths: Record<typeof dir, string> = {
+    left: "M3 6h18M3 10h11M3 14h18M3 18h11",
+    center: "M3 6h18M6 10h12M3 14h18M6 18h12",
+    right: "M3 6h18M10 10h11M3 14h18M10 18h11",
+  };
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <path d={paths[dir]} />
     </svg>
   );
 }
@@ -48,6 +142,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
   const [email, setEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [sigUploading, setSigUploading] = useState(false);
   const [profSeeded, setProfSeeded] = useState(false);
 
   // Availability + signature
@@ -61,14 +156,19 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: false }),
+      StarterKit,
       Underline,
       Link.configure({
         openOnClick: false,
         autolink: true,
         HTMLAttributes: { rel: "noopener noreferrer nofollow", target: "_blank" },
       }),
-      Image.configure({ inline: false, allowBase64: true }),
+      TextStyle,
+      Color,
+      FontFamily,
+      FontSize,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      SizedImage.configure({ inline: false, allowBase64: true }),
       Placeholder.configure({ placeholder: "Your signature — name, role, phone, a logo…" }),
     ],
     editorProps: { attributes: { class: "richedit sig-edit", "aria-label": "Email signature" } },
@@ -99,19 +199,29 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const pickImage = (file: File | undefined) => {
+  const pickImage = async (file: File | undefined) => {
     if (!file || !editor) return;
     if (!file.type.startsWith("image/")) {
       onToast("That file isn't an image.");
       return;
     }
-    if (file.size > 1_000_000) {
-      onToast("Image is a bit large for a signature — keep it under 1 MB.");
+    if (file.size > 5_000_000) {
+      onToast("Image is too large — keep it under 5 MB.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => editor.chain().focus().setImage({ src: String(reader.result) }).run();
-    reader.readAsDataURL(file);
+    // Host the image the same way the profile photo does, then reference it by
+    // its hosted https URL. This keeps the stored signature HTML tiny (no base64
+    // bloat that would blow the size cap) and makes the image loadable in email.
+    setSigUploading(true);
+    try {
+      const att = await api.uploadMedia(file, { kind: "image", filename: file.name });
+      const src = new URL(att.url, window.location.origin).href;
+      editor.chain().focus().setImage({ src }).run();
+    } catch {
+      onToast("Couldn’t upload that image — please try again.");
+    } finally {
+      setSigUploading(false);
+    }
   };
 
   const pickPhoto = async (file: File | undefined) => {
@@ -181,12 +291,27 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
     }
   };
 
-  const Btn = ({ mark, title, children, onClick }: { mark?: string; title: string; children: ReactNode; onClick: () => void }) => (
+  const Btn = ({
+    mark,
+    active,
+    disabled,
+    title,
+    children,
+    onClick,
+  }: {
+    mark?: string;
+    active?: boolean;
+    disabled?: boolean;
+    title: string;
+    children: ReactNode;
+    onClick: () => void;
+  }) => (
     <button
       type="button"
-      className={"richbar__b" + (mark && editor?.isActive(mark) ? " on" : "")}
+      className={"richbar__b" + ((active ?? Boolean(mark && editor?.isActive(mark))) ? " on" : "")}
       title={title}
       aria-label={title}
+      disabled={disabled}
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
     >
@@ -282,9 +407,39 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
                 <Btn mark="italic" title="Italic" onClick={() => editor?.chain().focus().toggleItalic().run()}><i>I</i></Btn>
                 <Btn mark="underline" title="Underline" onClick={() => editor?.chain().focus().toggleUnderline().run()}><u>U</u></Btn>
                 <span className="richbar__sep" aria-hidden="true" />
+                <select
+                  className="richbar__sel"
+                  title="Font size"
+                  aria-label="Font size"
+                  value={editor?.getAttributes("textStyle").fontSize ?? ""}
+                  onChange={(e) => {
+                    if (!editor) return;
+                    const v = e.target.value;
+                    if (v) editor.chain().focus().setFontSize(v).run();
+                    else editor.chain().focus().unsetFontSize().run();
+                  }}
+                >
+                  <option value="13px">Small</option>
+                  <option value="">Normal</option>
+                  <option value="18px">Large</option>
+                  <option value="32px">Huge</option>
+                </select>
+                <input
+                  type="color"
+                  className="richbar__color"
+                  title="Text colour"
+                  aria-label="Text colour"
+                  value={editor?.getAttributes("textStyle").color ?? "#111111"}
+                  onChange={(e) => editor?.chain().focus().setColor(e.target.value).run()}
+                />
+                <span className="richbar__sep" aria-hidden="true" />
+                <Btn title="Align left" active={editor?.isActive({ textAlign: "left" })} onClick={() => editor?.chain().focus().setTextAlign("left").run()}><AlignGlyph dir="left" /></Btn>
+                <Btn title="Align centre" active={editor?.isActive({ textAlign: "center" })} onClick={() => editor?.chain().focus().setTextAlign("center").run()}><AlignGlyph dir="center" /></Btn>
+                <Btn title="Align right" active={editor?.isActive({ textAlign: "right" })} onClick={() => editor?.chain().focus().setTextAlign("right").run()}><AlignGlyph dir="right" /></Btn>
+                <span className="richbar__sep" aria-hidden="true" />
                 <Btn mark="bulletList" title="Bulleted list" onClick={() => editor?.chain().focus().toggleBulletList().run()}>•&nbsp;—</Btn>
                 <Btn mark="link" title="Insert link" onClick={toggleLink}>🔗</Btn>
-                <Btn title="Insert image" onClick={() => fileRef.current?.click()}><ImageGlyph /></Btn>
+                <Btn title={sigUploading ? "Uploading…" : "Insert image"} disabled={sigUploading} onClick={() => fileRef.current?.click()}><ImageGlyph /></Btn>
               </div>
               <EditorContent editor={editor} className="sig-host" />
               <input
@@ -335,7 +490,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
 
         <div className="modal__foot">
           <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn-primary" onClick={save} disabled={update.isPending || profile.isPending || uploading}>
+          <button type="button" className="btn-primary" onClick={save} disabled={update.isPending || profile.isPending || uploading || sigUploading}>
             {update.isPending || profile.isPending ? "Saving…" : "Save"}
           </button>
         </div>
