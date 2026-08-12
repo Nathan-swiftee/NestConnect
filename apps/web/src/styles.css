@@ -393,7 +393,10 @@ input,textarea{font:inherit}
   background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
   border:1px solid var(--glass-brd);padding:5px var(--sp-3);border-radius:var(--r-full);margin:6px 0;
   box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hi);position:sticky;top:6px;z-index:2}
-.msg{max-width:76%;display:flex;flex-direction:column;gap:2px;animation:msgIn .18s ease-out}
+/* Full-width row so the whole horizontal band is a gesture surface (swipe-to-reply
+   can start in the gutter, not just on the bubble); the bubble itself is capped on
+   .bubblewrap. align-items places the bubble left (in) / right (out). */
+.msg{width:100%;max-width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:2px;animation:msgIn .18s ease-out}
 .msg .bubble{position:relative;display:block;width:fit-content;max-width:100%;padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-3);border-radius:var(--r-12);font-size:var(--fs-lg);line-height:1.42;box-shadow:0 1px 1.5px rgba(13,21,18,.09)}
 .msg .bubble .txt{white-space:pre-wrap;word-break:break-word}
 /* invisible spacer reserving room for the timestamp on the text's last line
@@ -548,7 +551,7 @@ input,textarea{font:inherit}
    Each bubble lives in a positioning wrapper so the hover toolbar / emoji
    bar can float above it and the reaction chip can hang off its bottom edge. */
 .msg{position:relative}
-.bubblewrap{position:relative;display:flex;flex-direction:column;width:fit-content;max-width:100%}
+.bubblewrap{position:relative;display:flex;flex-direction:column;width:fit-content;max-width:76%}
 .msg.out .bubblewrap{align-items:flex-end}
 .msg.in .bubblewrap{align-items:flex-start}
 
@@ -595,7 +598,9 @@ input,textarea{font:inherit}
    plus a chevron in the corner that opens an actions menu (Reply, extensible).
    Mobile (touch): long-press shows the reaction row centred above the message;
    a rightward swipe starts a reply (handled in JS, with the swipe-hint behind). */
-.msg .bubble{touch-action:pan-y}
+/* The whole gesture row pans vertically (scroll) while JS claims horizontal
+   drags for swipe-to-reply. */
+.msg--gesture{touch-action:pan-y}
 
 .msg__react{position:absolute;z-index:20;display:flex;align-items:center;gap:2px;padding:3px;
   border-radius:var(--r-full);background:var(--elevated);
@@ -630,8 +635,10 @@ input,textarea{font:inherit}
 .msg__menuitem svg{width:16px;height:16px;color:var(--text-muted)}
 @keyframes popIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
 
-.msg__swipehint{position:absolute;top:50%;left:-34px;transform:translateY(-50%);
-  width:26px;height:26px;border-radius:var(--r-full);display:grid;place-items:center;
+/* Reply arrow, revealed from *behind* the bubble's leading (left) edge as it
+   slides right — same for inbound and outbound, and never clips the viewport. */
+.msg__swipehint{position:absolute;top:50%;left:6px;z-index:-1;transform:translateY(-50%);
+  width:28px;height:28px;border-radius:var(--r-full);display:grid;place-items:center;
   background:var(--surface-2);color:var(--brand-strong);opacity:0;pointer-events:none}
 .msg__swipehint svg{width:15px;height:15px}
 .bubble--swiped{animation:swipeFlash .42s var(--ease)}
@@ -642,8 +649,10 @@ input,textarea{font:inherit}
    gutter beside a wide bubble, so it uses the space above and never clips. The
    chevron actions button sits in the corner. */
 @media (hover:hover){
-  .msg:hover .msg__menubtn,.msg:focus-within .msg__menubtn{opacity:1;pointer-events:auto}
-  .msg:hover .msg__react,.msg:focus-within .msg__react{opacity:1;pointer-events:auto;animation:popIn .13s var(--ease)}
+  /* Reveal on hovering the bubble specifically (not the full-width row) so the
+     picker doesn't pop when the cursor merely crosses the gutter. */
+  .msg .bubblewrap:hover .msg__menubtn,.msg:focus-within .msg__menubtn{opacity:1;pointer-events:auto}
+  .msg .bubblewrap:hover .msg__react,.msg:focus-within .msg__react{opacity:1;pointer-events:auto;animation:popIn .13s var(--ease)}
   .msg .msg__react{top:-40px}
   .msg.in .msg__react{left:0;transform-origin:bottom left}
   .msg.out .msg__react{right:0;transform-origin:bottom right}
@@ -653,6 +662,9 @@ input,textarea{font:inherit}
 }
 /* Mobile: no hover — long-press shows the row centred above, growing inward */
 @media (hover:none){
+  /* A long-press is the reaction gesture, so suppress native text selection and
+     the iOS "Copy / Look Up" callout on the WhatsApp gesture rows (only). */
+  .msg--gesture,.msg--gesture *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
   .msg__react.held{opacity:1;pointer-events:auto;animation:popIn .13s var(--ease)}
   .msg.in .msg__react{top:-52px;left:0;transform-origin:bottom left}
   .msg.out .msg__react{top:-52px;right:0;transform-origin:bottom right}

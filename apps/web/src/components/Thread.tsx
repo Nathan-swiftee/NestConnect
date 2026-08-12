@@ -521,15 +521,16 @@ function MessageBubble({
   const inlineStamp = !(isEmailHtml || blockStamp || namedMeta || overlay);
 
   return (
-    <div className={"msg " + (out ? "out" : "in")} data-mid={m.id}>
+    <div
+      className={"msg " + (out ? "out" : "in") + (actions ? " msg--gesture" : "")}
+      data-mid={m.id}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
+    >
       {!out && m.authorName && <div className="sender">{m.authorName}</div>}
-      <div
-        className="bubblewrap"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerEnd}
-        onPointerCancel={onPointerEnd}
-      >
+      <div className="bubblewrap">
         <div
           ref={bubbleRef}
           className={
