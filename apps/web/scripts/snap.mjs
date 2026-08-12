@@ -90,5 +90,9 @@ const openCustomers = async (page) => { await page.click('.railbtn[title="Custom
 await shot("desktop-customers-light", { width: 1360, height: 900, theme: "light", prep: openCustomers });
 await shot("desktop-customers-dark", { width: 1360, height: 900, theme: "dark", prep: openCustomers });
 
+// Wide desktop (>1399px) so the ContextPanel (.panel) shows inline alongside the thread
+await shot("desktop-wide-light", { width: 1440, height: 900, theme: "light", prep: openFirstConv });
+await shot("desktop-wide-dark", { width: 1440, height: 900, theme: "dark", prep: openFirstConv });
+
 await b.close();
 console.log("done.");
