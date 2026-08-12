@@ -1034,16 +1034,8 @@ input,textarea{font:inherit}
 .labelwrap{position:relative;display:inline-flex}
 .menu.labelmenu{min-width:214px;padding:6px;top:calc(100% + 8px);right:0;left:auto}
 .menu.labelmenu--panel{top:28px;left:0;right:auto}
-.labelpick{display:flex;flex-direction:column;gap:1px;max-height:280px;overflow:auto}
-.labelpick__empty{padding:var(--sp-2) var(--sp-2);font-size:var(--fs-xs);color:var(--text-muted)}
-.labelpick__row{display:flex;align-items:center;gap:var(--sp-2);width:100%;padding:7px var(--sp-2);border-radius:var(--r-8);
-  text-align:left;font-size:var(--fs-sm);color:var(--text);transition:background .12s}
-.labelpick__row:hover{background:var(--surface-2)}
-.labelpick__row.on{font-weight:650}
-.labelpick__dot{flex:0 0 10px;width:10px;height:10px;border-radius:50%}
-.labelpick__name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.labelpick__tick{flex:0 0 auto;color:var(--brand-strong);display:inline-grid;place-items:center}
-.labelpick__tick svg{width:15px;height:15px}
+/* .labelpick* migrated to Tailwind utilities in LabelPicker.tsx (first component
+   of the CSS→utilities migration). */
 
 /* Colour swatch picker in Settings ▸ Labels */
 .lblswatches{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}

@@ -12,4 +12,12 @@ export default defineConfig({
       "/socket.io": { target: "http://localhost:3001", ws: true, changeOrigin: true },
     },
   },
+  // `vite preview` serves the production build; mirror the dev proxy so the
+  // built app can reach the API on :3001 during verification.
+  preview: {
+    proxy: {
+      "/api": { target: "http://localhost:3001", changeOrigin: true },
+      "/socket.io": { target: "http://localhost:3001", ws: true, changeOrigin: true },
+    },
+  },
 });

@@ -26,8 +26,10 @@ module.exports = {
         bg: v("bg"),
         surface: { DEFAULT: v("surface"), 2: v("surface-2") },
         elevated: v("elevated"),
-        // text/foreground — named `fg` so it never collides with the text-* utilities
-        fg: { DEFAULT: v("text"), muted: v("text-muted"), faint: v("text-faint") },
+        // text/foreground — flat so they read as text-fg / text-muted / text-faint
+        fg: v("text"),
+        muted: v("text-muted"),
+        faint: v("text-faint"),
         // borders — `line` reads well as `border-line` / `border-line-strong`
         line: { DEFAULT: v("border"), strong: v("border-strong") },
         brand: { DEFAULT: v("brand"), strong: v("brand-strong"), tint: v("brand-tint"), ring: v("brand-ring") },

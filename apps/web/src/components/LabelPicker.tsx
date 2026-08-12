@@ -19,9 +19,9 @@ export function LabelPicker({ conversationId, current }: { conversationId: strin
 
   const list = labels.data ?? [];
   return (
-    <div className="labelpick" role="menu" aria-label="Labels">
+    <div className="flex flex-col gap-px max-h-[280px] overflow-auto" role="menu" aria-label="Labels">
       {list.length === 0 ? (
-        <div className="labelpick__empty">No labels yet — create them in Settings ▸ Labels.</div>
+        <div className="p-2 text-xs text-muted">No labels yet — create them in Settings ▸ Labels.</div>
       ) : (
         list.map((l) => {
           const on = currentIds.has(l.id);
@@ -31,13 +31,16 @@ export function LabelPicker({ conversationId, current }: { conversationId: strin
               type="button"
               role="menuitemcheckbox"
               aria-checked={on}
-              className={"labelpick__row" + (on ? " on" : "")}
+              className={
+                "flex items-center gap-2 w-full py-[7px] px-2 rounded-8 text-left text-sm text-fg [transition:background_.12s] hover:bg-surface-2" +
+                (on ? " font-[650]" : "")
+              }
               onClick={() => toggle(l.id)}
             >
-              <span className="labelpick__dot" style={{ background: l.color }} />
-              <span className="labelpick__name">{l.name}</span>
+              <span className="shrink-0 w-2.5 h-2.5 rounded-full" style={{ background: l.color }} />
+              <span className="flex-auto min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{l.name}</span>
               {on && (
-                <span className="labelpick__tick" aria-hidden="true">
+                <span className="flex-none text-brand-strong inline-grid place-items-center [&>svg]:w-[15px] [&>svg]:h-[15px]" aria-hidden="true">
                   <CheckIcon />
                 </span>
               )}
