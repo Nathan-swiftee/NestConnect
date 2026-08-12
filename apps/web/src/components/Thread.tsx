@@ -650,11 +650,12 @@ function MessageBubble({
             )}
             {/* Quick-reaction row — desktop: above the near corner (hover); mobile: centred (held) */}
             <div className={"msg__react" + (actions.held ? " held" : "")} role="menu" aria-label="Pick a reaction">
-              {QUICK_REACTIONS.map((e) => (
+              {QUICK_REACTIONS.map((e, i) => (
                 <button
                   key={e}
                   type="button"
                   className={"msg__react-e" + (mine === e ? " sel" : "")}
+                  style={{ animationDelay: `${i * 25}ms` }}
                   onClick={() => actions.onReact(mine === e ? "" : e)}
                   aria-label={mine === e ? `Remove ${e}` : `React ${e}`}
                 >
