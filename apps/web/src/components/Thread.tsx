@@ -23,6 +23,7 @@ import {
   SnoozeIcon,
   TagIcon,
   DetailsIcon,
+  MoreIcon,
   SendIcon,
   AttachIcon,
   EmojiIcon,
@@ -949,6 +950,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [menu, setMenu] = useState(false);
   const [snoozeMenu, setSnoozeMenu] = useState(false);
   const [labelMenu, setLabelMenu] = useState(false);
+  const [moreMenu, setMoreMenu] = useState(false);
   const [internal, setInternal] = useState(false);
   // @-mention autocomplete for internal notes: the active "@query" being typed
   // (with the '@' index in `text`), and the highlighted candidate.
@@ -1916,7 +1918,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </button>
           <div className="snoozewrap">
             <button
-              className={"iconbtn" + (snoozeMenu ? " on" : "")}
+              className={"iconbtn hide-sm" + (snoozeMenu ? " on" : "")}
               title="Snooze"
               onClick={() => { setSnoozeMenu((v) => !v); setMenu(false); }}
             >
@@ -1938,7 +1940,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </div>
           <div className="labelwrap">
             <button
-              className={"iconbtn" + (labelMenu ? " on" : "")}
+              className={"iconbtn hide-sm" + (labelMenu ? " on" : "")}
               title="Labels"
               aria-label="Labels"
               aria-haspopup="menu"
@@ -1957,9 +1959,39 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </>
             )}
           </div>
-          <button className={"iconbtn" + (showPanel ? " on" : "")} title="Details" onClick={onTogglePanel}>
+          <button className={"iconbtn hide-sm" + (showPanel ? " on" : "")} title="Details" onClick={onTogglePanel}>
             <DetailsIcon />
           </button>
+          {/* Phone-only overflow: the header keeps just Resolve + Assign; Snooze,
+              Labels and Details live here so the contact name always has room. */}
+          <div className="morewrap show-sm">
+            <button
+              className={"iconbtn" + (moreMenu ? " on" : "")}
+              title="More"
+              aria-label="More actions"
+              aria-haspopup="menu"
+              aria-expanded={moreMenu}
+              onClick={() => { setMoreMenu((v) => !v); setMenu(false); setSnoozeMenu(false); setLabelMenu(false); }}
+            >
+              <MoreIcon />
+            </button>
+            {moreMenu && (
+              <>
+                <div className="menu-backdrop" onClick={() => setMoreMenu(false)} />
+                <div className="menu moremenu" role="menu">
+                  <button onClick={() => { setMoreMenu(false); setSnoozeMenu(true); }}>
+                    <SnoozeIcon /> Snooze…
+                  </button>
+                  <button onClick={() => { setMoreMenu(false); setLabelMenu(true); }}>
+                    <TagIcon /> Add label…
+                  </button>
+                  <button onClick={() => { setMoreMenu(false); onTogglePanel(); }}>
+                    <DetailsIcon /> {showPanel ? "Hide details" : "Details"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 

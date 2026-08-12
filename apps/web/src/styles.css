@@ -385,6 +385,10 @@ input,textarea{font:inherit}
 .iconbtn{width:40px;height:40px}
 .iconbtn svg{width:18px;height:18px}
 .iconbtn.on{background:var(--brand-tint);color:var(--brand-strong);box-shadow:inset 0 1px 0 var(--glass-hi)}
+/* Phone-only overflow (⋯) wrapper. show-sm is hidden on desktop, revealed on
+   phones in the mobile @media block. */
+.morewrap{position:relative;display:inline-flex}
+.show-sm{display:none}
 
 /* overflow-x:hidden (clip computes to hidden while overflow-y is auto) so a
    sent bubble sliding right during swipe-to-reply can't open a horizontal
@@ -1883,7 +1887,21 @@ button.tpl-row:active{transform:scale(.99)}
   .compmode .modebtn{padding:6px 11px}
   .thread{width:100%;flex:1 1 auto;min-width:0;container-type:normal}
   .thread__back{display:grid}
-  .thread__head{padding:calc(10px + env(safe-area-inset-top)) 12px 10px;gap:8px}
+  .thread__head{padding:calc(10px + env(safe-area-inset-top)) 10px 10px;gap:6px}
+  /* Give the contact name/subject as much room as possible: a smaller back
+     button and avatar, tighter gaps, and a 14px name so even the longest names
+     ("Northside Logistics") show in full instead of ellipsing. Avatar sets its
+     size inline, so the shrink needs !important to win. */
+  .thread__back{width:34px;height:34px;flex:0 0 34px}
+  .thread__head .thread__id{gap:6px}
+  .thread__head .thread__id .av{width:32px!important;height:32px!important}
+  .thread__head .thread__id .who h2{font-size:var(--fs-md)}
+  /* Snooze and Labels fold into the ⋯ sheet on mobile, so their wrappers hold
+     only a hidden button plus the fixed popover they open. Pull them out of the
+     actions flex flow (absolute — the popovers are position:fixed, so they still
+     anchor to the viewport) so they don't inject phantom gaps between the three
+     visible round buttons. That reclaimed dead space is what let the name clip. */
+  .thread__actions .snoozewrap,.thread__actions .labelwrap{position:absolute}
   /* fixed so it isn't clipped by the scroll region on iOS */
   .menu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:12px;min-width:0}
   /* the snooze menu drops from the top like the others (its desktop top:100%
@@ -1911,6 +1929,16 @@ button.tpl-row:active{transform:scale(.99)}
      the snooze menu) so it can't clip off the right edge. The Details-panel
      variant keeps its in-panel positioning. */
   .menu.labelmenu:not(.labelmenu--panel){position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:auto;min-width:210px;max-width:min(300px,calc(100vw - 24px))}
+  .menu.moremenu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:auto;min-width:200px;max-width:min(280px,calc(100vw - 24px))}
+  /* Mobile header: only Resolve + Assign + ⋯ stay, as three identical round
+     buttons, so the contact name/subject always has room (Snooze, Labels and
+     Details move into the ⋯ sheet). */
+  .show-sm{display:inline-flex}
+  .thread__actions{gap:7px}
+  .thread__actions .resolvebtn,.thread__actions .assignbtn{width:38px;height:38px;min-width:38px;padding:0;justify-content:center;border-radius:50%;gap:0}
+  .thread__actions .assignbtn>svg{display:none}
+  .thread__actions .assignbtn .mini{width:24px;height:24px;font-size:11px}
+  .thread__actions .iconbtn{width:38px;height:38px}
   .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 }
 
