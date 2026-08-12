@@ -18,12 +18,15 @@ import type {
   CreateInboxInput,
   CreateTeamInput,
   CreateUserInput,
+  CreateLabelInput,
   Inbox,
   IntegrationSettings,
+  Label,
   Member,
   Message,
   Participant,
   Team,
+  UpdateLabelInput,
   UpdateContactInput,
   UpdateInboxInput,
   UpdateIntegrationSettingsInput,
@@ -45,10 +48,12 @@ export interface ViewItem {
   groups?: { id: string; title: string }[];
   /** For "Later": how many snoozed items are now due (wake time passed). */
   due?: number;
+  /** For a label view: its swatch colour. */
+  color?: string;
 }
 export interface SidebarViews {
   my: ViewItem[];
-  shared: { teams: ViewItem[]; inboxes: ViewItem[] };
+  shared: { teams: ViewItem[]; inboxes: ViewItem[]; labels: ViewItem[] };
 }
 export interface MeResponse {
   user: User;
@@ -118,6 +123,13 @@ export const api = {
   updateTeam: (id: string, input: UpdateTeamInput) => patch<Team>(`/settings/teams/${id}`, input),
   deleteTeam: (id: string) => del<{ ok: boolean }>(`/settings/teams/${id}`),
   reorderTeams: (orderedIds: string[]) => post<Team[]>("/settings/teams/reorder", { orderedIds }),
+
+  labels: () => get<Label[]>("/labels"),
+  createLabel: (input: CreateLabelInput) => post<Label>("/labels", input),
+  updateLabel: (id: string, input: UpdateLabelInput) => patch<Label>(`/labels/${id}`, input),
+  deleteLabel: (id: string) => del<{ ok: boolean }>(`/labels/${id}`),
+  setConversationLabels: (id: string, labelIds: string[]) =>
+    post<Conversation>(`/conversations/${id}/labels`, { labelIds }),
   createUser: (input: CreateUserInput) => post<CreateUserResult>("/settings/people", input),
   updateUser: (id: string, input: UpdateUserInput) => patch<User>(`/settings/people/${id}`, input),
   deleteUser: (id: string) => del<{ ok: boolean }>(`/settings/people/${id}`),

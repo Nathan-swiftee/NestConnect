@@ -291,5 +291,5 @@ export function makeSeed() {
     { id: "tpl_welcome_back", name: "welcome_back", category: "marketing", language: "en", approvalStatus: "approved", variableCount: 1, body: "Hi {{1}} 👋 It's been a little while — reply here and we'll pick up right where we left off." },
   ];
 
-  return { users, teams, membership, inboxes, conversations, templates };
+  return { users, teams, membership, inboxes, conversations, templates, labels: Object.values(LABEL) };
 }

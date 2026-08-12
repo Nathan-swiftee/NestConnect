@@ -13,6 +13,7 @@ import type {
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
+  Label,
   Member,
   Message,
   MessagePage,
@@ -83,6 +84,7 @@ export class MemoryStore extends Store {
   private conversations: ConversationRecord[];
   private contacts: Contact[];
   private templates: Template[];
+  private labels: Label[];
   private passwords: Map<string, string>;
   // Pending emailed invites: userId → { sha256(token), expiry ms }.
   private invites = new Map<string, { hash: string; exp: number }>();
@@ -118,6 +120,7 @@ export class MemoryStore extends Store {
     this.inboxes = seed.inboxes;
     this.conversations = seed.conversations;
     this.templates = seed.templates;
+    this.labels = seed.labels;
     this.contacts = seed.conversations.map((c) => ({ ...c.contact }));
     // Every demo user shares the dev password (real bcrypt hashing).
     const hash = bcrypt.hashSync(env.auth.devPassword, 8);
@@ -517,6 +520,7 @@ export class MemoryStore extends Store {
       return belongs && inList;
     }
     if (view.startsWith("inbox:")) return rec.inboxId === view.slice(6) && inList;
+    if (view.startsWith("label:")) return rec.labels.some((l) => l.id === view.slice(6)) && inList;
     return false;
   }
 
@@ -642,7 +646,13 @@ export class MemoryStore extends Store {
           groups: groups.length ? groups : undefined,
         };
       });
-    return { my, shared: { teams, inboxes } };
+    // Labels the viewer can filter by — only those actually in use (tidy sidebar);
+    // the full catalogue lives in Settings + the per-conversation picker.
+    const labels: ViewItem[] = [...this.labels]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((l) => ({ key: `label:${l.id}`, title: l.name, count: count(`label:${l.id}`), color: l.color }))
+      .filter((v) => v.count > 0);
+    return { my, shared: { teams, inboxes, labels } };
   }
 
   async getConversation(id: string): Promise<ConversationWithMessages | undefined> {
@@ -1249,6 +1259,45 @@ export class MemoryStore extends Store {
     if (!rec) return undefined;
     rec.unread = true;
     rec.unreadCount = 0; // manual mark → empty dot, not a message count
+    return this.summary(rec);
+  }
+
+  /* ---- labels ---- */
+  async listLabels(_orgId: string): Promise<Label[]> {
+    return [...this.labels].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async createLabel(input: { orgId: string; name: string; color: string }): Promise<Label> {
+    const existing = this.labels.find((l) => l.name.toLowerCase() === input.name.trim().toLowerCase());
+    if (existing) return existing; // names are unique per org — reuse rather than duplicate
+    const label: Label = { id: `lbl_${++this.idSeq}`, name: input.name.trim(), color: input.color };
+    this.labels.push(label);
+    return label;
+  }
+
+  async updateLabel(id: string, patch: { name?: string; color?: string }): Promise<Label | undefined> {
+    const label = this.labels.find((l) => l.id === id);
+    if (!label) return undefined;
+    if (patch.name !== undefined) label.name = patch.name.trim();
+    if (patch.color !== undefined) label.color = patch.color;
+    // Reflect the rename/recolour on every conversation already carrying it.
+    for (const c of this.conversations) {
+      const idx = c.labels.findIndex((l) => l.id === id);
+      if (idx >= 0) c.labels[idx] = { ...label };
+    }
+    return label;
+  }
+
+  async deleteLabel(id: string): Promise<void> {
+    this.labels = this.labels.filter((l) => l.id !== id);
+    for (const c of this.conversations) c.labels = c.labels.filter((l) => l.id !== id);
+  }
+
+  async setConversationLabels(conversationId: string, labelIds: string[]): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    const wanted = new Set(labelIds);
+    rec.labels = this.labels.filter((l) => wanted.has(l.id)).map((l) => ({ ...l }));
     return this.summary(rec);
   }
 

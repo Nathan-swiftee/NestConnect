@@ -1,16 +1,20 @@
 import { useEffect, useState, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ChannelType, Inbox, Role, RoutingStrategy, Team, Template, TemplateCategory } from "@ding/schemas";
+import type { ChannelType, Inbox, Label, Role, RoutingStrategy, Team, Template, TemplateCategory } from "@ding/schemas";
 import {
   useCreateInbox,
+  useCreateLabel,
   useCreateTeam,
   useCreateTemplate,
   useCreateUser,
   useDeleteInbox,
+  useDeleteLabel,
   useDeleteTeam,
   useDeleteTemplate,
   useDeleteUser,
   useInboxes,
+  useLabels,
+  useUpdateLabel,
   useIntegrations,
   useMe,
   usePeople,
@@ -83,6 +87,7 @@ const NAV: NavSection[] = [
     leaves: [
       { key: "teams", label: "Teams" },
       { key: "people", label: "People" },
+      { key: "labels", label: "Labels" },
     ],
   },
   {
@@ -191,6 +196,7 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "templates" && <TemplatesPane onToast={onToast} />}
             {active === "teams" && <TeamsPane onToast={onToast} />}
             {active === "people" && <PeoplePane onToast={onToast} />}
+            {active === "labels" && <LabelsPane onToast={onToast} />}
             {(active === "connections" || active === "storage" || active === "email") && (
               <SetupPane sub={active} onToast={onToast} />
             )}
@@ -725,6 +731,146 @@ export function slaLabel(minutes?: number | null): string | null {
   if (h && m) return `${h}h ${m}m`;
   if (h) return `${h}h`;
   return `${m}m`;
+}
+
+const LABEL_COLORS = ["#0FA47A", "#E68A00", "#5B8DEF", "#A06CF2", "#EF5B8D", "#E5484D", "#0EA5E9", "#8A968F"];
+
+function LabelsPane({ onToast }: { onToast: (msg: string) => void }) {
+  const labels = useLabels();
+  const create = useCreateLabel();
+  const update = useUpdateLabel();
+  const del = useDeleteLabel();
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(LABEL_COLORS[0]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [draftColor, setDraftColor] = useState(LABEL_COLORS[0]);
+  const list = labels.data ?? [];
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const n = name.trim();
+    if (!n) return;
+    create.mutate(
+      { name: n, color },
+      {
+        onSuccess: () => { setName(""); onToast(`Label “${n}” created`); },
+        onError: () => onToast("Only admins & managers can create labels"),
+      },
+    );
+  };
+  const startEdit = (l: Label) => { setEditingId(l.id); setDraftName(l.name); setDraftColor(l.color); };
+  const saveEdit = (id: string) => {
+    const n = draftName.trim();
+    if (!n) return;
+    update.mutate(
+      { id, input: { name: n, color: draftColor } },
+      {
+        onSuccess: () => { setEditingId(null); onToast("Label updated"); },
+        onError: () => onToast("Couldn't update label"),
+      },
+    );
+  };
+  const remove = (id: string, labelName: string) => {
+    if (!window.confirm(`Delete “${labelName}”? It will be removed from every conversation.`)) return;
+    del.mutate(id, {
+      onSuccess: () => { setEditingId(null); onToast(`Label “${labelName}” deleted`); },
+      onError: () => onToast("Couldn't delete label"),
+    });
+  };
+
+  return (
+    <div className="setpane">
+      <div className="setpane__head">
+        <div>
+          <h2>Labels</h2>
+          <p>Tag conversations by topic, priority or state (Billing, Complaint, VIP…). Apply them from a thread's Tag button and filter the inbox by any label from the sidebar.</p>
+        </div>
+      </div>
+      <form className="setadd" onSubmit={submit}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New label name…" maxLength={40} />
+        <div className="lblswatches">
+          {LABEL_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              className={"lblswatch" + (color === c ? " on" : "")}
+              style={{ background: c }}
+              onClick={() => setColor(c)}
+              aria-label={`Colour ${c}`}
+            />
+          ))}
+        </div>
+        <button className="btn-primary" type="submit" disabled={create.isPending || !name.trim()}>
+          <PlusIcon /> Create label
+        </button>
+      </form>
+      <div className="setlist">
+        {list.length === 0 && <p className="setpane__empty">No labels yet — create one above.</p>}
+        {list.map((l) => {
+          const editing = editingId === l.id;
+          return (
+            <div className="setmember" key={l.id}>
+              <div className="setrow">
+                <span className="setrow__ic">
+                  <span className="cdot" style={{ background: l.color, width: 14, height: 14 }} />
+                </span>
+                <div className="setrow__main">
+                  <b>{l.name}</b>
+                </div>
+                <div className="rowacts">
+                  <button className="iconbtn" title="Edit label" onClick={() => (editing ? setEditingId(null) : startEdit(l))}>
+                    <EditIcon />
+                  </button>
+                  <button className="iconbtn danger" title="Delete label" onClick={() => remove(l.id, l.name)}>
+                    <TrashIcon />
+                  </button>
+                </div>
+              </div>
+              {editing && (
+                <div className="editbox">
+                  <label className="field">
+                    <span>Label name</span>
+                    <input
+                      value={draftName}
+                      autoFocus
+                      maxLength={40}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit(l.id);
+                        if (e.key === "Escape") setEditingId(null);
+                      }}
+                    />
+                  </label>
+                  <div className="field">
+                    <span>Colour</span>
+                    <div className="lblswatches">
+                      {LABEL_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          className={"lblswatch" + (draftColor === c ? " on" : "")}
+                          style={{ background: c }}
+                          onClick={() => setDraftColor(c)}
+                          aria-label={`Colour ${c}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="setform__foot">
+                    <button className="btn-ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                    <button className="btn-primary" type="button" onClick={() => saveEdit(l.id)} disabled={update.isPending || !draftName.trim()}>
+                      Save changes
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {

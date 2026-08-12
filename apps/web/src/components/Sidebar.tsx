@@ -255,6 +255,26 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           );
         })}
 
+        {data.shared.labels.length > 0 && (
+          <>
+            <div className="sect-label">
+              Labels <span className="line" />
+            </div>
+            {data.shared.labels.map((l) => (
+              <button
+                key={l.key}
+                className={"navrow" + (view === l.key ? " active" : "")}
+                onClick={() => onSelectView(l.key)}
+              >
+                <span className="navicon">
+                  <span className="cdot" style={{ background: l.color ?? "var(--text-faint)" }} />
+                </span>
+                <span className="lbl">{l.title}</span>
+                <span className={"badge" + (l.count > 0 ? " on" : "")}>{l.count}</span>
+              </button>
+            ))}
+          </>
+        )}
       </div>
 
       <div className="side__foot">

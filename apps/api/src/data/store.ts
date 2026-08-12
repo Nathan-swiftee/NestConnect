@@ -10,6 +10,7 @@ import type {
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
+  Label,
   Member,
   Message,
   MessagePage,
@@ -37,11 +38,13 @@ export interface ViewItem {
   groups?: { id: string; title: string }[];
   /** For "Later": how many snoozed items are now due (wake time passed). */
   due?: number;
+  /** For a label view: its swatch colour. */
+  color?: string;
 }
 
 export interface SidebarViews {
   my: ViewItem[];
-  shared: { teams: ViewItem[]; inboxes: ViewItem[] };
+  shared: { teams: ViewItem[]; inboxes: ViewItem[]; labels: ViewItem[] };
 }
 
 /** Canonical inbound message handed to the store by a channel gateway. */
@@ -412,6 +415,16 @@ export abstract class Store {
   /** Flag a conversation unread with no count — an agent's manual "mark unread"
    *  (WhatsApp-style empty dot); distinct from unreadCount>0 from new messages. */
   abstract markUnread(conversationId: string): Promise<Conversation | undefined>;
+
+  /* ---- labels (org catalog + per-conversation) ---- */
+  /** The org's label catalog (name + colour), for the picker + sidebar filter. */
+  abstract listLabels(orgId: string): Promise<Label[]>;
+  abstract createLabel(input: { orgId: string; name: string; color: string }): Promise<Label>;
+  abstract updateLabel(id: string, patch: { name?: string; color?: string }): Promise<Label | undefined>;
+  /** Delete a label from the catalog and remove it from every conversation. */
+  abstract deleteLabel(id: string): Promise<void>;
+  /** Replace a conversation's labels with exactly this set of label ids. */
+  abstract setConversationLabels(conversationId: string, labelIds: string[]): Promise<Conversation | undefined>;
 
   /* ---- channel ingestion (inbound) ---- */
 

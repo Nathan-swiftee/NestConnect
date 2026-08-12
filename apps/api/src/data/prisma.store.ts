@@ -14,6 +14,7 @@ import type {
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
+  Label,
   Member,
   Message,
   MessagePage,
@@ -625,6 +626,8 @@ export class PrismaStore extends Store {
       };
     }
     if (view.startsWith("inbox:")) return { ...org, ...activeOnly, inboxId: view.slice(6) };
+    if (view.startsWith("label:"))
+      return { ...org, ...activeOnly, labels: { some: { labelId: view.slice(6) } } };
     return { id: "__none__" };
   }
 
@@ -743,7 +746,14 @@ export class PrismaStore extends Store {
       });
     }
 
-    return { my, shared: { teams, inboxes } };
+    const labelRows = await this.prisma.label.findMany({ where: { orgId: ORG_ID }, orderBy: { name: "asc" } });
+    const labels: ViewItem[] = [];
+    for (const l of labelRows) {
+      const c = await count(`label:${l.id}`);
+      if (c > 0) labels.push({ key: `label:${l.id}`, title: l.name, count: c, color: l.color });
+    }
+
+    return { my, shared: { teams, inboxes, labels } };
   }
 
   async getConversation(id: string): Promise<ConversationWithMessages | undefined> {
@@ -1469,6 +1479,65 @@ export class PrismaStore extends Store {
         include: convInclude,
       });
       return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /* ---- labels ---- */
+  async listLabels(orgId: string): Promise<Label[]> {
+    const rows = await this.prisma.label.findMany({ where: { orgId }, orderBy: { name: "asc" } });
+    return rows.map((l) => ({ id: l.id, name: l.name, color: l.color }));
+  }
+
+  async createLabel(input: { orgId: string; name: string; color: string }): Promise<Label> {
+    const name = input.name.trim();
+    // Names are unique per org — reuse an existing one rather than error.
+    const row = await this.prisma.label.upsert({
+      where: { orgId_name: { orgId: input.orgId, name } },
+      update: { color: input.color },
+      create: { orgId: input.orgId, name, color: input.color },
+    });
+    return { id: row.id, name: row.name, color: row.color };
+  }
+
+  async updateLabel(id: string, patch: { name?: string; color?: string }): Promise<Label | undefined> {
+    try {
+      const row = await this.prisma.label.update({
+        where: { id },
+        data: {
+          ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
+          ...(patch.color !== undefined ? { color: patch.color } : {}),
+        },
+      });
+      return { id: row.id, name: row.name, color: row.color };
+    } catch {
+      return undefined;
+    }
+  }
+
+  async deleteLabel(id: string): Promise<void> {
+    // Remove the join rows first, then the label (no cascade in the schema).
+    await this.prisma.conversationLabel.deleteMany({ where: { labelId: id } });
+    await this.prisma.label.delete({ where: { id } }).catch(() => undefined);
+  }
+
+  async setConversationLabels(conversationId: string, labelIds: string[]): Promise<Conversation | undefined> {
+    const unique = [...new Set(labelIds)];
+    try {
+      await this.prisma.$transaction([
+        this.prisma.conversationLabel.deleteMany({ where: { conversationId } }),
+        ...(unique.length
+          ? [
+              this.prisma.conversationLabel.createMany({
+                data: unique.map((labelId) => ({ conversationId, labelId })),
+                skipDuplicates: true,
+              }),
+            ]
+          : []),
+      ]);
+      const row = await this.prisma.conversation.findUnique({ where: { id: conversationId }, include: convInclude });
+      return row ? mapConversation(row) : undefined;
     } catch {
       return undefined;
     }

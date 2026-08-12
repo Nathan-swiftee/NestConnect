@@ -3,12 +3,14 @@ import {
   assignConversationInputSchema,
   reactionInputSchema,
   sendMessageInputSchema,
+  setConversationLabelsInputSchema,
   snoozeInputSchema,
   updatePriorityInputSchema,
   updateStatusInputSchema,
   type AssignConversationInput,
   type ReactionInput,
   type SendMessageInput,
+  type SetConversationLabelsInput,
   type SnoozeInput,
   type UpdatePriorityInput,
   type UpdateStatusInput,
@@ -103,6 +105,15 @@ export class ConversationsController {
   @Post(":id/unread")
   markUnread(@Param("id") id: string) {
     return this.conversations.markUnread(id);
+  }
+
+  /** Replace a conversation's labels with the given set of label ids. */
+  @Post(":id/labels")
+  setLabels(
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(setConversationLabelsInputSchema)) body: SetConversationLabelsInput,
+  ) {
+    return this.conversations.setLabels(id, body.labelIds);
   }
 
   /** Agent started typing — show the customer a WhatsApp "typing…" indicator. */

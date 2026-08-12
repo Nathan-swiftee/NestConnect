@@ -23,6 +23,7 @@ import { relativeTime, slaCountdown } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { api } from "../lib/api";
 import { TagEditor } from "./TagEditor";
+import { LabelPicker } from "./LabelPicker";
 import { channelMeta, CheckIcon, ChevronDown, ChevronRight, PhoneIcon, MailIcon, ProfileIcon, XIcon } from "../lib/icons";
 
 interface Props {
@@ -307,7 +308,8 @@ function SlaBlock({ iso, now }: { iso: string; now: number }) {
 }
 
 /** Conversation labels (VIP, Billing, …) — set on the thread, not the customer. */
-function LabelsBlock({ labels }: { labels: LabelChip[] }) {
+function LabelsBlock({ conversationId, labels }: { conversationId: string; labels: LabelChip[] }) {
+  const [open, setOpen] = useState(false);
   return (
     <Block title="Labels">
       <div className="lbls">
@@ -318,6 +320,20 @@ function LabelsBlock({ labels }: { labels: LabelChip[] }) {
             {l.name}
           </span>
         ))}
+        <div className="lbls__addwrap">
+          <button type="button" className="lbls__add" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+            {labels.length ? "Edit" : "+ Add label"}
+          </button>
+          {open && (
+            <>
+              <div className="menu-backdrop" onClick={() => setOpen(false)} />
+              <div className="menu labelmenu labelmenu--panel" role="menu">
+                <div className="menu__hd">Labels</div>
+                <LabelPicker conversationId={conversationId} current={labels} />
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </Block>
   );
@@ -513,7 +529,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
             <AssignmentBlock conv={conv} teamName={teamName} onToast={onToast} />
             <RoutingBlock contact={conv.contact} isGroup onToast={onToast} />
             {conv.slaDueAt && <SlaBlock iso={conv.slaDueAt} now={now} />}
-            <LabelsBlock labels={conv.labels} />
+            <LabelsBlock conversationId={conv.id} labels={conv.labels} />
 
             {conv.inviteLink && (
               <Block title="Invite link">
@@ -564,7 +580,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
             <ChannelsBlock contact={conv.contact} activeChannel={conv.channel} onSwitch={switchChannel} />
             <RoutingBlock contact={conv.contact} isGroup={false} onToast={onToast} />
             {conv.slaDueAt && <SlaBlock iso={conv.slaDueAt} now={now} />}
-            <LabelsBlock labels={conv.labels} />
+            <LabelsBlock conversationId={conv.id} labels={conv.labels} />
           </>
         )}
       </div>

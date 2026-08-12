@@ -12,19 +12,23 @@ import {
 } from "@nestjs/common";
 import {
   createInboxInputSchema,
+  createLabelInputSchema,
   createTeamInputSchema,
   createUserInputSchema,
   reorderTeamsInputSchema,
   updateInboxInputSchema,
+  updateLabelInputSchema,
   updateMyPreferencesInputSchema,
   updateMyProfileInputSchema,
   updateTeamInputSchema,
   updateUserInputSchema,
   type CreateInboxInput,
+  type CreateLabelInput,
   type CreateTeamInput,
   type CreateUserInput,
   type ReorderTeamsInput,
   type UpdateInboxInput,
+  type UpdateLabelInput,
   type UpdateMyPreferencesInput,
   type UpdateMyProfileInput,
   type UpdateTeamInput,
@@ -205,6 +209,42 @@ export class WorkspaceController {
   async deleteTeam(@CurrentUserId() userId: string, @Param("id") id: string) {
     await this.requireManager(userId);
     await this.store.deleteTeam(id);
+    return { ok: true };
+  }
+
+  /* ---- labels: catalogue read (any agent) + management (managers) ---- */
+  @Get("labels")
+  async listLabels(@CurrentUserId() userId: string) {
+    const me = await this.store.getUser(userId);
+    if (!me) throw new NotFoundException("Current user not found");
+    return this.store.listLabels(me.orgId);
+  }
+
+  @Post("labels")
+  async createLabel(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(createLabelInputSchema)) body: CreateLabelInput,
+  ) {
+    const me = await this.requireManager(userId);
+    return this.store.createLabel({ orgId: me.orgId, name: body.name, color: body.color });
+  }
+
+  @Patch("labels/:id")
+  async updateLabel(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateLabelInputSchema)) body: UpdateLabelInput,
+  ) {
+    await this.requireManager(userId);
+    const label = await this.store.updateLabel(id, body);
+    if (!label) throw new NotFoundException("Label not found");
+    return label;
+  }
+
+  @Delete("labels/:id")
+  async deleteLabel(@CurrentUserId() userId: string, @Param("id") id: string) {
+    await this.requireManager(userId);
+    await this.store.deleteLabel(id);
     return { ok: true };
   }
 

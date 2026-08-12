@@ -9,6 +9,7 @@ import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "
 import { ClientEvent, ServerEvent } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage } from "../hooks";
 import { api } from "../lib/api";
+import { LabelPicker } from "./LabelPicker";
 import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
 import { Avatar } from "./Avatar";
@@ -947,6 +948,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [typingWho, setTypingWho] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
   const [snoozeMenu, setSnoozeMenu] = useState(false);
+  const [labelMenu, setLabelMenu] = useState(false);
   const [internal, setInternal] = useState(false);
   // @-mention autocomplete for internal notes: the active "@query" being typed
   // (with the '@' index in `text`), and the highlighted candidate.
@@ -1934,9 +1936,27 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </>
             )}
           </div>
-          <button className="iconbtn hide-sm" title="Add label" onClick={() => onToast("Add label")}>
-            <TagIcon />
-          </button>
+          <div className="labelwrap">
+            <button
+              className={"iconbtn hide-sm" + (labelMenu ? " on" : "")}
+              title="Labels"
+              aria-label="Labels"
+              aria-haspopup="menu"
+              aria-expanded={labelMenu}
+              onClick={() => { setLabelMenu((v) => !v); setSnoozeMenu(false); setMenu(false); }}
+            >
+              <TagIcon />
+            </button>
+            {labelMenu && (
+              <>
+                <div className="menu-backdrop" onClick={() => setLabelMenu(false)} />
+                <div className="menu labelmenu" role="menu">
+                  <div className="menu__hd">Labels</div>
+                  <LabelPicker conversationId={conv.id} current={conv.labels} />
+                </div>
+              </>
+            )}
+          </div>
           <button className={"iconbtn" + (showPanel ? " on" : "")} title="Details" onClick={onTogglePanel}>
             <DetailsIcon />
           </button>

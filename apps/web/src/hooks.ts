@@ -16,9 +16,11 @@ import {
   type CreateContactInput,
   type CreateGroupInput,
   type CreateInboxInput,
+  type CreateLabelInput,
   type CreateTeamInput,
   type CreateTemplateInput,
   type CreateUserInput,
+  type UpdateLabelInput,
   type ChannelType,
   type Message,
   type Notification,
@@ -257,6 +259,58 @@ export function useReorderTeams() {
     mutationFn: (orderedIds: string[]) => api.reorderTeams(orderedIds),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+/* ---- labels ---- */
+export const useLabels = () => useQuery({ queryKey: ["labels"], queryFn: api.labels });
+
+export function useCreateLabel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateLabelInput) => api.createLabel(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["labels"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+export function useUpdateLabel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdateLabelInput }) => api.updateLabel(v.id, v.input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["labels"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["conversation"] });
+    },
+  });
+}
+
+export function useDeleteLabel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteLabel(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["labels"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["conversation"] });
+    },
+  });
+}
+
+export function useSetConversationLabels() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; labelIds: string[] }) => api.setConversationLabels(v.id, v.labelIds),
+    onSuccess: (_data, v) => {
+      qc.invalidateQueries({ queryKey: ["conversation", v.id] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
     },
   });

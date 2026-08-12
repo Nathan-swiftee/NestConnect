@@ -512,6 +512,26 @@ export const reorderTeamsInputSchema = z.object({
 });
 export type ReorderTeamsInput = z.infer<typeof reorderTeamsInputSchema>;
 
+/** A hex colour (#RGB or #RRGGBB) for a label swatch. */
+const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Must be a hex colour like #0FA47A");
+export const createLabelInputSchema = z.object({
+  name: z.string().min(1).max(40),
+  color: hexColor,
+});
+export type CreateLabelInput = z.infer<typeof createLabelInputSchema>;
+
+export const updateLabelInputSchema = z.object({
+  name: z.string().min(1).max(40).optional(),
+  color: hexColor.optional(),
+});
+export type UpdateLabelInput = z.infer<typeof updateLabelInputSchema>;
+
+/** Replace a conversation's labels with this exact set of label ids. */
+export const setConversationLabelsInputSchema = z.object({
+  labelIds: z.array(z.string()),
+});
+export type SetConversationLabelsInput = z.infer<typeof setConversationLabelsInputSchema>;
+
 export const createUserInputSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),

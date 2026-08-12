@@ -279,6 +279,14 @@ export class ConversationsService {
     return updated ?? conv;
   }
 
+  /** Replace a conversation's labels with exactly this set (organising/triage). */
+  async setLabels(id: string, labelIds: string[]): Promise<Conversation> {
+    const updated = await this.store.setConversationLabels(id, labelIds);
+    if (!updated) throw new NotFoundException(`Conversation ${id} not found`);
+    this.realtime.emitConversationUpdated(updated);
+    return updated;
+  }
+
   /** An agent reacts to a message with an emoji (empty removes theirs). Stores
    *  it, broadcasts the update, and delivers it to the customer on WhatsApp. */
   async react(conversationId: string, messageId: string, emoji: string): Promise<Message> {
