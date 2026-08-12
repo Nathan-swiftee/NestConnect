@@ -56,6 +56,7 @@
 /* ─── Geometry system ───────────────────────────────────────────────
    Every radius and gap belongs to one of these steps. Nothing else. */
 :root{
+  --r-2:2px; --r-4:4px; --r-6:6px;                                     /* small end of the radius scale */
   --r-8:8px; --r-12:12px; --r-16:16px; --r-20:20px; --r-24:24px; --r-full:9999px;
   --r:12px; --r-sm:8px; --r-lg:16px;                                   /* legacy aliases, on-scale */
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
@@ -393,7 +394,7 @@ input,textarea{font:inherit}
   border:1px solid var(--glass-brd);padding:5px var(--sp-3);border-radius:var(--r-full);margin:6px 0;
   box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hi);position:sticky;top:6px;z-index:2}
 .msg{max-width:76%;display:flex;flex-direction:column;gap:2px;animation:msgIn .18s ease-out}
-.msg .bubble{position:relative;display:block;width:fit-content;max-width:100%;padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-3);border-radius:11px;font-size:var(--fs-lg);line-height:1.42;box-shadow:0 1px 1.5px rgba(13,21,18,.09)}
+.msg .bubble{position:relative;display:block;width:fit-content;max-width:100%;padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-3);border-radius:var(--r-12);font-size:var(--fs-lg);line-height:1.42;box-shadow:0 1px 1.5px rgba(13,21,18,.09)}
 .msg .bubble .txt{white-space:pre-wrap;word-break:break-word}
 /* invisible spacer reserving room for the timestamp on the text's last line
    (WhatsApp-style inline stamp) */
@@ -401,14 +402,14 @@ input,textarea{font:inherit}
 .msg.out .bubble .stampspace{width:66px}
 .msg .bubble .stamp{position:absolute;right:11px;bottom:6px;display:inline-flex;align-items:center;gap:3px;font-size:var(--fs-2xs);line-height:1;font-variant-numeric:tabular-nums}
 .msg.in{align-self:flex-start}
-.msg.in .bubble{--bub:var(--surface);background:var(--bub);border-bottom-left-radius:4px}
+.msg.in .bubble{--bub:var(--surface);background:var(--bub);border-bottom-left-radius:var(--r-4)}
 /* WhatsApp-style tail: a beak at the BOTTOM outer corner */
 .msg.in .bubble::before{content:"";position:absolute;left:-6px;bottom:0;width:0;height:0;
   border-right:8px solid var(--bub);border-top:9px solid transparent}
 .msg.in .bubble .stamp{color:var(--text-faint)}
 .msg.out{align-self:flex-end;align-items:flex-end}
 /* sent bubbles use the WhatsApp green */
-.msg.out .bubble{--bub:#D9FDD3;background:var(--bub);color:#111b21;border-bottom-right-radius:4px}
+.msg.out .bubble{--bub:#D9FDD3;background:var(--bub);color:#111b21;border-bottom-right-radius:var(--r-4)}
 .msg.out .bubble::after{content:"";position:absolute;right:-6px;bottom:0;width:0;height:0;
   border-left:8px solid var(--bub);border-top:9px solid transparent}
 .msg.out .bubble .stamp{color:rgba(17,27,33,.45)}
@@ -437,12 +438,12 @@ input,textarea{font:inherit}
 .note{max-width:76%;display:flex;animation:msgIn .18s ease-out}
 .note.note--in{align-self:flex-start}
 .note.note--out{align-self:flex-end}
-.note__bubble{position:relative;width:fit-content;max-width:100%;padding:var(--sp-2) var(--sp-3) var(--sp-2);border-radius:11px;
+.note__bubble{position:relative;width:fit-content;max-width:100%;padding:var(--sp-2) var(--sp-3) var(--sp-2);border-radius:var(--r-12);
   background:color-mix(in srgb,var(--amber) 13%,var(--surface));
   border:1px solid color-mix(in srgb,var(--amber) 34%,transparent);
   box-shadow:0 1px 1.5px rgba(13,21,18,.09)}
-.note.note--in .note__bubble{border-bottom-left-radius:4px}
-.note.note--out .note__bubble{border-bottom-right-radius:4px}
+.note.note--in .note__bubble{border-bottom-left-radius:var(--r-4)}
+.note.note--out .note__bubble{border-bottom-right-radius:var(--r-4)}
 .note__head{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:3px}
 .note__ic{width:20px;height:20px;border-radius:var(--r-8);background:var(--amber);color:#fff;display:grid;place-items:center;flex:0 0 20px}
 .note__ic svg{width:12px;height:12px}
@@ -505,7 +506,7 @@ input,textarea{font:inherit}
 .voice__track{cursor:pointer;padding:3px 0}
 .voice__track:focus-visible{outline:2px solid var(--brand-ring);outline-offset:3px;border-radius:var(--r-8)}
 .voice__wave{display:flex;align-items:center;gap:2px;height:26px}
-.voice__wbar{flex:1 1 0;min-width:2px;height:20%;border-radius:2px;background:color-mix(in srgb,var(--text) 22%,transparent)}
+.voice__wbar{flex:1 1 0;min-width:2px;height:20%;border-radius:var(--r-2);background:color-mix(in srgb,var(--text) 22%,transparent)}
 .voice__wbar.on{background:var(--wa)}
 .voice__bar{position:relative;height:4px;border-radius:var(--r-full);overflow:hidden;
   background:color-mix(in srgb,var(--text) 18%,transparent)}
@@ -561,11 +562,11 @@ input,textarea{font:inherit}
 
 /* quoted-reply preview stacked at the top of a bubble */
 .quoted{display:flex;gap:var(--sp-2);align-items:stretch;width:100%;text-align:left;cursor:pointer;
-  margin-bottom:5px;padding:5px var(--sp-2);border-radius:6px;overflow:hidden;border:0;
+  margin-bottom:5px;padding:5px var(--sp-2);border-radius:var(--r-6);overflow:hidden;border:0;
   background:color-mix(in srgb,var(--text) 6%,transparent);transition:background .12s}
 .quoted:hover{background:color-mix(in srgb,var(--text) 11%,transparent)}
 .quoted:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
-.quoted__accent{flex:0 0 3px;border-radius:3px;background:var(--brand-strong)}
+.quoted__accent{flex:0 0 3px;border-radius:var(--r-2);background:var(--brand-strong)}
 .quoted__body{min-width:0;display:flex;flex-direction:column;gap:1px}
 .quoted__who{font-size:var(--fs-xs);font-weight:700;color:var(--brand-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .quoted__txt{font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(260px,60vw)}
@@ -671,9 +672,9 @@ input,textarea{font:inherit}
   :root:not([data-theme="light"]) .msg.out .bubble.bubble--mail{--bub:color-mix(in srgb,var(--elevated),#fff 7%);color:var(--text)}
 }
 .emailhtml{display:block}
-.emailhtml__frame{display:block;width:100%;border:0;background:#fff;border-radius:4px;color-scheme:light}
+.emailhtml__frame{display:block;width:100%;border:0;background:#fff;border-radius:var(--r-4);color-scheme:light}
 .emailhtml__imgbar{display:flex;align-items:center;gap:var(--sp-2);width:100%;margin-bottom:7px;padding:6px var(--sp-2);
-  border-radius:8px;border:1px solid #e4e4e4;background:#f6f6f6;color:#5a5a5a;
+  border-radius:var(--r-8);border:1px solid #e4e4e4;background:#f6f6f6;color:#5a5a5a;
   font-size:var(--fs-xs);font-weight:600;cursor:pointer;transition:background .12s}
 .emailhtml__imgbar:hover{background:#eee}
 .emailhtml__imgbar svg{width:15px;height:15px;flex:0 0 auto;color:#8a8a8a}
@@ -804,7 +805,7 @@ input,textarea{font:inherit}
 /* ─── Typing indicator ─── another agent composing on this conversation:
    a tail-less inbound-style bubble with three bouncing dots. */
 .typing{align-self:flex-start;display:inline-flex;align-items:center;gap:var(--sp-2);max-width:100%;
-  padding:var(--sp-2) var(--sp-3);border-radius:11px;border-bottom-left-radius:4px;background:var(--surface);
+  padding:var(--sp-2) var(--sp-3);border-radius:var(--r-12);border-bottom-left-radius:var(--r-4);background:var(--surface);
   color:var(--text-muted);font-size:var(--fs-xs);font-weight:600;box-shadow:0 1px 1.5px rgba(13,21,18,.09);
   animation:msgIn .18s var(--ease)}
 .typing__dots{display:inline-flex;align-items:center;gap:var(--sp-1);flex:0 0 auto}
@@ -891,7 +892,7 @@ input,textarea{font:inherit}
 .comp-att__voice{display:flex;align-items:center;gap:var(--sp-2);padding:7px 13px 7px 9px}
 .comp-att__voice .comp-att__ic{background:color-mix(in srgb,var(--wa) 16%,transparent);color:var(--wa)}
 .comp-att__wave{display:flex;align-items:center;gap:2px;height:22px;width:74px}
-.comp-att__wave span{flex:1 1 0;min-width:2px;min-height:2px;border-radius:2px;
+.comp-att__wave span{flex:1 1 0;min-width:2px;min-height:2px;border-radius:var(--r-2);
   background:color-mix(in srgb,var(--wa) 55%,transparent)}
 .comp-att__dur{font-size:var(--fs-2xs);font-weight:650;color:var(--text-muted)}
 /* remove (✕) — corner button */
@@ -1123,7 +1124,7 @@ input,textarea{font:inherit}
 .mock__dot:nth-child(3){background:#7FD59B}
 .mock__title{margin-left:5px;font-size:var(--fs-xs);font-weight:650;color:var(--text-muted)}
 .mock__badges{margin-left:auto;display:flex;gap:6px}
-.mock__badge{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;color:#fff}
+.mock__badge{width:20px;height:20px;border-radius:var(--r-6);display:grid;place-items:center;color:#fff}
 .mock__badge svg{width:13px;height:13px}
 .mock__badge--wa{background:var(--wa)}
 .mock__badge--mail{background:var(--email)}
@@ -1138,14 +1139,14 @@ input,textarea{font:inherit}
 @keyframes mockIn{from{opacity:0;transform:translateY(12px) scale(.96)}to{opacity:1;transform:none}}
 .mock__av{width:26px;height:26px;flex:none;border-radius:50%;display:grid;place-items:center;
   font-size:var(--fs-2xs);font-weight:700;color:#fff;background:#E08B4C}
-.mock__bub{position:relative;max-width:76%;padding:var(--sp-2) var(--sp-3);border-radius:14px;font-size:var(--fs-xs);line-height:1.4;
-  background:var(--surface-2);color:var(--text);border-bottom-left-radius:5px}
-.mock__bub--out{background:var(--brand);color:#fff;border-bottom-left-radius:14px;border-bottom-right-radius:5px}
+.mock__bub{position:relative;max-width:76%;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-12);font-size:var(--fs-xs);line-height:1.4;
+  background:var(--surface-2);color:var(--text);border-bottom-left-radius:var(--r-4)}
+.mock__bub--out{background:var(--brand);color:#fff;border-bottom-left-radius:var(--r-12);border-bottom-right-radius:var(--r-4)}
 .mock__time{margin-left:8px;font-size:var(--fs-2xs);font-weight:600;color:var(--text-faint);vertical-align:1px}
 .mock__ticks{display:inline-flex;margin-left:7px;vertical-align:-1px;color:#BFE7FF;animation:mockRead .5s var(--ease) 2s both}
 .mock__ticks svg{width:16px;height:11px}
 @keyframes mockRead{from{color:rgba(255,255,255,.75);transform:scale(.85)}to{color:#BFE7FF;transform:none}}
-.mock__typing{align-self:flex-start;display:flex;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border-radius:14px;border-bottom-left-radius:5px;
+.mock__typing{align-self:flex-start;display:flex;gap:var(--sp-1);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-12);border-bottom-left-radius:var(--r-4);
   background:var(--surface-2);opacity:0;animation:mockIn .6s var(--ease) 1.7s forwards}
 .mock__typing span{width:6px;height:6px;border-radius:50%;background:var(--text-faint);animation:mockDots 1.3s ease-in-out infinite}
 .mock__typing span:nth-child(2){animation-delay:.18s}
@@ -1289,7 +1290,7 @@ input,textarea{font:inherit}
 .sig-host .richedit{outline:none;min-height:96px;font-size:var(--fs-md);color:var(--text);line-height:1.5}
 .sig-host .richedit:focus,.sig-host .ProseMirror-focused{outline:none}
 .sig-host .richedit p{margin:0 0 4px}
-.sig-host .richedit img{max-width:220px;height:auto;border-radius:6px;margin:4px 0}
+.sig-host .richedit img{max-width:220px;height:auto;border-radius:var(--r-6);margin:4px 0}
 .sig-host .richedit p.is-editor-empty:first-child::before{content:attr(data-placeholder);color:var(--text-faint);float:left;height:0;pointer-events:none}
 
 /* multi-select as tappable pills with a custom check-circle — no native boxes */
@@ -1673,7 +1674,7 @@ button.tpl-row:active{transform:scale(.99)}
 .tpl-preview{border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface-2);padding:12px 13px}
 .tpl-preview__hd{font-size:var(--fs-2xs);font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint);margin-bottom:6px}
 .tpl-preview__body{font-size:var(--fs-sm);color:var(--text);line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
-.tpl-preview__ph{color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:5px;padding:0 4px;font-weight:600}
+.tpl-preview__ph{color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border-radius:var(--r-4);padding:0 4px;font-weight:600}
 .tpl-send{display:inline-flex;align-items:center;gap:7px}
 .tpl-send svg{width:16px;height:16px}
 /* textarea + picker inputs share the carved-field recipe */
@@ -1688,7 +1689,7 @@ button.tpl-row:active{transform:scale(.99)}
 .setpane__headacts .btn-ghost{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;border:1px solid var(--border)}
 .setpane__headacts .btn-ghost svg,.setpane__headacts .btn-primary svg{width:15px;height:15px}
 .tpl-synchint{margin:-8px 0 16px}
-.setpane code{font-family:var(--mono);font-size:.9em;background:color-mix(in srgb,var(--text) 8%,transparent);padding:1px 5px;border-radius:5px}
+.setpane code{font-family:var(--mono);font-size:.9em;background:color-mix(in srgb,var(--text) 8%,transparent);padding:1px 5px;border-radius:var(--r-4)}
 .tpl-item{display:flex;align-items:flex-start;gap:var(--sp-3);padding:12px 14px}
 .tpl-item__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
 .tpl-item__top{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
@@ -1811,7 +1812,7 @@ button.tpl-row:active{transform:scale(.99)}
   font: inherit; font-size:var(--fs-sm); color: var(--text-soft, #667);
   background: var(--glass, rgba(120,130,150,0.10));
   border: 1px solid var(--border, rgba(120,130,150,0.18));
-  border-radius: 999px; padding:6px var(--sp-3); cursor: pointer;
+  border-radius:var(--r-full); padding:6px var(--sp-3); cursor: pointer;
   transition: background 0.15s ease;
 }
 .loadolder__btn:hover:not(:disabled) { background: var(--glass-strong, rgba(120,130,150,0.18)); }
