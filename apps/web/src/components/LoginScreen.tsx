@@ -125,7 +125,7 @@ export function LoginScreen() {
           {mode === "signin" ? (
             <>
               <h1>Welcome back</h1>
-              <p className="login__sub">Sign in to your team inbox</p>
+              <p className="m-0 mb-2 text-muted text-sm">Sign in to your team inbox</p>
 
               <label className="field">
                 <span>Email</span>
@@ -149,27 +149,27 @@ export function LoginScreen() {
                 />
               </label>
 
-              {login.isError && <div className="login__err">Invalid email or password.</div>}
+              {login.isError && <div className="text-danger text-xs font-semibold bg-danger-tint py-2 px-3 rounded-8">Invalid email or password.</div>}
 
-              <button className="login__btn" type="submit" disabled={login.isPending}>
+              <button className="mt-1.5 p-3 rounded-12 font-bold text-md text-white bg-brand shadow-[0_6px_16px_-8px_var(--brand-ring)] [transition:filter_.15s,transform_.12s_var(--ease)] hover:brightness-[1.05] active:scale-[.98] disabled:opacity-60" type="submit" disabled={login.isPending}>
                 {login.isPending ? "Signing in…" : "Sign in"}
               </button>
 
-              <button type="button" className="login__link" onClick={() => { setResetSent(false); setMode("forgot"); }}>
+              <button type="button" className="self-center mt-0.5 bg-transparent border-0 p-1 text-xs font-semibold text-brand cursor-pointer [transition:color_.15s] hover:text-brand-strong hover:underline" onClick={() => { setResetSent(false); setMode("forgot"); }}>
                 Forgot password?
               </button>
 
-              <div className="login__hint">
+              <div className="mt-1 text-center text-xs text-faint [&_b]:text-muted">
                 Demo login — <b>nathan@swiftee.co.uk</b> / <b>ding1234</b>
               </div>
             </>
           ) : (
             <>
               <h1>Reset your password</h1>
-              <p className="login__sub">We'll email you a link to set a new one.</p>
+              <p className="m-0 mb-2 text-muted text-sm">We'll email you a link to set a new one.</p>
 
               {resetSent ? (
-                <div className="login__note">
+                <div className="bg-brand-tint text-fg text-sm leading-normal p-3 rounded-12">
                   If <b>{emailAddr}</b> has an account, a reset link is on its way — check your inbox.
                 </div>
               ) : (
@@ -186,12 +186,12 @@ export function LoginScreen() {
               )}
 
               {!resetSent && (
-                <button className="login__btn" type="submit" disabled={sending}>
+                <button className="mt-1.5 p-3 rounded-12 font-bold text-md text-white bg-brand shadow-[0_6px_16px_-8px_var(--brand-ring)] [transition:filter_.15s,transform_.12s_var(--ease)] hover:brightness-[1.05] active:scale-[.98] disabled:opacity-60" type="submit" disabled={sending}>
                   {sending ? "Sending…" : "Send reset link"}
                 </button>
               )}
 
-              <button type="button" className="login__link" onClick={() => { setResetSent(false); setMode("signin"); }}>
+              <button type="button" className="self-center mt-0.5 bg-transparent border-0 p-1 text-xs font-semibold text-brand cursor-pointer [transition:color_.15s] hover:text-brand-strong hover:underline" onClick={() => { setResetSent(false); setMode("signin"); }}>
                 ← Back to sign in
               </button>
             </>

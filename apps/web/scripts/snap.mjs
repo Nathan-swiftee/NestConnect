@@ -30,7 +30,7 @@ async function login(page) {
   await page.goto(BASE + "/", { waitUntil: "networkidle" });
   await page.fill('input[type="email"]', "nathan@swiftee.co.uk").catch(() => {});
   await page.fill('input[type="password"]', "ding1234");
-  await page.click(".login__btn");
+  await page.click('button[type="submit"]');
   await page.waitForSelector(".conv", { timeout: 20000 });
   await page.waitForTimeout(600);
 }
