@@ -246,14 +246,41 @@ times). Done means:
   `[border-right:1px_solid_var(--border)]`.
 - Buttons keep UA padding/border — add `border-0` / explicit padding when needed.
 
+**Context-coupling & the `group` pattern (key finding).** Most shared visual
+classes here are restyled by their *container/ancestor* via descendant selectors,
+not just self-state: `.btn-primary` is re-laid-out by `.setpane__head`,
+`.copyrow`, `.setpane__headacts` (7+ contexts); `.av .ch` and `.tag` change with
+`.conv:hover` / `.conv.active`; `.badge` with `.navrow.active`. So you cannot
+"extract to a standalone component and drop the class" without silently breaking
+those overrides — and most live in the two giant, mostly-unshot files (Settings
+~2k, Thread ~2.5k lines). Two consequences:
+1. **Buttons are a poor extraction target** here — too many container contexts.
+2. For a context-coupled element, reproduce the ancestor override with Tailwind's
+   **`group` variant** instead of a descendant selector: put `group` on the
+   ancestor (which already carries the state class, e.g. `.conv … active`) and
+   `group-[.active]:` / `group-hover:` on the child. Stack with a breakpoint when
+   the override is responsive, e.g. the ownership tag's desktop-only whitening:
+   `min-[821px]:group-[.active]:bg-surface` (mobile row isn't highlighted, so it
+   must NOT whiten — the `min-[821px]` gate handles that with no mobile cancel
+   rule needed). Verified 0px incl. the active desktop row + non-active mobile.
+
+**Verification harness** now covers 14 views (was 8): added pre-auth `login`,
+`desktop-settings`, `desktop-customers` (light+dark) so primitives living in
+those views can be migrated with pixel coverage. Deterministic (0px across two
+runs). NOTE: settings/thread sub-tabs & modals are still unshot — expand the
+harness before migrating a primitive whose only call-sites are inside them.
+
 **Progress**
 - [x] Phase 0 — shared `@ding/design` tokens (`9ee5aa3`)
 - [x] Phase 1 — Tailwind wired into web, Preflight off, dark via attribute (`2a09333`)
-- [x] Verification gate built + validated (`fb30fac`); drawer shot added
+- [x] Verification gate built + validated (`fb30fac`); drawer shot added; expanded to 14 views
 - [x] `LabelPicker` → utilities (`3eac15c`) — first component
 - [x] `IconRail` structure → utilities (`e1a131d`)
-- [ ] Primitives layer: `IconButton`, `Button`, `Switch`, `Pill`, `Tag`, `Avatar`, `Menu`
-- [ ] Page components: `IconRail`, `Sidebar`, `ConversationList`, `NotificationBell`,
-      `Compose`, `TemplatePicker`, `TagEditor`, `Customers`, `ContextPanel`,
-      `PersonalSettings`, `CommandPalette`, `CreateGroupModal`, `SetPassword`,
-      `LoginScreen`, `Settings`, `Thread` (biggest last)
+- [x] `ConversationList` rows (`781b521`) + header/search (`4772432`)
+- [x] `Sidebar` sub-lists + footer actions (`5a86ac2`)
+- [x] Ownership `Tag` → utilities via `group-[.active]` pattern (`6d7ca4f`)
+- [ ] Primitives layer: `IconButton`, `Button`, `Switch`, `Field`, `Avatar`, `Menu`
+      (keep as themed CSS OR `ui/` components; NOT naive inline — they're context-coupled)
+- [ ] Remaining page components: `NotificationBell`, `Compose`, `TemplatePicker`,
+      `TagEditor`, `Customers`, `ContextPanel`, `PersonalSettings`, `CommandPalette`,
+      `CreateGroupModal`, `SetPassword`, `LoginScreen`, `Settings`, `Thread` (biggest last)
