@@ -590,31 +590,73 @@ input,textarea{font:inherit}
 .reacts--mine:hover{background:color-mix(in srgb,var(--elevated),var(--text) 7%)}
 .reacts--mine:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
 
-/* hover toolbar + emoji picker: parked at the bubble's side, vertically centred
-   — not floating above it. A top-floated bar sat in the gap between messages, so
-   reaching up for it left the bubble's hover region and it vanished before the
-   cursor got there. At the side it butts right up to the bubble edge (a 2px
-   overlap + a transparent bridge in the padding), keeping one continuous hover
-   surface from bubble to buttons so it never drops out mid-reach. */
-.msg__act,.react-pop{position:absolute;top:50%;z-index:20;display:flex;align-items:center;gap:2px;
-  padding:3px;border-radius:var(--r-full);background:var(--elevated);
-  box-shadow:0 6px 18px -6px rgba(0,0,0,.34),0 0 0 1px var(--border)}
-.msg.in .msg__act,.msg.in .react-pop{left:calc(100% - 2px);padding-left:9px}
-.msg.out .msg__act,.msg.out .react-pop{right:calc(100% - 2px);padding-right:9px}
-.msg__act{transform:translateY(-50%) scale(.94);opacity:0;pointer-events:none;
-  transition:opacity .12s var(--ease),transform .12s var(--ease)}
-.msg:hover .msg__act,.msg:focus-within .msg__act{opacity:1;pointer-events:auto;transform:translateY(-50%) scale(1)}
-.msg__actbtn{width:28px;height:28px;border-radius:var(--r-full);display:grid;place-items:center;
-  color:var(--text-muted);transition:background .12s,color .12s}
-.msg__actbtn:hover{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
-.msg__actbtn:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
-.msg__actbtn svg{width:16px;height:16px}
-.react-pop{transform:translateY(-50%);animation:reactPop .13s var(--ease)}
-@keyframes reactPop{from{opacity:0;transform:translateY(-50%) scale(.9)}to{opacity:1;transform:translateY(-50%) scale(1)}}
-.react-pop__e{width:30px;height:30px;border-radius:var(--r-full);display:grid;place-items:center;
-  font-size:var(--fs-xl);line-height:1;transition:background .1s,transform .1s var(--ease)}
-.react-pop__e:hover{background:color-mix(in srgb,var(--text) 10%,transparent);transform:scale(1.18)}
-.react-pop__e.sel{background:color-mix(in srgb,var(--brand) 22%,transparent)}
+/* ─── Message actions: react + reply, WhatsApp-style per platform ─────────────
+   Desktop (hover): a quick-reaction emoji row floats on the bubble's inner side,
+   plus a chevron in the corner that opens an actions menu (Reply, extensible).
+   Mobile (touch): long-press shows the reaction row centred above the message;
+   a rightward swipe starts a reply (handled in JS, with the swipe-hint behind). */
+.msg .bubble{touch-action:pan-y}
+
+.msg__react{position:absolute;z-index:20;display:flex;align-items:center;gap:2px;padding:3px;
+  border-radius:var(--r-full);background:var(--elevated);
+  box-shadow:0 6px 18px -6px rgba(0,0,0,.34),0 0 0 1px var(--border);
+  opacity:0;pointer-events:none;transition:opacity .12s var(--ease)}
+/* Compact on desktop (tidy hover picker); bigger touch targets on mobile
+   (where it's the centred long-press picker). */
+.msg__react-e{width:26px;height:26px;border-radius:var(--r-full);display:grid;place-items:center;
+  font-size:17px;line-height:1;transition:background .1s,transform .1s var(--ease)}
+@media (hover:none){ .msg__react-e{width:36px;height:36px;font-size:22px} }
+.msg__react-e:hover{background:color-mix(in srgb,var(--text) 10%,transparent);transform:scale(1.18)}
+.msg__react-e:active{transform:scale(1.05)}
+.msg__react-e.sel{background:color-mix(in srgb,var(--brand) 22%,transparent)}
+
+.msg__menubtn{position:absolute;top:2px;z-index:19;width:24px;height:22px;display:grid;place-items:center;
+  border-radius:var(--r-8);color:var(--text-muted);background:color-mix(in srgb,var(--surface) 80%,transparent);
+  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  opacity:0;pointer-events:none;transition:opacity .12s,background .12s,color .12s}
+.msg.in .msg__menubtn{right:3px}
+.msg.out .msg__menubtn{left:3px}
+.msg__menubtn svg{width:14px;height:14px}
+.msg__menubtn:hover{color:var(--text);background:color-mix(in srgb,var(--text) 12%,transparent)}
+
+.msg__menu{position:absolute;top:26px;z-index:30;min-width:154px;padding:5px;
+  border-radius:var(--r-12);background:var(--elevated);
+  box-shadow:0 12px 32px -8px rgba(0,0,0,.4),0 0 0 1px var(--border);animation:popIn .13s var(--ease)}
+.msg.in .msg__menu{right:2px}
+.msg.out .msg__menu{left:2px}
+.msg__menuitem{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:var(--r-8);
+  font-size:var(--fs-sm);font-weight:600;color:var(--text);text-align:left;transition:background .1s}
+.msg__menuitem:hover{background:var(--surface-2)}
+.msg__menuitem svg{width:16px;height:16px;color:var(--text-muted)}
+@keyframes popIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+
+.msg__swipehint{position:absolute;top:50%;left:-34px;transform:translateY(-50%);
+  width:26px;height:26px;border-radius:var(--r-full);display:grid;place-items:center;
+  background:var(--surface-2);color:var(--brand-strong);opacity:0;pointer-events:none}
+.msg__swipehint svg{width:15px;height:15px}
+.bubble--swiped{animation:swipeFlash .42s var(--ease)}
+@keyframes swipeFlash{0%,100%{box-shadow:0 1px 1.5px rgba(13,21,18,.09)}45%{box-shadow:0 0 0 3px var(--brand-ring)}}
+
+/* Desktop: reveal on hover/focus. The emoji row pops just above the message's
+   near corner (WhatsApp-web style) — a horizontal 6-emoji row can't fit the side
+   gutter beside a wide bubble, so it uses the space above and never clips. The
+   chevron actions button sits in the corner. */
+@media (hover:hover){
+  .msg:hover .msg__menubtn,.msg:focus-within .msg__menubtn{opacity:1;pointer-events:auto}
+  .msg:hover .msg__react,.msg:focus-within .msg__react{opacity:1;pointer-events:auto;animation:popIn .13s var(--ease)}
+  .msg .msg__react{top:-40px}
+  .msg.in .msg__react{left:0;transform-origin:bottom left}
+  .msg.out .msg__react{right:0;transform-origin:bottom right}
+  /* Transparent bridge across the gap to the bubble so moving the mouse up
+     to the row never drops :hover (the "gone before I reach it" bug). */
+  .msg__react::before{content:"";position:absolute;left:0;right:0;top:100%;height:14px}
+}
+/* Mobile: no hover — long-press shows the row centred above, growing inward */
+@media (hover:none){
+  .msg__react.held{opacity:1;pointer-events:auto;animation:popIn .13s var(--ease)}
+  .msg.in .msg__react{top:-52px;left:0;transform-origin:bottom left}
+  .msg.out .msg__react{top:-52px;right:0;transform-origin:bottom right}
+}
 
 /* flash the target bubble when jumping to a quoted message */
 .msg--flash .bubble{animation:msgFlash 1.15s var(--ease)}

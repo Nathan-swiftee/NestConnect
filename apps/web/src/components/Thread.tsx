@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
-import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent } from "react";
+import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent, PointerEvent as RPointerEvent } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -389,10 +389,14 @@ function quotedSnippet(q: Message): string {
 interface MsgActions {
   /** Display name to attribute the customer's reaction to. */
   contactName: string;
-  /** Is this message's quick-reaction bar currently open? */
-  reactOpen: boolean;
-  /** Toggle this message's quick-reaction bar. */
-  onReactToggle: () => void;
+  /** Mobile long-press state — the reaction row is shown, centred above the msg. */
+  held: boolean;
+  /** Is this message's desktop actions (chevron) menu open? */
+  menuOpen: boolean;
+  /** Open the reaction row on this message (mobile long-press). */
+  onHold: () => void;
+  /** Toggle the desktop actions menu for this message. */
+  onMenuToggle: () => void;
   /** Apply (or, with "", remove) the agent's reaction. */
   onReact: (emoji: string) => void;
   /** Start a quoted reply to this message. */
@@ -423,6 +427,63 @@ function MessageBubble({
   onRetry?: (messageId: string) => void;
 }) {
   const out = m.direction === "out";
+
+  // Touch gestures (mobile), WhatsApp-style: a long-press opens the reaction row,
+  // a rightward swipe starts a reply. Both begin from one pointerdown — a
+  // horizontal drag cancels the press and follows the finger (imperatively, via a
+  // ref, so there's no per-frame React state), a vertical drag hands scrolling
+  // back to the list. Mouse/pen (desktop) is ignored here; desktop uses hover.
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const hintRef = useRef<HTMLSpanElement>(null);
+  const gestureRef = useRef<{ x: number; y: number; lp: number; swiping: boolean; active: boolean } | null>(null);
+  const setSwipe = (px: number) => {
+    if (bubbleRef.current) bubbleRef.current.style.transform = px ? `translateX(${px}px)` : "";
+    if (hintRef.current) hintRef.current.style.opacity = String(Math.min(px / 52, 1));
+  };
+  const endGesture = (commit: boolean) => {
+    const b = bubbleRef.current;
+    if (b) {
+      b.style.transition = "transform .18s var(--ease)";
+      b.style.transform = "";
+      window.setTimeout(() => { if (b) b.style.transition = ""; }, 200);
+    }
+    if (hintRef.current) hintRef.current.style.opacity = "0";
+    if (commit && actions) {
+      actions.onReply();
+      b?.classList.add("bubble--swiped");
+      window.setTimeout(() => b?.classList.remove("bubble--swiped"), 420);
+    }
+  };
+  const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
+    if (!actions || e.pointerType !== "touch") return;
+    const g = { x: e.clientX, y: e.clientY, swiping: false, active: true, lp: 0 };
+    gestureRef.current = g;
+    g.lp = window.setTimeout(() => {
+      if (gestureRef.current === g && !g.swiping) {
+        g.active = false;
+        actions.onHold();
+        navigator.vibrate?.(8);
+      }
+    }, 450);
+  };
+  const onPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
+    const g = gestureRef.current;
+    if (!g || !g.active) return;
+    const dx = e.clientX - g.x;
+    const dy = e.clientY - g.y;
+    if (!g.swiping) {
+      if (Math.abs(dy) > 12 && Math.abs(dy) >= Math.abs(dx)) { g.active = false; window.clearTimeout(g.lp); return; }
+      if (dx > 10 && dx > Math.abs(dy)) { g.swiping = true; window.clearTimeout(g.lp); }
+    }
+    if (g.swiping) setSwipe(Math.max(0, Math.min(dx, 92)));
+  };
+  const onPointerEnd = (e: RPointerEvent<HTMLDivElement>) => {
+    const g = gestureRef.current;
+    if (!g) return;
+    window.clearTimeout(g.lp);
+    if (g.swiping) endGesture(e.clientX - g.x > 52);
+    gestureRef.current = null;
+  };
   const atts = m.attachments ?? [];
   const hasMedia = atts.length > 0;
   const hasCaption = !!m.body && m.body.trim().length > 0;
@@ -462,8 +523,15 @@ function MessageBubble({
   return (
     <div className={"msg " + (out ? "out" : "in")} data-mid={m.id}>
       {!out && m.authorName && <div className="sender">{m.authorName}</div>}
-      <div className="bubblewrap">
+      <div
+        className="bubblewrap"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerEnd}
+        onPointerCancel={onPointerEnd}
+      >
         <div
+          ref={bubbleRef}
           className={
             "bubble" +
             (hasMedia ? " has-media" : "") +
@@ -546,30 +614,46 @@ function MessageBubble({
           </div>
         )}
 
-        {actions && !actions.reactOpen && (
-          <div className="msg__act" role="group" aria-label="Message actions">
-            <button type="button" className="msg__actbtn" onClick={actions.onReply} title="Reply" aria-label="Reply">
+        {actions && (
+          <>
+            {/* Desktop: chevron in the bubble's inner corner → actions menu (hover) */}
+            <button
+              type="button"
+              className="msg__menubtn"
+              aria-label="Message actions"
+              aria-haspopup="menu"
+              aria-expanded={actions.menuOpen}
+              onClick={actions.onMenuToggle}
+            >
+              <ChevronDown />
+            </button>
+            {actions.menuOpen && (
+              <div className="msg__menu" role="menu">
+                <button type="button" className="msg__menuitem" role="menuitem" onClick={actions.onReply}>
+                  <ReplyIcon />
+                  <span>Reply</span>
+                </button>
+              </div>
+            )}
+            {/* Quick-reaction row — desktop: above the near corner (hover); mobile: centred (held) */}
+            <div className={"msg__react" + (actions.held ? " held" : "")} role="menu" aria-label="Pick a reaction">
+              {QUICK_REACTIONS.map((e) => (
+                <button
+                  key={e}
+                  type="button"
+                  className={"msg__react-e" + (mine === e ? " sel" : "")}
+                  onClick={() => actions.onReact(mine === e ? "" : e)}
+                  aria-label={mine === e ? `Remove ${e}` : `React ${e}`}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+            {/* Swipe-to-reply hint, revealed behind the bubble as it slides (touch) */}
+            <span className="msg__swipehint" aria-hidden="true" ref={hintRef}>
               <ReplyIcon />
-            </button>
-            <button type="button" className="msg__actbtn" onClick={actions.onReactToggle} title="React" aria-label="React">
-              <EmojiIcon />
-            </button>
-          </div>
-        )}
-        {actions?.reactOpen && (
-          <div className="react-pop" role="menu" aria-label="Pick a reaction">
-            {QUICK_REACTIONS.map((e) => (
-              <button
-                key={e}
-                type="button"
-                className={"react-pop__e" + (mine === e ? " sel" : "")}
-                onClick={() => actions.onReact(mine === e ? "" : e)}
-                aria-label={mine === e ? `Remove ${e}` : `React ${e}`}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
+            </span>
+          </>
         )}
         {reactions.length > 0 && (
           <div
@@ -821,6 +905,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // which message's quick-reaction bar is open. Both reset when the thread changes.
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [reactFor, setReactFor] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   // Rich-text HTML for an email reply (mirrors the Tiptap editor's content).
   const [html, setHtml] = useState("");
   // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
@@ -1016,23 +1101,24 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     };
   }, [emojiOpen]);
 
-  // Dismiss an open quick-reaction bar on outside click or Esc.
+  // Dismiss an open reaction row / actions menu on outside click or Esc.
   useEffect(() => {
-    if (!reactFor) return;
-    const onDown = (e: MouseEvent) => {
+    if (!reactFor && !menuFor) return;
+    const onDown = (e: Event) => {
       const t = e.target as HTMLElement;
-      if (!t.closest(".react-pop") && !t.closest(".msg__actbtn")) setReactFor(null);
+      if (!t.closest(".msg__react") && !t.closest(".msg__menubtn")) setReactFor(null);
+      if (!t.closest(".msg__menu") && !t.closest(".msg__menubtn")) setMenuFor(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setReactFor(null);
+      if (e.key === "Escape") { setReactFor(null); setMenuFor(null); }
     };
-    window.addEventListener("mousedown", onDown);
+    window.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("keydown", onKey);
     };
-  }, [reactFor]);
+  }, [reactFor, menuFor]);
 
   // Slide the mode thumb under the active tab (a channel, or Note). Positioned by
   // querying the active button — the compose channel isn't resolved until after
@@ -1296,6 +1382,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const startReply = (m: Message) => {
     setReplyTo(m);
     setReactFor(null);
+    setMenuFor(null);
     setInternal(false);
     requestAnimationFrame(() => taRef.current?.focus());
   };
@@ -1906,8 +1993,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     conv.channel === "whatsapp" || conv.channel === "whatsapp_group"
                       ? {
                           contactName: conv.contact.displayName,
-                          reactOpen: reactFor === m.id,
-                          onReactToggle: () => setReactFor((cur) => (cur === m.id ? null : m.id)),
+                          held: reactFor === m.id,
+                          menuOpen: menuFor === m.id,
+                          onHold: () => { setMenuFor(null); setReactFor(m.id); },
+                          onMenuToggle: () => { setReactFor(null); setMenuFor((cur) => (cur === m.id ? null : m.id)); },
                           onReact: (emoji) => applyReaction(m.id, emoji),
                           onReply: () => startReply(m),
                           onJump: jumpToMessage,
