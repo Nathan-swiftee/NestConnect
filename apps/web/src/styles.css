@@ -1932,6 +1932,16 @@ button.tpl-row:active{transform:scale(.99)}
   .assignbtn .lbl,.resolvebtn .lbl{display:none}
   .app[data-pane="list"] .thread{display:none}
   .app[data-pane="thread"] .list{display:none}
+  /* No persistent selected-row highlight on phones: the list and thread are
+     separate panes (never side-by-side), so there's no split-view "which chat
+     is open" to show, and no ⌘K/keyboard nav that would use it. Revert the
+     active row to look like any other. */
+  .conv.active{background:transparent}
+  .conv.active::before{display:none}
+  .conv.active .av .ch{border-color:var(--surface)}
+  .conv.active .tag.owner{background:var(--brand-tint)}
+  .conv.active .tag.grab{background:var(--surface-2)}
+  .conv.active .tag.assigned{background:color-mix(in srgb,var(--text) 8%,transparent)}
   .msgs{padding:12px 14px}
   .msg,.note{max-width:85%}
   .composer{padding:10px 12px calc(12px + env(safe-area-inset-bottom))}
