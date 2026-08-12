@@ -227,11 +227,31 @@ So the proper Tailwind endgame is:
 - Do the leaf/exclusive styling first; retire each shared primitive once all its
   call-sites use the new component.
 
+**Definition of "done" (refined after migrating the first components).** Not
+"zero CSS / 100% inline utilities" — that makes stateful, animated and repeated
+styling *worse* (verbose arbitrary-value strings, the same class list copied N
+times). Done means:
+- Every page component's **layout/structure** is Tailwind utilities.
+- A small, token-driven **primitives layer** remains — either thin CSS classes
+  or (preferred, for native parity) `ui/` React components with `cva`: the
+  interactive-button reset (`.iconbtn`/`.railbtn`), glass surfaces (`.menu` &
+  friends), `.av`, `.switch`, form `.field`, the sliding nav-capsule
+  (`.navthumb`/`.navhover`, JS-driven) and `@keyframes`.
+- styles.css shrinks to that primitives layer + keyframes + reset (a few hundred
+  lines), not to ~zero.
+
+**Two Preflight-off gotchas** (Preflight is off to preserve the design):
+- Borders: unset sides keep the CSS-initial `medium` width, so `border-r
+  border-solid` paints phantom 3px sides. Use an exact arbitrary decl:
+  `[border-right:1px_solid_var(--border)]`.
+- Buttons keep UA padding/border — add `border-0` / explicit padding when needed.
+
 **Progress**
 - [x] Phase 0 — shared `@ding/design` tokens (`9ee5aa3`)
 - [x] Phase 1 — Tailwind wired into web, Preflight off, dark via attribute (`2a09333`)
-- [x] Verification gate built + validated (`fb30fac`)
+- [x] Verification gate built + validated (`fb30fac`); drawer shot added
 - [x] `LabelPicker` → utilities (`3eac15c`) — first component
+- [x] `IconRail` structure → utilities (`e1a131d`)
 - [ ] Primitives layer: `IconButton`, `Button`, `Switch`, `Pill`, `Tag`, `Avatar`, `Menu`
 - [ ] Page components: `IconRail`, `Sidebar`, `ConversationList`, `NotificationBell`,
       `Compose`, `TemplatePicker`, `TagEditor`, `Customers`, `ContextPanel`,

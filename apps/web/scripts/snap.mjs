@@ -64,6 +64,10 @@ await shot("mobile-list-light", { width: 390, height: 844, mobile: true, theme: 
 await shot("mobile-list-dark", { width: 390, height: 844, mobile: true, theme: "dark" });
 await shot("mobile-thread-light", { width: 390, height: 844, mobile: true, theme: "light", prep: openFirstConv });
 await shot("mobile-thread-dark", { width: 390, height: 844, mobile: true, theme: "dark", prep: openFirstConv });
+// Mobile drawer open (Sidebar in full, incl. its footer)
+const openDrawer = async (page) => { await page.locator(".list__burger").first().click(); await page.waitForTimeout(500); };
+await shot("mobile-drawer-light", { width: 390, height: 844, mobile: true, theme: "light", prep: openDrawer });
+await shot("mobile-drawer-dark", { width: 390, height: 844, mobile: true, theme: "dark", prep: openDrawer });
 
 await b.close();
 console.log("done.");
