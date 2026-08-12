@@ -1244,6 +1244,14 @@ export class MemoryStore extends Store {
     return this.summary(rec);
   }
 
+  async markUnread(conversationId: string): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    rec.unread = true;
+    rec.unreadCount = 0; // manual mark → empty dot, not a message count
+    return this.summary(rec);
+  }
+
   async getMessageRefByChannelId(
     channelMsgId: string,
   ): Promise<{ id: string; conversationId: string } | undefined> {

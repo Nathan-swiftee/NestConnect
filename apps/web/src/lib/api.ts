@@ -220,6 +220,7 @@ export const api = {
     post<Conversation>(`/conversations/${id}/snooze`, { until }),
   // Mark a conversation read: clears its unread badge + sends a WhatsApp read receipt.
   markRead: (id: string) => post<Conversation>(`/conversations/${id}/read`, {}),
+  markUnread: (id: string) => post<Conversation>(`/conversations/${id}/unread`, {}),
   // Agent is typing → show the customer a WhatsApp "typing…" indicator.
   sendTyping: (id: string) => post<{ ok: boolean }>(`/conversations/${id}/typing`, {}),
   // groups

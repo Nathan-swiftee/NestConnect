@@ -497,6 +497,17 @@ export function useMarkRead() {
   });
 }
 
+export function useMarkUnread() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.markUnread(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["views"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
+
 /* ---- WhatsApp message templates ---- */
 export const useTemplates = () => useQuery({ queryKey: ["templates"], queryFn: api.templates });
 

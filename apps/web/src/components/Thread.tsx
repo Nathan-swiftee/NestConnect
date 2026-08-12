@@ -7,7 +7,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useReact, useLoadOlderMessages, usePeople, useRetryMessage } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage } from "../hooks";
 import { api } from "../lib/api";
 import { getSocket } from "../lib/socket";
 import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
@@ -29,6 +29,7 @@ import {
   ProfileIcon,
   RouteIcon,
   InboxIcon,
+  MailIcon,
   CheckCircleIcon,
   ReopenIcon,
   BackIcon,
@@ -214,6 +215,16 @@ function computeWaWindow(messages: Message[]): WaWindow {
   if (!lastWaInbound) return { open: false, expiresAt: null };
   const expires = new Date(lastWaInbound.createdAt).getTime() + WA_WINDOW_MS;
   return { open: Date.now() < expires, expiresAt: new Date(expires).toISOString() };
+}
+
+/** Pick whichever window expires later. The server value can go stale between
+ *  refetches, so we merge it with one re-derived from the live message list —
+ *  a new inbound is patched into the cache in realtime, which then resets the
+ *  countdown here without needing a page refresh. */
+function laterWindow(a: WaWindow | null, b: WaWindow | null): WaWindow | null {
+  const ax = a?.expiresAt ? new Date(a.expiresAt).getTime() : 0;
+  const bx = b?.expiresAt ? new Date(b.expiresAt).getTime() : 0;
+  return bx > ax ? b : a;
 }
 
 /** Outbound delivery ticks: the full WhatsApp ladder
@@ -910,6 +921,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const setStatus = useSetStatus();
   const snooze = useSnooze();
   const { mutate: markRead } = useMarkRead();
+  const { mutate: markUnread } = useMarkUnread();
   const { mutate: react } = useReact();
   const { mutate: retry } = useRetryMessage();
   const { data: people } = usePeople();
@@ -1341,7 +1353,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const waWindow: WaWindow | null = !isWhatsApp
     ? null
     : composeChannel === conv.channel
-      ? conv.waWindow
+      ? laterWindow(conv.waWindow, computeWaWindow(conv.messages))
       : computeWaWindow(conv.messages);
   const windowClosed = isWhatsApp && !!waWindow && !waWindow.open;
   const msLeft = waWindow?.expiresAt ? new Date(waWindow.expiresAt).getTime() - now : null;
@@ -1953,6 +1965,22 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </button>
             )}
             <div className="sep" />
+            {conv.unread ? (
+              <button onClick={() => { setMenu(false); markRead(conv.id); }}>
+                <MailIcon /> Mark as read
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setMenu(false);
+                  markUnread(conv.id);
+                  onToast("Marked as unread");
+                  onClosed?.();
+                }}
+              >
+                <MailIcon /> Mark as unread
+              </button>
+            )}
             {isClosed ? (
               <button onClick={reopenConversation}>
                 <ReopenIcon /> Reopen conversation

@@ -269,6 +269,16 @@ export class ConversationsService {
     return updated ?? conv;
   }
 
+  /** Agent manually marks a conversation unread (WhatsApp-style empty dot).
+   *  Internal only — no provider receipt is sent. */
+  async markUnread(id: string): Promise<Conversation> {
+    const conv = await this.store.getConversation(id);
+    if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
+    const updated = await this.store.markUnread(id);
+    if (updated) this.realtime.emitConversationUpdated(updated);
+    return updated ?? conv;
+  }
+
   /** An agent reacts to a message with an emoji (empty removes theirs). Stores
    *  it, broadcasts the update, and delivers it to the customer on WhatsApp. */
   async react(conversationId: string, messageId: string, emoji: string): Promise<Message> {

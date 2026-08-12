@@ -99,6 +99,12 @@ export class ConversationsController {
     return this.conversations.markRead(id);
   }
 
+  /** Manually mark a conversation unread — leaves a WhatsApp-style empty dot. */
+  @Post(":id/unread")
+  markUnread(@Param("id") id: string) {
+    return this.conversations.markUnread(id);
+  }
+
   /** Agent started typing — show the customer a WhatsApp "typing…" indicator. */
   @Post(":id/typing")
   async typing(@Param("id") id: string): Promise<{ ok: boolean }> {

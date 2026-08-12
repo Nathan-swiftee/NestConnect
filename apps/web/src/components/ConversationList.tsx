@@ -322,11 +322,14 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                 </div>
                 <div className="conv__prev">
                   <p>{c.preview}</p>
-                  {c.unread && c.unreadCount > 0 && (
-                    <span className="unreadbubble" title={`${c.unreadCount} unread`}>
-                      {c.unreadCount > 99 ? "99+" : c.unreadCount}
-                    </span>
-                  )}
+                  {c.unread &&
+                    (c.unreadCount > 0 ? (
+                      <span className="unreadbubble" title={`${c.unreadCount} unread`}>
+                        {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                      </span>
+                    ) : (
+                      <span className="unreaddot" title="Unread" aria-label="Unread" />
+                    ))}
                 </div>
                 <div className="conv__meta">
                   {c.status === "snoozed" && c.snoozedUntil ? (

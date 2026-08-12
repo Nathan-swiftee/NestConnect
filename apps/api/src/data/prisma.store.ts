@@ -1461,6 +1461,19 @@ export class PrismaStore extends Store {
     }
   }
 
+  async markUnread(conversationId: string): Promise<Conversation | undefined> {
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { unread: true, unreadCount: 0 }, // manual mark → empty dot
+        include: convInclude,
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
   async getMessageRefByChannelId(
     channelMsgId: string,
   ): Promise<{ id: string; conversationId: string } | undefined> {

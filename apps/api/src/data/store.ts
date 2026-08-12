@@ -409,6 +409,10 @@ export abstract class Store {
   /** Clear a conversation's unread flag + count (agent opened/read it). */
   abstract clearUnread(conversationId: string): Promise<Conversation | undefined>;
 
+  /** Flag a conversation unread with no count — an agent's manual "mark unread"
+   *  (WhatsApp-style empty dot); distinct from unreadCount>0 from new messages. */
+  abstract markUnread(conversationId: string): Promise<Conversation | undefined>;
+
   /* ---- channel ingestion (inbound) ---- */
 
   abstract getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined>;
