@@ -215,19 +215,8 @@ input,textarea{font:inherit}
 /* real Gravatar photo layered over the initials (fades in on load; hidden on 404) */
 .big,.mav,.compose__av,.mentionpop__av{position:relative}
 .av__photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;transition:opacity .2s ease}
-.conv__main{min-width:0}
-.conv__top{display:flex;align-items:baseline;gap:8px}
-.conv__name{font-weight:650;font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-.conv__time{font-size:var(--fs-2xs);color:var(--text-faint);flex:0 0 auto;font-variant-numeric:tabular-nums}
-.conv__prev{display:flex;align-items:center;gap:6px;margin-top:3px}
-.conv__prev p{margin:0;color:var(--text-muted);font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
-/* WhatsApp-style unread count on the chat card */
-.unreadbubble{flex:0 0 auto;min-width:20px;height:20px;padding:0 6px;border-radius:var(--r-full);background:var(--wa);color:#fff;font-size:var(--fs-2xs);font-weight:800;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums;line-height:1;box-shadow:0 1px 2px rgba(13,21,18,.18)}
-/* Manually-marked-unread conversations show an empty dot (no count), WhatsApp-style. */
-.unreaddot{flex:0 0 auto;width:11px;height:11px;border-radius:50%;background:var(--wa);box-shadow:0 1px 2px rgba(13,21,18,.18)}
-.conv.unread .conv__name{font-weight:750}
-.conv.unread .conv__prev p{color:var(--text)}
-.conv__meta{display:flex;align-items:center;flex-wrap:wrap;gap:6px;row-gap:5px;margin-top:6px}
+/* .conv__main/top/name/time/prev/meta + unread bubble/dot → utilities in
+   ConversationList.tsx (the .conv button + its state/pseudo styling stay). */
 .tag{font-size:var(--fs-2xs);font-weight:700;padding:3px var(--sp-2);border-radius:var(--r-full);letter-spacing:.02em}
 .tag.owner{background:var(--brand-tint);color:var(--brand-strong)}
 /* the selected row is itself brand-tint, so lift the "Yours" chip to white there */

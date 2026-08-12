@@ -315,23 +315,30 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                   <Glyph />
                 </span>
               </Avatar>
-              <div className="conv__main">
-                <div className="conv__top">
-                  <span className="conv__name">{c.contact.displayName}</span>
-                  <span className="conv__time">{listTime(c.lastActivityAt)}</span>
+              <div className="min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className={"text-md whitespace-nowrap overflow-hidden text-ellipsis flex-1 " + (c.unread ? "font-[750]" : "font-[650]")}>{c.contact.displayName}</span>
+                  <span className="text-2xs text-faint flex-none tabular-nums">{listTime(c.lastActivityAt)}</span>
                 </div>
-                <div className="conv__prev">
-                  <p>{c.preview}</p>
+                <div className="flex items-center gap-1.5 mt-[3px]">
+                  <p className={"m-0 text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1 " + (c.unread ? "text-fg" : "text-muted")}>{c.preview}</p>
                   {c.unread &&
                     (c.unreadCount > 0 ? (
-                      <span className="unreadbubble" title={`${c.unreadCount} unread`}>
+                      <span
+                        className="flex-none min-w-5 h-5 px-1.5 rounded-full bg-wa text-white text-2xs font-extrabold inline-grid place-items-center tabular-nums leading-none shadow-[0_1px_2px_rgba(13,21,18,.18)]"
+                        title={`${c.unreadCount} unread`}
+                      >
                         {c.unreadCount > 99 ? "99+" : c.unreadCount}
                       </span>
                     ) : (
-                      <span className="unreaddot" title="Unread" aria-label="Unread" />
+                      <span
+                        className="flex-none w-[11px] h-[11px] rounded-full bg-wa shadow-[0_1px_2px_rgba(13,21,18,.18)]"
+                        title="Unread"
+                        aria-label="Unread"
+                      />
                     ))}
                 </div>
-                <div className="conv__meta">
+                <div className="flex items-center flex-wrap gap-x-1.5 gap-y-[5px] mt-1.5">
                   {c.status === "snoozed" && c.snoozedUntil ? (
                     new Date(c.snoozedUntil).getTime() <= Date.now() ? (
                       <span className="snoozepill due" title={`Due since ${new Date(c.snoozedUntil).toLocaleString()}`}>
