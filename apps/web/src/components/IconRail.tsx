@@ -44,7 +44,10 @@ export function IconRail({
   };
 
   return (
-    <nav className="rail" aria-label="Primary">
+    <nav
+      className="w-[60px] flex-none bg-surface [border-right:1px_solid_var(--border)] flex flex-col items-center py-[14px] gap-1.5 max-[820px]:hidden"
+      aria-label="Primary"
+    >
       <div className="brandmark" title="Nest Connect">
         <Logo />
       </div>
@@ -72,7 +75,7 @@ export function IconRail({
       >
         <SettingsIcon />
       </button>
-      <div className="spacer" />
+      <div className="flex-1" />
       <button
         className={"railbtn" + (sound.on ? " active" : "")}
         title={sound.on ? "Mute sounds" : "Unmute sounds"}
@@ -87,15 +90,20 @@ export function IconRail({
       >
         {theme === "dark" ? <SunIcon /> : <ThemeIcon />}
       </button>
-      <div className="rail-avatar">
+      <div className="relative grid place-items-center">
         <button
-          className="avatar-me"
+          className="w-[34px] h-[34px] rounded-full text-white grid place-items-center font-[650] text-xs relative shadow-[0_2px_8px_-3px_rgba(13,21,18,.3)] [transition:transform_.12s_var(--ease)] active:scale-[.92]"
           title={me ? me.name : "You"}
           style={{ background: avatarBg(me?.name ?? "", me?.avatarColor) }}
           onClick={() => setMenu((v) => !v)}
         >
           {me?.avatarUrl ? <img className="av__photo" src={me.avatarUrl} alt="" /> : me ? initials(me.name) : "··"}
-          <span className={"pres" + (available ? "" : " pres--away")} />
+          <span
+            className={
+              "absolute right-[-1px] bottom-[-1px] w-[11px] h-[11px] rounded-full border-2 border-solid border-surface " +
+              (available ? "bg-wa" : "bg-amber")
+            }
+          />
         </button>
         {menu && (
           <>

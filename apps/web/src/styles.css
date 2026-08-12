@@ -60,8 +60,8 @@ input,textarea{font:inherit}
   border:1px solid var(--glass-brd);box-shadow:var(--shadow-lg),inset 0 1px 0 var(--glass-hi)}
 
 /* icon rail — matte structural surface, circular controls */
-.rail{width:60px;flex:0 0 60px;background:var(--surface);border-right:1px solid var(--border);
-  display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:6px}
+/* .rail container, .rail-avatar, .avatar-me + presence dot → Tailwind utilities
+   in IconRail.tsx. .brandmark and .railbtn stay (shared primitives). */
 .brandmark{width:34px;height:34px;border-radius:var(--r-12);background:var(--brand);
   display:grid;place-items:center;color:#fff;box-shadow:0 6px 16px -8px var(--brand-ring);margin-bottom:10px}
 .brandmark svg{width:19px;height:19px}
@@ -70,13 +70,6 @@ input,textarea{font:inherit}
 .railbtn.active{background:var(--brand-tint);color:var(--brand-strong);
   box-shadow:inset 0 1px 0 var(--glass-hi),0 4px 12px -8px var(--brand-ring)}
 .railbtn.active:hover{background:var(--brand-tint);color:var(--brand-strong)}
-.rail .spacer{flex:1}
-.avatar-me{width:34px;height:34px;border-radius:50%;color:#fff;display:grid;place-items:center;font-weight:650;font-size:var(--fs-xs);position:relative;
-  box-shadow:0 2px 8px -3px rgba(13,21,18,.3);transition:transform .12s var(--ease)}
-.avatar-me:active{transform:scale(.92)}
-.avatar-me .pres{position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;background:var(--wa);border:2px solid var(--surface)}
-/* Unavailable (not accepting round-robin) → amber presence dot. */
-.avatar-me .pres--away{background:var(--amber)}
 
 /* sidebar — matte; it should quietly disappear into the background */
 .side{width:248px;flex:0 0 248px;min-width:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;
@@ -1214,7 +1207,6 @@ input,textarea{font:inherit}
 .login__note{background:var(--brand-tint);color:var(--text);font-size:var(--fs-sm);line-height:1.5;padding:var(--sp-3) var(--sp-3);border-radius:var(--r-12)}
 
 /* rail avatar menu — floating polished glass */
-.rail-avatar{position:relative;display:grid;place-items:center}
 .rail-menu__backdrop{position:fixed;inset:0;z-index:40}
 .rail-menu{position:absolute;bottom:0;left:46px;width:214px;border-radius:var(--r-16);padding:6px;z-index:41;display:flex;flex-direction:column;gap:2px;transform-origin:bottom left;animation:popIn .18s var(--ease)}
 .rail-menu__id{padding:var(--sp-2) var(--sp-2) var(--sp-2);display:flex;flex-direction:column;gap:1px;border-bottom:1px solid var(--glass-line);margin-bottom:4px}
@@ -1795,7 +1787,6 @@ button.tpl-row:active{transform:scale(.99)}
   /* 16px inputs stop iOS from auto-zooming (and shifting/cutting off) on focus;
      !important beats the more-specific per-field sizes */
   input,textarea,select{font-size:var(--fs-lg)!important}
-  .rail{display:none}
   .side__head{padding-top:calc(16px + env(safe-area-inset-top))}
   .side__foot{display:flex;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
   .list{width:100%;flex:1 1 auto;border-right:0}
