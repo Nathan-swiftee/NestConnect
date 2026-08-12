@@ -364,7 +364,12 @@ input,textarea{font:inherit}
 .thread__id .who{min-width:0}
 .thread__id .who h2{margin:0;font-size:var(--fs-lg);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .thread__id .who .who-subject{font-size:var(--fs-xs);color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
-.thread__id .who .who-sub{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-xs);color:var(--text-muted);margin-top:1px}
+.thread__id .who .who-sub{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-xs);color:var(--text-muted);margin-top:1px;min-width:0}
+/* The channel pill keeps its size; the presence text (a "last active" line, or a
+   long email address) takes the remaining room and ellipsis-clips so it never
+   spills over the header action buttons. */
+.thread__id .who .who-sub .pill{flex:0 0 auto}
+.thread__id .who .who-presence{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pill{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-2xs);font-weight:650;padding:3px var(--sp-2);border-radius:var(--r-full);background:var(--surface-2);color:var(--text-muted)}
 .pill .d{width:7px;height:7px;border-radius:50%}
 .thread__actions{margin-left:auto;display:flex;align-items:center;gap:6px;position:relative;flex-shrink:0}
@@ -1706,7 +1711,6 @@ input,textarea{font:inherit}
   .assignbtn .lbl,.resolvebtn .lbl{display:none}
   .resolvebtn{padding:8px}
   .assignbtn{padding:7px 9px}
-  .thread__head .who-presence{display:none}
 }
 .closedbar{flex:0 0 auto;position:relative;z-index:6;padding:var(--sp-3) var(--sp-4);background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 16px -20px rgba(13,21,18,.5);display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);flex-wrap:wrap}
 .closedbar__txt{display:flex;align-items:center;gap:var(--sp-2);color:var(--text-muted);font-weight:600;font-size:var(--fs-sm)}
@@ -1915,7 +1919,7 @@ button.tpl-row:active{transform:scale(.99)}
   .notif__panel{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;width:min(340px,calc(100vw - 24px));max-height:min(440px,70vh)}
   /* header, messages and composer are in normal flow — the header/composer
      carry the safe-area insets, and .msgs is a plain flex-scroll region. */
-  .assignbtn .lbl,.resolvebtn .lbl,.thread__head .who-presence{display:none}
+  .assignbtn .lbl,.resolvebtn .lbl{display:none}
   .app[data-pane="list"] .thread{display:none}
   .app[data-pane="thread"] .list{display:none}
   .msgs{padding:12px 14px}

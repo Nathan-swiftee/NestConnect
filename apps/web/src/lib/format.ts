@@ -10,6 +10,15 @@ export function relativeTime(iso: string): string {
   return `${d}d`;
 }
 
+/** Honest "last active" line for a chat contact, derived from when they last
+ *  messaged us — we can't show true WhatsApp presence because Meta's Cloud API
+ *  doesn't expose a customer's online/last-seen status. Reads "active now" /
+ *  "active 2h ago" from the contact's most recent inbound message. */
+export function lastActive(iso: string): string {
+  const rel = relativeTime(iso);
+  return rel === "now" ? "active now" : `active ${rel} ago`;
+}
+
 /** WhatsApp-style clock time shown on each message bubble, e.g. "10:53" / "9:05". */
 export function clockTime(iso: string): string {
   const d = new Date(iso);

@@ -11,7 +11,7 @@ import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSno
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { getSocket } from "../lib/socket";
-import { relativeTime, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
+import { relativeTime, lastActive, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { unlock } from "../lib/sound";
@@ -1331,11 +1331,26 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     ? people?.find((p) => p.user.id === conv.assigneeUserId)?.user
     : undefined;
   const assigneeName = assigneeUser?.name ?? conv.assigneeName ?? "a teammate";
+  // The presence line under the contact name. WhatsApp's Cloud API doesn't hand
+  // businesses a customer's real online/last-seen status, so instead of a fake
+  // "online" we show an honest "last active", derived from when the contact
+  // last messaged us (their most recent inbound, ignoring internal notes).
+  const lastInboundAt = (() => {
+    for (let i = conv.messages.length - 1; i >= 0; i--) {
+      const m = conv.messages[i];
+      if (m.direction === "in" && !m.internal) return m.createdAt;
+    }
+    return null;
+  })();
   const sub = convIsEmail
     ? (conv.contact.email ?? "")
-    : conv.channel === "whatsapp_group"
-      ? "group · active now"
-      : "online · last seen just now";
+    : lastInboundAt
+      ? conv.channel === "whatsapp_group"
+        ? `group · ${lastActive(lastInboundAt)}`
+        : lastActive(lastInboundAt)
+      : conv.channel === "whatsapp_group"
+        ? "group"
+        : (conv.contact.phone ?? "");
 
   const readyAtts = staged.filter((s) => s.status === "done" && s.attachment);
   const uploadingAtts = staged.some((s) => s.status === "uploading");
