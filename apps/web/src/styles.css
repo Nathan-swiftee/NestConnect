@@ -563,21 +563,22 @@ input,textarea{font:inherit}
 .emailmeta__row{margin-top:2px;color:color-mix(in srgb,currentColor 62%,transparent);word-break:break-word}
 .emailmeta__lbl{font-weight:700;margin-right:6px;opacity:.8}
 
-/* quoted-reply preview stacked at the top of a bubble */
-.quoted{display:flex;gap:var(--sp-2);align-items:stretch;width:100%;text-align:left;cursor:pointer;
-  margin-bottom:5px;padding:5px var(--sp-2);border-radius:var(--r-6);overflow:hidden;border:0;
-  background:color-mix(in srgb,var(--text) 6%,transparent);transition:background .12s}
-.quoted:hover{background:color-mix(in srgb,var(--text) 11%,transparent)}
+/* quoted-reply preview stacked at the top of a bubble — a nested card with a
+   rounded accent bar and coloured author, WhatsApp-style */
+.quoted{display:flex;gap:8px;align-items:stretch;width:100%;text-align:left;cursor:pointer;
+  margin-bottom:6px;padding:6px 9px;border-radius:var(--r-8);overflow:hidden;border:0;
+  background:color-mix(in srgb,var(--brand) 11%,var(--surface-2));transition:background .12s}
+.quoted:hover{background:color-mix(in srgb,var(--brand) 17%,var(--surface-2))}
 .quoted:focus-visible{outline:2px solid var(--brand-ring);outline-offset:1px}
-.quoted__accent{flex:0 0 3px;border-radius:var(--r-2);background:var(--brand-strong)}
-.quoted__body{min-width:0;display:flex;flex-direction:column;gap:1px}
-.quoted__who{font-size:var(--fs-xs);font-weight:700;color:var(--brand-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quoted__accent{flex:0 0 4px;border-radius:var(--r-full);background:var(--brand-strong)}
+.quoted__body{min-width:0;display:flex;flex-direction:column;gap:2px}
+.quoted__who{font-size:var(--fs-xs);font-weight:750;color:var(--brand-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .quoted__txt{font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(260px,60vw)}
 .msg .bubble.has-media .quoted{margin:1px 1px 4px}
 /* on the green outbound bubble, derive the quote colours from the bubble text */
-.msg.out .quoted{background:color-mix(in srgb,currentColor 12%,transparent)}
-.msg.out .quoted:hover{background:color-mix(in srgb,currentColor 18%,transparent)}
-.msg.out .quoted__accent{background:currentColor;opacity:.65}
+.msg.out .quoted{background:color-mix(in srgb,currentColor 13%,transparent)}
+.msg.out .quoted:hover{background:color-mix(in srgb,currentColor 19%,transparent)}
+.msg.out .quoted__accent{background:currentColor;opacity:.7}
 .msg.out .quoted__who{color:currentColor}
 .msg.out .quoted__txt{color:color-mix(in srgb,currentColor 66%,transparent)}
 
@@ -636,13 +637,14 @@ input,textarea{font:inherit}
 @keyframes popIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
 
 /* Reply arrow, revealed from *behind* the bubble's leading (left) edge as it
-   slides right — same for inbound and outbound, and never clips the viewport. */
-.msg__swipehint{position:absolute;top:50%;left:6px;z-index:-1;transform:translateY(-50%);
-  width:28px;height:28px;border-radius:var(--r-full);display:grid;place-items:center;
-  background:var(--surface-2);color:var(--brand-strong);opacity:0;pointer-events:none}
-.msg__swipehint svg{width:15px;height:15px}
-.bubble--swiped{animation:swipeFlash .42s var(--ease)}
-@keyframes swipeFlash{0%,100%{box-shadow:0 1px 1.5px rgba(13,21,18,.09)}45%{box-shadow:0 0 0 3px var(--brand-ring)}}
+   slides right — same for inbound and outbound, and never clips the viewport.
+   It grows with the drag (scale set in JS) and fills in when past the threshold. */
+.msg__swipehint{position:absolute;top:50%;left:6px;z-index:-1;transform:translateY(-50%) scale(.55);
+  width:30px;height:30px;border-radius:var(--r-full);display:grid;place-items:center;
+  background:color-mix(in srgb,var(--brand) 16%,var(--surface-2));color:var(--brand-strong);
+  box-shadow:0 1px 3px rgba(0,0,0,.14);opacity:0;pointer-events:none;transition:background .12s,color .12s}
+.msg__swipehint svg{width:16px;height:16px}
+.msg__swipehint.ready{background:var(--brand);color:#fff}
 
 /* Desktop: reveal on hover/focus. The emoji row pops just above the message's
    near corner (WhatsApp-web style) — a horizontal 6-emoji row can't fit the side
@@ -670,22 +672,25 @@ input,textarea{font:inherit}
   .msg.out .msg__react{top:-52px;right:0;transform-origin:bottom right}
 }
 
-/* flash the target bubble when jumping to a quoted message */
-.msg--flash .bubble{animation:msgFlash 1.15s var(--ease)}
+/* flash the target bubble when jumping to a quoted message — a soft brand glow
+   that blooms and fades (no hard ring) */
+.msg--flash .bubble{animation:msgFlash .9s var(--ease)}
 @keyframes msgFlash{
   0%,100%{box-shadow:0 1px 1.5px rgba(13,21,18,.09),0 0 0 0 transparent}
-  30%{box-shadow:0 1px 1.5px rgba(13,21,18,.09),0 0 0 4px color-mix(in srgb,var(--brand) 45%,transparent)}
+  22%{box-shadow:0 1px 1.5px rgba(13,21,18,.09),0 0 0 2.5px color-mix(in srgb,var(--brand) 34%,transparent),0 8px 22px -6px color-mix(in srgb,var(--brand) 50%,transparent)}
 }
 
-/* composer "replying to…" cue above the input */
-.reply-cue{display:flex;align-items:center;gap:var(--sp-2);margin:8px 2px 0;padding:var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+/* composer "replying to…" cue above the input — a clean panel with a rounded
+   inset accent bar, sliding up as it appears */
+.reply-cue{display:flex;align-items:center;gap:var(--sp-2);margin:8px 2px 0;padding:7px var(--sp-2) 7px 12px;
   border-radius:var(--r-12);position:relative;overflow:hidden;
-  background:color-mix(in srgb,var(--brand) 8%,var(--surface));border:1px solid var(--border)}
-.reply-cue__accent{position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brand-strong)}
+  background:var(--surface-2);border:1px solid var(--border);animation:cueIn .16s var(--ease)}
+.reply-cue__accent{position:absolute;left:5px;top:6px;bottom:6px;width:4px;border-radius:var(--r-full);background:var(--brand-strong)}
 .reply-cue__body{min-width:0;flex:1 1 auto;display:flex;flex-direction:column;gap:1px}
-.reply-cue__who{display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);font-weight:700;color:var(--brand-strong)}
+.reply-cue__who{display:flex;align-items:center;gap:5px;font-size:var(--fs-xs);font-weight:750;color:var(--brand-strong)}
 .reply-cue__who svg{width:13px;height:13px}
 .reply-cue__txt{font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@keyframes cueIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 .reply-cue__x{flex:0 0 auto;width:26px;height:26px;border-radius:var(--r-full);display:grid;place-items:center;
   color:var(--text-muted);transition:background .12s,color .12s}
 .reply-cue__x:hover{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
@@ -917,11 +922,14 @@ input,textarea{font:inherit}
 .compinput .tool{width:34px;height:34px;color:var(--text-muted);flex:0 0 34px}
 .compinput .tool svg{width:18px;height:18px}
 .send{width:38px;height:38px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;flex:0 0 38px;
-  box-shadow:0 6px 16px -6px var(--brand-ring);transition:filter .15s,transform .12s var(--ease)}
+  box-shadow:0 6px 16px -6px var(--brand-ring);transition:filter .15s,transform .12s var(--ease);animation:sendSwap .14s var(--ease)}
 .send:hover{filter:brightness(1.06)}
 .send:active{transform:scale(.92)}
 .send:disabled{opacity:.5;cursor:default;box-shadow:none}
 .send svg{width:18px;height:18px}
+/* mic occupies the same circle; the send/mic swap (keyed remount) scales in */
+.send--mic svg{width:19px;height:19px}
+@keyframes sendSwap{from{transform:scale(.55);opacity:.3}to{transform:scale(1);opacity:1}}
 
 /* ─── Composer: staged attachments (previews) ───────────────────────
    A wrapping strip of chips above the input: image thumbs, voice notes,

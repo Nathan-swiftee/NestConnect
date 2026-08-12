@@ -438,20 +438,32 @@ function MessageBubble({
   const gestureRef = useRef<{ x: number; y: number; lp: number; swiping: boolean; active: boolean } | null>(null);
   const setSwipe = (px: number) => {
     if (bubbleRef.current) bubbleRef.current.style.transform = px ? `translateX(${px}px)` : "";
-    if (hintRef.current) hintRef.current.style.opacity = String(Math.min(px / 52, 1));
+    if (hintRef.current) {
+      // Reply arrow fades and grows as the bubble slides, snapping to full size
+      // right at the commit threshold (WhatsApp feel).
+      const t = Math.min(px / 56, 1);
+      hintRef.current.style.opacity = String(t);
+      hintRef.current.style.transform = `translateY(-50%) scale(${(0.55 + t * 0.45).toFixed(3)})`;
+      hintRef.current.classList.toggle("ready", px >= 52);
+    }
   };
   const endGesture = (commit: boolean) => {
     const b = bubbleRef.current;
     if (b) {
-      b.style.transition = "transform .18s var(--ease)";
+      // Spring the bubble back to rest — this smooth slide-back is the feedback,
+      // no ring flash.
+      b.style.transition = "transform .2s var(--ease)";
       b.style.transform = "";
-      window.setTimeout(() => { if (b) b.style.transition = ""; }, 200);
+      window.setTimeout(() => { if (b) b.style.transition = ""; }, 220);
     }
-    if (hintRef.current) hintRef.current.style.opacity = "0";
+    if (hintRef.current) {
+      hintRef.current.style.opacity = "0";
+      hintRef.current.style.transform = "";
+      hintRef.current.classList.remove("ready");
+    }
     if (commit && actions) {
+      navigator.vibrate?.(12);
       actions.onReply();
-      b?.classList.add("bubble--swiped");
-      window.setTimeout(() => b?.classList.remove("bubble--swiped"), 420);
     }
   };
   const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
@@ -1990,20 +2002,19 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   quoted={m.quotedMsgId ? msgById.get(m.quotedMsgId) : undefined}
                   onImage={setLightbox}
                   onRetry={retrySend}
-                  actions={
-                    conv.channel === "whatsapp" || conv.channel === "whatsapp_group"
-                      ? {
-                          contactName: conv.contact.displayName,
-                          held: reactFor === m.id,
-                          menuOpen: menuFor === m.id,
-                          onHold: () => { setMenuFor(null); setReactFor(m.id); },
-                          onMenuToggle: () => { setReactFor(null); setMenuFor((cur) => (cur === m.id ? null : m.id)); },
-                          onReact: (emoji) => applyReaction(m.id, emoji),
-                          onReply: () => startReply(m),
-                          onJump: jumpToMessage,
-                        }
-                      : undefined
-                  }
+                  actions={{
+                    // React + reply on every channel. On WhatsApp the reaction is
+                    // delivered to the customer; on email it's an internal agent
+                    // annotation (the API stores it and skips provider dispatch).
+                    contactName: conv.contact.displayName,
+                    held: reactFor === m.id,
+                    menuOpen: menuFor === m.id,
+                    onHold: () => { setMenuFor(null); setReactFor(m.id); },
+                    onMenuToggle: () => { setReactFor(null); setMenuFor((cur) => (cur === m.id ? null : m.id)); },
+                    onReact: (emoji) => applyReaction(m.id, emoji),
+                    onReply: () => startReply(m),
+                    onJump: jumpToMessage,
+                  }}
                 />
               ),
             )}
@@ -2377,16 +2388,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   <BoltIcon />
                 </button>
               )}
-              {canRecord && isWhatsApp && !internal && (
-                <button
-                  className="tool"
-                  title="Record voice message"
-                  aria-label="Record voice message"
-                  onClick={startRecording}
-                >
-                  <MicIcon />
-                </button>
-              )}
               <button
                 className="tool"
                 title="Attach"
@@ -2395,9 +2396,31 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               >
                 <AttachIcon />
               </button>
-              <button className="send" onClick={handleSend} disabled={!canSend} title="Send" aria-label="Send">
-                <SendIcon />
-              </button>
+              {/* One trailing button, WhatsApp-style: a mic while there's nothing
+                  to send (voice-capable WhatsApp threads only), which becomes the
+                  send paper-plane the moment there's text or an attachment. */}
+              {isWhatsApp && canRecord && !internal && !canSend ? (
+                <button
+                  key="mic"
+                  className="send send--mic"
+                  onClick={startRecording}
+                  title="Record voice message"
+                  aria-label="Record voice message"
+                >
+                  <MicIcon />
+                </button>
+              ) : (
+                <button
+                  key="send"
+                  className="send"
+                  onClick={handleSend}
+                  disabled={!canSend}
+                  title="Send"
+                  aria-label="Send"
+                >
+                  <SendIcon />
+                </button>
+              )}
             </div>
           )}
           {dragging && !composeLocked && (
