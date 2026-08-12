@@ -198,3 +198,42 @@ Create `packages/design` and move the `:root` tokens into `tokens.ts`, resolving
 web's inline `:root` for the generated file; prove zero visual change with the
 screenshot harness. That single step establishes the shared source of truth and
 de-risks everything after it — and it changes nothing on screen.
+
+---
+
+## 10. Execution log & refined method
+
+**Decision (Nathan):** full sweep — convert every component to utilities, done
+properly (design pixel-identical, verified).
+
+**The verification gate** (`apps/web/scripts/snap.mjs` + `diff.mjs`): a frozen
+clock + reduced motion make app screenshots byte-deterministic (validated: a
+no-change re-capture diffs to 0 px). Every migration step is pixel-diffed
+against a golden baseline built from the current production output; a step isn't
+done until its diff is 0. Verify against the **production build** (`vite
+preview`), not the dev server — Tailwind's dev-mode JIT lags on freshly-added
+classes.
+
+**Refined method — a shared primitives layer.** The app's CSS is a well-factored
+*semantic* system: shared classes (`.iconbtn`/`.railbtn` grouped resets,
+`.brandmark`, `.switch`, `.pill`, `.tag`, `.av`, `.menu`) are reused across
+components. Converting such a class inside one component would break the others.
+So the proper Tailwind endgame is:
+- Extract shared visual primitives into small Tailwind components under
+  `apps/web/src/ui/` (`IconButton`, `Button`, `Switch`, `Pill`, `Tag`, `Avatar`,
+  `Menu`, …), using `cva` for variants.
+- Migrate page components to compose those primitives + layout utilities,
+  deleting the corresponding CSS.
+- Do the leaf/exclusive styling first; retire each shared primitive once all its
+  call-sites use the new component.
+
+**Progress**
+- [x] Phase 0 — shared `@ding/design` tokens (`9ee5aa3`)
+- [x] Phase 1 — Tailwind wired into web, Preflight off, dark via attribute (`2a09333`)
+- [x] Verification gate built + validated (`fb30fac`)
+- [x] `LabelPicker` → utilities (`3eac15c`) — first component
+- [ ] Primitives layer: `IconButton`, `Button`, `Switch`, `Pill`, `Tag`, `Avatar`, `Menu`
+- [ ] Page components: `IconRail`, `Sidebar`, `ConversationList`, `NotificationBell`,
+      `Compose`, `TemplatePicker`, `TagEditor`, `Customers`, `ContextPanel`,
+      `PersonalSettings`, `CommandPalette`, `CreateGroupModal`, `SetPassword`,
+      `LoginScreen`, `Settings`, `Thread` (biggest last)
