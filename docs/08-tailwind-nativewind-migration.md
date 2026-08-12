@@ -264,23 +264,41 @@ those overrides — and most live in the two giant, mostly-unshot files (Setting
    must NOT whiten — the `min-[821px]` gate handles that with no mobile cancel
    rule needed). Verified 0px incl. the active desktop row + non-active mobile.
 
-**Verification harness** now covers 14 views (was 8): added pre-auth `login`,
-`desktop-settings`, `desktop-customers` (light+dark) so primitives living in
-those views can be migrated with pixel coverage. Deterministic (0px across two
-runs). NOTE: settings/thread sub-tabs & modals are still unshot — expand the
-harness before migrating a primitive whose only call-sites are inside them.
+**Verification harness** now covers **16 views** (was 8): added pre-auth `login`,
+`desktop-settings`, `desktop-customers`, and `desktop-wide` (1440px, so the
+`.panel`/ContextPanel + full composer show inline) — light+dark each.
+Deterministic (0px across two runs). Gotcha found: `snap.mjs` login() clicked
+`.login__btn`; migrating that class away broke the harness — it now uses
+`button[type="submit"]`. NOTE: settings/thread sub-tabs & modals are still
+unshot — expand the harness before migrating anything whose only call-sites are
+inside them.
+
+**Leaf-first, containers-as-CSS (learned this pass).** Converting a **leaf**
+(text/pill/button — a single element's own styling) to utilities is reliable and
+verifies 0px every time. Converting a flex/grid **container** sometimes produces
+an *accumulating* vertical drift that the token-equal utilities don't reproduce
+(hit on ContextPanel's `.block` section wrapper — border-top/pt/gap all matched
+byte-for-byte yet each section grew a few px). When a container conversion drifts,
+**revert it and keep the class as CSS** — the structural/section wrappers are a
+legitimate part of the primitives layer anyway. So the working rule: inline the
+leaves, keep the containers + reused/stateful/animated classes as CSS.
 
 **Progress**
 - [x] Phase 0 — shared `@ding/design` tokens (`9ee5aa3`)
-- [x] Phase 1 — Tailwind wired into web, Preflight off, dark via attribute (`2a09333`)
-- [x] Verification gate built + validated (`fb30fac`); drawer shot added; expanded to 14 views
-- [x] `LabelPicker` → utilities (`3eac15c`) — first component
-- [x] `IconRail` structure → utilities (`e1a131d`)
-- [x] `ConversationList` rows (`781b521`) + header/search (`4772432`)
+- [x] Phase 1 — Tailwind wired in, Preflight off, dark via attribute (`2a09333`)
+- [x] Verification gate built + validated (`fb30fac`); expanded to **16 views**
+- [x] `LabelPicker` (`3eac15c`), `IconRail` structure (`e1a131d`)
+- [x] `ConversationList` — rows (`781b521`), header/search (`4772432`), ownership
+      tags via `group-[.active]` (`6d7ca4f`), meta pills teamtag/sla/snoozepill (`5b7332a`)
 - [x] `Sidebar` sub-lists + footer actions (`5a86ac2`)
-- [x] Ownership `Tag` → utilities via `group-[.active]` pattern (`6d7ca4f`)
-- [ ] Primitives layer: `IconButton`, `Button`, `Switch`, `Field`, `Avatar`, `Menu`
-      (keep as themed CSS OR `ui/` components; NOT naive inline — they're context-coupled)
-- [ ] Remaining page components: `NotificationBell`, `Compose`, `TemplatePicker`,
-      `TagEditor`, `Customers`, `ContextPanel`, `PersonalSettings`, `CommandPalette`,
-      `CreateGroupModal`, `SetPassword`, `LoginScreen`, `Settings`, `Thread` (biggest last)
+- [x] `Customers` — search/tag-chips/route-pills/empty (`028a23c`)
+- [x] `Thread` header — name/pill/presence (`493d086`)
+- [x] `ContextPanel` — contact-info rows (`31c9064`), contact header + `.big` avatar (`5981876`)
+- [x] `LoginScreen` — button/subtitle/hint/link/error/note/brand (`0205562`, `e2303d3`)
+- [ ] **Intentional CSS primitives layer (keep):** message bubbles `.msg*` + status
+      `.tick*` (reused + stateful + `.msg.out`-coupled), the composer `.compmode`
+      (JS capsule) + `.comp-att*`, glass surfaces + `.daysep`, `.block` section wrapper,
+      `.iconbtn`/`.railbtn`, `.field`, `.av`, the nav `.navthumb`/`.navhover` capsule.
+- [ ] **Needs harness shots first:** `Settings` tabs, modals (`Compose`,
+      `CreateGroupModal`, `TemplatePicker`, `PersonalSettings`, `CommandPalette`,
+      `TagEditor`, `SetPassword`), then convert their leaf/single-use styling.
