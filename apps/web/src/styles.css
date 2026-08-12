@@ -75,7 +75,7 @@ input,textarea{font:inherit}
 .side{width:248px;flex:0 0 248px;min-width:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;
   transition:width .24s var(--ease),flex-basis .24s var(--ease)}
 .side__head{padding:var(--sp-4) var(--sp-4) var(--sp-2);display:flex;align-items:center;gap:8px}
-.wordmark{font-size:var(--fs-xl);font-weight:750;letter-spacing:-.02em}
+.wordmark{font-size:var(--fs-xl);font-weight:700;letter-spacing:-.02em}
 .wordmark .dot{color:var(--brand)}
 .side__sub{font-size:var(--fs-2xs);color:var(--text-faint);margin-left:auto;letter-spacing:.02em}
 /* collapse toggle in the sidebar header (desktop only — ≤1023 it's a drawer) */
@@ -98,7 +98,7 @@ input,textarea{font:inherit}
 .navhover{position:absolute;top:0;left:0;z-index:0;border-radius:var(--r-12);background:var(--surface-2);
   opacity:0;pointer-events:none;will-change:transform,width,height;
   transition:transform .2s cubic-bezier(.4,0,.2,1),width .2s cubic-bezier(.4,0,.2,1),height .2s cubic-bezier(.4,0,.2,1),opacity .16s ease}
-.sect-label{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-2) 6px;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint)}
+.sect-label{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-3) var(--sp-2) 6px;font-size:var(--fs-2xs);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint)}
 .sect-label .line{flex:1;height:1px;background:var(--border)}
 .navrow{width:100%;display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-2);border-radius:var(--r-12);color:var(--text-muted);text-align:left;position:relative;z-index:1;
   transition:background .14s,color .14s}
@@ -1215,7 +1215,7 @@ input,textarea{font:inherit}
 .modal__box.perssettings{width:min(560px,94vw)}
 .pers-field + .pers-field{margin-top:4px;padding-top:var(--sp-4);border-top:1px solid var(--glass-line)}
 .pers-field__hd{display:flex;align-items:center;gap:10px}
-.pers-field__lbl{font-weight:700;font-size:var(--fs-md)}
+.pers-field__lbl{font-weight:600;font-size:var(--fs-md)}
 .pers-field__hint{margin-left:auto;color:var(--text-faint);font-size:var(--fs-2xs)}
 .pers-field__hd .switch{margin-left:auto}
 .pers-avail{display:flex;align-items:center;gap:var(--sp-2);margin:9px 0 0;font-size:var(--fs-xs);color:var(--text-muted)}
@@ -1655,7 +1655,7 @@ button.tpl-row:active{transform:scale(.99)}
 .side__me-id{min-width:0;flex:1 1 auto}
 .side__me-go{flex:0 0 auto;color:var(--text-faint);display:inline-grid;place-items:center}
 .side__me-go svg{width:18px;height:18px}
-.side__me-id b{font-size:var(--fs-sm);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side__me-id b{font-size:var(--fs-sm);font-weight:650;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .side__me-id small{font-size:var(--fs-2xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 /* .side__foot-actions → Tailwind utilities (flex items-center gap-2) on the Sidebar footer */
 /* Compact icon button (the footer only shows on mobile) so it can't wrap to two

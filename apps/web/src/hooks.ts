@@ -67,6 +67,11 @@ export function useLogout() {
     onSuccess: () => {
       qc.clear();
       qc.setQueryData(["session"], null);
+      // Hard-navigate to the login screen. clear() re-triggers the active
+      // ["session"] query, which can race and overwrite the null we just set
+      // (bouncing back into the app); a full reload guarantees the app
+      // re-initialises unauthenticated (the server has cleared the cookie).
+      if (typeof window !== "undefined") window.location.assign("/");
     },
   });
 }

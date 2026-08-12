@@ -145,12 +145,14 @@ export function playSent(channel?: string): void {
   tone(780, t + 0.05, 0.1, 0.045);
 }
 
-/** Incoming: a soft two-note ding. */
+/** Incoming: a rising three-note chime — a touch longer and more attention-
+ *  grabbing than a single ding, so a new chat is noticeable without being harsh. */
 export function playReceived(): void {
   if (!enabled) return;
   const ac = audio();
   if (!ac) return;
   const t = ac.currentTime;
-  tone(660, t, 0.12, 0.05);
-  tone(990, t + 0.09, 0.16, 0.05);
+  tone(660, t, 0.16, 0.06);
+  tone(990, t + 0.11, 0.18, 0.06);
+  tone(1320, t + 0.24, 0.26, 0.055);
 }
