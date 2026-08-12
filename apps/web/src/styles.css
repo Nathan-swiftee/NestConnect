@@ -914,15 +914,8 @@ input,textarea{font:inherit}
 /* context panel — matte structural surface */
 .panel{width:300px;flex:0 0 300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
 .panel__scroll{overflow-y:auto;padding:var(--sp-5) var(--sp-4);display:flex;flex-direction:column;gap:18px}
-.cust{display:flex;flex-direction:column;align-items:center;text-align:center;gap:4px}
-.cust .big{width:64px;height:64px;border-radius:var(--r-20);display:grid;place-items:center;color:#fff;font-weight:700;font-size:var(--fs-2xl);margin-bottom:6px;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 8px 20px -10px rgba(13,21,18,.35)}
-.cust h3{margin:0;font-size:var(--fs-lg);font-weight:750}
-.cust .co{font-size:var(--fs-xs);color:var(--text-muted)}
-.cust .quick{display:flex;gap:var(--sp-2);margin-top:10px}
-.cust .quick .qbtn{width:40px;height:40px;background:var(--surface-2);color:var(--text-muted)}
-.cust .quick .qbtn:hover{background:var(--brand-tint);color:var(--brand-strong)}
-.cust .quick .qbtn:disabled{opacity:.4;cursor:default;pointer-events:none}
-.cust .quick svg{width:17px;height:17px}
+/* ContextPanel contact header (.cust container, the .big avatar, name, company)
+   → Tailwind utilities inline in ContextPanel.tsx. (.cust .quick was dead.) */
 /* Contact info list under the name: shows the actual phone/email (click to
    copy), plus a link into the full profile — replaces the old bare icon row. */
 /* .custkv / .custkv__row(.--action) → Tailwind utilities inline in ContextPanel

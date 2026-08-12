@@ -475,10 +475,10 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
         </div>
       )}
       <div className="panel__scroll">
-        <div className="cust">
-          <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="big" />
-          <h3>{conv.contact.displayName}</h3>
-          <div className="co">
+        <div className="flex flex-col items-center text-center gap-1">
+          <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="relative w-16 h-16 rounded-20 grid place-items-center text-white font-bold text-2xl mb-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,.18),0_8px_20px_-10px_rgba(13,21,18,.35)]" />
+          <h3 className="m-0 text-lg font-[750]">{conv.contact.displayName}</h3>
+          <div className="text-xs text-muted">
             {isGroup ? (
               <span className="co-ch">
                 <span className="co-ch__ic" style={{ color: "var(--group)" }}><GroupGlyph /></span>
