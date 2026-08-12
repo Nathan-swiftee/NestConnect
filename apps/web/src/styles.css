@@ -214,15 +214,9 @@ input,textarea{font:inherit}
 .av__photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:inherit;transition:opacity .2s ease}
 /* .conv__main/top/name/time/prev/meta + unread bubble/dot → utilities in
    ConversationList.tsx (the .conv button + its state/pseudo styling stay). */
-.tag{font-size:var(--fs-2xs);font-weight:700;padding:3px var(--sp-2);border-radius:var(--r-full);letter-spacing:.02em}
-.tag.owner{background:var(--brand-tint);color:var(--brand-strong)}
-/* the selected row is itself brand-tint, so lift the "Yours" chip to white there */
-.conv.active .tag.owner{background:var(--surface)}
-.tag.grab{background:var(--surface-2);color:var(--text-muted)}
-.conv.active .tag.grab{background:var(--surface)}
-/* owned by another agent — shows their name, distinct from the brand "Yours" */
-.tag.assigned{background:color-mix(in srgb,var(--text) 8%,transparent);color:var(--text);font-weight:650}
-.conv.active .tag.assigned{background:var(--surface)}
+/* ownership tag (Yours / assignee / Queue) → Tailwind utilities inline in
+   ConversationList; the desktop selected-row whitening is a group-[.active]
+   variant there (mobile keeps the tint — the row isn't highlighted on mobile). */
 /* which team the conversation is routed to */
 .teamtag{font-size:var(--fs-2xs);font-weight:650;padding:2px var(--sp-2);border-radius:var(--r-full);background:color-mix(in srgb,var(--text) 6%,transparent);color:var(--text-muted);white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}
 .sla{display:inline-flex;align-items:center;gap:var(--sp-1);font-size:var(--fs-2xs);font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums}
@@ -1826,9 +1820,8 @@ button.tpl-row:active{transform:scale(.99)}
   .conv.active{background:transparent}
   .conv.active::before{display:none}
   .conv.active .av .ch{border-color:var(--surface)}
-  .conv.active .tag.owner{background:var(--brand-tint)}
-  .conv.active .tag.grab{background:var(--surface-2)}
-  .conv.active .tag.assigned{background:color-mix(in srgb,var(--text) 8%,transparent)}
+  /* ownership tags: the group-[.active] whitening is desktop-only (min-[821px]),
+     so nothing to cancel here on mobile — the inline utilities already skip it. */
   .msgs{padding:12px 14px}
   .msg,.note{max-width:85%}
   .composer{padding:10px 12px calc(12px + env(safe-area-inset-bottom))}

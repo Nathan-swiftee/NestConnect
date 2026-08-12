@@ -308,7 +308,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                   style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vr.start}px)` }}
                 >
                   <button
-                    className={"conv" + (c.unread ? " unread" : "") + (selectedId === c.id ? " active" : "")}
+                    className={"conv group" + (c.unread ? " unread" : "") + (selectedId === c.id ? " active" : "")}
                     onClick={() => onSelect(c.id)}
                   >
               <Avatar name={c.contact.displayName} email={c.contact.email} color={c.contact.avatarColor} className="av">
@@ -355,7 +355,14 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                   ) : (
                     <>
                       <span
-                        className={"tag " + (mine ? "owner" : assignedOther ? "assigned" : "grab")}
+                        className={
+                          "text-2xs py-[3px] px-2 rounded-full tracking-[.02em] min-[821px]:group-[.active]:bg-surface " +
+                          (mine
+                            ? "bg-brand-tint text-brand-strong font-bold"
+                            : assignedOther
+                              ? "bg-[color-mix(in_srgb,var(--text)_8%,transparent)] text-fg font-[650]"
+                              : "bg-surface-2 text-muted font-bold")
+                        }
                         title={assignedOther && c.assigneeName ? `Assigned to ${c.assigneeName}` : undefined}
                       >
                         {mine ? "Yours" : assignedOther ? c.assigneeName?.split(" ")[0] ?? "Assigned" : "Queue"}
