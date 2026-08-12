@@ -342,12 +342,12 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                 <div className="flex items-center flex-wrap gap-x-1.5 gap-y-[5px] mt-1.5">
                   {c.status === "snoozed" && c.snoozedUntil ? (
                     new Date(c.snoozedUntil).getTime() <= Date.now() ? (
-                      <span className="snoozepill due" title={`Due since ${new Date(c.snoozedUntil).toLocaleString()}`}>
+                      <span className="inline-flex items-center gap-[5px] text-2xs font-bold py-[3px] px-2 rounded-full whitespace-nowrap tabular-nums bg-amber text-white shadow-[0_2px_8px_-3px_color-mix(in_srgb,var(--amber)_70%,transparent)] [&>svg]:w-3 [&>svg]:h-3" title={`Due since ${new Date(c.snoozedUntil).toLocaleString()}`}>
                         <SnoozeIcon />
                         Due now
                       </span>
                     ) : (
-                      <span className="snoozepill" title={`Wakes ${new Date(c.snoozedUntil).toLocaleString()}`}>
+                      <span className="inline-flex items-center gap-[5px] text-2xs font-bold py-[3px] px-2 rounded-full bg-amber-tint text-amber whitespace-nowrap tabular-nums [&>svg]:w-3 [&>svg]:h-3" title={`Wakes ${new Date(c.snoozedUntil).toLocaleString()}`}>
                         <SnoozeIcon />
                         Snoozed · {timeUntil(c.snoozedUntil)} left
                       </span>
@@ -368,19 +368,19 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                         {mine ? "Yours" : assignedOther ? c.assigneeName?.split(" ")[0] ?? "Assigned" : "Queue"}
                       </span>
                       {showTeamTag && teamName(c.assignedTeamId) && (
-                        <span className="teamtag" title={`Routed to ${teamName(c.assignedTeamId)}`}>
+                        <span className="text-2xs font-[650] py-0.5 px-2 rounded-full bg-[color-mix(in_srgb,var(--text)_6%,transparent)] text-muted whitespace-nowrap max-w-[130px] overflow-hidden text-ellipsis" title={`Routed to ${teamName(c.assignedTeamId)}`}>
                           {teamName(c.assignedTeamId)}
                         </span>
                       )}
                       {c.slaDueAt &&
                         (new Date(c.slaDueAt).getTime() <= Date.now() ? (
-                          <span className="sla breach" title="First-response SLA breached">
-                            <span className="d" />
+                          <span className="inline-flex items-center gap-1 text-2xs font-bold tabular-nums text-danger bg-danger-tint py-0.5 px-2 rounded-full" title="First-response SLA breached">
+                            <span className="w-1.5 h-1.5 rounded-full bg-danger [animation:duePulse_1.6s_ease-in-out_infinite]" />
                             Overdue
                           </span>
                         ) : (
-                          <span className="sla" title="Time left to first response">
-                            <span className="d" />
+                          <span className="inline-flex items-center gap-1 text-2xs font-bold text-amber tabular-nums" title="Time left to first response">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber" />
                             {slaCountdown(c.slaDueAt)}
                           </span>
                         ))}

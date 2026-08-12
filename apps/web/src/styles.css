@@ -217,19 +217,11 @@ input,textarea{font:inherit}
 /* ownership tag (Yours / assignee / Queue) → Tailwind utilities inline in
    ConversationList; the desktop selected-row whitening is a group-[.active]
    variant there (mobile keeps the tint — the row isn't highlighted on mobile). */
-/* which team the conversation is routed to */
-.teamtag{font-size:var(--fs-2xs);font-weight:650;padding:2px var(--sp-2);border-radius:var(--r-full);background:color-mix(in srgb,var(--text) 6%,transparent);color:var(--text-muted);white-space:nowrap;max-width:130px;overflow:hidden;text-overflow:ellipsis}
-.sla{display:inline-flex;align-items:center;gap:var(--sp-1);font-size:var(--fs-2xs);font-weight:700;color:var(--amber);font-variant-numeric:tabular-nums}
-.sla .d{width:6px;height:6px;border-radius:50%;background:var(--amber)}
-/* SLA breached — a loud, pulsing red pill so it stands out in the list */
-.sla.breach{color:var(--danger);background:var(--danger-tint);padding:2px var(--sp-2);border-radius:var(--r-full)}
-.sla.breach .d{background:var(--danger);animation:duePulse 1.6s ease-in-out infinite}
+/* team-routed tag + SLA countdown pill (+ breached variant) → Tailwind utilities
+   inline in ConversationList.tsx (the .d dot + duePulse animation inlined too). */
 .fieldhint{font-size:var(--fs-2xs);color:var(--text-faint);font-weight:500;line-height:1.45;margin-top:1px}
-/* snoozed conversations show their wake countdown on the card */
-.snoozepill{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-2xs);font-weight:700;padding:3px var(--sp-2) 3px var(--sp-2);border-radius:var(--r-full);background:var(--amber-tint);color:var(--amber);white-space:nowrap;font-variant-numeric:tabular-nums}
-.snoozepill svg{width:12px;height:12px}
-/* once the wake time passes it's "due" — a solid amber alert */
-.snoozepill.due{background:var(--amber);color:#fff;box-shadow:0 2px 8px -3px color-mix(in srgb,var(--amber) 70%,transparent)}
+/* snoozed-conversation wake-countdown pill (+ due variant) → Tailwind utilities
+   inline in ConversationList.tsx. */
 /* "Later" flags an animated amber bell when snoozed items come due */
 .duebell{width:15px;height:15px;flex:0 0 15px;display:grid;place-items:center;color:var(--amber);animation:duePulse 1.5s ease-in-out infinite}
 .duebell svg{width:14px;height:14px}
