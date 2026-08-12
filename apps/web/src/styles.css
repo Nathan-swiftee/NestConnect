@@ -1907,6 +1907,10 @@ button.tpl-row:active{transform:scale(.99)}
   .panel{width:100%}
   .panel__mhead{padding-top:calc(14px + env(safe-area-inset-top))}
   .hide-sm{display:none!important}
+  /* Header label picker drops to a fixed panel below the header on phones (like
+     the snooze menu) so it can't clip off the right edge. The Details-panel
+     variant keeps its in-panel positioning. */
+  .menu.labelmenu:not(.labelmenu--panel){position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:auto;min-width:210px;max-width:min(300px,calc(100vw - 24px))}
   .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 }
 

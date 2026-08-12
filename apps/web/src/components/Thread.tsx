@@ -1938,7 +1938,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </div>
           <div className="labelwrap">
             <button
-              className={"iconbtn hide-sm" + (labelMenu ? " on" : "")}
+              className={"iconbtn" + (labelMenu ? " on" : "")}
               title="Labels"
               aria-label="Labels"
               aria-haspopup="menu"
