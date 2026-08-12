@@ -1948,10 +1948,21 @@ button.tpl-row:active{transform:scale(.99)}
      buttons, so the contact name/subject always has room (Snooze, Labels and
      Details move into the ⋯ sheet). */
   .show-sm{display:inline-flex}
-  .thread__actions{gap:7px}
-  .thread__actions .resolvebtn,.thread__actions .assignbtn{width:38px;height:38px;min-width:38px;padding:0;justify-content:center;border-radius:50%;gap:0}
+  .thread__actions{gap:2px}
+  /* Header actions read as light, borderless icons (matching ⋯ and the back
+     arrow) rather than heavy filled "ball" buttons — just the ✓, the assignee
+     avatar and the ⋯, each with a 38px tap target and no button chrome. */
+  .thread__actions .resolvebtn,.thread__actions .assignbtn{width:38px;height:38px;min-width:38px;padding:0;justify-content:center;border-radius:50%;gap:0;background:transparent;box-shadow:none}
+  .thread__actions .resolvebtn{color:var(--text-muted)}
+  .thread__actions .resolvebtn svg{width:23px;height:23px}
+  .thread__actions .resolvebtn.reopened{background:transparent;color:var(--amber)}
+  /* No sticky filled state from :hover on touch; a faint circle only on press. */
+  .thread__actions .resolvebtn:hover,.thread__actions .assignbtn:hover{background:transparent;color:var(--text-muted)}
+  .thread__actions .resolvebtn.reopened:hover{color:var(--amber)}
+  .thread__actions .resolvebtn:active,.thread__actions .assignbtn:active{background:var(--surface-2);transform:none}
   .thread__actions .assignbtn>svg{display:none}
-  .thread__actions .assignbtn .mini{width:24px;height:24px;font-size:11px}
+  .thread__actions .assignbtn .mini{width:27px;height:27px;font-size:11px}
+  .thread__actions .assignbtn__ic svg{width:21px;height:21px}
   .thread__actions .iconbtn{width:38px;height:38px}
   .toast{bottom:calc(16px + env(safe-area-inset-bottom))}
 }
