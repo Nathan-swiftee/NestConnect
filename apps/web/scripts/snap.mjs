@@ -37,15 +37,22 @@ async function login(page) {
 
 const b = await chromium.launch({ executablePath: EXE });
 
-async function shot(name, { width, height, mobile, theme, prep }) {
+async function shot(name, { width, height, mobile, theme, prep, bare }) {
   const ctx = await b.newContext({
     viewport: { width, height }, deviceScaleFactor: 2,
     isMobile: !!mobile, hasTouch: !!mobile, colorScheme: "light", reducedMotion: "reduce",
   });
   const page = await ctx.newPage();
-  await login(page);
+  if (bare) {
+    // Pre-auth: capture the login screen itself (never reached by login()).
+    await page.addInitScript(freezeClock);
+    await page.goto(BASE + "/", { waitUntil: "networkidle" });
+    await page.waitForSelector(".login", { timeout: 20000 });
+  } else {
+    await login(page);
+  }
   await page.evaluate((t) => document.documentElement.setAttribute("data-theme", t), theme);
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(bare ? 250 : 150);
   if (prep) await prep(page);
   await page.waitForTimeout(250);
   await page.screenshot({ path: `${outdir}/${name}.png` });
@@ -68,6 +75,20 @@ await shot("mobile-thread-dark", { width: 390, height: 844, mobile: true, theme:
 const openDrawer = async (page) => { await page.locator(".list__burger").first().click(); await page.waitForTimeout(500); };
 await shot("mobile-drawer-light", { width: 390, height: 844, mobile: true, theme: "light", prep: openDrawer });
 await shot("mobile-drawer-dark", { width: 390, height: 844, mobile: true, theme: "dark", prep: openDrawer });
+
+// Pre-auth login screen (LoginScreen + its .btn / .field primitives)
+await shot("login-light", { width: 1360, height: 900, theme: "light", bare: true });
+await shot("login-dark", { width: 1360, height: 900, theme: "dark", bare: true });
+
+// Settings pane (Settings — .field / .btn / .switch / .iconbtn primitives, tabs)
+const openSettings = async (page) => { await page.click('.railbtn[title="Settings"]'); await page.waitForSelector('[aria-label="Settings"]', { timeout: 8000 }); await page.waitForTimeout(300); };
+await shot("desktop-settings-light", { width: 1360, height: 900, theme: "light", prep: openSettings });
+await shot("desktop-settings-dark", { width: 1360, height: 900, theme: "dark", prep: openSettings });
+
+// Customers directory (Customers — reuses .settings shell; .tag, .av, .btn primitives)
+const openCustomers = async (page) => { await page.click('.railbtn[title="Customers"]'); await page.waitForSelector('[aria-label="Customers"]', { timeout: 8000 }); await page.waitForTimeout(300); };
+await shot("desktop-customers-light", { width: 1360, height: 900, theme: "light", prep: openCustomers });
+await shot("desktop-customers-dark", { width: 1360, height: 900, theme: "dark", prep: openCustomers });
 
 await b.close();
 console.log("done.");
