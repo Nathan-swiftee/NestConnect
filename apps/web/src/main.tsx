@@ -5,6 +5,9 @@ import { App } from "./App";
 import { syncThemeColor } from "./lib/theme";
 import { initViewport } from "./lib/viewport";
 import { initLayout } from "./lib/layout";
+// Design tokens first (shared with the native app), then the app's own CSS,
+// which consumes those custom properties. Order matters: variables before use.
+import "@ding/design/tokens.css";
 import "./styles.css";
 
 syncThemeColor();

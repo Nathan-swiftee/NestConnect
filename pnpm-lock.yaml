@@ -129,6 +129,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@ding/design':
+        specifier: workspace:*
+        version: link:../../packages/design
       '@ding/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
@@ -184,6 +187,8 @@ importers:
       vite:
         specifier: ^5.4.11
         version: 5.4.21(@types/node@22.20.1)(terser@5.49.0)
+
+  packages/design: {}
 
   packages/schemas:
     dependencies:

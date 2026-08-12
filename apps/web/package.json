@@ -11,6 +11,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@ding/design": "workspace:*",
     "@ding/schemas": "workspace:*",
     "@tanstack/react-query": "^5.62.7",
     "@tanstack/react-virtual": "^3.10.9",
