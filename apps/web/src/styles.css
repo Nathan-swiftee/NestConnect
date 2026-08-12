@@ -149,14 +149,14 @@ input,textarea{font:inherit}
 .list__resizer.active .list__resizer-bar,
 .list__resizer:focus-visible .list__resizer-bar{opacity:1}
 .list__head{flex:0 0 auto;padding:var(--sp-4) var(--sp-4) var(--sp-3);border-bottom:1px solid var(--border);background:var(--surface)}
-.list__title{display:flex;align-items:center;gap:9px}
+/* .list__title container + its h1/count-badge → Tailwind utilities, inlined on
+   the ConversationList header. The unique .kbd / .list__compose descendants are
+   de-scoped below (they only ever live in this header). */
 /* "show inboxes" button — appears in the list header when the sidebar is collapsed */
 .list__expand{width:32px;height:32px;color:var(--text-muted);flex:0 0 32px;margin-right:1px}
 .list__expand svg{width:19px;height:19px}
-.list__title h1{margin:0;font-size:var(--fs-lg);font-weight:700;letter-spacing:-.01em}
-.list__title .badge{background:var(--brand-tint);color:var(--brand-strong)}
-.list__title .kbd{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--text-faint);background:var(--surface-2);border-radius:var(--r-8);padding:var(--sp-1) var(--sp-2);transition:color .14s}
-.list__title .kbd:hover{color:var(--text)}
+.kbd{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--text-faint);background:var(--surface-2);border-radius:var(--r-8);padding:var(--sp-1) var(--sp-2);transition:color .14s}
+.kbd:hover{color:var(--text)}
 /* manual refresh — pull any new mail now (pairs with pull-to-refresh) */
 .list__refresh{margin-left:auto;width:30px;height:30px;display:inline-grid;place-items:center;border-radius:var(--r-full);color:var(--text-faint);background:var(--surface-2);transition:color .14s,background .14s}
 .list__refresh:hover{color:var(--text)}
@@ -169,12 +169,9 @@ input,textarea{font:inherit}
    reuses .list__refresh for its circular-button look (:not keeps it visible). */
 @media (max-width:820px){.list__refresh:not(.notif__bell){display:none}}
 @keyframes spin{to{transform:rotate(360deg)}}
-/* search — soft, carved into the surface, no harsh border */
-.search{margin-top:11px;display:flex;align-items:center;gap:var(--sp-2);background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-full);padding:var(--sp-2) var(--sp-4);color:var(--text-faint);
-  box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow .15s,border-color .15s}
-.search:focus-within{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-ring)}
-.search svg{width:15px;height:15px}
-.search input{border:0;background:none;outline:none;color:var(--text);width:100%;font-size:var(--fs-sm)}
+/* search — soft, carved into the surface, no harsh border.
+   → migrated to Tailwind utilities on the ConversationList search box
+   (container + input); .search__clear keeps its own class (already unscoped). */
 /* filter chips — full-bleed horizontal scroller (bleeds past the header's 16px
    padding so chips scroll flush to the edges), tightly spaced */
 .chips{margin:11px -16px 0;display:flex;position:relative;gap:2px;padding:3px var(--sp-4);overflow-x:auto;scrollbar-width:none;scroll-padding-inline:16px}
@@ -731,12 +728,12 @@ input,textarea{font:inherit}
 .emailhdr__in:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-ring)}
 
 /* ─── New-message (compose) ─────────────────────────────────────────── */
-.list__title .list__compose{width:30px;height:30px;display:inline-grid;place-items:center;border-radius:var(--r-full);
+.list__compose{width:30px;height:30px;display:inline-grid;place-items:center;border-radius:var(--r-full);
   color:#fff;background:var(--brand);box-shadow:0 2px 8px -3px color-mix(in srgb,var(--brand) 60%,transparent);
   transition:filter .14s,transform .12s var(--ease)}
-.list__title .list__compose:hover{filter:brightness(1.07)}
-.list__title .list__compose:active{transform:scale(.92)}
-.list__title .list__compose svg{width:16px;height:16px}
+.list__compose:hover{filter:brightness(1.07)}
+.list__compose:active{transform:scale(.92)}
+.list__compose svg{width:16px;height:16px}
 .modal__box.compose{width:min(460px,94vw)}
 .compose__tabs{display:flex;gap:6px;margin-bottom:12px;background:var(--surface-2);padding:var(--sp-1);border-radius:var(--r-12)}
 .compose__tabs button{flex:1;padding:var(--sp-2);border-radius:var(--r-8);font-size:var(--fs-sm);font-weight:650;color:var(--text-muted);transition:background .12s,color .12s}
@@ -789,7 +786,7 @@ input,textarea{font:inherit}
   font-size:var(--fs-2xs);line-height:1;color:var(--text-faint);background:color-mix(in srgb,var(--text) 8%,transparent);
   transition:color .12s,background .12s}
 .search__clear:hover{color:var(--text);background:color-mix(in srgb,var(--text) 15%,transparent)}
-.list__searchnote{padding:var(--sp-2) var(--sp-1) 3px;font-size:var(--fs-xs);font-weight:600;color:var(--text-muted)}
+/* .list__searchnote → Tailwind utilities inlined on the ConversationList search-result note */
 
 /* ─── Typing indicator ─── another agent composing on this conversation:
    a tail-less inbound-style bubble with three bouncing dots. */
@@ -1783,9 +1780,9 @@ button.tpl-row:active{transform:scale(.99)}
   .list__head{padding-top:calc(14px + env(safe-area-inset-top))}
   /* refresh is hidden on mobile (it held the margin-left:auto), so the bell now
      anchors the top-right group (bell + command menu + new message). */
-  .list__title .notif{margin-left:auto}
+  .notif{margin-left:auto}
   /* ⌘K command-menu shortcut is desktop-only (no hardware keyboard on phones) */
-  .list__title .kbd{display:none}
+  .kbd{display:none}
   /* the composer channel/note switcher goes icon-only on mobile to save width */
   .compmode .modebtn__lbl{display:none}
   .compmode .modebtn{padding:6px 11px}
