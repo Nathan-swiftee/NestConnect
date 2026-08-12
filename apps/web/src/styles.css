@@ -75,7 +75,7 @@ input,textarea{font:inherit}
 .side{width:248px;flex:0 0 248px;min-width:0;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0;
   transition:width .24s var(--ease),flex-basis .24s var(--ease)}
 .side__head{padding:var(--sp-4) var(--sp-4) var(--sp-2);display:flex;align-items:center;gap:8px}
-.wordmark{font-size:var(--fs-xl);font-weight:700;letter-spacing:-.02em}
+.wordmark{font-size:var(--fs-xl);font-weight:650;letter-spacing:-.02em}
 .wordmark .dot{color:var(--brand)}
 .side__sub{font-size:var(--fs-2xs);color:var(--text-faint);margin-left:auto;letter-spacing:.02em}
 /* collapse toggle in the sidebar header (desktop only — ≤1023 it's a drawer) */
@@ -109,7 +109,7 @@ input,textarea{font:inherit}
 .navrow.active .navicon{color:var(--brand)}
 .navrow .navicon{width:18px;height:18px;flex:0 0 18px;display:grid;place-items:center;color:var(--text-faint)}
 .navrow .navicon svg{width:18px;height:18px}
-.navrow .lbl{font-weight:550;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navrow .lbl{font-weight:500;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .navrow .cdot{width:9px;height:9px;border-radius:50%;flex:0 0 9px}
 .badge{min-width:20px;height:20px;padding:0 6px;border-radius:var(--r-full);background:var(--surface-2);color:var(--text-muted);font-size:var(--fs-2xs);font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
 .navrow.active .badge{background:var(--brand-strong);color:#fff}
@@ -513,7 +513,7 @@ input,textarea{font:inherit}
   backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
   opacity:0;pointer-events:none;transition:opacity .12s,background .12s,color .12s}
 .msg.in .msg__menubtn{right:3px}
-.msg.out .msg__menubtn{left:3px}
+.msg.out .msg__menubtn{right:3px}
 .msg__menubtn svg{width:14px;height:14px}
 .msg__menubtn:hover{color:var(--text);background:color-mix(in srgb,var(--text) 12%,transparent)}
 
@@ -526,6 +526,11 @@ input,textarea{font:inherit}
   transition:opacity .12s,color .12s,transform .1s var(--ease)}
 .msg.in .msg__reactbtn{right:-38px}
 .msg.out .msg__reactbtn{left:-38px}
+/* Invisible hover-bridge filling the gutter between the bubble and the smiley, so
+   the cursor can travel to the smiley without dropping :hover (which would fade it
+   out of reach). Desktop only — needs :hover. */
+.msg.in .bubblewrap:hover::after{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:100%;width:46px}
+.msg.out .bubblewrap:hover::after{content:"";position:absolute;z-index:-1;top:0;bottom:0;right:100%;width:46px}
 .msg__reactbtn svg{width:18px;height:18px}
 .msg__reactbtn:hover{color:var(--brand-strong);transform:translateY(-50%) scale(1.08)}
 @media (hover:none){.msg__reactbtn{display:none}}
@@ -534,7 +539,7 @@ input,textarea{font:inherit}
   border-radius:var(--r-12);background:var(--elevated);
   box-shadow:0 12px 32px -8px rgba(0,0,0,.4),0 0 0 1px var(--border);animation:popIn .13s var(--ease)}
 .msg.in .msg__menu{right:2px}
-.msg.out .msg__menu{left:2px}
+.msg.out .msg__menu{right:2px}
 .msg__menuitem{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:var(--r-8);
   font-size:var(--fs-sm);font-weight:600;color:var(--text);text-align:left;transition:background .1s}
 .msg__menuitem:hover{background:var(--surface-2)}
@@ -672,7 +677,18 @@ input,textarea{font:inherit}
 .richbar__b:hover{background:color-mix(in srgb,var(--text) 9%,transparent);color:var(--text)}
 .richbar__b:active{transform:scale(.92)}
 .richbar__b b,.richbar__b i,.richbar__b u{font-size:var(--fs-md);line-height:1}
+.richbar__b.on{background:var(--brand-tint);color:var(--brand-strong)}
+.richbar__b:disabled{opacity:.5;pointer-events:none}
 .richbar__sep{width:1px;height:18px;background:var(--border);margin:0 4px}
+/* Signature toolbar inputs (font-size select + colour swatch) — sized to match the icon buttons. */
+.richbar__sel{height:28px;padding:0 6px;border:1px solid var(--border);border-radius:var(--r-8);background:var(--surface-2);color:var(--text);font-size:var(--fs-sm);cursor:pointer;transition:border-color .12s}
+.richbar__sel:hover{border-color:color-mix(in srgb,var(--text) 22%,transparent)}
+.richbar__sel:focus-visible{outline:none;border-color:var(--brand)}
+.richbar__color{width:28px;height:28px;padding:2px;border:1px solid var(--border);border-radius:var(--r-8);background:var(--surface-2);cursor:pointer;transition:border-color .12s}
+.richbar__color:hover{border-color:color-mix(in srgb,var(--text) 22%,transparent)}
+.richbar__color::-webkit-color-swatch-wrapper{padding:0}
+.richbar__color::-webkit-color-swatch{border:none;border-radius:var(--r-6)}
+.richbar__color::-moz-color-swatch{border:none;border-radius:var(--r-6)}
 .compinput .richedit{flex:1;min-height:24px;max-height:200px;overflow-y:auto;padding:6px 0;color:var(--text);
   outline:none;font-size:var(--fs-md);line-height:1.45;border:0;background:none;word-break:break-word;overflow-wrap:anywhere}
 .compinput .richedit:empty::before{content:attr(data-placeholder);color:var(--text-faint);pointer-events:none}
@@ -1169,9 +1185,9 @@ input,textarea{font:inherit}
 .rail-menu__backdrop{position:fixed;inset:0;z-index:40}
 .rail-menu{position:absolute;bottom:0;left:46px;width:214px;border-radius:var(--r-16);padding:6px;z-index:41;display:flex;flex-direction:column;gap:2px;transform-origin:bottom left;animation:popIn .18s var(--ease)}
 .rail-menu__id{padding:var(--sp-2) var(--sp-2) var(--sp-2);display:flex;flex-direction:column;gap:1px;border-bottom:1px solid var(--glass-line);margin-bottom:4px}
-.rail-menu__id b{font-size:var(--fs-sm)}
+.rail-menu__id b{font-size:var(--fs-sm);font-weight:650}
 .rail-menu__id small{font-size:var(--fs-2xs);color:var(--text-muted)}
-.rail-menu button{text-align:left;padding:var(--sp-2) var(--sp-2);border-radius:var(--r-8);font-size:var(--fs-sm);font-weight:550;color:var(--text);transition:background .12s}
+.rail-menu button{text-align:left;padding:var(--sp-2) var(--sp-2);border-radius:var(--r-8);font-size:var(--fs-sm);font-weight:500;color:var(--text);transition:background .12s}
 .rail-menu button:hover{background:color-mix(in srgb,var(--text) 7%,transparent)}
 .rail-menu button.danger{color:var(--danger)}
 .rail-menu button.danger:hover{background:var(--danger-tint)}
