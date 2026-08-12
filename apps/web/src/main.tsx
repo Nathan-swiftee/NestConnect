@@ -9,6 +9,8 @@ import { initLayout } from "./lib/layout";
 // which consumes those custom properties. Order matters: variables before use.
 import "@ding/design/tokens.css";
 import "./styles.css";
+// Tailwind utilities last so they can override component CSS as it's migrated.
+import "./tailwind.css";
 
 syncThemeColor();
 // Keep the browser chrome colour correct if the OS theme flips at runtime.

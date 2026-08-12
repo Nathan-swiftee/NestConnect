@@ -5,9 +5,11 @@
   "description": "Shared design tokens for the web (Tailwind) and native (NativeWind) apps.",
   "type": "module",
   "exports": {
-    "./tokens.css": "./tokens.css"
+    "./tokens.css": "./tokens.css",
+    "./tailwind-preset": "./tailwind-preset.cjs"
   },
   "files": [
-    "tokens.css"
+    "tokens.css",
+    "tailwind-preset.cjs"
   ]
 }

@@ -1,0 +1,7 @@
+/* Tailwind layers. Imported after styles.css (see main.tsx) so utilities win
+ * over equal-specificity component CSS as it's migrated. Preflight is disabled
+ * in tailwind.config.cjs, so `base` only emits the --tw-* variable defaults —
+ * no reset — and with no utility classes used yet this file adds ~nothing. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
