@@ -1,8 +1,9 @@
 # Single-image deploy: the NestJS API builds and serves the React SPA.
 FROM node:22-bookworm-slim
 
-# Prisma needs openssl at build (generate) and runtime.
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+# Prisma needs openssl at build (generate) and runtime; ffmpeg remuxes Chrome's
+# WebM/Opus voice notes to the Ogg/Opus WhatsApp requires.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PNPM_HOME=/pnpm

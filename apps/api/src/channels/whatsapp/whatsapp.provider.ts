@@ -1,3 +1,7 @@
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Injectable, Logger } from "@nestjs/common";
 import type { AttachmentKind, ChannelType, Conversation } from "@ding/schemas";
 import { env } from "../../config/env";
@@ -45,6 +49,25 @@ function whatsappUploadMime(item: OutboundMedia): string {
   const base = item.mime.split(";")[0].trim().toLowerCase();
   if (item.kind === "voice" || base === "audio/ogg" || base === "audio/webm") return "audio/ogg";
   return base;
+}
+
+/**
+ * Whether these bytes are a WebM/Opus recording (Chromium's `MediaRecorder`
+ * output) rather than the Ogg/Opus WhatsApp requires. We sniff the container: a
+ * WebM/Matroska file opens with the EBML magic `1A 45 DF A3`; an Ogg file opens
+ * with `OggS`. The byte sniff is authoritative (the recorder sometimes mislabels
+ * the MIME), with the declared type as a fallback signal. Firefox/Safari record
+ * straight to Ogg, so they read as false here and pass through untouched.
+ */
+function looksLikeWebm(item: OutboundMedia): boolean {
+  const b = item.bytes;
+  if (b && b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) {
+    return true;
+  }
+  if (b && b.length >= 4 && b[0] === 0x4f && b[1] === 0x67 && b[2] === 0x67 && b[3] === 0x53) {
+    return false; // "OggS" — already an Ogg container
+  }
+  return item.mime.toLowerCase().includes("webm");
 }
 
 /**
@@ -276,10 +299,18 @@ export class WhatsAppCloudProvider extends ChannelProvider {
         mime === "audio/ogg" && !item.filename.toLowerCase().endsWith(".ogg")
           ? item.filename.replace(/\.[^./\\]+$/, "") + ".ogg"
           : item.filename;
+      // Chrome records voice notes as WebM/Opus, but WhatsApp accepts only
+      // Ogg/Opus. When we're about to declare `audio/ogg` for bytes that are
+      // really WebM, remux the container to Ogg first (both hold Opus). Ogg
+      // recordings (Firefox/Safari) are left untouched.
+      let bytes = item.bytes;
+      if (mime === "audio/ogg" && looksLikeWebm(item)) {
+        bytes = await this.remuxWebmToOgg(item.bytes);
+      }
       const form = new FormData();
       form.append("messaging_product", "whatsapp");
       form.append("type", mime);
-      form.append("file", new Blob([item.bytes], { type: mime }), filename);
+      form.append("file", new Blob([bytes], { type: mime }), filename);
       const res = await fetch(url, {
         method: "POST",
         headers: { authorization: `Bearer ${creds.accessToken}` },
@@ -294,6 +325,51 @@ export class WhatsAppCloudProvider extends ChannelProvider {
     } catch (err) {
       this.logger.warn(`WhatsApp media upload error: ${String(err)}`);
       return null;
+    }
+  }
+
+  /**
+   * Re-encode WebM/Opus audio to Ogg/Opus (mono, 48 kHz, 32 kbps — the sweet
+   * spot for a voice note) with ffmpeg, so a Chrome-recorded voice note delivers.
+   * Uses temp files under the OS tmpdir and cleans them up. Best-effort: if
+   * ffmpeg is missing (e.g. a dev box) or the encode fails, we log and return the
+   * original bytes so the send still goes out rather than throwing.
+   */
+  private async remuxWebmToOgg(webm: Buffer): Promise<Buffer> {
+    let dir: string | undefined;
+    try {
+      dir = await mkdtemp(join(tmpdir(), "wa-voice-"));
+      const inPath = join(dir, "in.webm");
+      const outPath = join(dir, "out.ogg");
+      await writeFile(inPath, webm);
+      await new Promise<void>((resolve, reject) => {
+        const ff = spawn(
+          "ffmpeg",
+          // prettier-ignore
+          [
+            "-y", "-i", inPath,
+            "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1",
+            "-f", "ogg", outPath,
+          ],
+          { stdio: ["ignore", "ignore", "pipe"] },
+        );
+        let stderr = "";
+        ff.stderr?.on("data", (chunk) => {
+          stderr += String(chunk);
+        });
+        // `error` fires when the binary can't be spawned (ffmpeg not installed).
+        ff.on("error", reject);
+        ff.on("close", (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`ffmpeg exited ${code}: ${stderr.trim().slice(-400)}`));
+        });
+      });
+      return await readFile(outPath);
+    } catch (err) {
+      this.logger.warn(`WhatsApp voice remux (WebM→Ogg) failed, sending original bytes: ${String(err)}`);
+      return webm;
+    } finally {
+      if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
