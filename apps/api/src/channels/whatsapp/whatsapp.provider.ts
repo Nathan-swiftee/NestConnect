@@ -33,6 +33,21 @@ function captionable(type: WaMediaType): boolean {
 }
 
 /**
+ * The MIME type to declare when uploading media bytes to Meta's `/media`
+ * endpoint. WhatsApp accepts only a fixed set of types, and a voice note must be
+ * OGG/OPUS. Browser `MediaRecorder` emits Opus inside `audio/webm;codecs=opus`
+ * (Chromium) or `audio/ogg;codecs=opus` (Firefox); Meta rejects both the codec
+ * parameter and the WebM container, so an agent's recorded voice note never
+ * delivers. Fold voice/opus audio to bare `audio/ogg` and strip codec
+ * parameters from every type so Meta's allow-list matches.
+ */
+function whatsappUploadMime(item: OutboundMedia): string {
+  const base = item.mime.split(";")[0].trim().toLowerCase();
+  if (item.kind === "voice" || base === "audio/ogg" || base === "audio/webm") return "audio/ogg";
+  return base;
+}
+
+/**
  * WhatsApp Business Platform (Cloud API) sender. Credentials are resolved per
  * inbox — a number connected via Meta carries its own token/phone-number-id in
  * channelConfig — falling back to the global env credentials. With neither, the
@@ -253,10 +268,18 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   private async uploadMedia(creds: WhatsAppCreds, item: OutboundMedia): Promise<string | null> {
     try {
       const url = `https://graph.facebook.com/${env.whatsapp.apiVersion}/${creds.phoneNumberId}/media`;
+      // WhatsApp validates the declared MIME against its allow-list (and voice
+      // notes must be OGG/OPUS), so send the normalized type rather than the raw
+      // recorder container/codec string.
+      const mime = whatsappUploadMime(item);
+      const filename =
+        mime === "audio/ogg" && !item.filename.toLowerCase().endsWith(".ogg")
+          ? item.filename.replace(/\.[^./\\]+$/, "") + ".ogg"
+          : item.filename;
       const form = new FormData();
       form.append("messaging_product", "whatsapp");
-      form.append("type", item.mime);
-      form.append("file", new Blob([item.bytes], { type: item.mime }), item.filename);
+      form.append("type", mime);
+      form.append("file", new Blob([item.bytes], { type: mime }), filename);
       const res = await fetch(url, {
         method: "POST",
         headers: { authorization: `Bearer ${creds.accessToken}` },

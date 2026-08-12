@@ -68,6 +68,29 @@ export function templateVariableCount(body: string): number {
   return nums.size;
 }
 
+/** Lower-cased primary subtag of a language code ("en_US" / "en-GB" → "en"). */
+export function canonicalLang(code: string): string {
+  return code.trim().toLowerCase().split(/[-_]/)[0];
+}
+
+/**
+ * Whether a locally-stored template language should be treated as the same
+ * language as one coming from Meta. Meta returns locale-qualified codes
+ * ("en_US") while templates authored or seeded locally often use the bare
+ * primary subtag ("en"), so a sync must reconcile "en" with "en_US" instead of
+ * inserting a stale duplicate. Two *different* region-qualified locales
+ * (en_US vs en_GB) remain distinct templates and never collapse into each other.
+ */
+export function sameTemplateLang(a: string, b: string): boolean {
+  const la = a.trim().toLowerCase();
+  const lb = b.trim().toLowerCase();
+  if (la === lb) return true;
+  const ca = canonicalLang(la);
+  if (ca !== canonicalLang(lb)) return false;
+  // Same primary subtag: reconcile only when at least one side is the bare code.
+  return la === ca || lb === ca;
+}
+
 /** Prisma Template row → domain Template (variable count derived from the body). */
 export function mapTemplate(t: Prisma.TemplateGetPayload<object>): Template {
   return {

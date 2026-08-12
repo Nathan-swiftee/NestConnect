@@ -49,6 +49,7 @@ import {
   messageTypeForKind,
   parseReactions,
   previewForType,
+  sameTemplateLang,
 } from "./mappers";
 import { PrismaService } from "./prisma.service";
 import { SecretEncryptionService } from "../crypto/secret-encryption.service";
@@ -331,22 +332,28 @@ export class PrismaStore extends Store {
     orgId: string,
     input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"] },
   ): Promise<Template> {
-    const row = await this.prisma.template.upsert({
-      where: { orgId_name_language: { orgId, name: input.name, language: input.language } },
-      create: {
-        orgId,
-        name: input.name,
-        category: input.category,
-        language: input.language,
-        body: input.body,
-        approvalStatus: input.approvalStatus,
-      },
-      update: {
-        category: input.category,
-        body: input.body,
-        approvalStatus: input.approvalStatus,
-      },
-    });
+    // Match the exact (name, language) first; fall back to the same primary
+    // language so Meta's locale-qualified "en_US" updates a locally-stored "en"
+    // copy rather than inserting a stale duplicate.
+    const sameName = await this.prisma.template.findMany({ where: { orgId, name: input.name } });
+    const match =
+      sameName.find((t) => t.language === input.language) ??
+      sameName.find((t) => sameTemplateLang(t.language, input.language));
+    const fields = {
+      category: input.category,
+      body: input.body,
+      approvalStatus: input.approvalStatus,
+    };
+    const row = match
+      ? await this.prisma.template.update({
+          where: { id: match.id },
+          // Adopt Meta's exact language code so outbound template sends use the
+          // code the template is actually approved under.
+          data: { language: input.language, ...fields },
+        })
+      : await this.prisma.template.create({
+          data: { orgId, name: input.name, language: input.language, ...fields },
+        });
     return mapTemplate(row);
   }
 

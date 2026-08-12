@@ -495,9 +495,9 @@ input,textarea{font:inherit}
    drags for swipe-to-reply. */
 .msg--gesture{touch-action:pan-y}
 
-.msg__react{position:absolute;z-index:20;display:flex;align-items:center;gap:2px;padding:3px;
-  border-radius:var(--r-full);background:var(--elevated);
-  box-shadow:0 6px 18px -6px rgba(0,0,0,.34),0 0 0 1px var(--border);
+.msg__react{position:absolute;z-index:20;display:flex;align-items:center;gap:2px;padding:4px;
+  border-radius:var(--r-full);background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+  border:1px solid var(--glass-brd);box-shadow:var(--shadow-lg),inset 0 1px 0 var(--glass-hi);
   opacity:0;pointer-events:none;transition:opacity .12s var(--ease)}
 /* Compact on desktop (tidy hover picker); bigger touch targets on mobile
    (where it's the centred long-press picker). */
@@ -526,11 +526,15 @@ input,textarea{font:inherit}
   transition:opacity .12s,color .12s,transform .1s var(--ease)}
 .msg.in .msg__reactbtn{right:-38px}
 .msg.out .msg__reactbtn{left:-38px}
-/* Invisible hover-bridge filling the gutter between the bubble and the smiley, so
-   the cursor can travel to the smiley without dropping :hover (which would fade it
-   out of reach). Desktop only — needs :hover. */
-.msg.in .bubblewrap:hover::after{content:"";position:absolute;z-index:-1;top:0;bottom:0;left:100%;width:46px}
-.msg.out .bubblewrap:hover::after{content:"";position:absolute;z-index:-1;top:0;bottom:0;right:100%;width:46px}
+/* An always-present transparent hover zone in the gutter beside the bubble.
+   Because it's part of .bubblewrap, hovering the side near the bubble also reveals
+   the smiley, and the cursor can travel from the bubble to the smiley without
+   :hover dropping (which faded the smiley out of reach before you could click).
+   z-auto keeps it below the smiley (z-19) and picker (z-20) so it never steals
+   their clicks. Desktop only. */
+.msg.in .bubblewrap::after{content:"";position:absolute;top:0;bottom:0;left:100%;width:46px}
+.msg.out .bubblewrap::after{content:"";position:absolute;top:0;bottom:0;right:100%;width:46px}
+@media (hover:none){.msg .bubblewrap::after{display:none}}
 .msg__reactbtn svg{width:18px;height:18px}
 .msg__reactbtn:hover{color:var(--brand-strong);transform:translateY(-50%) scale(1.08)}
 @media (hover:none){.msg__reactbtn{display:none}}

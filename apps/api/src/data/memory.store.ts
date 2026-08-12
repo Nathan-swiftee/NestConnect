@@ -31,7 +31,7 @@ import type {
 } from "@ding/schemas";
 import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE } from "@ding/schemas";
 import { env } from "../config/env";
-import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewForType, templateVariableCount } from "./mappers";
+import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
@@ -266,8 +266,16 @@ export class MemoryStore extends Store {
     _orgId: string,
     input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"] },
   ): Promise<Template> {
-    const existing = this.templates.find((t) => t.name === input.name && t.language === input.language);
+    // Match the exact (name, language) first; fall back to the same primary
+    // language so Meta's locale-qualified "en_US" updates a locally-stored "en"
+    // copy rather than inserting a stale duplicate.
+    const existing =
+      this.templates.find((t) => t.name === input.name && t.language === input.language) ??
+      this.templates.find((t) => t.name === input.name && sameTemplateLang(t.language, input.language));
     if (existing) {
+      // Adopt Meta's exact language code so outbound template sends use the code
+      // the template is actually approved under.
+      existing.language = input.language;
       existing.category = input.category;
       existing.body = input.body;
       existing.approvalStatus = input.approvalStatus;
