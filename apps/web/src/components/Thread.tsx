@@ -1868,11 +1868,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         <div className="thread__id">
           <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="av" size={40} fontSize={14} />
           <div className="who">
-            <h2>{conv.contact.displayName}</h2>
-            {conv.subject && conv.subject !== conv.contact.displayName && (
-              <div className="who-subject">{conv.subject}</div>
-            )}
-            <div className="who-sub">
+            <div className="who-name">
+              <h2>{conv.contact.displayName}</h2>
+              {/* Channel pill sits inline to the right of the name (fills the
+                  header's empty space); the presence line drops below it. */}
               <span className="pill" aria-label={threadChannels.map((ch) => channelMeta(ch).label).join(" + ")}>
                 {threadChannels.map((ch) => {
                   const m = channelMeta(ch);
@@ -1884,8 +1883,15 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   );
                 })}
               </span>
-              <span className="who-presence">{sub}</span>
             </div>
+            {conv.subject && conv.subject !== conv.contact.displayName && (
+              <div className="who-subject">{conv.subject}</div>
+            )}
+            {sub && (
+              <div className="who-sub">
+                <span className="who-presence">{sub}</span>
+              </div>
+            )}
           </div>
         </div>
         <div className="thread__actions">
