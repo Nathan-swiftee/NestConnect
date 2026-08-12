@@ -252,20 +252,9 @@ input,textarea{font:inherit}
   background:var(--surface);border-bottom:1px solid var(--border);box-shadow:0 6px 16px -20px rgba(13,21,18,.5)}
 .thread__id{display:flex;align-items:center;gap:var(--sp-3);min-width:0;flex:1 1 auto}
 .thread__id .av{flex:0 0 auto}
-.thread__id .who{min-width:0}
-/* Name + channel pill share the top line; the name ellipsis-clips and the pill
-   keeps its size to its right (filling the header's empty space). */
-.thread__id .who .who-name{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
-.thread__id .who .who-name h2{min-width:0;flex:0 1 auto}
-.thread__id .who .who-name .pill{flex:0 0 auto}
-.thread__id .who h2{margin:0;font-size:var(--fs-lg);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.thread__id .who .who-subject{font-size:var(--fs-xs);color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
-.thread__id .who .who-sub{display:flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-xs);color:var(--text-muted);margin-top:1px;min-width:0}
-/* The presence text (a "last active" line, or a long email address) takes the
-   available room and ellipsis-clips so it never spills over the header buttons. */
-.thread__id .who .who-presence{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pill{display:inline-flex;align-items:center;gap:5px;font-size:var(--fs-2xs);font-weight:650;padding:3px var(--sp-2);border-radius:var(--r-full);background:var(--surface-2);color:var(--text-muted)}
-.pill .d{width:7px;height:7px;border-radius:50%}
+/* thread-header name/subject/presence line (.who*) + the channel .pill →
+   Tailwind utilities inline in Thread.tsx. The name ellipsis-clips; the pill
+   (flex-none) keeps its size to the right. .thread__id + .av stay as CSS. */
 .thread__actions{margin-left:auto;display:flex;align-items:center;gap:6px;position:relative;flex-shrink:0}
 .assignbtn{display:flex;align-items:center;gap:var(--sp-2);background:var(--brand-tint);color:var(--brand-strong);font-weight:650;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-full);font-size:var(--fs-xs);white-space:nowrap;flex-shrink:0;
   box-shadow:inset 0 1px 0 var(--glass-hi);transition:background .15s,color .15s,transform .12s var(--ease)}
@@ -1558,8 +1547,7 @@ input,textarea{font:inherit}
 .assignbtn__ic{display:inline-grid;place-items:center}
 .assignbtn__ic svg{width:15px;height:15px}
 /* channel-as-icon chips (instead of writing "WhatsApp") */
-.pill-ic{display:inline-grid;place-items:center}
-.pill-ic svg{width:13px;height:13px;display:block}
+/* .pill-ic (channel glyph in the thread pill) → Tailwind utilities in Thread.tsx */
 .chsel-ic{display:inline-grid;place-items:center}
 .chsel-ic svg{width:14px;height:14px;display:block}
 .co-ch{display:inline-flex;align-items:center;gap:6px}
@@ -1775,7 +1763,7 @@ button.tpl-row:active{transform:scale(.99)}
   .thread__back{width:34px;height:34px;flex:0 0 34px}
   .thread__head .thread__id{gap:6px}
   .thread__head .thread__id .av{width:32px!important;height:32px!important}
-  .thread__head .thread__id .who h2{font-size:var(--fs-md)}
+  /* thread-head name shrinks on mobile → max-[820px]:text-md inline in Thread.tsx */
   /* Snooze and Labels fold into the ⋯ sheet on mobile, so their wrappers hold
      only a hidden button plus the fixed popover they open. Pull them out of the
      actions flex flow (absolute — the popovers are position:fixed, so they still

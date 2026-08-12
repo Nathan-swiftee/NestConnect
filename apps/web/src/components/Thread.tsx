@@ -1867,17 +1867,17 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         )}
         <div className="thread__id">
           <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="av" size={40} fontSize={14} />
-          <div className="who">
-            <div className="who-name">
-              <h2>{conv.contact.displayName}</h2>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="min-w-0 flex-initial m-0 text-lg font-bold whitespace-nowrap overflow-hidden text-ellipsis max-[820px]:text-md">{conv.contact.displayName}</h2>
               {/* Channel pill sits inline to the right of the name (fills the
                   header's empty space); the presence line drops below it. */}
-              <span className="pill" aria-label={threadChannels.map((ch) => channelMeta(ch).label).join(" + ")}>
+              <span className="inline-flex items-center gap-[5px] text-2xs font-[650] py-[3px] px-2 rounded-full bg-surface-2 text-muted flex-none" aria-label={threadChannels.map((ch) => channelMeta(ch).label).join(" + ")}>
                 {threadChannels.map((ch) => {
                   const m = channelMeta(ch);
                   const G = m.Glyph;
                   return (
-                    <span key={ch} className="pill-ic" style={{ color: m.color }} title={m.label}>
+                    <span key={ch} className="inline-grid place-items-center [&>svg]:w-[13px] [&>svg]:h-[13px]" style={{ color: m.color }} title={m.label}>
                       <G />
                     </span>
                   );
@@ -1885,11 +1885,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </span>
             </div>
             {conv.subject && conv.subject !== conv.contact.displayName && (
-              <div className="who-subject">{conv.subject}</div>
+              <div className="text-xs text-fg font-semibold whitespace-nowrap overflow-hidden text-ellipsis max-w-[420px]">{conv.subject}</div>
             )}
             {sub && (
-              <div className="who-sub">
-                <span className="who-presence">{sub}</span>
+              <div className="flex items-center gap-2 text-xs text-muted mt-px min-w-0">
+                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{sub}</span>
               </div>
             )}
           </div>
