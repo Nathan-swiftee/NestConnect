@@ -572,17 +572,17 @@ input,textarea{font:inherit}
      picker doesn't pop when the cursor merely crosses the gutter. */
   /* Hovering the bubble reveals the corner chevron + the side smiley. */
   .msg .bubblewrap:hover .msg__menubtn,.msg:focus-within .msg__menubtn,
-  .msg .bubblewrap:hover .msg__reactbtn,.msg:focus-within .msg__reactbtn{opacity:1;pointer-events:auto}
+  .msg .bubblewrap:hover .msg__reactbtn,.msg:focus-within .msg__reactbtn,
+  .msg .bubblewrap:has(.msg__react.held) .msg__reactbtn{opacity:1;pointer-events:auto}
   /* The reaction row opens when the smiley is clicked (.held) — WhatsApp-web
      behaviour — not on bare bubble hover. */
   .msg__react.held{opacity:1;pointer-events:auto;animation:reactIn .19s cubic-bezier(.2,.9,.3,1.1)}
   .msg__react.held .msg__react-e{animation:emojiPop .34s cubic-bezier(.25,.8,.35,1) backwards}
-  .msg .msg__react{top:-40px}
-  .msg.in .msg__react{left:0;transform-origin:bottom left}
-  .msg.out .msg__react{right:0;transform-origin:bottom right}
-  /* Transparent bridge across the gap to the bubble so moving the mouse up
-     to the row never drops :hover (the "gone before I reach it" bug). */
-  .msg__react::before{content:"";position:absolute;left:0;right:0;top:100%;height:14px}
+  /* Pop the picker directly above the smiley trigger (gutter-side, vertically
+     centred on the bubble) — WhatsApp-web, not above the bubble. */
+  .msg .msg__react{top:auto;bottom:calc(50% + 22px)}
+  .msg.in .msg__react{left:auto;right:-44px;transform-origin:bottom right}
+  .msg.out .msg__react{right:auto;left:-44px;transform-origin:bottom left}
 }
 /* Mobile: no hover — long-press shows the row centred above, growing inward */
 @media (hover:none){
