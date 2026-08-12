@@ -489,11 +489,11 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
             )}
           </div>
           {!isGroup && (
-            <div className="custkv">
+            <div className="flex flex-col gap-[3px] w-full mt-3 text-left">
               {conv.contact.phone && (
                 <button
                   type="button"
-                  className="custkv__row"
+                  className="flex items-center gap-2 w-full p-2 rounded-12 text-sm text-fg [transition:background_.15s] hover:bg-surface-2 [&>svg]:w-4 [&>svg]:h-4 [&>svg]:flex-none [&>svg]:text-faint [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap"
                   title="Copy phone number"
                   onClick={() => copyValue(conv.contact.phone as string, "Phone")}
                 >
@@ -504,7 +504,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
               {conv.contact.email && (
                 <button
                   type="button"
-                  className="custkv__row"
+                  className="flex items-center gap-2 w-full p-2 rounded-12 text-sm text-fg [transition:background_.15s] hover:bg-surface-2 [&>svg]:w-4 [&>svg]:h-4 [&>svg]:flex-none [&>svg]:text-faint [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap"
                   title="Copy email address"
                   onClick={() => copyValue(conv.contact.email as string, "Email")}
                 >
@@ -514,7 +514,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
               )}
               <button
                 type="button"
-                className="custkv__row custkv__row--action"
+                className="flex items-center gap-2 w-full p-2 rounded-12 text-sm text-brand font-semibold [transition:background_.15s] hover:bg-surface-2 [&>svg]:w-4 [&>svg]:h-4 [&>svg]:flex-none [&>svg]:text-brand [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap"
                 onClick={() => onOpenProfile?.(conv.contact.id)}
               >
                 <ProfileIcon />
