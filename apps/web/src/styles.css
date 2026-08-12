@@ -115,7 +115,7 @@ input,textarea{font:inherit}
 .navrow.active .badge{background:var(--brand-strong);color:#fff}
 .badge.on{background:var(--brand);color:#fff}
 .badge.warn{background:var(--amber);color:#fff}
-.sub{margin:2px 0 2px 30px;display:flex;flex-direction:column;gap:1px;animation:subIn .22s var(--ease)}
+/* .sub → Tailwind utilities on the Sidebar sub-lists (keeps the subIn keyframe below) */
 @keyframes subIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
 .subrow{display:flex;align-items:center;gap:var(--sp-2);padding:6px var(--sp-2);border-radius:var(--r-8);color:var(--text-muted);text-align:left;font-size:var(--fs-sm);width:100%;position:relative;z-index:1}
 .subrow:hover{color:var(--text)}
@@ -1721,7 +1721,7 @@ button.tpl-row:active{transform:scale(.99)}
 .side__me-go svg{width:18px;height:18px}
 .side__me-id b{font-size:var(--fs-sm);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .side__me-id small{font-size:var(--fs-2xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
-.side__foot-actions{display:flex;align-items:center;gap:8px}
+/* .side__foot-actions → Tailwind utilities (flex items-center gap-2) on the Sidebar footer */
 /* Compact icon button (the footer only shows on mobile) so it can't wrap to two
    lines and sits inline with the other footer icons. */
 .side__signout{margin-left:auto;width:36px;height:36px;flex:0 0 36px;display:grid;place-items:center;border-radius:var(--r-full);background:var(--danger-tint);color:var(--danger);transition:background .15s,color .15s,transform .12s var(--ease)}

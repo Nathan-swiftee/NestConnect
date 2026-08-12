@@ -166,7 +166,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
             <span className="badge on">{inbound.count}</span>
           </button>
         )}
-        <div className="sub">
+        <div className="flex flex-col gap-px my-0.5 ml-[30px] [animation:subIn_.22s_var(--ease)]">
           {subs.map((s) => {
             const due = s.key === "snoozed" && (s.due ?? 0) > 0;
             return (
@@ -244,7 +244,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
                 <span className={"badge" + (i.count > 0 ? " on" : "")}>{i.count}</span>
               </button>
               {open && (
-                <div className="sub">
+                <div className="flex flex-col gap-px my-0.5 ml-[30px] [animation:subIn_.22s_var(--ease)]">
                   {groups.map((g) => (
                     <button key={g.id} className="subrow" onClick={() => onSelectConversation?.(g.id)}>
                       <span className="navicon" style={{ color: gm.color, width: 16, flex: "0 0 16px" }}>
@@ -301,7 +301,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           </div>
           {onOpenPersonalSettings && <span className="side__me-go" aria-hidden="true"><ChevronRight /></span>}
         </button>
-        <div className="side__foot-actions">
+        <div className="flex items-center gap-2">
           {onOpenCustomers && (
             <button className="iconbtn" title="Customers" onClick={onOpenCustomers}>
               <ContactsIcon />
