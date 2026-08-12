@@ -147,6 +147,7 @@ export function Workspace() {
                 onClose={isCompact ? () => setDrawerOpen(false) : undefined}
                 onOpenSettings={() => { setSection("settings"); setDrawerOpen(false); }}
                 onOpenCustomers={() => { setSection("customers"); setDrawerOpen(false); }}
+                onOpenPersonalSettings={() => { setPersonalOpen(true); setDrawerOpen(false); }}
                 isCollapsed={sidebarHidden}
                 onToggleCollapse={isCompact ? undefined : () => setSidebarCollapsed((v) => !v)}
               />

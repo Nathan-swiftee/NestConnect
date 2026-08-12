@@ -27,6 +27,22 @@ export function clockTime(iso: string): string {
   return `${h}:${m < 10 ? "0" : ""}${m}`;
 }
 
+/** Conversation-list timestamp in the WhatsApp style, mirroring the in-thread day
+ *  dividers rather than a raw age: today → the clock time, yesterday →
+ *  "Yesterday", older → a short date ("12 Aug", or "12 Aug 24" across a year). */
+export function listTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return clockTime(iso);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(undefined, sameYear
+    ? { day: "numeric", month: "short" }
+    : { day: "numeric", month: "short", year: "2-digit" });
+}
+
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   const first = parts[0]?.[0] ?? "";

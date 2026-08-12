@@ -1822,8 +1822,15 @@ button.tpl-row:active{transform:scale(.99)}
 .list__burger svg{width:20px;height:20px}
 .side__close{display:none;width:34px;height:34px;color:var(--text-muted);font-size:var(--fs-sm);margin-left:auto}
 .side__foot{display:none;flex-direction:column;gap:var(--sp-2);padding:var(--sp-3) var(--sp-3);border-top:1px solid var(--border)}
-.side__me{display:flex;align-items:center;gap:10px}
-.side__me-id{min-width:0}
+.side__me{display:flex;align-items:center;gap:10px;width:100%;padding:6px 8px;border:0;border-radius:var(--r-8);background:none;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background 120ms ease}
+.side__me:hover{background:var(--surface-2)}
+.side__me:active{transform:translateY(.5px)}
+.side__me:disabled{cursor:default}
+.side__me:disabled:hover{background:none}
+.side__me .av{flex:0 0 auto}
+.side__me-id{min-width:0;flex:1 1 auto}
+.side__me-go{flex:0 0 auto;color:var(--text-faint);display:inline-grid;place-items:center}
+.side__me-go svg{width:18px;height:18px}
 .side__me-id b{font-size:var(--fs-sm);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .side__me-id small{font-size:var(--fs-2xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .side__foot-actions{display:flex;align-items:center;gap:8px}

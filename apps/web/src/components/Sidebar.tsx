@@ -26,12 +26,16 @@ interface Props {
   onClose?: () => void;
   onOpenSettings?: () => void;
   onOpenCustomers?: () => void;
+  /** Opens the current user's own personal settings (profile, availability,
+   *  signature, password). On desktop this lives in the icon-rail avatar menu;
+   *  in the drawer it's reached by tapping your profile. */
+  onOpenPersonalSettings?: () => void;
   /** Desktop only: collapse the sidebar to the icon rail. */
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, isCollapsed, onToggleCollapse }: Props) {
+export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
   const { data } = useViews();
   const { data: meData } = useMe();
   const { data: teamList } = useTeams();
@@ -278,7 +282,16 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
       </div>
 
       <div className="side__foot">
-        <div className="side__me">
+        {/* Tapping your profile opens personal settings — the mobile route to it,
+            since the icon-rail avatar menu (its desktop home) is hidden here. */}
+        <button
+          type="button"
+          className="side__me"
+          onClick={() => onOpenPersonalSettings?.()}
+          disabled={!onOpenPersonalSettings}
+          title="Personal settings"
+          aria-label="Open your personal settings"
+        >
           <span className="av" style={{ background: avatarBg(me?.name ?? "", me?.avatarColor), width: 34, height: 34, fontSize: 12 }}>
             {me?.avatarUrl ? <img className="av__photo" src={me.avatarUrl} alt="" /> : me ? initials(me.name) : "··"}
           </span>
@@ -286,7 +299,8 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
             <b>{me?.name ?? "You"}</b>
             <small>{me?.email}</small>
           </div>
-        </div>
+          {onOpenPersonalSettings && <span className="side__me-go" aria-hidden="true"><ChevronRight /></span>}
+        </button>
         <div className="side__foot-actions">
           {onOpenCustomers && (
             <button className="iconbtn" title="Customers" onClick={onOpenCustomers}>

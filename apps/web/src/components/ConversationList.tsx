@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useConversations, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
-import { relativeTime, slaCountdown, timeUntil } from "../lib/format";
+import { listTime, slaCountdown, timeUntil } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon, PanelLeftIcon } from "../lib/icons";
 import { NotificationBell } from "./NotificationBell";
@@ -318,7 +318,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
               <div className="conv__main">
                 <div className="conv__top">
                   <span className="conv__name">{c.contact.displayName}</span>
-                  <span className="conv__time">{relativeTime(c.lastActivityAt)}</span>
+                  <span className="conv__time">{listTime(c.lastActivityAt)}</span>
                 </div>
                 <div className="conv__prev">
                   <p>{c.preview}</p>
