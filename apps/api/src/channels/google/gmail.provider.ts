@@ -8,10 +8,11 @@ import {
   type SendResult,
   type SupportsContext,
 } from "../channel-provider";
+import { MediaService } from "../../storage/media.service";
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
 import { buildMime, gmail, GmailApiError } from "./gmail-api";
 import { textToHtml } from "../email/html-sanitize";
-import { appendSignature, subjectLine } from "../email/email.provider";
+import { appendSignature, inlineInternalImages, subjectLine } from "../email/email.provider";
 
 /**
  * Sends outbound email through a Gmail-connected inbox using the Gmail API and
@@ -25,6 +26,7 @@ export class GmailProvider extends ChannelProvider {
   constructor(
     private readonly google: GoogleOAuthService,
     private readonly store: Store,
+    private readonly media: MediaService,
   ) {
     super();
   }
@@ -61,11 +63,14 @@ export class GmailProvider extends ChannelProvider {
       if (!inbox) return { ok: false, error: "Gmail inbox not found" };
       const accessToken = await this.google.accessTokenForInbox(inbox, config);
       // The sender's signature is appended to the wire body only.
-      const { html: htmlBody, text: textBody } = appendSignature(
+      const { html: signedHtml, text: textBody } = appendSignature(
         params.bodyHtml || textToHtml(params.body),
         params.body,
         params.signatureHtml,
       );
+      // Embed any images hosted on our own media endpoint as cid: parts (a
+      // multipart/related) so a recipient with no app session can load them.
+      const { html: htmlBody, inlineImages } = await inlineInternalImages(signedHtml, this.media);
       const raw = buildMime({
         from: fromAddress,
         fromName: inbox.name,
@@ -82,6 +87,7 @@ export class GmailProvider extends ChannelProvider {
         // A reply's References should chain the message it answers.
         references: params.context?.inReplyTo,
         attachments,
+        inlineImages,
       });
       await gmail.send(accessToken, raw);
       return { ok: true, channelMsgId: messageId };

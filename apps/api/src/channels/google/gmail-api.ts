@@ -5,6 +5,10 @@
  * provider + sync logic easy to read and to test against a fake client.
  */
 
+// Type-only import (erased at build) — keeps this a runtime-dependency-free client
+// while reusing the inline-image shape the email provider produces.
+import type { InlineImage } from "../email/email.provider";
+
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 
 export interface GmailHeader {
@@ -290,6 +294,9 @@ export interface BuildMimeInput {
   inReplyTo?: string;
   references?: string;
   attachments?: MimeAttachment[];
+  /** Images to embed inline, referenced from `html` as `cid:<contentId>`. They're
+   *  bundled with the body in a multipart/related so clients resolve each cid. */
+  inlineImages?: InlineImage[];
 }
 
 /** Base64 a buffer and hard-wrap at 76 chars per RFC 2045. */
@@ -323,9 +330,11 @@ export function buildMime(input: BuildMimeInput): string {
   if (input.references) headers.push(`References: ${input.references}`);
 
   const attachments = input.attachments ?? [];
+  const inlineImages = input.inlineImages ?? [];
   const html = input.html?.trim() ? input.html : undefined;
   const uid = input.messageId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 20);
   const altBoundary = `=_ding_alt_${uid}`;
+  const relBoundary = `=_ding_rel_${uid}`;
   const mixBoundary = `=_ding_mix_${uid}`;
 
   // The reply body section: either a lone text/plain, or a text+html alternative.
@@ -350,6 +359,30 @@ export function buildMime(input: BuildMimeInput): string {
   } else {
     bodyHeader = 'Content-Type: text/plain; charset="UTF-8"\r\nContent-Transfer-Encoding: base64';
     bodyLines = [b64Wrap(Buffer.from(input.body, "utf8"))];
+  }
+
+  // When the HTML references images by `cid:` (inlined from our media endpoint),
+  // bundle the body and those images in a multipart/related so mail clients
+  // resolve each cid to its embedded bytes. This becomes the new "body" section,
+  // which the attachment logic below wraps in multipart/mixed if needed.
+  if (inlineImages.length) {
+    const rootType = html ? "multipart/alternative" : "text/plain";
+    const relLines: string[] = [`--${relBoundary}`, bodyHeader, "", ...bodyLines];
+    for (const img of inlineImages) {
+      const name = encodeHeader(img.filename);
+      relLines.push(
+        `--${relBoundary}`,
+        `Content-Type: ${img.mime}; name="${name}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-ID: <${img.contentId}>`,
+        `Content-Disposition: inline; filename="${name}"`,
+        "",
+        b64Wrap(img.bytes),
+      );
+    }
+    relLines.push(`--${relBoundary}--`);
+    bodyHeader = `Content-Type: multipart/related; boundary="${relBoundary}"; type="${rootType}"`;
+    bodyLines = relLines;
   }
 
   let mime: string;

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { ChannelType } from "@ding/schemas";
 import { env } from "../../config/env";
+import { MediaService } from "../../storage/media.service";
 import {
   ChannelProvider,
   type SendParams,
@@ -26,6 +27,79 @@ export function appendSignature(
 }
 
 /**
+ * An image to embed inline in an outbound email, referenced from the HTML as
+ * `cid:<contentId>`. `contentId` is the bare id (the MIME header carries it in
+ * angle brackets: `Content-ID: <contentId>`).
+ */
+export interface InlineImage {
+  contentId: string;
+  filename: string;
+  mime: string;
+  bytes: Buffer;
+}
+
+// Captures an <img>'s src: group 1 = everything up to the opening quote, group 2
+// = the quote char, group 3 = the URL. Lets us rewrite the URL only.
+const IMG_SRC_RE = /(<img\b[^>]*?\bsrc\s*=\s*)(["'])(.*?)\2/gi;
+
+/**
+ * Pull the media attachment id out of a URL that points at our own media
+ * endpoint (`/api/media/:id`, absolute or root-relative). Returns null for
+ * anything else — external `https://` images, `data:` URIs and existing `cid:`
+ * refs — so only our internally-hosted images are touched.
+ */
+function mediaIdFromUrl(url: string): string | null {
+  const trimmed = (url ?? "").trim();
+  if (!trimmed || trimmed.startsWith("cid:") || trimmed.startsWith("data:")) return null;
+  const m = /\/api\/media\/([A-Za-z0-9._-]+)/.exec(trimmed);
+  return m ? m[1] : null;
+}
+
+/**
+ * Rewrite <img> tags that point at this app's own (auth-guarded) media endpoint
+ * into `cid:` references, returning the referenced bytes as inline attachments.
+ * An email RECIPIENT has no app session, so a `https://<host>/api/media/:id`
+ * image (e.g. a signature logo) would otherwise render broken; embedding it as a
+ * `cid:` part makes it show. Bytes are read internally via MediaService — the
+ * same path outbound attachments use — never an authed HTTP call back to us.
+ *
+ * External images and existing `cid:` refs are left untouched. No-op when the
+ * HTML has no internal images; a media-load failure skips that one image (the
+ * tag is left as-is) rather than breaking the send.
+ */
+export async function inlineInternalImages(
+  html: string,
+  media: MediaService,
+): Promise<{ html: string; inlineImages: InlineImage[] }> {
+  if (!html || !html.includes("/api/media/")) return { html, inlineImages: [] };
+
+  // attachmentId → contentId, so an image used more than once is attached once.
+  const cidById = new Map<string, string>();
+  const inlineImages: InlineImage[] = [];
+
+  // Resolve referenced media first (the regex walk is sync; loads are async).
+  for (const match of html.matchAll(IMG_SRC_RE)) {
+    const id = mediaIdFromUrl(match[3]);
+    if (!id || cidById.has(id)) continue;
+    const loaded = await media.load(id);
+    if (!loaded) continue; // not ours / missing → leave the tag as it was
+    const contentId = `img-${id}@ding.media`;
+    cidById.set(id, contentId);
+    inlineImages.push({ contentId, filename: loaded.filename, mime: loaded.mime, bytes: loaded.bytes });
+  }
+
+  if (!inlineImages.length) return { html, inlineImages: [] };
+
+  const rewritten = html.replace(IMG_SRC_RE, (whole, pre: string, quote: string, url: string) => {
+    const id = mediaIdFromUrl(url);
+    const contentId = id ? cidById.get(id) : undefined;
+    return contentId ? `${pre}${quote}cid:${contentId}${quote}` : whole;
+  });
+
+  return { html: rewritten, inlineImages };
+}
+
+/**
  * Email sender. Runs in mock mode until POSTMARK_TOKEN is set. We mint our own
  * RFC Message-ID and set In-Reply-To/References so replies thread back to the
  * right conversation (the Message-ID is stored as the message's channelMsgId).
@@ -33,6 +107,10 @@ export function appendSignature(
 @Injectable()
 export class EmailProvider extends ChannelProvider {
   private readonly logger = new Logger(EmailProvider.name);
+
+  constructor(private readonly media: MediaService) {
+    super();
+  }
 
   private get isLive(): boolean {
     return Boolean(env.email.postmarkToken);
@@ -68,18 +146,31 @@ export class EmailProvider extends ChannelProvider {
         headers.push({ Name: "In-Reply-To", Value: params.context.inReplyTo });
         headers.push({ Name: "References", Value: params.context.inReplyTo });
       }
-      const attachments = (params.media ?? []).map((m) => ({
-        Name: m.filename,
-        Content: m.bytes.toString("base64"),
-        ContentType: m.mime,
-      }));
       // Rich reply → its HTML; else derive a simple HTML alternative. The
       // sender's signature is appended to the wire body only.
-      const { html: htmlBody, text: textBody } = appendSignature(
+      const { html: signedHtml, text: textBody } = appendSignature(
         params.bodyHtml || textToHtml(params.body),
         params.body,
         params.signatureHtml,
       );
+      // Embed any images hosted on our own media endpoint as cid: attachments so
+      // a recipient (no app session) can load them; external images are left be.
+      const { html: htmlBody, inlineImages } = await inlineInternalImages(signedHtml, this.media);
+      const attachments = [
+        ...(params.media ?? []).map((m) => ({
+          Name: m.filename,
+          Content: m.bytes.toString("base64"),
+          ContentType: m.mime,
+        })),
+        // A ContentID marks the attachment inline/embeddable — Postmark links it
+        // to the matching `cid:` reference in the HTML body.
+        ...inlineImages.map((img) => ({
+          Name: img.filename,
+          Content: img.bytes.toString("base64"),
+          ContentType: img.mime,
+          ContentID: `cid:${img.contentId}`,
+        })),
+      ];
       const res = await fetch("https://api.postmarkapp.com/email", {
         method: "POST",
         headers: {
