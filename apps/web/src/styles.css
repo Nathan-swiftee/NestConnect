@@ -1443,19 +1443,8 @@ input,textarea{font:inherit}
 .setupcard__sub small{color:var(--text-faint);line-height:1.5}
 
 /* ---- Customers (CRM) ---- */
-.custsearch{display:flex;align-items:center;gap:var(--sp-2);background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-full);padding:var(--sp-2) var(--sp-4);margin-bottom:16px;color:var(--text-faint);transition:border-color .14s,background .14s}
-.custsearch:focus-within{border-color:var(--brand);background:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
-.custsearch svg{width:16px;height:16px;flex:0 0 16px}
-.custsearch input{flex:1;min-width:0;background:none;border:0;outline:none;font-size:var(--fs-md);color:var(--text)}
-.custsearch input::placeholder{color:var(--text-faint)}
-
-/* row: tag chips + routing pill */
-.custtags{display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end;flex:0 1 auto;min-width:0;max-width:38%}
-.custtag{font-size:var(--fs-2xs);font-weight:650;padding:3px var(--sp-2);border-radius:var(--r-full);background:var(--surface-2);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
-.custtag.more{color:var(--text-faint)}
-.routepill{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;font-size:var(--fs-2xs);font-weight:700;padding:var(--sp-1) var(--sp-2);border-radius:var(--r-full);background:var(--surface-2);color:var(--text-faint)}
-.routepill svg{width:13px;height:13px}
-.routepill.on{background:var(--brand-tint);color:var(--brand-strong)}
+/* .custsearch / .custtags / .custtag(.more) / .routepill(.on) → Tailwind
+   utilities inline in Customers.tsx (search box, tag chips, routing pill). */
 
 /* tag editor */
 .tagedit{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-2);min-height:44px;border:1px solid transparent;border-radius:var(--r-12);background:var(--surface);transition:border-color .14s,box-shadow .14s}
@@ -1488,10 +1477,7 @@ input,textarea{font:inherit}
 .custconv__st.st-closed{background:var(--surface-2);color:var(--text-faint)}
 .custconv__t{flex:0 0 auto;font-size:var(--fs-2xs);color:var(--text-faint);font-variant-numeric:tabular-nums}
 
-.custempty{display:flex;flex-direction:column;align-items:center;text-align:center;gap:var(--sp-3);padding:44px var(--sp-5);color:var(--text-muted)}
-.custempty__ic{width:52px;height:52px;border-radius:var(--r-16);background:var(--surface-2);display:grid;place-items:center;color:var(--text-faint)}
-.custempty__ic svg{width:24px;height:24px}
-.custempty p{margin:0;font-size:var(--fs-sm);max-width:340px;line-height:1.45}
+/* .custempty(.__ic) → Tailwind utilities inline in Customers.tsx (empty state) */
 
 /* auto-routing controls in the details panel */
 .routehint{font-size:var(--fs-xs);color:var(--text-faint);margin:1px 0 11px;line-height:1.45}
@@ -1524,8 +1510,7 @@ input,textarea{font:inherit}
   .setmember .rowacts{grid-column:3;grid-row:1;justify-self:end}
   .setmember .setrow__meta{grid-column:2;grid-row:2;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px;max-width:none;text-align:left}
   .setmember .connpill{grid-column:3;grid-row:2;justify-self:end;align-self:center}
-  .custtags{justify-content:flex-start;max-width:100%;order:4;flex-basis:100%}
-  .routepill{order:3}
+  /* .custtags / .routepill mobile reorder → max-[820px]: variants inline in Customers.tsx */
 }
 
 /* groups */

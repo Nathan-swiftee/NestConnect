@@ -370,9 +370,9 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
             )}
           </div>
 
-          <div className="custsearch">
+          <div className="flex items-center gap-2 bg-surface-2 border border-solid border-transparent rounded-full py-2 px-4 mb-4 text-faint [transition:border-color_.14s,background_.14s] focus-within:border-brand focus-within:bg-surface focus-within:shadow-[0_0_0_3px_var(--brand-ring)] [&>svg]:w-4 [&>svg]:h-4 [&>svg]:flex-none">
             <SearchIcon />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, company, number, email or tag…" />
+            <input className="flex-1 min-w-0 bg-transparent border-0 [outline:none] text-md text-fg placeholder:text-faint" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, company, number, email or tag…" />
           </div>
 
           {adding && (
@@ -397,14 +397,17 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
                       <b>{c.displayName}</b>
                       <small>{c.company || c.phone || c.email || "No details yet"}</small>
                     </div>
-                    <div className="custtags">
+                    <div className="flex flex-wrap gap-[5px] justify-end flex-initial min-w-0 max-w-[38%] max-[820px]:justify-start max-[820px]:max-w-full max-[820px]:order-4 max-[820px]:basis-full">
                       {(c.tags ?? []).slice(0, 3).map((t) => (
-                        <span className="custtag" key={t}>{t}</span>
+                        <span className="text-2xs font-[650] py-[3px] px-2 rounded-full bg-surface-2 text-muted whitespace-nowrap overflow-hidden text-ellipsis max-w-[110px]" key={t}>{t}</span>
                       ))}
-                      {(c.tags?.length ?? 0) > 3 && <span className="custtag more">+{(c.tags?.length ?? 0) - 3}</span>}
+                      {(c.tags?.length ?? 0) > 3 && <span className="text-2xs font-[650] py-[3px] px-2 rounded-full bg-surface-2 text-faint whitespace-nowrap overflow-hidden text-ellipsis max-w-[110px]">+{(c.tags?.length ?? 0) - 3}</span>}
                     </div>
                     <span
-                      className={"routepill" + (owner.pinned ? " on" : "")}
+                      className={
+                        "inline-flex items-center gap-[5px] flex-none text-2xs font-bold py-1 px-2 rounded-full [&>svg]:w-[13px] [&>svg]:h-[13px] max-[820px]:order-3 " +
+                        (owner.pinned ? "bg-brand-tint text-brand-strong" : "bg-surface-2 text-faint")
+                      }
                       title={owner.pinned ? `Pinned to ${owner.label}` : "Follows channel routing"}
                     >
                       <RouteIcon /> {owner.label}
@@ -432,12 +435,12 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
               );
             })}
             {contacts.data && filtered.length === 0 && (
-              <div className="custempty">
+              <div className="flex flex-col items-center text-center gap-3 py-11 px-5 text-muted [&>p]:m-0 [&>p]:text-sm [&>p]:max-w-[340px] [&>p]:leading-[1.45]">
                 {q ? (
                   <p>No customers match “{q}”.</p>
                 ) : (
                   <>
-                    <span className="custempty__ic"><PhoneIcon /></span>
+                    <span className="w-[52px] h-[52px] rounded-16 bg-surface-2 grid place-items-center text-faint [&>svg]:w-6 [&>svg]:h-6"><PhoneIcon /></span>
                     <p>No customers yet. They appear here automatically when someone messages you — or add one now.</p>
                   </>
                 )}
