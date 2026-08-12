@@ -449,8 +449,11 @@ function MessageBubble({
   const bubbleRef = useRef<HTMLDivElement>(null);
   const hintRef = useRef<HTMLSpanElement>(null);
   const gestureRef = useRef<{ x: number; y: number; lp: number; swiping: boolean; active: boolean } | null>(null);
+  // Inbound swipes right, outbound swipes left — mirrored, like WhatsApp. `dir`
+  // flips the translate direction; the reply arrow side is mirrored in CSS.
+  const dir = out ? -1 : 1;
   const setSwipe = (px: number) => {
-    if (bubbleRef.current) bubbleRef.current.style.transform = px ? `translateX(${px}px)` : "";
+    if (bubbleRef.current) bubbleRef.current.style.transform = px ? `translateX(${dir * px}px)` : "";
     if (hintRef.current) {
       // Reply arrow fades and grows as the bubble slides, snapping to full size
       // right at the commit threshold (WhatsApp feel).
@@ -496,17 +499,18 @@ function MessageBubble({
     if (!g || !g.active) return;
     const dx = e.clientX - g.x;
     const dy = e.clientY - g.y;
+    const along = dx * dir; // positive when swiping in the reply direction for this bubble
     if (!g.swiping) {
       if (Math.abs(dy) > 12 && Math.abs(dy) >= Math.abs(dx)) { g.active = false; window.clearTimeout(g.lp); return; }
-      if (dx > 10 && dx > Math.abs(dy)) { g.swiping = true; window.clearTimeout(g.lp); }
+      if (along > 10 && along > Math.abs(dy)) { g.swiping = true; window.clearTimeout(g.lp); }
     }
-    if (g.swiping) setSwipe(Math.max(0, Math.min(dx, 92)));
+    if (g.swiping) setSwipe(Math.max(0, Math.min(along, 92)));
   };
   const onPointerEnd = (e: RPointerEvent<HTMLDivElement>) => {
     const g = gestureRef.current;
     if (!g) return;
     window.clearTimeout(g.lp);
-    if (g.swiping) endGesture(e.clientX - g.x > 52);
+    if (g.swiping) endGesture((e.clientX - g.x) * dir > 52);
     gestureRef.current = null;
   };
   const atts = m.attachments ?? [];
@@ -652,6 +656,16 @@ function MessageBubble({
               onClick={actions.onMenuToggle}
             >
               <ChevronDown />
+            </button>
+            {/* Desktop: a smiley on the outer side of the bubble; click it to open
+                the reaction picker (WhatsApp-web). Hidden on touch (long-press there). */}
+            <button
+              type="button"
+              className="msg__reactbtn"
+              aria-label="React to message"
+              onClick={actions.onHold}
+            >
+              <EmojiIcon />
             </button>
             {actions.menuOpen && (
               <div className="msg__menu" role="menu">
@@ -1136,7 +1150,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     if (!reactFor && !menuFor) return;
     const onDown = (e: Event) => {
       const t = e.target as HTMLElement;
-      if (!t.closest(".msg__react") && !t.closest(".msg__menubtn")) setReactFor(null);
+      if (!t.closest(".msg__react") && !t.closest(".msg__reactbtn") && !t.closest(".msg__menubtn")) setReactFor(null);
       if (!t.closest(".msg__menu") && !t.closest(".msg__menubtn")) setMenuFor(null);
     };
     const onKey = (e: KeyboardEvent) => {

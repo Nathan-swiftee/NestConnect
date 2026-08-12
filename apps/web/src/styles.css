@@ -517,6 +517,19 @@ input,textarea{font:inherit}
 .msg__menubtn svg{width:14px;height:14px}
 .msg__menubtn:hover{color:var(--text);background:color-mix(in srgb,var(--text) 12%,transparent)}
 
+/* Desktop: a floating smiley in the outer gutter beside the bubble; click it to
+   open the reaction picker. Revealed on bubble hover; hidden on touch. */
+.msg__reactbtn{position:absolute;top:50%;z-index:19;width:30px;height:30px;display:grid;place-items:center;
+  border-radius:var(--r-full);color:var(--text-muted);background:var(--elevated);
+  box-shadow:0 2px 8px -3px rgba(13,21,18,.22),0 0 0 1px var(--border);
+  opacity:0;pointer-events:none;transform:translateY(-50%);
+  transition:opacity .12s,color .12s,transform .1s var(--ease)}
+.msg.in .msg__reactbtn{right:-38px}
+.msg.out .msg__reactbtn{left:-38px}
+.msg__reactbtn svg{width:18px;height:18px}
+.msg__reactbtn:hover{color:var(--brand-strong);transform:translateY(-50%) scale(1.08)}
+@media (hover:none){.msg__reactbtn{display:none}}
+
 .msg__menu{position:absolute;top:26px;z-index:30;min-width:154px;padding:5px;
   border-radius:var(--r-12);background:var(--elevated);
   box-shadow:0 12px 32px -8px rgba(0,0,0,.4),0 0 0 1px var(--border);animation:popIn .13s var(--ease)}
@@ -545,6 +558,10 @@ input,textarea{font:inherit}
   box-shadow:0 1px 3px rgba(0,0,0,.14);opacity:0;pointer-events:none;transition:background .12s,color .12s}
 .msg__swipehint svg{width:16px;height:16px}
 .msg__swipehint.ready{background:var(--brand);color:#fff}
+/* Outbound bubbles are right-aligned and swipe left, so mirror the reply arrow to
+   the right edge and flip it to point the natural way. */
+.msg.out .msg__swipehint{left:auto;right:6px}
+.msg.out .msg__swipehint svg{transform:scaleX(-1)}
 
 /* Desktop: reveal on hover/focus. The emoji row pops just above the message's
    near corner (WhatsApp-web style) — a horizontal 6-emoji row can't fit the side
@@ -553,9 +570,13 @@ input,textarea{font:inherit}
 @media (hover:hover){
   /* Reveal on hovering the bubble specifically (not the full-width row) so the
      picker doesn't pop when the cursor merely crosses the gutter. */
-  .msg .bubblewrap:hover .msg__menubtn,.msg:focus-within .msg__menubtn{opacity:1;pointer-events:auto}
-  .msg .bubblewrap:hover .msg__react,.msg:focus-within .msg__react{opacity:1;pointer-events:auto;animation:reactIn .19s cubic-bezier(.2,.9,.3,1.1)}
-  .msg .bubblewrap:hover .msg__react-e,.msg:focus-within .msg__react-e{animation:emojiPop .34s cubic-bezier(.25,.8,.35,1) backwards}
+  /* Hovering the bubble reveals the corner chevron + the side smiley. */
+  .msg .bubblewrap:hover .msg__menubtn,.msg:focus-within .msg__menubtn,
+  .msg .bubblewrap:hover .msg__reactbtn,.msg:focus-within .msg__reactbtn{opacity:1;pointer-events:auto}
+  /* The reaction row opens when the smiley is clicked (.held) — WhatsApp-web
+     behaviour — not on bare bubble hover. */
+  .msg__react.held{opacity:1;pointer-events:auto;animation:reactIn .19s cubic-bezier(.2,.9,.3,1.1)}
+  .msg__react.held .msg__react-e{animation:emojiPop .34s cubic-bezier(.25,.8,.35,1) backwards}
   .msg .msg__react{top:-40px}
   .msg.in .msg__react{left:0;transform-origin:bottom left}
   .msg.out .msg__react{right:0;transform-origin:bottom right}
