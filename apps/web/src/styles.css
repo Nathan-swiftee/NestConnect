@@ -1133,7 +1133,7 @@ input,textarea{font:inherit}
 /* ── right panel + form ── */
 .login__panel{display:flex;align-items:center;justify-content:center;padding:var(--sp-10) 28px;overflow:auto;background:var(--bg)}
 .login__card{width:min(380px,100%);display:flex;flex-direction:column;gap:13px}
-.login__brand{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:4px}
+/* .login__brand → flex items-center gap-2 mb-1 inline in LoginScreen.tsx */
 .login__card h1{margin:8px 0 0;font-size:var(--fs-2xl);font-weight:800;letter-spacing:-.025em}
 /* .login__sub → Tailwind utilities inline in LoginScreen.tsx */
 

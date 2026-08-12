@@ -114,7 +114,7 @@ export function LoginScreen() {
       {/* ── Right: the sign-in form ── */}
       <section className="login__panel">
         <form className="login__card" onSubmit={mode === "signin" ? submit : submitForgot}>
-          <div className="login__brand">
+          <div className="flex items-center gap-2 mb-1">
             <div className="brandmark">
               <Logo />
             </div>
