@@ -37,13 +37,13 @@ function captionable(type: WaMediaType): boolean {
 }
 
 /**
- * The MIME type to declare when uploading media bytes to Meta's `/media`
+ * The base MIME type to declare when uploading media bytes to Meta's `/media`
  * endpoint. WhatsApp accepts only a fixed set of types, and a voice note must be
- * OGG/OPUS. Browser `MediaRecorder` emits Opus inside `audio/webm;codecs=opus`
- * (Chromium) or `audio/ogg;codecs=opus` (Firefox); Meta rejects both the codec
- * parameter and the WebM container, so an agent's recorded voice note never
- * delivers. Fold voice/opus audio to bare `audio/ogg` and strip codec
- * parameters from every type so Meta's allow-list matches.
+ * OGG/OPUS. Browser `MediaRecorder` emits Opus inside `audio/webm` (Chromium) or
+ * `audio/ogg` (Firefox); the WebM container isn't accepted, so voice/opus audio
+ * folds to `audio/ogg` (the bytes are transcoded/remuxed to Ogg before upload).
+ * The caller appends the required `codecs=opus` qualifier at upload time — Meta
+ * needs it to identify the Opus stream for voice-note delivery.
  */
 function whatsappUploadMime(item: OutboundMedia): string {
   const base = item.mime.split(";")[0].trim().toLowerCase();
@@ -352,8 +352,13 @@ export class WhatsAppCloudProvider extends ChannelProvider {
           : item.filename;
       const form = new FormData();
       form.append("messaging_product", "whatsapp");
-      form.append("type", mime);
-      form.append("file", new Blob([bytes], { type: mime }), filename);
+      // WhatsApp identifies a voice note by the OPUS codec qualifier. Bare
+      // "audio/ogg" uploads fine and even stores as audio/ogg, but its voice-note
+      // delivery pipeline can't prepare the media for the recipient without it —
+      // so the message arrives yet plays as "no longer available". Declare it.
+      const uploadType = mime === "audio/ogg" ? "audio/ogg; codecs=opus" : mime;
+      form.append("type", uploadType);
+      form.append("file", new Blob([bytes], { type: uploadType }), filename);
       const res = await fetch(url, {
         method: "POST",
         headers: { authorization: `Bearer ${creds.accessToken}` },
@@ -368,7 +373,7 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       }
       if (isAudio) {
         this.logger.log(
-          `[voice] upload OK id=${json.id} sentType=${mime} sentBytes=${bytes.length} head=${headHex(bytes)}`,
+          `[voice] upload OK id=${json.id} sentType=${uploadType} sentBytes=${bytes.length} head=${headHex(bytes)}`,
         );
       }
       return json.id;
