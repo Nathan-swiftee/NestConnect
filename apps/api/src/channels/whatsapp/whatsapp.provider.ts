@@ -370,50 +370,11 @@ export class WhatsAppCloudProvider extends ChannelProvider {
         this.logger.log(
           `[voice] upload OK id=${json.id} sentType=${mime} sentBytes=${bytes.length} head=${headHex(bytes)}`,
         );
-        // Diagnostic: pull our own audio back from Meta the way a recipient's
-        // phone does. If Meta can't serve its own stored copy, that's the reason
-        // for "no longer available" — and it's Meta's, not ours. Fire-and-forget.
-        void this.verifyMediaRetrievable(creds, json.id);
       }
       return json.id;
     } catch (err) {
       this.logger.warn(`WhatsApp media upload error: ${String(err)}`);
       return null;
-    }
-  }
-
-  /**
-   * Diagnostic: after we upload media by id, fetch it back from Meta exactly the
-   * way a recipient's client does — GET /{id} for a signed URL, then download it
-   * with the token. If Meta can serve its own copy, our upload is sound and any
-   * "no longer available" is Meta-side (e.g. a test-number limitation); if it
-   * can't, the media never really stored. Best-effort, never throws.
-   */
-  private async verifyMediaRetrievable(creds: WhatsAppCreds, mediaId: string): Promise<void> {
-    try {
-      const metaRes = await fetch(`https://graph.facebook.com/${env.whatsapp.apiVersion}/${mediaId}`, {
-        headers: { authorization: `Bearer ${creds.accessToken}` },
-      });
-      const meta = (await metaRes.json()) as {
-        url?: string;
-        mime_type?: string;
-        file_size?: number;
-        error?: unknown;
-      };
-      if (!metaRes.ok || !meta.url) {
-        this.logger.warn(`[voice] read-back: GET /${mediaId} failed (${metaRes.status}): ${JSON.stringify(meta.error ?? meta)}`);
-        return;
-      }
-      this.logger.log(`[voice] read-back: Meta metadata mime=${meta.mime_type} size=${meta.file_size}`);
-      const dl = await fetch(meta.url, { headers: { authorization: `Bearer ${creds.accessToken}` } });
-      if (!dl.ok) {
-        this.logger.warn(`[voice] read-back: download failed (${dl.status}) — Meta cannot serve our audio`);
-        return;
-      }
-      const buf = Buffer.from(await dl.arrayBuffer());
-      this.logger.log(`[voice] read-back: downloaded ${buf.length} bytes head=${headHex(buf)} — Meta CAN serve our audio`);
-    } catch (err) {
-      this.logger.warn(`[voice] read-back error: ${String(err)}`);
     }
   }
 
