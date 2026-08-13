@@ -52,22 +52,29 @@ function whatsappUploadMime(item: OutboundMedia): string {
 }
 
 /**
- * Whether these bytes are a WebM/Opus recording (Chromium's `MediaRecorder`
- * output) rather than the Ogg/Opus WhatsApp requires. We sniff the container: a
- * WebM/Matroska file opens with the EBML magic `1A 45 DF A3`; an Ogg file opens
- * with `OggS`. The byte sniff is authoritative (the recorder sometimes mislabels
- * the MIME), with the declared type as a fallback signal. Firefox/Safari record
- * straight to Ogg, so they read as false here and pass through untouched.
+ * WhatsApp-playable audio MIME types for an `audio` message. A voice note must
+ * be `audio/ogg` (Opus); mp4/aac/mpeg/amr render as a plain audio message. WebM
+ * is deliberately absent — WhatsApp can't play it, so WebM has to be transcoded.
  */
-function looksLikeWebm(item: OutboundMedia): boolean {
-  const b = item.bytes;
-  if (b && b.length >= 4 && b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) {
-    return true;
+const WA_PLAYABLE_AUDIO = new Set(["audio/ogg", "audio/mp4", "audio/aac", "audio/mpeg", "audio/amr"]);
+
+/**
+ * Sniff the audio container from the leading magic bytes (authoritative — the
+ * recorder sometimes mislabels the MIME), falling back to the declared type. An
+ * Ogg file opens with `OggS`; a WebM/Matroska file opens with the EBML magic
+ * `1A 45 DF A3`. Everything else — notably iOS Safari's MP4/AAC — reads as
+ * "other". Only "ogg" is sendable straight to WhatsApp as a voice note; the rest
+ * must be transcoded first.
+ */
+function audioContainer(bytes: Buffer | undefined, mime: string): "ogg" | "webm" | "other" {
+  if (bytes && bytes.length >= 4) {
+    if (bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) return "ogg";
+    if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return "webm";
   }
-  if (b && b.length >= 4 && b[0] === 0x4f && b[1] === 0x67 && b[2] === 0x67 && b[3] === 0x53) {
-    return false; // "OggS" — already an Ogg container
-  }
-  return item.mime.toLowerCase().includes("webm");
+  const m = mime.toLowerCase();
+  if (m.includes("ogg")) return "ogg";
+  if (m.includes("webm")) return "webm";
+  return "other";
 }
 
 /**
@@ -294,19 +301,40 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       // WhatsApp validates the declared MIME against its allow-list (and voice
       // notes must be OGG/OPUS), so send the normalized type rather than the raw
       // recorder container/codec string.
-      const mime = whatsappUploadMime(item);
+      let mime = whatsappUploadMime(item);
+      let bytes = item.bytes;
+      // A voice note must be Ogg/Opus, but browsers disagree on the recorder
+      // container: Chrome/Android emit WebM/Opus, iOS Safari emits MP4/AAC. When
+      // we intend audio/ogg but the bytes aren't already an Ogg container,
+      // transcode whatever we got to Ogg/Opus (ffmpeg auto-detects the input).
+      if (mime === "audio/ogg" && audioContainer(item.bytes, item.mime) !== "ogg") {
+        const ogg = await this.transcodeToOggOpus(item.bytes);
+        if (ogg) {
+          bytes = ogg;
+        } else {
+          // No transcode (ffmpeg missing) or it failed. NEVER upload non-Ogg
+          // bytes labelled audio/ogg — Meta accepts the upload but the clip plays
+          // as "audio no longer available". Fall back to the real type if
+          // WhatsApp can play it (mp4/aac/mp3 → a plain audio message, not a PTT
+          // voice note); WebM is unplayable there, so drop it with a warning
+          // rather than deliver a broken clip.
+          const base = item.mime.split(";")[0].trim().toLowerCase();
+          if (base !== "audio/ogg" && WA_PLAYABLE_AUDIO.has(base)) {
+            mime = base;
+          } else {
+            this.logger.warn(
+              `WhatsApp voice: can't transcode ${item.mime} to Ogg/Opus and it isn't a WhatsApp-playable audio type — dropping to avoid a broken clip`,
+            );
+            return null;
+          }
+        }
+      }
+      // Meta keys the container partly off the filename, so an Ogg upload gets a
+      // .ogg name; a non-Ogg fallback (mp4/…) keeps its own extension.
       const filename =
         mime === "audio/ogg" && !item.filename.toLowerCase().endsWith(".ogg")
           ? item.filename.replace(/\.[^./\\]+$/, "") + ".ogg"
           : item.filename;
-      // Chrome records voice notes as WebM/Opus, but WhatsApp accepts only
-      // Ogg/Opus. When we're about to declare `audio/ogg` for bytes that are
-      // really WebM, remux the container to Ogg first (both hold Opus). Ogg
-      // recordings (Firefox/Safari) are left untouched.
-      let bytes = item.bytes;
-      if (mime === "audio/ogg" && looksLikeWebm(item)) {
-        bytes = await this.remuxWebmToOgg(item.bytes);
-      }
       const form = new FormData();
       form.append("messaging_product", "whatsapp");
       form.append("type", mime);
@@ -329,19 +357,22 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   }
 
   /**
-   * Re-encode WebM/Opus audio to Ogg/Opus (mono, 48 kHz, 32 kbps — the sweet
-   * spot for a voice note) with ffmpeg, so a Chrome-recorded voice note delivers.
-   * Uses temp files under the OS tmpdir and cleans them up. Best-effort: if
-   * ffmpeg is missing (e.g. a dev box) or the encode fails, we log and return the
-   * original bytes so the send still goes out rather than throwing.
+   * Transcode arbitrary recorded audio — Chrome/Android's WebM/Opus, iOS Safari's
+   * MP4/AAC, anything ffmpeg can read — to Ogg/Opus (mono, 48 kHz, 32 kbps: the
+   * voice-note sweet spot), so a browser-recorded voice note plays on WhatsApp.
+   * ffmpeg auto-detects the input container (the temp input has no extension).
+   * Uses temp files under the OS tmpdir and cleans them up. Returns the Ogg bytes,
+   * or null if ffmpeg is missing (e.g. a dev box) or the encode fails — the caller
+   * must then fall back to the real type or drop the clip; it must NOT upload the
+   * un-transcoded bytes as audio/ogg (that plays as "no longer available").
    */
-  private async remuxWebmToOgg(webm: Buffer): Promise<Buffer> {
+  private async transcodeToOggOpus(input: Buffer): Promise<Buffer | null> {
     let dir: string | undefined;
     try {
       dir = await mkdtemp(join(tmpdir(), "wa-voice-"));
-      const inPath = join(dir, "in.webm");
+      const inPath = join(dir, "in.bin"); // no extension → ffmpeg sniffs the container
       const outPath = join(dir, "out.ogg");
-      await writeFile(inPath, webm);
+      await writeFile(inPath, input);
       await new Promise<void>((resolve, reject) => {
         const ff = spawn(
           "ffmpeg",
@@ -364,10 +395,11 @@ export class WhatsAppCloudProvider extends ChannelProvider {
           else reject(new Error(`ffmpeg exited ${code}: ${stderr.trim().slice(-400)}`));
         });
       });
-      return await readFile(outPath);
+      const out = await readFile(outPath);
+      return out.length > 0 ? out : null;
     } catch (err) {
-      this.logger.warn(`WhatsApp voice remux (WebM→Ogg) failed, sending original bytes: ${String(err)}`);
-      return webm;
+      this.logger.warn(`WhatsApp voice transcode → Ogg/Opus failed: ${String(err)}`);
+      return null;
     } finally {
       if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
     }
