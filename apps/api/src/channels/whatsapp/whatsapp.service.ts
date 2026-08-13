@@ -44,7 +44,15 @@ export interface WhatsAppWebhookBody {
           /** Set when the customer replied to (quoted) an earlier message. */
           context?: { id?: string };
         }>;
-        statuses?: Array<{ id: string; status?: string; recipient_id?: string }>;
+        statuses?: Array<{
+          id: string;
+          status?: string;
+          recipient_id?: string;
+          /** Present on a `failed` status — Meta's reason (e.g. 131052 "Media
+           *  download error"). This is why a message that sent fine can still
+           *  show "this media is no longer available" on the recipient's phone. */
+          errors?: Array<{ code?: number; title?: string; error_data?: { details?: string } }>;
+        }>;
         participants?: Array<{ wa_id?: string; user?: string; action?: string; profile?: { name?: string } }>;
       };
     }>;
@@ -151,6 +159,15 @@ export class WhatsAppService {
 
         for (const st of value.statuses ?? []) {
           try {
+            // Meta reports WHY a message failed here — the decisive signal for a
+            // send that we accepted but the recipient can't open (media download
+            // errors, test-number limits, etc.).
+            if (st.errors?.length) {
+              const e = st.errors[0];
+              this.logger.warn(
+                `WhatsApp delivery failed for ${st.id}: code=${e.code} title="${e.title ?? ""}" details="${e.error_data?.details ?? ""}"`,
+              );
+            }
             const status = this.mapStatus(st.status);
             if (!status) continue;
             const updated = await this.store.updateMessageStatusByChannelId(st.id, status);
