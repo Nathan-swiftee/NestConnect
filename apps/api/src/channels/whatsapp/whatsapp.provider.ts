@@ -77,6 +77,12 @@ function audioContainer(bytes: Buffer | undefined, mime: string): "ogg" | "webm"
   return "other";
 }
 
+/** First bytes as hex — lets a log line reveal the true container: `4f676753`
+ *  = "OggS", `1a45dfa3` = WebM/EBML, `....66747970` = MP4 "ftyp" box. */
+function headHex(bytes: Buffer | undefined, n = 16): string {
+  return bytes && bytes.length ? Buffer.from(bytes.subarray(0, n)).toString("hex") : "(empty)";
+}
+
 /**
  * WhatsApp Business Platform (Cloud API) sender. Credentials are resolved per
  * inbox — a number connected via Meta carries its own token/phone-number-id in
@@ -303,6 +309,14 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       // recorder container/codec string.
       let mime = whatsappUploadMime(item);
       let bytes = item.bytes;
+      const isAudio =
+        item.kind === "voice" || item.kind === "audio" || item.mime.toLowerCase().startsWith("audio/");
+      if (isAudio) {
+        this.logger.log(
+          `[voice] in: kind=${item.kind} mime=${item.mime} file=${item.filename} bytes=${item.bytes?.length ?? 0} ` +
+            `head=${headHex(item.bytes)} sniff=${audioContainer(item.bytes, item.mime)} intendedMime=${mime}`,
+        );
+      }
       // A voice note must be Ogg/Opus, but browsers disagree on the recorder
       // container: Chrome/Android emit WebM/Opus, iOS Safari emits MP4/AAC. When
       // we intend audio/ogg but the bytes aren't already an Ogg container,
@@ -311,6 +325,7 @@ export class WhatsAppCloudProvider extends ChannelProvider {
         const ogg = await this.transcodeToOggOpus(item.bytes);
         if (ogg) {
           bytes = ogg;
+          this.logger.log(`[voice] transcode OK → ogg/opus bytes=${ogg.length} head=${headHex(ogg)}`);
         } else {
           // No transcode (ffmpeg missing) or it failed. NEVER upload non-Ogg
           // bytes labelled audio/ogg — Meta accepts the upload but the clip plays
@@ -346,8 +361,15 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       });
       const json = (await res.json()) as { id?: string; error?: unknown };
       if (!res.ok || !json.id) {
-        this.logger.warn(`WhatsApp media upload failed: ${JSON.stringify(json.error ?? json)}`);
+        this.logger.warn(
+          `WhatsApp media upload failed (${res.status}) type=${mime} file=${filename}: ${JSON.stringify(json.error ?? json)}`,
+        );
         return null;
+      }
+      if (isAudio) {
+        this.logger.log(
+          `[voice] upload OK id=${json.id} sentType=${mime} sentBytes=${bytes.length} head=${headHex(bytes)}`,
+        );
       }
       return json.id;
     } catch (err) {
@@ -379,6 +401,10 @@ export class WhatsAppCloudProvider extends ChannelProvider {
           // prettier-ignore
           [
             "-y", "-i", inPath,
+            // Take only the first audio stream, drop any video (cover art) and
+            // metadata — iOS records MP4/AAC that can carry both, and they confuse
+            // the Ogg muxer.
+            "-vn", "-map", "0:a:0", "-map_metadata", "-1",
             "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1",
             "-f", "ogg", outPath,
           ],
