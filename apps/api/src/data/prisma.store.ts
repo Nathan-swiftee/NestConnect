@@ -1014,6 +1014,23 @@ export class PrismaStore extends Store {
     return mapConversation(row);
   }
 
+  async setConversationChannelRef(
+    conversationId: string,
+    channelRef: string,
+  ): Promise<Conversation | undefined> {
+    const cur = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { channelRef: true },
+    });
+    if (!cur || cur.channelRef === channelRef) return undefined; // unknown or unchanged
+    const row = await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { channelRef },
+      include: convInclude,
+    });
+    return mapConversation(row);
+  }
+
   async setSla(conversationId: string, dueAt: string | null): Promise<Conversation | undefined> {
     try {
       const row = await this.prisma.conversation.update({

@@ -79,14 +79,26 @@ export class ChannelDispatcher {
 
     let context: SendContext | undefined;
     if (channel === "email") {
-      // Thread only onto prior EMAIL messages (a WhatsApp wamid is not a Message-ID).
-      const prior = [...conversation.messages]
-        .reverse()
-        .find((m) => m.channelMsgId && m.id !== message.id && (m.channel ?? conversation.channel) === "email");
+      // Prior EMAIL messages in this thread that carry a Message-ID, oldest→newest
+      // (a WhatsApp wamid is not an email Message-ID, so other channels are out).
+      const priorEmail = conversation.messages.filter(
+        (m) => m.channelMsgId && m.id !== message.id && (m.channel ?? conversation.channel) === "email",
+      );
+      // The parent is the most-recent one; References chains the whole thread and
+      // ends with that parent — this is what the customer's client threads on.
+      const chain = priorEmail
+        .map((m) => m.channelMsgId)
+        .filter((id): id is string => Boolean(id));
+      const parentId = chain.length ? chain[chain.length - 1] : undefined;
       context = {
         subject: conversation.subject ?? undefined,
         toName: conversation.contact.displayName,
-        inReplyTo: prior?.channelMsgId ?? undefined,
+        inReplyTo: parentId,
+        references: chain.length ? chain.join(" ") : undefined,
+        // For a Gmail-connected inbox the thread's Gmail id is kept on channelRef;
+        // passing it keeps the reply in the same server-side thread. Undefined for
+        // Postmark threads, which rely solely on the In-Reply-To/References headers.
+        threadId: conversation.channelRef ?? undefined,
       };
     }
 

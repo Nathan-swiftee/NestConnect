@@ -37,7 +37,15 @@ export function isRetryableStatus(status?: number): boolean {
 /** Optional context a provider can use (email threading, subjects). */
 export interface SendContext {
   subject?: string;
+  /** Message-ID of the email this reply answers (the In-Reply-To header). */
   inReplyTo?: string;
+  /** Full RFC 5322 References chain to emit — every known Message-ID in the
+   *  thread, space-separated and in order, ending with the parent. Falls back to
+   *  `inReplyTo` when absent. This is what mail clients actually thread on. */
+  references?: string;
+  /** Gmail server-side thread id, to keep an email reply in the same thread
+   *  (Gmail provider only; other providers ignore it). */
+  threadId?: string;
   toName?: string;
 }
 

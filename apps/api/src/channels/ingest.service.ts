@@ -28,6 +28,9 @@ export interface EmailInbound {
   html?: string;
   messageId?: string;
   references?: string[]; // In-Reply-To + References header ids, for threading
+  /** Gmail server-side thread id (Gmail ingest only). Persisted on the
+   *  conversation so an outbound reply can be sent back into the same thread. */
+  threadId?: string;
   messageType?: MessageType;
   attachments?: AttachmentInput[];
 }
@@ -233,6 +236,13 @@ export class IngestService {
     if (!created) {
       const moved = await this.store.setConversationInbox(conversationId, inbox.id);
       if (moved) this.realtime.emitConversationUpdated(moved);
+    }
+
+    // Remember the latest inbound Gmail thread id on the conversation so an
+    // outbound reply is sent back into that same server-side thread (Gmail only;
+    // Postmark inbound carries no thread id and threads via headers alone).
+    if (input.threadId) {
+      await this.store.setConversationChannelRef(conversationId, input.threadId);
     }
 
     // Sanitize the email's HTML once, at the boundary — the stored bodyHtml is

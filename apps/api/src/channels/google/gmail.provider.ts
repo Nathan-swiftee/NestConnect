@@ -84,12 +84,15 @@ export class GmailProvider extends ChannelProvider {
         html: htmlBody,
         messageId,
         inReplyTo: params.context?.inReplyTo,
-        // A reply's References should chain the message it answers.
-        references: params.context?.inReplyTo,
+        // A reply's References chains the whole thread (falls back to the parent).
+        references: params.context?.references ?? params.context?.inReplyTo,
         attachments,
         inlineImages,
       });
-      await gmail.send(accessToken, raw);
+      // Pass the Gmail thread id so the reply lands in the SAME server-side thread.
+      // Gmail otherwise opens a fresh thread even with In-Reply-To/References set —
+      // which, on a subject-less exchange, surfaces the reply as a standalone email.
+      await gmail.send(accessToken, raw, params.context?.threadId);
       return { ok: true, channelMsgId: messageId };
     } catch (err) {
       if (err instanceof GmailApiError) {

@@ -281,6 +281,9 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
       html: extractHtml(msg),
       messageId,
       references: threadRefs(msg),
+      // Gmail groups a reply into a thread by its id; persist it so we can reply
+      // back into the same thread instead of starting a new one.
+      threadId: msg.threadId,
       attachments: attachments.length ? attachments : undefined,
     });
     return true;

@@ -144,7 +144,11 @@ export class EmailProvider extends ChannelProvider {
       const headers: Array<{ Name: string; Value: string }> = [{ Name: "Message-ID", Value: messageId }];
       if (params.context?.inReplyTo) {
         headers.push({ Name: "In-Reply-To", Value: params.context.inReplyTo });
-        headers.push({ Name: "References", Value: params.context.inReplyTo });
+        // References chains the whole thread when known; else just the parent.
+        headers.push({
+          Name: "References",
+          Value: params.context.references ?? params.context.inReplyTo,
+        });
       }
       // Rich reply → its HTML; else derive a simple HTML alternative. The
       // sender's signature is appended to the wire body only.

@@ -342,6 +342,14 @@ export abstract class Store {
     inboxId: string,
   ): Promise<Conversation | undefined>;
 
+  /** Persist a provider thread reference on a conversation — for email, the Gmail
+   *  server-side thread id, so an outbound reply is sent back into the same thread.
+   *  A no-op returning undefined when the conversation is unknown or already set. */
+  abstract setConversationChannelRef(
+    conversationId: string,
+    channelRef: string,
+  ): Promise<Conversation | undefined>;
+
   /** Set (or clear) a conversation's first-response SLA due time (ISO or null). */
   abstract setSla(
     conversationId: string,
