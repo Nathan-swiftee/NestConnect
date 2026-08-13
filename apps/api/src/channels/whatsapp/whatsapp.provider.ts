@@ -379,37 +379,54 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   }
 
   /**
-   * Transcode arbitrary recorded audio — Chrome/Android's WebM/Opus, iOS Safari's
-   * MP4/AAC, anything ffmpeg can read — to Ogg/Opus (mono, 48 kHz, 32 kbps: the
-   * voice-note sweet spot), so a browser-recorded voice note plays on WhatsApp.
-   * ffmpeg auto-detects the input container (the temp input has no extension).
-   * Uses temp files under the OS tmpdir and cleans them up. Returns the Ogg bytes,
-   * or null if ffmpeg is missing (e.g. a dev box) or the encode fails — the caller
-   * must then fall back to the real type or drop the clip; it must NOT upload the
-   * un-transcoded bytes as audio/ogg (that plays as "no longer available").
+   * Produce a WhatsApp-ready Ogg/Opus voice note from an arbitrary recording.
+   *
+   * Browsers that record Opus (Chrome/Android and newer Safari → WebM/Opus, or
+   * Ogg/Opus) are REMUXED: the exact Opus stream is copied straight into an Ogg
+   * container with no re-encode. WhatsApp accepts a *re-encoded* Opus on upload
+   * but its voice-note processing then can't serve it to the recipient ("audio no
+   * longer available"); the browser's own Opus, merely re-containered, plays.
+   * Sources that aren't Opus (iOS Safari MP4/AAC) can't be copied into Ogg, so
+   * they're re-encoded to Opus. Returns the Ogg bytes, or null if ffmpeg is
+   * missing or both attempts fail — the caller must then fall back or drop, never
+   * upload the un-transcoded bytes as audio/ogg.
    */
   private async transcodeToOggOpus(input: Buffer): Promise<Buffer | null> {
+    // 1) Lossless remux — copy an existing Opus stream (WebM/Ogg) into Ogg.
+    const copied = await this.runFfmpegToOgg(input, ["-vn", "-map", "0:a:0", "-c:a", "copy"], "remux");
+    if (copied && audioContainer(copied, "") === "ogg") {
+      this.logger.log(`[voice] remux (copy Opus → Ogg) OK bytes=${copied.length}`);
+      return copied;
+    }
+    // 2) Re-encode — source isn't Opus (iOS MP4/AAC) or the copy wasn't valid Ogg.
+    const encoded = await this.runFfmpegToOgg(
+      input,
+      ["-vn", "-map", "0:a:0", "-map_metadata", "-1", "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1"],
+      "encode",
+    );
+    if (encoded && audioContainer(encoded, "") === "ogg") {
+      this.logger.log(`[voice] re-encode (→ Opus/Ogg) OK bytes=${encoded.length}`);
+      return encoded;
+    }
+    return null;
+  }
+
+  /**
+   * Run ffmpeg with the given codec args, muxing to an Ogg file, and return the
+   * bytes (or null on failure). Temp files under the OS tmpdir; the input has no
+   * extension so ffmpeg sniffs the container. `label` tags the log line.
+   */
+  private async runFfmpegToOgg(input: Buffer, codecArgs: string[], label: string): Promise<Buffer | null> {
     let dir: string | undefined;
     try {
       dir = await mkdtemp(join(tmpdir(), "wa-voice-"));
-      const inPath = join(dir, "in.bin"); // no extension → ffmpeg sniffs the container
+      const inPath = join(dir, "in.bin");
       const outPath = join(dir, "out.ogg");
       await writeFile(inPath, input);
       await new Promise<void>((resolve, reject) => {
-        const ff = spawn(
-          "ffmpeg",
-          // prettier-ignore
-          [
-            "-y", "-i", inPath,
-            // Take only the first audio stream, drop any video (cover art) and
-            // metadata — iOS records MP4/AAC that can carry both, and they confuse
-            // the Ogg muxer.
-            "-vn", "-map", "0:a:0", "-map_metadata", "-1",
-            "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1",
-            "-f", "ogg", outPath,
-          ],
-          { stdio: ["ignore", "ignore", "pipe"] },
-        );
+        const ff = spawn("ffmpeg", ["-y", "-i", inPath, ...codecArgs, "-f", "ogg", outPath], {
+          stdio: ["ignore", "ignore", "pipe"],
+        });
         let stderr = "";
         ff.stderr?.on("data", (chunk) => {
           stderr += String(chunk);
@@ -418,13 +435,13 @@ export class WhatsAppCloudProvider extends ChannelProvider {
         ff.on("error", reject);
         ff.on("close", (code) => {
           if (code === 0) resolve();
-          else reject(new Error(`ffmpeg exited ${code}: ${stderr.trim().slice(-400)}`));
+          else reject(new Error(`ffmpeg ${label} exited ${code}: ${stderr.trim().slice(-300)}`));
         });
       });
       const out = await readFile(outPath);
       return out.length > 0 ? out : null;
     } catch (err) {
-      this.logger.warn(`WhatsApp voice transcode → Ogg/Opus failed: ${String(err)}`);
+      this.logger.warn(`[voice] ffmpeg ${label} failed: ${String(err)}`);
       return null;
     } finally {
       if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
