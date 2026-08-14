@@ -78,6 +78,10 @@ export class IngestService {
       value: input.from,
       displayName: input.name || input.from,
     });
+    if (contact.blocked) {
+      this.logger.log(`Dropped inbound WhatsApp from blocked contact ${input.from}`);
+      return undefined;
+    }
 
     const { conversation, created } = await this.store.findOrCreateOpenConversation({
       orgId: inbox.orgId,
@@ -201,6 +205,10 @@ export class IngestService {
       value: input.from.toLowerCase(),
       displayName: input.fromName || input.from,
     });
+    if (contact.blocked) {
+      this.logger.log(`Dropped inbound email from blocked contact ${input.from}`);
+      return undefined;
+    }
 
     // Thread onto an existing conversation via References/In-Reply-To first.
     let conversationId = input.references?.length

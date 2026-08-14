@@ -4,6 +4,7 @@ import {
   useContact,
   useContacts,
   useCreateContact,
+  useDeleteContact,
   usePeople,
   useTeams,
   useUpdateContact,
@@ -18,6 +19,7 @@ import {
   PlusIcon,
   RouteIcon,
   SearchIcon,
+  TrashIcon,
   XIcon,
 } from "../lib/icons";
 
@@ -111,6 +113,7 @@ function CustomerModal({
   const people = usePeople();
   const create = useCreateContact();
   const update = useUpdateContact();
+  const del = useDeleteContact();
   const detail = useContact(contact?.id ?? null);
   const [displayName, setName] = useState(contact?.displayName ?? "");
   const [company, setCompany] = useState(contact?.company ?? "");
@@ -119,7 +122,17 @@ function CustomerModal({
   const [tags, setTags] = useState<string[]>(contact?.tags ?? []);
   const [ownerTeamId, setOwnerTeamId] = useState<string | null>(contact?.ownerTeamId ?? null);
   const [ownerUserId, setOwnerUserId] = useState<string | null>(contact?.ownerUserId ?? null);
-  const busy = create.isPending || update.isPending;
+  const [blocked, setBlocked] = useState(contact?.blocked ?? false);
+  const busy = create.isPending || update.isPending || del.isPending;
+
+  const remove = () => {
+    if (!contact) return;
+    if (!window.confirm(`Delete ${contact.displayName}? This permanently removes the customer and their conversation history.`)) return;
+    del.mutate(contact.id, {
+      onSuccess: () => { onToast(`${contact.displayName} deleted`); onClose(); },
+      onError: () => onToast("Couldn't delete customer"),
+    });
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -137,6 +150,7 @@ function CustomerModal({
             tags,
             ownerTeamId,
             ownerUserId,
+            blocked,
           },
         },
         {
@@ -234,12 +248,28 @@ function CustomerModal({
               )}
             </div>
           )}
+          {isEdit && (
+            <label className={"custblock" + (blocked ? " on" : "")}>
+              <input type="checkbox" checked={blocked} onChange={(e) => setBlocked(e.target.checked)} />
+              <span>
+                <b>Block this customer</b>
+                <small>Their inbound messages are dropped and they’re hidden from the directory.</small>
+              </span>
+            </label>
+          )}
         </div>
-        <div className="modal__foot">
-          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn-primary" disabled={busy || !displayName.trim()}>
-            {isEdit ? "Save changes" : "Add customer"}
-          </button>
+        <div className={"modal__foot" + (isEdit ? " modal__foot--split" : "")}>
+          {isEdit && (
+            <button type="button" className="btn-ghost btn-danger" onClick={remove}>
+              <TrashIcon /> Delete
+            </button>
+          )}
+          <div className="setform__footactions">
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn-primary" disabled={busy || !displayName.trim()}>
+              {isEdit ? "Save changes" : "Add customer"}
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -250,6 +280,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
   const contacts = useContacts();
   const teams = useTeams();
   const [q, setQ] = useState("");
+  const [showBlocked, setShowBlocked] = useState(false);
   // null = closed; { contact: null } = add; { contact } = edit.
   const [modal, setModal] = useState<{ contact: Contact | null } | null>(null);
 
@@ -267,16 +298,18 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [contacts.data]);
 
+  const blockedCount = (contacts.data ?? []).filter((c) => c.blocked).length;
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const list = contacts.data ?? [];
+    let list = contacts.data ?? [];
+    if (!showBlocked) list = list.filter((c) => !c.blocked);
     if (!needle) return list;
     return list.filter((c) =>
       [c.displayName, c.company, c.phone, c.email, ...(c.tags ?? [])]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(needle)),
     );
-  }, [contacts.data, q]);
+  }, [contacts.data, q, showBlocked]);
 
   const routing = (c: Contact) =>
     c.ownerTeamId
@@ -305,9 +338,20 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
             </button>
           </div>
 
-          <div className="setsearch">
-            <SearchIcon />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, company, number, email or tag…" />
+          <div className="setbar">
+            <div className="setsearch">
+              <SearchIcon />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, company, number, email or tag…" />
+            </div>
+            {blockedCount > 0 && (
+              <button
+                type="button"
+                className={"setfilterchip" + (showBlocked ? " on" : "")}
+                onClick={() => setShowBlocked((v) => !v)}
+              >
+                {showBlocked ? "Hide blocked" : `Show blocked · ${blockedCount}`}
+              </button>
+            )}
           </div>
 
           <div className="dwrap">
@@ -325,7 +369,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
                 const r = routing(c);
                 return (
                   <div
-                    className="dtable__row"
+                    className={"dtable__row" + (c.blocked ? " dtable__row--blocked" : "")}
                     key={c.id}
                     role="button"
                     tabIndex={0}
@@ -337,7 +381,10 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
                     <span className="dcell dname">
                       <Avatar name={c.displayName} email={c.email} color={c.avatarColor} className="dname__av av" />
                       <span className="dname__x">
-                        <span className="dcell__t">{c.displayName}</span>
+                        <span className="dcell__t">
+                          {c.displayName}
+                          {c.blocked && <span className="dbadge dbadge--blocked">Blocked</span>}
+                        </span>
                       </span>
                     </span>
                     <span className="dcell dcell--muted">{c.company || "—"}</span>

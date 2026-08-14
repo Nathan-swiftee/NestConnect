@@ -1437,6 +1437,7 @@ export class MemoryStore extends Store {
       tags?: string[];
       ownerUserId?: string | null;
       ownerTeamId?: string | null;
+      blocked?: boolean;
     },
   ): Promise<Contact | undefined> {
     const contact = this.contacts.find((c) => c.id === id);
@@ -1448,9 +1449,20 @@ export class MemoryStore extends Store {
     if (params.tags !== undefined) contact.tags = params.tags;
     if (params.ownerUserId !== undefined) contact.ownerUserId = params.ownerUserId ?? undefined;
     if (params.ownerTeamId !== undefined) contact.ownerTeamId = params.ownerTeamId ?? undefined;
+    if (params.blocked !== undefined) contact.blocked = params.blocked;
     // Keep the copy embedded in each conversation in sync so the UI updates too.
     for (const r of this.conversations) if (r.contact.id === id) r.contact = { ...contact, tags: contact.tags ?? [] };
     return contact;
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    this.contacts = this.contacts.filter((c) => c.id !== id);
+    // Drop the customer's own conversations (their messages ride on the record).
+    this.conversations = this.conversations.filter((r) => r.contact.id !== id);
+    // Remove them from any group they were a participant of.
+    for (const r of this.conversations) {
+      if (r.participants?.length) r.participants = r.participants.filter((p) => p.contact.id !== id);
+    }
   }
 
   async createGroupConversation(params: {

@@ -195,6 +195,9 @@ model Contact {
   tags        String[] @default([])
   ownerUserId String?
   ownerTeamId String?
+  // Blocked: inbound messages from this contact are dropped and they're hidden
+  // from the customer directory by default.
+  blocked     Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   org           Organization      @relation(fields: [orgId], references: [id])

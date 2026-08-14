@@ -241,6 +241,7 @@ export function mapContact(c: ContactWithIdentities): Contact {
     tags: c.tags ?? [],
     ownerUserId: c.ownerUserId ?? undefined,
     ownerTeamId: c.ownerTeamId ?? undefined,
+    blocked: c.blocked ?? false,
   };
 }
 

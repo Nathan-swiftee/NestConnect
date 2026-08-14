@@ -1726,6 +1726,7 @@ export class PrismaStore extends Store {
       tags?: string[];
       ownerUserId?: string | null;
       ownerTeamId?: string | null;
+      blocked?: boolean;
     },
   ): Promise<Contact | undefined> {
     const existing = await this.prisma.contact.findUnique({ where: { id } });
@@ -1736,11 +1737,36 @@ export class PrismaStore extends Store {
     if (params.tags !== undefined) data.tags = params.tags;
     if (params.ownerUserId !== undefined) data.ownerUserId = params.ownerUserId ?? null;
     if (params.ownerTeamId !== undefined) data.ownerTeamId = params.ownerTeamId ?? null;
+    if (params.blocked !== undefined) data.blocked = params.blocked;
     if (Object.keys(data).length) await this.prisma.contact.update({ where: { id }, data });
     await this.setIdentity(id, ["phone", "wa_id"], "phone", params.phone);
     await this.setIdentity(id, ["email"], "email", params.email);
     const full = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
     return full ? mapContact(full) : undefined;
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    // The contact's own 1:1 conversations and everything hanging off them, then
+    // their group memberships + identities, then the contact — in one transaction
+    // (the FK relations aren't ON DELETE CASCADE, so children go first).
+    const convs = await this.prisma.conversation.findMany({ where: { contactId: id }, select: { id: true } });
+    const convIds = convs.map((c) => c.id);
+    await this.prisma.$transaction(async (tx) => {
+      if (convIds.length) {
+        const msgs = await tx.message.findMany({ where: { conversationId: { in: convIds } }, select: { id: true } });
+        const msgIds = msgs.map((m) => m.id);
+        if (msgIds.length) await tx.attachment.deleteMany({ where: { messageId: { in: msgIds } } });
+        await tx.message.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.note.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.conversationLabel.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.assignmentEvent.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.participant.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.conversation.deleteMany({ where: { id: { in: convIds } } });
+      }
+      await tx.participant.deleteMany({ where: { contactId: id } });
+      await tx.contactIdentity.deleteMany({ where: { contactId: id } });
+      await tx.contact.delete({ where: { id } });
+    });
   }
 
   async createGroupConversation(params: {

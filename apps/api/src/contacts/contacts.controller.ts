@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
@@ -59,6 +60,13 @@ export class ContactsController {
     const contact = await this.store.updateContact(id, body);
     if (!contact) throw new NotFoundException("Customer not found");
     return contact;
+  }
+
+  /** Permanently delete a customer and everything attached to them. */
+  @Delete(":id")
+  async remove(@Param("id") id: string): Promise<{ ok: boolean }> {
+    await this.store.deleteContact(id);
+    return { ok: true };
   }
 
   /** Reach this customer on a channel: return their open conversation there, or

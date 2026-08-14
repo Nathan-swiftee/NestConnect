@@ -1301,6 +1301,23 @@ input,textarea{font:inherit}
 .dtable--cust .dtable__head,.dtable--cust .dtable__row{grid-template-columns:minmax(170px,1.8fr) minmax(100px,1.1fr) minmax(140px,1.5fr) 84px minmax(100px,1.2fr) 124px 28px}
 .dchips{display:flex;align-items:center;gap:8px}
 .dchips svg{width:17px;height:17px}
+.dtable__row--blocked{opacity:.55}
+.dtable__row--blocked:hover{opacity:.85}
+.dbadge{display:inline-block;margin-left:8px;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:var(--r-full);vertical-align:middle}
+.dbadge--blocked{background:color-mix(in srgb,var(--danger,#dc2626) 15%,transparent);color:var(--danger,#dc2626)}
+/* search + filter bar for data-view panes */
+.setbar{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.setbar .setsearch{flex:1;margin-bottom:0}
+.setfilterchip{flex:none;font-size:var(--fs-xs);font-weight:650;padding:8px 14px;border-radius:var(--r-full);border:1px solid var(--border);color:var(--text-muted);white-space:nowrap;transition:background .12s,color .12s,border-color .12s}
+.setfilterchip:hover{background:var(--surface-2);color:var(--text)}
+.setfilterchip.on{background:var(--brand-tint);color:var(--brand-strong);border-color:transparent}
+/* block-customer toggle in the customer editor */
+.custblock{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1px solid var(--border);border-radius:var(--r-12);cursor:pointer;transition:border-color .14s,background .14s}
+.custblock.on{border-color:color-mix(in srgb,var(--danger,#dc2626) 40%,var(--border));background:color-mix(in srgb,var(--danger,#dc2626) 6%,transparent)}
+.custblock input{margin-top:2px;flex:none}
+.custblock span{display:flex;flex-direction:column;gap:2px}
+.custblock b{font-size:var(--fs-sm);font-weight:650}
+.custblock small{font-size:var(--fs-xs);color:var(--text-muted)}
 .dtable--ppl{--dtable-min:660px}
 .dtable--ppl .dtable__head,.dtable--ppl .dtable__row{grid-template-columns:minmax(180px,2fr) minmax(150px,1.7fr) 110px minmax(120px,1.4fr) 28px}
 .dtable--tpl{--dtable-min:680px}

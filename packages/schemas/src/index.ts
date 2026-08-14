@@ -95,6 +95,8 @@ export const contactSchema = z.object({
   /** Owner drives per-customer auto-routing (a client always reaches "their" person/team). */
   ownerUserId: z.string().nullable().optional(),
   ownerTeamId: z.string().nullable().optional(),
+  /** Blocked customers have their inbound dropped and are hidden by default. */
+  blocked: z.boolean().optional(),
 });
 export type Contact = z.infer<typeof contactSchema>;
 
@@ -739,6 +741,7 @@ export const updateContactInputSchema = z.object({
   tags: z.array(z.string()).optional(),
   ownerTeamId: z.string().nullable().optional(),
   ownerUserId: z.string().nullable().optional(),
+  blocked: z.boolean().optional(),
 });
 export type UpdateContactInput = z.infer<typeof updateContactInputSchema>;
 

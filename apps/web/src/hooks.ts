@@ -385,6 +385,19 @@ export function useUpdateContact() {
   });
 }
 
+/** Permanently delete a customer (and their conversations) from the directory. */
+export function useDeleteContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteContact(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
 /** Cursor-paginated conversation list. `data` is the flattened rows so far;
  *  call fetchNextPage() to load the next page (never the whole inbox at once). */
 export const useConversations = (view: string) =>

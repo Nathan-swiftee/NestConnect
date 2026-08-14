@@ -537,8 +537,13 @@ export abstract class Store {
       tags?: string[];
       ownerUserId?: string | null;
       ownerTeamId?: string | null;
+      blocked?: boolean;
     },
   ): Promise<Contact | undefined>;
+
+  /** Permanently delete a customer and everything attached to them
+   *  (conversations, messages, identities, participations). */
+  abstract deleteContact(id: string): Promise<void>;
 
   abstract createGroupConversation(params: {
     orgId: string;
