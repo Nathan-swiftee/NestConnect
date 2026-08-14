@@ -37,6 +37,10 @@ import type {
   ChangePasswordInput,
   UpdateUserInput,
   User,
+  WhatsAppBusinessProfile,
+  UpdateWhatsAppBusinessProfileInput,
+  SendBroadcastInput,
+  BroadcastResult,
 } from "@ding/schemas";
 
 export interface ViewItem {
@@ -75,7 +79,18 @@ const base = import.meta.env.VITE_API_URL ?? "";
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${base}/api${path}`, { credentials: "include", ...init });
   if (!res.ok) {
-    const err = new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status}`) as ApiError;
+    // Surface the server's own message when it sent one (NestJS errors carry a
+    // `message` string or array) so callers can show a real explanation — e.g.
+    // WhatsApp's "check the Phone number ID" — instead of a bare status code.
+    let serverMsg: string | undefined;
+    try {
+      const body = (await res.clone().json()) as { message?: string | string[] };
+      if (typeof body?.message === "string") serverMsg = body.message;
+      else if (Array.isArray(body?.message)) serverMsg = body.message.join(", ");
+    } catch {
+      /* no JSON body — fall back to the status line */
+    }
+    const err = new Error(serverMsg ?? `${init?.method ?? "GET"} ${path} failed: ${res.status}`) as ApiError;
     err.status = res.status;
     throw err;
   }
@@ -220,6 +235,13 @@ export const api = {
   updateTemplate: (id: string, input: UpdateTemplateInput) => patch<Template>(`/templates/${id}`, input),
   deleteTemplate: (id: string) => del<{ ok: boolean }>(`/templates/${id}`),
   syncTemplates: () => post<{ synced: number }>("/templates/sync", {}),
+  // WhatsApp business profile — the public "about" card on a number
+  whatsappProfile: (inboxId: string) =>
+    get<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}`),
+  updateWhatsappProfile: (inboxId: string, input: UpdateWhatsAppBusinessProfileInput) =>
+    patch<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}`, input),
+  // WhatsApp broadcast — send an approved template to many recipients at once
+  sendBroadcast: (input: SendBroadcastInput) => post<BroadcastResult>("/whatsapp/broadcast", input),
   assign: (
     id: string,
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },

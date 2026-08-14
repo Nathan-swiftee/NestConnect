@@ -33,6 +33,8 @@ import {
   type UpdateTeamInput,
   type UpdateTemplateInput,
   type UpdateUserInput,
+  type UpdateWhatsAppBusinessProfileInput,
+  type SendBroadcastInput,
 } from "@ding/schemas";
 import { api } from "./lib/api";
 import { getSocket } from "./lib/socket";
@@ -599,6 +601,35 @@ export function useSyncTemplates() {
   return useMutation({
     mutationFn: () => api.syncTemplates(),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
+  });
+}
+
+/* ---- WhatsApp business profile ---- */
+/** Read a WhatsApp number's public business profile (loads once a number is picked). */
+export const useWhatsappProfile = (inboxId: string | null) =>
+  useQuery({
+    queryKey: ["wa-profile", inboxId],
+    queryFn: () => api.whatsappProfile(inboxId as string),
+    enabled: !!inboxId,
+    retry: false,
+    staleTime: 30_000,
+  });
+
+/** Save the editable fields of a number's business profile back to Meta. */
+export function useUpdateWhatsappProfile() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { inboxId: string; input: UpdateWhatsAppBusinessProfileInput }) =>
+      api.updateWhatsappProfile(v.inboxId, v.input),
+    onSuccess: (data, v) => qc.setQueryData(["wa-profile", v.inboxId], data),
+  });
+}
+
+/* ---- WhatsApp broadcast ---- */
+/** Send an approved template to many recipients at once (a compliant 1:1 loop). */
+export function useSendBroadcast() {
+  return useMutation({
+    mutationFn: (input: SendBroadcastInput) => api.sendBroadcast(input),
   });
 }
 

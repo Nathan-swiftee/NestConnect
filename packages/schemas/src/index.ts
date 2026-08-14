@@ -420,6 +420,130 @@ export const updateTemplateInputSchema = z.object({
 });
 export type UpdateTemplateInput = z.infer<typeof updateTemplateInputSchema>;
 
+/* ------------------------------------------------------------------ */
+/* WhatsApp management: business profile + broadcasts                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A connected WhatsApp number, as the management screens see it. Drawn from an
+ * inbox's public channel config — never its secrets — so the picker can label a
+ * number and tell whether it's live before a management call is made.
+ */
+export const whatsAppNumberSchema = z.object({
+  inboxId: z.string(),
+  name: z.string(),
+  /** The human phone number ("+44 20 …"), when saved. */
+  displayNumber: z.string().optional(),
+  /** Meta's phone-number id (the API handle), when saved. */
+  phoneNumberId: z.string().optional(),
+  /** The WhatsApp Business Account id, when saved. */
+  wabaId: z.string().optional(),
+  /** Whether the number has the credentials needed to make live API calls. */
+  connected: z.boolean(),
+});
+export type WhatsAppNumber = z.infer<typeof whatsAppNumberSchema>;
+
+/**
+ * Meta's fixed set of business categories (the `vertical` on a number's public
+ * profile). Kept in Meta's own SCREAMING_CASE so the values round-trip to the
+ * Graph API untouched; the UI supplies the friendly labels.
+ */
+export const WHATSAPP_VERTICALS = [
+  "UNDEFINED",
+  "OTHER",
+  "AUTO",
+  "BEAUTY",
+  "APPAREL",
+  "EDU",
+  "ENTERTAIN",
+  "EVENT_PLAN",
+  "FINANCE",
+  "GROCERY",
+  "GOVT",
+  "HOTEL",
+  "HEALTH",
+  "NONPROFIT",
+  "PROF_SERVICES",
+  "RETAIL",
+  "TRAVEL",
+  "RESTAURANT",
+  "NOT_A_BIZ",
+] as const;
+export const whatsAppVerticalSchema = z.enum(WHATSAPP_VERTICALS);
+export type WhatsAppVertical = z.infer<typeof whatsAppVerticalSchema>;
+
+/**
+ * A WhatsApp number's public business profile — the "about" line, description,
+ * address, contact details and category a customer sees on the business card.
+ * Read from / written to Meta's `whatsapp_business_profile` node. The photo is
+ * read-only here (Meta requires a separate resumable upload to change it).
+ */
+export const whatsAppBusinessProfileSchema = z.object({
+  about: z.string().optional(),
+  address: z.string().optional(),
+  description: z.string().optional(),
+  email: z.string().optional(),
+  vertical: whatsAppVerticalSchema.optional(),
+  websites: z.array(z.string()).optional(),
+  /** Current profile photo (read-only; from Meta's `profile_picture_url`). */
+  profilePictureUrl: z.string().optional(),
+});
+export type WhatsAppBusinessProfile = z.infer<typeof whatsAppBusinessProfileSchema>;
+
+/** The editable fields we send back to Meta (photo excluded — resumable upload). */
+export const updateWhatsAppBusinessProfileInputSchema = z.object({
+  about: z.string().max(139, "Keep the “about” line under 139 characters").optional(),
+  address: z.string().max(256, "Keep the address under 256 characters").optional(),
+  description: z.string().max(512, "Keep the description under 512 characters").optional(),
+  email: z.string().max(128, "Keep the email under 128 characters").optional(),
+  vertical: whatsAppVerticalSchema.optional(),
+  websites: z.array(z.string()).max(2, "At most two websites").optional(),
+});
+export type UpdateWhatsAppBusinessProfileInput = z.infer<
+  typeof updateWhatsAppBusinessProfileInputSchema
+>;
+
+/** A single recipient of a broadcast — a phone number, optionally named. */
+export const broadcastRecipientSchema = z.object({
+  phone: z.string().min(1),
+  name: z.string().optional(),
+  /** Per-recipient values for the template's {{1}}, {{2}} … variables. */
+  params: z.array(z.string()).optional(),
+});
+export type BroadcastRecipient = z.infer<typeof broadcastRecipientSchema>;
+
+/**
+ * Send an approved template to many recipients at once. WhatsApp has no true
+ * one-to-many primitive, so a broadcast is a loop of individual template sends
+ * (the compliant way to reach many people) — each recipient gets their own
+ * 1:1 message. Capped to keep a single request bounded.
+ */
+export const sendBroadcastInputSchema = z.object({
+  /** The WhatsApp number (inbox) the broadcast is sent from. */
+  inboxId: z.string(),
+  /** The approved template to send (must be APPROVED at Meta). */
+  templateId: z.string(),
+  /** Shared variable values, used for any recipient without their own `params`. */
+  params: z.array(z.string()).optional(),
+  recipients: z.array(broadcastRecipientSchema).min(1).max(500),
+});
+export type SendBroadcastInput = z.infer<typeof sendBroadcastInputSchema>;
+
+/** The outcome of a broadcast run: per-recipient success/failure + totals. */
+export const broadcastResultSchema = z.object({
+  total: z.number().int().nonnegative(),
+  sent: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  results: z.array(
+    z.object({
+      phone: z.string(),
+      ok: z.boolean(),
+      error: z.string().optional(),
+    }),
+  ),
+});
+export type BroadcastResult = z.infer<typeof broadcastResultSchema>;
+
 export const sendMessageInputSchema = z
   .object({
     body: z.string().default(""),

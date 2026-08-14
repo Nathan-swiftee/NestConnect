@@ -1,6 +1,17 @@
 import { useEffect, useState, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { ChannelType, Inbox, Label, Role, RoutingStrategy, Team, Template, TemplateCategory } from "@ding/schemas";
+import type {
+  ChannelType,
+  Inbox,
+  Label,
+  Role,
+  RoutingStrategy,
+  Team,
+  Template,
+  TemplateCategory,
+  WhatsAppVertical,
+} from "@ding/schemas";
+import { WHATSAPP_VERTICALS } from "@ding/schemas";
 import {
   useCreateInbox,
   useCreateLabel,
@@ -28,6 +39,8 @@ import {
   useUpdateTeam,
   useUpdateTemplate,
   useUpdateUser,
+  useWhatsappProfile,
+  useUpdateWhatsappProfile,
 } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
 import { api } from "../lib/api";
@@ -53,7 +66,17 @@ import {
 
 /** A settings destination. Leaves are grouped into the left-rail primary
  *  sections; each section surfaces its leaves as the top sub-navigation. */
-type Leaf = "channels" | "templates" | "teams" | "people" | "connections" | "storage" | "email";
+type Leaf =
+  | "channels"
+  | "templates"
+  | "profile"
+  | "broadcast"
+  | "teams"
+  | "people"
+  | "labels"
+  | "connections"
+  | "storage"
+  | "email";
 type SetupSub = "connections" | "storage" | "email";
 
 interface Props {
@@ -78,6 +101,7 @@ const NAV: NavSection[] = [
     leaves: [
       { key: "channels", label: "Channels" },
       { key: "templates", label: "Templates" },
+      { key: "profile", label: "Business profile" },
     ],
   },
   {
@@ -194,6 +218,7 @@ export function Settings({ onClose, onToast }: Props) {
           <div className="settings__pane" key={paneKey}>
             {active === "channels" && <ChannelsPane onToast={onToast} />}
             {active === "templates" && <TemplatesPane onToast={onToast} />}
+            {active === "profile" && <ProfilePane onToast={onToast} />}
             {active === "teams" && <TeamsPane onToast={onToast} />}
             {active === "people" && <PeoplePane onToast={onToast} />}
             {active === "labels" && <LabelsPane onToast={onToast} />}
@@ -1472,6 +1497,238 @@ function TemplateForm({
         <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
         <button className="btn-primary" type="submit" disabled={pending || !valid}>
           {editing ? "Save changes" : "Create template"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* WhatsApp business profile                                           */
+/* ------------------------------------------------------------------ */
+
+/** Friendly labels for Meta's fixed `vertical` (business category) enum. */
+const VERTICAL_LABELS: Record<WhatsAppVertical, string> = {
+  UNDEFINED: "Not set",
+  OTHER: "Other",
+  AUTO: "Automotive",
+  BEAUTY: "Beauty, spa & salon",
+  APPAREL: "Clothing & apparel",
+  EDU: "Education",
+  ENTERTAIN: "Entertainment",
+  EVENT_PLAN: "Event planning & service",
+  FINANCE: "Finance & banking",
+  GROCERY: "Food & grocery",
+  GOVT: "Public service",
+  HOTEL: "Hotel & lodging",
+  HEALTH: "Medical & health",
+  NONPROFIT: "Non-profit",
+  PROF_SERVICES: "Professional services",
+  RETAIL: "Shopping & retail",
+  TRAVEL: "Travel & transportation",
+  RESTAURANT: "Restaurant",
+  NOT_A_BIZ: "Not a business",
+};
+
+/** Add https:// to a bare domain so Meta accepts it (empty stays empty). */
+function normalizeUrl(raw: string): string {
+  const s = raw.trim();
+  if (!s) return "";
+  return /^https?:\/\//i.test(s) ? s : `https://${s}`;
+}
+
+function ProfilePane({ onToast }: { onToast: (msg: string) => void }) {
+  const inboxes = useInboxes();
+  const waNumbers = (inboxes.data ?? []).filter((i) => i.type === "whatsapp");
+  const [inboxId, setInboxId] = useState<string | null>(null);
+  // Default to the first WhatsApp number once the list loads.
+  useEffect(() => {
+    if (!inboxId && waNumbers.length) setInboxId(waNumbers[0].id);
+  }, [waNumbers, inboxId]);
+  const selected = waNumbers.find((n) => n.id === inboxId) ?? null;
+  const profile = useWhatsappProfile(selected?.connected ? inboxId : null);
+
+  return (
+    <div className="setpane">
+      <div className="setpane__head">
+        <div>
+          <h2>Business profile</h2>
+          <p>
+            The public card customers see on your WhatsApp number — your “about” line,
+            description, category and contact details. Changes go straight to Meta.
+          </p>
+        </div>
+      </div>
+
+      {inboxes.isSuccess && waNumbers.length === 0 && (
+        <div className="setempty">
+          Connect a WhatsApp number under Channels first — a business profile lives on a number.
+        </div>
+      )}
+
+      {waNumbers.length > 1 && (
+        <label className="field">
+          <span>WhatsApp number</span>
+          <select value={inboxId ?? ""} onChange={(e) => setInboxId(e.target.value)}>
+            {waNumbers.map((n) => (
+              <option key={n.id} value={n.id}>
+                {n.name}
+                {n.channelConfigPublic?.displayNumber ? ` · ${n.channelConfigPublic.displayNumber}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {selected && !selected.connected && (
+        <div className="setempty">
+          This number isn’t connected yet — add its Phone number ID and access token under
+          Channels to edit its profile.
+        </div>
+      )}
+
+      {selected && selected.connected && (
+        <>
+          {profile.isLoading && <div className="setempty">Loading profile from WhatsApp…</div>}
+          {profile.isError && (
+            <div className="setempty">
+              Couldn’t load the profile from WhatsApp. {(profile.error as Error)?.message ?? ""}
+            </div>
+          )}
+          {profile.data && (
+            <ProfileForm key={inboxId} inboxId={inboxId as string} profile={profile.data} onToast={onToast} />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function ProfileForm({
+  inboxId,
+  profile,
+  onToast,
+}: {
+  inboxId: string;
+  profile: import("@ding/schemas").WhatsAppBusinessProfile;
+  onToast: (msg: string) => void;
+}) {
+  const update = useUpdateWhatsappProfile();
+  const [about, setAbout] = useState(profile.about ?? "");
+  const [description, setDescription] = useState(profile.description ?? "");
+  const [address, setAddress] = useState(profile.address ?? "");
+  const [email, setEmail] = useState(profile.email ?? "");
+  const [vertical, setVertical] = useState<WhatsAppVertical>(profile.vertical ?? "UNDEFINED");
+  const [web1, setWeb1] = useState(profile.websites?.[0] ?? "");
+  const [web2, setWeb2] = useState(profile.websites?.[1] ?? "");
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const websites = [web1, web2].map(normalizeUrl).filter(Boolean);
+    update.mutate(
+      { inboxId, input: { about, description, address, email, vertical, websites } },
+      {
+        onSuccess: () => onToast("Business profile saved"),
+        onError: (err) => onToast((err as Error)?.message ?? "Couldn’t save the profile"),
+      },
+    );
+  };
+
+  return (
+    <form className="setform" onSubmit={submit}>
+      {profile.profilePictureUrl && (
+        <div className="wa-profile__photo">
+          <img src={profile.profilePictureUrl} alt="Current WhatsApp profile photo" />
+          <small className="fieldhint">
+            Profile photo is set in WhatsApp Manager — it’s shown here for reference.
+          </small>
+        </div>
+      )}
+
+      <label className="field">
+        <span>
+          About <em>{about.length}/139</em>
+        </span>
+        <input
+          value={about}
+          maxLength={139}
+          autoComplete="off"
+          onChange={(e) => setAbout(e.target.value)}
+          placeholder="Here to help — reply anytime"
+        />
+        <small className="fieldhint">The short status line under your business name.</small>
+      </label>
+
+      <label className="field">
+        <span>
+          Description <em>{description.length}/512</em>
+        </span>
+        <textarea
+          value={description}
+          rows={3}
+          maxLength={512}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What your business does, in a sentence or two."
+        />
+      </label>
+
+      <div className="setform__grid two">
+        <label className="field">
+          <span>Category</span>
+          <select value={vertical} onChange={(e) => setVertical(e.target.value as WhatsAppVertical)}>
+            {WHATSAPP_VERTICALS.map((v) => (
+              <option key={v} value={v}>
+                {VERTICAL_LABELS[v]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Contact email</span>
+          <input
+            value={email}
+            type="email"
+            autoComplete="off"
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="hello@swiftee.co.uk"
+          />
+        </label>
+      </div>
+
+      <label className="field">
+        <span>Address</span>
+        <input
+          value={address}
+          autoComplete="off"
+          onChange={(e) => setAddress(e.target.value)}
+          placeholder="123 High Street, London"
+        />
+      </label>
+
+      <div className="setform__grid two">
+        <label className="field">
+          <span>Website</span>
+          <input
+            value={web1}
+            autoComplete="off"
+            onChange={(e) => setWeb1(e.target.value)}
+            placeholder="swiftee.co.uk"
+          />
+        </label>
+        <label className="field">
+          <span>Website 2</span>
+          <input
+            value={web2}
+            autoComplete="off"
+            onChange={(e) => setWeb2(e.target.value)}
+            placeholder="Optional"
+          />
+        </label>
+      </div>
+
+      <div className="setform__foot">
+        <button className="btn-primary" type="submit" disabled={update.isPending}>
+          {update.isPending ? "Saving…" : "Save profile"}
         </button>
       </div>
     </form>
