@@ -316,6 +316,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
                 <span>Name</span>
                 <span>Company</span>
                 <span>Contact</span>
+                <span>Channels</span>
                 <span>Tags</span>
                 <span>Routing</span>
                 <span />
@@ -344,6 +345,19 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
                       {c.phone ? <div className="dcell__t" style={{ fontWeight: 550, fontSize: "var(--fs-sm)" }}>{c.phone}</div> : null}
                       {c.email ? <div className="dcell__s">{c.email}</div> : null}
                       {!c.phone && !c.email ? <span className="dcell--muted">—</span> : null}
+                    </span>
+                    <span className="dcell dchips">
+                      {c.phone && (
+                        <span title="WhatsApp" style={{ color: channelMeta("whatsapp").color, display: "inline-flex" }}>
+                          {(() => { const G = channelMeta("whatsapp").Glyph; return <G />; })()}
+                        </span>
+                      )}
+                      {c.email && (
+                        <span title="Email" style={{ color: channelMeta("email").color, display: "inline-flex" }}>
+                          {(() => { const G = channelMeta("email").Glyph; return <G />; })()}
+                        </span>
+                      )}
+                      {!c.phone && !c.email && <span className="dcell--muted">—</span>}
                     </span>
                     <span className="dcell dtags">
                       {(c.tags ?? []).slice(0, 3).map((t) => <span className="dtag" key={t}>{t}</span>)}

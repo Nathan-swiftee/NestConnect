@@ -1297,8 +1297,10 @@ input,textarea{font:inherit}
 .dtable__empty{padding:var(--sp-6) var(--sp-4);text-align:center;color:var(--text-faint);font-size:var(--fs-sm)}
 
 /* per-table column templates */
-.dtable--cust{--dtable-min:720px}
-.dtable--cust .dtable__head,.dtable--cust .dtable__row{grid-template-columns:minmax(170px,2fr) minmax(110px,1.2fr) minmax(150px,1.6fr) minmax(110px,1.3fr) 128px 28px}
+.dtable--cust{--dtable-min:860px}
+.dtable--cust .dtable__head,.dtable--cust .dtable__row{grid-template-columns:minmax(170px,1.8fr) minmax(100px,1.1fr) minmax(140px,1.5fr) 84px minmax(100px,1.2fr) 124px 28px}
+.dchips{display:flex;align-items:center;gap:8px}
+.dchips svg{width:17px;height:17px}
 .dtable--ppl{--dtable-min:660px}
 .dtable--ppl .dtable__head,.dtable--ppl .dtable__row{grid-template-columns:minmax(180px,2fr) minmax(150px,1.7fr) 110px minmax(120px,1.4fr) 28px}
 .dtable--tpl{--dtable-min:680px}
@@ -1319,6 +1321,25 @@ input,textarea{font:inherit}
 .setzero p{margin:0;font-size:var(--fs-sm);max-width:340px;line-height:1.45}
 .setzero__ic{width:52px;height:52px;border-radius:var(--r-16);background:var(--surface-2);display:grid;place-items:center;color:var(--text-faint)}
 .setzero__ic svg{width:24px;height:24px}
+
+/* Channel cards (Settings › Channels) — a tile grid; clicking a tile edits it. */
+.cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
+.chcard{display:flex;flex-direction:column;gap:14px;padding:16px;min-height:112px;border:1px solid var(--border);border-radius:var(--r-16);background:var(--surface);text-align:left;cursor:pointer;transition:border-color .14s,box-shadow .14s,transform .1s var(--ease)}
+.chcard:hover{border-color:color-mix(in srgb,var(--brand) 50%,var(--border));box-shadow:0 8px 24px -14px var(--brand-ring)}
+.chcard:active{transform:translateY(1px)}
+.chcard__top{display:flex;align-items:center;gap:11px;min-width:0}
+.chcard__ic{flex:none;width:42px;height:42px;border-radius:var(--r-12);display:grid;place-items:center;background:var(--surface-2)}
+.chcard__ic svg{width:22px;height:22px}
+.chcard__name{min-width:0;display:flex;flex-direction:column}
+.chcard__name b{font-size:var(--fs-md);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chcard__name small{font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chcard__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
+.chcard__route{min-width:0;font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:capitalize}
+.chcard--add{align-items:center;justify-content:center;flex-direction:row;gap:8px;border-style:dashed;color:var(--text-muted);background:transparent;font-weight:650;font-size:var(--fs-sm)}
+.chcard--add svg{width:16px;height:16px}
+.chcard--add:hover{color:var(--brand-strong);border-color:var(--brand);box-shadow:none}
+.connect__headacts{display:flex;align-items:center;gap:8px}
+.modal__foot--split{justify-content:space-between}
 .pers-field + .pers-field{margin-top:4px;padding-top:var(--sp-4);border-top:1px solid var(--glass-line)}
 .pers-field__hd{display:flex;align-items:center;gap:10px}
 .pers-field__lbl{font-weight:600;font-size:var(--fs-md)}
@@ -1421,9 +1442,9 @@ input,textarea{font:inherit}
 .settings__pane{flex:1;overflow-y:auto;padding:var(--sp-6) 28px;animation:paneIn .26s var(--ease)}
 @keyframes paneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .setpane{max-width:880px;margin:0}
-/* Data-table panes (Customers, People, Templates …) want more width than the
-   readable 880px form column. */
-.setpane.setpane--wide{max-width:1240px}
+/* Data-table panes (Customers, People, Templates …) fill the available width
+   rather than the readable 880px form column. */
+.setpane.setpane--wide{max-width:none}
 .setpane__head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp-4);margin-bottom:18px}
 .setpane__head h2{margin:0 0 3px;font-size:var(--fs-lg);font-weight:750}
 .setpane__head p{margin:0;font-size:var(--fs-sm);color:var(--text-muted);max-width:470px}

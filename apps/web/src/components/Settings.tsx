@@ -313,18 +313,52 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
     });
   };
 
+  const editingInbox = inboxes.data?.find((i) => i.id === editingId) ?? null;
+
   return (
-    <div className="setpane">
+    <div className="setpane setpane--wide">
       <div className="setpane__head">
         <div>
-          <h2>Channels</h2>
+          <h2>Channels <span className="setcount">{inboxes.data?.length ?? 0}</span></h2>
           <p>WhatsApp numbers and shared email inboxes. Each routes to one or more teams.</p>
         </div>
-        {!connecting && (
-          <button className="btn-primary" onClick={() => setConnecting(true)}>
-            <PlusIcon /> Add channel
-          </button>
-        )}
+        <button className="btn-primary" onClick={() => setConnecting(true)}>
+          <PlusIcon /> Add channel
+        </button>
+      </div>
+
+      <div className="cardgrid">
+        {inboxes.data?.map((i) => {
+          const cm = channelMeta(i.type);
+          const Glyph = cm.Glyph;
+          const connected = i.connected !== false;
+          return (
+            <button className="chcard" key={i.id} onClick={() => setEditingId(i.id)}>
+              <div className="chcard__top">
+                <span className="chcard__ic" style={{ color: cm.color }}>
+                  <Glyph />
+                </span>
+                <span className="chcard__name">
+                  <b>{i.name}</b>
+                  <small>{i.handle}</small>
+                </span>
+              </div>
+              <div className="chcard__foot">
+                <span className="chcard__route" title={i.teamIds.map(teamName).join(", ")}>
+                  {summariseTeams(i.teamIds.map(teamName)) || "Unrouted"} · {i.routingStrategy.replace(/_/g, " ")}
+                </span>
+                <span className={"connpill " + (connected ? "on" : "off")} title={connected ? "Integration live" : "Add credentials to go live"}>
+                  <span className="connpill__dot" />
+                  {connected ? "Connected" : "Setup needed"}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+        <button className="chcard chcard--add" onClick={() => setConnecting(true)}>
+          <PlusIcon />
+          <span>Add a channel</span>
+        </button>
       </div>
 
       {connecting && (
@@ -334,54 +368,14 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
           onToast={onToast}
         />
       )}
-
-      <div className="setlist">
-        {inboxes.data?.map((i) => {
-          const cm = channelMeta(i.type);
-          const Glyph = cm.Glyph;
-          const connected = i.connected !== false;
-          const editing = editingId === i.id;
-          return (
-            <div className="setmember" key={i.id}>
-              <div className="setrow">
-                <span className="setrow__ic" style={{ color: cm.color }}>
-                  <Glyph />
-                </span>
-                <div className="setrow__main">
-                  <b>{i.name}</b>
-                  <small>{i.handle}</small>
-                </div>
-                <div className="setrow__meta">
-                  <span className="setrow__routing" title={i.teamIds.map(teamName).join(", ")}>
-                    {summariseTeams(i.teamIds.map(teamName)) || "Unrouted"}
-                  </span>
-                  <span className="setrow__tag">{i.routingStrategy.replace(/_/g, " ")}</span>
-                </div>
-                <span className={"connpill " + (connected ? "on" : "off")} title={connected ? "Integration live" : "Add credentials to go live"}>
-                  <span className="connpill__dot" />
-                  {connected ? "Connected" : "Setup needed"}
-                </span>
-                <div className="rowacts">
-                  <button className="iconbtn" title="Edit channel" onClick={() => setEditingId(editing ? null : i.id)}>
-                    <EditIcon />
-                  </button>
-                  <button className="iconbtn danger" title="Delete channel" onClick={() => remove(i.id, i.name)}>
-                    <TrashIcon />
-                  </button>
-                </div>
-              </div>
-              {editing && (
-                <ChannelEditor
-                  inbox={i}
-                  onDone={() => setEditingId(null)}
-                  onDelete={() => remove(i.id, i.name)}
-                  onToast={onToast}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
+      {editingInbox && (
+        <ChannelEditor
+          inbox={editingInbox}
+          onDone={() => setEditingId(null)}
+          onDelete={() => remove(editingInbox.id, editingInbox.name)}
+          onToast={onToast}
+        />
+      )}
     </div>
   );
 }
@@ -455,7 +449,13 @@ function ChannelEditor({
   };
 
   return (
-    <div className="editbox">
+    <div className="modal" onClick={onDone}>
+      <div className="modal__box modal--form" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <h2>Edit channel</h2>
+          <button type="button" className="modal__x" onClick={onDone} aria-label="Close"><XIcon /></button>
+        </div>
+        <div className="modal__body">
       <div className="setform__grid two">
         <label className="field">
           <span>Display name</span>
@@ -506,15 +506,17 @@ function ChannelEditor({
           </div>
         </div>
       )}
-      <div className="setform__foot setform__foot--split">
-        <button className="btn-ghost btn-danger" type="button" onClick={onDelete}>
-          <TrashIcon /> Delete channel
-        </button>
-        <div className="setform__footactions">
-          <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
-          <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || reroute.isPending || !valid}>
-            Save changes
+        </div>
+        <div className="modal__foot modal__foot--split">
+          <button className="btn-ghost btn-danger" type="button" onClick={onDelete}>
+            <TrashIcon /> Delete channel
           </button>
+          <div className="setform__footactions">
+            <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
+            <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || reroute.isPending || !valid}>
+              Save changes
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -617,11 +619,13 @@ function ConnectChannel({
   // Step 1 — pick a channel type.
   if (!kind) {
     return (
-      <div className="connect">
-        <div className="connect__head">
-          <b>Connect a channel</b>
-          <button className="btn-ghost sm" onClick={onDone}>Cancel</button>
-        </div>
+      <div className="modal" onClick={onDone}>
+        <div className="modal__box modal--form" onClick={(e) => e.stopPropagation()}>
+          <div className="modal__head">
+            <h2>Connect a channel</h2>
+            <button type="button" className="modal__x" onClick={onDone} aria-label="Close"><XIcon /></button>
+          </div>
+          <div className="modal__body">
         <div className="kindgrid">
           {CHANNEL_KINDS.map((k) => {
             const cm = channelMeta(k.type);
@@ -644,6 +648,8 @@ function ConnectChannel({
             <small>Connect with Google — one click, no tokens to copy.</small>
           </button>
         </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -652,19 +658,19 @@ function ConnectChannel({
   const cm = channelMeta(kind.type);
   const Glyph = cm.Glyph;
   return (
-    <form className="connect" onSubmit={submit}>
-      <div className="connect__head">
-        <span className="connect__kind">
-          <span className="setrow__ic" style={{ color: cm.color }}>
-            <Glyph />
+    <div className="modal" onClick={onDone}>
+      <form className="modal__box modal--form" onSubmit={submit} onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <span className="connect__kind">
+            <span className="setrow__ic" style={{ color: cm.color }}><Glyph /></span>
+            {kind.label}
           </span>
-          {kind.label}
-        </span>
-        <button className="btn-ghost sm" type="button" onClick={() => { setKind(null); setCfg({}); }}>
-          Change
-        </button>
-      </div>
-
+          <div className="connect__headacts">
+            <button className="btn-ghost sm" type="button" onClick={() => { setKind(null); setCfg({}); }}>Change</button>
+            <button type="button" className="modal__x" onClick={onDone} aria-label="Close"><XIcon /></button>
+          </div>
+        </div>
+        <div className="modal__body">
       <div className="setform__grid two">
         <label className="field">
           <span>{kind.handleLabel}</span>
@@ -729,13 +735,15 @@ function ConnectChannel({
         </label>
       </div>
 
-      <div className="setform__foot">
-        <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
-        <button className="btn-primary" type="submit" disabled={create.isPending || !valid}>
-          Connect channel
-        </button>
-      </div>
-    </form>
+        </div>
+        <div className="modal__foot">
+          <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
+          <button className="btn-primary" type="submit" disabled={create.isPending || !valid}>
+            Connect channel
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
