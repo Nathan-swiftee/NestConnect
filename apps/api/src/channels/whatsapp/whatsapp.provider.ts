@@ -244,6 +244,10 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       }
       const type = waMediaType(item.kind);
       const obj: Record<string, unknown> = { id: mediaId };
+      // Flag a voice recording so WhatsApp delivers it as a native voice note
+      // (PTT) rather than a generic audio file — without `voice: true` the clip
+      // can arrive but play as "no longer available" on the recipient.
+      if (item.kind === "voice") obj.voice = true;
       // Ride the text body on the first captionable media, once.
       if (!captionUsed && params.body && captionable(type)) {
         obj.caption = params.body;
@@ -384,33 +388,26 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   }
 
   /**
-   * Produce a WhatsApp-ready Ogg/Opus voice note from an arbitrary recording.
-   *
-   * Browsers that record Opus (Chrome/Android and newer Safari → WebM/Opus, or
-   * Ogg/Opus) are REMUXED: the exact Opus stream is copied straight into an Ogg
-   * container with no re-encode. WhatsApp accepts a *re-encoded* Opus on upload
-   * but its voice-note processing then can't serve it to the recipient ("audio no
-   * longer available"); the browser's own Opus, merely re-containered, plays.
-   * Sources that aren't Opus (iOS Safari MP4/AAC) can't be copied into Ogg, so
-   * they're re-encoded to Opus. Returns the Ogg bytes, or null if ffmpeg is
-   * missing or both attempts fail — the caller must then fall back or drop, never
-   * upload the un-transcoded bytes as audio/ogg.
+   * Produce a WhatsApp-ready voice note from an arbitrary recording. Native
+   * WhatsApp voice notes (PTT) are Ogg/Opus, MONO, voice-tuned — never the
+   * stereo, music-mode Opus a browser's `MediaRecorder` emits. So instead of
+   * copying the browser stream, RE-ENCODE every recording (WebM/Opus, iOS
+   * MP4/AAC, …) to mono VoIP Opus. Combined with `voice: true` on the send and
+   * the `codecs=opus` upload type, this is what makes WhatsApp deliver a playable
+   * voice note rather than "audio no longer available". ffmpeg auto-detects the
+   * input container. Returns the Ogg bytes, or null if ffmpeg is missing/fails.
    */
   private async transcodeToOggOpus(input: Buffer): Promise<Buffer | null> {
-    // 1) Lossless remux — copy an existing Opus stream (WebM/Ogg) into Ogg.
-    const copied = await this.runFfmpegToOgg(input, ["-vn", "-map", "0:a:0", "-c:a", "copy"], "remux");
-    if (copied && audioContainer(copied, "") === "ogg") {
-      this.logger.log(`[voice] remux (copy Opus → Ogg) OK bytes=${copied.length}`);
-      return copied;
-    }
-    // 2) Re-encode — source isn't Opus (iOS MP4/AAC) or the copy wasn't valid Ogg.
     const encoded = await this.runFfmpegToOgg(
       input,
-      ["-vn", "-map", "0:a:0", "-map_metadata", "-1", "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1"],
-      "encode",
+      // Mono, 24 kbps, VoIP-tuned Opus — WhatsApp's native voice-note format. A
+      // browser records stereo, music-mode Opus; copying that verbatim makes the
+      // recipient's client reject it, so always re-encode to the voice profile.
+      ["-vn", "-map", "0:a:0", "-map_metadata", "-1", "-c:a", "libopus", "-b:a", "24k", "-ar", "48000", "-ac", "1", "-application", "voip"],
+      "voice-encode",
     );
     if (encoded && audioContainer(encoded, "") === "ogg") {
-      this.logger.log(`[voice] re-encode (→ Opus/Ogg) OK bytes=${encoded.length}`);
+      this.logger.log(`[voice] re-encode → mono Opus/Ogg OK bytes=${encoded.length}`);
       return encoded;
     }
     return null;
