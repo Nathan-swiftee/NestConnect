@@ -20,7 +20,7 @@ import type {
   User,
   WaWindow,
 } from "@ding/schemas";
-import { isInboxConnected } from "@ding/schemas";
+import { isInboxConnected, publicChannelConfig } from "@ding/schemas";
 
 /** WhatsApp's customer-service window is 24 hours from the last inbound message. */
 const WA_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -223,6 +223,7 @@ export function mapInbox(i: InboxWithTeams): Inbox {
     routingStrategy: i.routingStrategy as RoutingStrategy,
     unread: 0,
     connected: isInboxConnected(type, i.channelConfig as Record<string, string> | null),
+    channelConfigPublic: publicChannelConfig(i.channelConfig as Record<string, string> | null),
   };
 }
 

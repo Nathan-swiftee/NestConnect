@@ -210,6 +210,9 @@ export class ChannelDispatcher {
 function shortReason(channel: string, result: { httpStatus?: number; errorCode?: string }): string {
   const label = channel === "email" ? "Email" : "WhatsApp";
   if (result.errorCode === "not_connected") return `${label} isn’t connected`;
+  // Graph error 100 on a send means the phone-number-id and access token don't
+  // match (wrong/expired token, or a token for a different number).
+  if (result.errorCode === "100") return `${label}: this number’s credentials don’t match — re-check its Phone number ID and access token`;
   if (result.httpStatus === 401 || result.httpStatus === 403) return `${label}: authentication rejected`;
   if (result.httpStatus === 429) return `${label}: rate limited`;
   if (result.httpStatus && result.httpStatus >= 500) return `${label}: provider error (${result.httpStatus})`;

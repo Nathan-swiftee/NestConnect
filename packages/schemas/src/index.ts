@@ -110,6 +110,9 @@ export const inboxSchema = z.object({
   unread: z.number().int().nonnegative().default(0),
   /** True once the integration credentials needed to send/receive live are set. */
   connected: z.boolean().optional(),
+  /** Non-secret channelConfig values (e.g. the Phone number ID) surfaced so the
+   *  channel editor can show what's configured. Access tokens are NEVER included. */
+  channelConfigPublic: z.record(z.string()).optional(),
 });
 export type Inbox = z.infer<typeof inboxSchema>;
 
@@ -123,6 +126,25 @@ export const REQUIRED_CHANNEL_KEYS: Record<ChannelType, string[]> = {
   whatsapp_group: ["phoneNumberId", "accessToken"],
   email: ["providerToken"],
 };
+
+/**
+ * channelConfig keys that are safe to send to the client — identifiers, not
+ * credentials. Access tokens (`accessToken`, `providerToken`) and the webhook
+ * `verifyToken` are deliberately absent, so a token never leaves the backend.
+ */
+export const PUBLIC_CHANNEL_KEYS = ["phoneNumberId", "wabaId", "displayNumber", "fromName", "provider"] as const;
+
+/** Pick only the non-secret channelConfig keys, for display in the channel editor. */
+export function publicChannelConfig(
+  config?: Record<string, string> | null,
+): Record<string, string> | undefined {
+  if (!config) return undefined;
+  const out: Record<string, string> = {};
+  for (const k of PUBLIC_CHANNEL_KEYS) {
+    if (config[k]) out[k] = config[k];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
 
 /**
  * Whether an inbox is wired up to its provider. A `null`/absent config means a

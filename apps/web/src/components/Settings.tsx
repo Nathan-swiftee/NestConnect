@@ -375,7 +375,9 @@ function ChannelEditor({
   const [name, setName] = useState(inbox.name);
   const [teamIds, setTeamIds] = useState<string[]>(inbox.teamIds);
   const [strategy, setStrategy] = useState<RoutingStrategy>(inbox.routingStrategy);
-  const [cfg, setCfg] = useState<Record<string, string>>({});
+  // Pre-fill the non-secret config (e.g. Phone number ID) so it's visible and
+  // verifiable; secret fields (tokens) stay blank and are kept unless re-entered.
+  const [cfg, setCfg] = useState<Record<string, string>>(inbox.channelConfigPublic ?? {});
   const [moveOpen, setMoveOpen] = useState(false);
 
   const setField = (k: string, v: string) => setCfg((c) => ({ ...c, [k]: v }));
@@ -468,7 +470,7 @@ function ChannelEditor({
                   autoComplete="off"
                   value={cfg[f.key] ?? ""}
                   onChange={(e) => setField(f.key, e.target.value)}
-                  placeholder="••••••••"
+                  placeholder={f.secret ? "leave blank to keep current" : f.placeholder}
                 />
               </label>
             ))}

@@ -29,7 +29,7 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
-import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE } from "@ding/schemas";
+import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE, publicChannelConfig } from "@ding/schemas";
 import { env } from "../config/env";
 import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
@@ -170,7 +170,11 @@ export class MemoryStore extends Store {
       unread: 0,
     };
     this.inboxes.push(inbox);
-    return { ...inbox, connected: isInboxConnected(params.type, params.channelConfig ?? null) };
+    return {
+      ...inbox,
+      connected: isInboxConnected(params.type, params.channelConfig ?? null),
+      channelConfigPublic: publicChannelConfig(params.channelConfig ?? null),
+    };
   }
 
   async updateInbox(
@@ -191,7 +195,11 @@ export class MemoryStore extends Store {
       const merged = { ...(this.inboxConfig.get(id) ?? {}), ...params.channelConfig };
       this.inboxConfig.set(id, merged);
     }
-    return { ...inbox, connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null) };
+    return {
+      ...inbox,
+      connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null),
+      channelConfigPublic: publicChannelConfig(this.inboxConfig.get(id) ?? null),
+    };
   }
 
   async deleteInbox(id: string): Promise<void> {
@@ -203,7 +211,11 @@ export class MemoryStore extends Store {
   async getInbox(id: string): Promise<Inbox | undefined> {
     const inbox = this.inboxes.find((i) => i.id === id);
     if (!inbox) return undefined;
-    return { ...inbox, connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null) };
+    return {
+      ...inbox,
+      connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null),
+      channelConfigPublic: publicChannelConfig(this.inboxConfig.get(id) ?? null),
+    };
   }
 
   async getInboxConfig(id: string): Promise<Record<string, string> | undefined> {
@@ -463,6 +475,7 @@ export class MemoryStore extends Store {
     return this.inboxes.map((i) => ({
       ...i,
       connected: isInboxConnected(i.type, this.inboxConfig.get(i.id) ?? null),
+      channelConfigPublic: publicChannelConfig(this.inboxConfig.get(i.id) ?? null),
     }));
   }
 
