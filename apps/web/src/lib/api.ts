@@ -1,5 +1,4 @@
 import type {
-  AddParticipantInput,
   Attachment,
   ChannelType,
   Contact,
@@ -24,7 +23,6 @@ import type {
   Label,
   Member,
   Message,
-  Participant,
   Team,
   UpdateLabelInput,
   UpdateContactInput,
@@ -257,10 +255,10 @@ export const api = {
   markUnread: (id: string) => post<Conversation>(`/conversations/${id}/unread`, {}),
   // Agent is typing → show the customer a WhatsApp "typing…" indicator.
   sendTyping: (id: string) => post<{ ok: boolean }>(`/conversations/${id}/typing`, {}),
-  // groups
+  // groups (invite-only: members join via the link; no add-by-phone endpoint)
   createGroup: (input: CreateGroupInput) => post<ConversationWithMessages>("/groups", input),
-  addParticipant: (conversationId: string, input: AddParticipantInput) =>
-    post<Participant>(`/groups/${conversationId}/participants`, input),
+  resetGroupInvite: (conversationId: string) =>
+    post<{ inviteLink: string }>(`/groups/${conversationId}/invite/reset`, {}),
   removeParticipant: (conversationId: string, contactId: string) =>
     request<{ ok: boolean }>(`/groups/${conversationId}/participants/${contactId}`, { method: "DELETE" }),
 };

@@ -1,11 +1,8 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import {
   GROUP_MAX_MEMBERS,
-  type AddParticipantInput,
-  type Contact,
   type ConversationWithMessages,
   type CreateGroupInput,
-  type Participant,
 } from "@ding/schemas";
 import { Store } from "../../data/store";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
@@ -25,7 +22,12 @@ export class GroupsService {
     private readonly realtime: RealtimeGateway,
   ) {}
 
-  /** Create an official WhatsApp group space (≤8 members) and route it. */
+  /**
+   * Create an official WhatsApp group (≤8 members) hosted by a WhatsApp number.
+   * The Groups API is invite-only: we create the group with a subject and share
+   * its invite link — members JOIN via the link (there's no add-by-phone), and
+   * the `group_participants_update` webhook fills the roster in as they do.
+   */
   async createGroup(input: CreateGroupInput): Promise<ConversationWithMessages> {
     // A WhatsApp group is hosted BY a WhatsApp number (the business number is a
     // member of the group) — not a channel of its own.
@@ -33,33 +35,14 @@ export class GroupsService {
     if (!inbox || inbox.type !== "whatsapp") {
       throw new BadRequestException("inboxId must be a WhatsApp number");
     }
-    if (input.members.length > GROUP_MAX_MEMBERS) {
-      throw new BadRequestException(`A WhatsApp group allows at most ${GROUP_MAX_MEMBERS} members`);
-    }
 
-    const { groupId, inviteLink } = await this.provider.createGroup(
-      inbox.id,
-      input.name,
-      input.members.map((m) => m.phone),
-    );
+    const { groupId, inviteLink } = await this.provider.createGroup(inbox.id, input.name);
 
     const groupContact = await this.store.createContact({
       orgId: inbox.orgId,
       displayName: input.name,
       avatarColor: GROUP_AVATAR,
     });
-
-    const memberContacts: Contact[] = [];
-    for (const m of input.members) {
-      memberContacts.push(
-        await this.store.upsertContactByIdentity({
-          orgId: inbox.orgId,
-          kind: "phone",
-          value: m.phone,
-          displayName: m.name || m.phone,
-        }),
-      );
-    }
 
     const conversation = await this.store.createGroupConversation({
       orgId: inbox.orgId,
@@ -68,7 +51,8 @@ export class GroupsService {
       subject: input.name,
       channelRef: groupId,
       inviteLink,
-      memberContacts,
+      // Invite-only: nobody is in the group until they join via the link.
+      memberContacts: [],
     });
 
     const decision = await this.routing.route(inbox, groupContact);
@@ -77,27 +61,19 @@ export class GroupsService {
 
     const full = await this.store.getConversation(conversation.id);
     if (!full) throw new NotFoundException("Group conversation not found after creation");
-    this.logger.log(`Created group "${input.name}" (${memberContacts.length} members) → ${inviteLink}`);
+    this.logger.log(`Created group "${input.name}" → ${inviteLink}`);
     return full;
   }
 
-  async addParticipant(conversationId: string, input: AddParticipantInput): Promise<Participant> {
+  /** Revoke a group's invite link and mint a fresh one (e.g. if the link leaks). */
+  async resetInviteLink(conversationId: string): Promise<{ inviteLink: string }> {
     const conv = await this.store.getConversation(conversationId);
     if (!conv || conv.channel !== "whatsapp_group") throw new NotFoundException("Group not found");
-    if ((await this.store.countParticipants(conversationId)) >= GROUP_MAX_MEMBERS) {
-      throw new BadRequestException(`A WhatsApp group allows at most ${GROUP_MAX_MEMBERS} members`);
-    }
-    if (conv.channelRef) await this.provider.addParticipant(conv.inboxId, conv.channelRef, input.phone);
-
-    const contact = await this.store.upsertContactByIdentity({
-      orgId: conv.orgId,
-      kind: "phone",
-      value: input.phone,
-      displayName: input.name || input.phone,
-    });
-    const participant = await this.store.addParticipant(conversationId, contact);
+    if (!conv.channelRef) throw new BadRequestException("This group has no WhatsApp id yet");
+    const inviteLink = await this.provider.resetInviteLink(conv.inboxId, conv.channelRef);
+    await this.store.setInviteLink(conversationId, inviteLink);
     await this.emitUpdated(conversationId);
-    return participant;
+    return { inviteLink };
   }
 
   async removeParticipant(conversationId: string, contactId: string): Promise<void> {
@@ -111,7 +87,7 @@ export class GroupsService {
     await this.emitUpdated(conversationId);
   }
 
-  /** Apply a group_participants_update webhook (member joined/left). */
+  /** Apply a group_participants_update webhook (member joined via link / left). */
   async handleParticipantEvent(groupId: string, action: "add" | "remove", phone: string, name?: string): Promise<void> {
     const conversationId = await this.store.findConversationByChannelRef(groupId);
     if (!conversationId) return;

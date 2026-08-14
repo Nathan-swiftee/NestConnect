@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   GROUP_MAX_MEMBERS,
   type ChannelType,
@@ -7,12 +7,12 @@ import {
   type Priority,
 } from "@ding/schemas";
 import {
-  useAddParticipant,
   useContact,
   useContacts,
   useConversation,
   usePeople,
   useRemoveParticipant,
+  useResetGroupInvite,
   useSession,
   useSetPriority,
   useTeams,
@@ -402,11 +402,9 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
   const qc = useQueryClient();
   const teams = useTeams();
   const teamName = (id: string) => teams.data?.find((t) => t.id === id)?.name ?? "—";
-  const addParticipant = useAddParticipant(conversationId ?? "");
   const removeParticipant = useRemoveParticipant(conversationId ?? "");
+  const resetInvite = useResetGroupInvite(conversationId ?? "");
   const [now, setNow] = useState(() => Date.now());
-  const [memberPhone, setMemberPhone] = useState("");
-  const [memberName, setMemberName] = useState("");
 
   useEffect(() => {
     if (!conv?.slaDueAt) return;
@@ -420,28 +418,19 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
   const memberCount = conv.participants.length;
   const GroupGlyph = channelMeta("whatsapp_group").Glyph;
 
-  const addMember = (e: FormEvent) => {
-    e.preventDefault();
-    const phone = memberPhone.trim();
-    if (!phone) return;
-    addParticipant.mutate(
-      { phone, name: memberName.trim() || undefined },
-      {
-        onSuccess: () => {
-          setMemberPhone("");
-          setMemberName("");
-          onToast("Member added");
-        },
-        onError: () => onToast(`Groups cap at ${GROUP_MAX_MEMBERS} members`),
-      },
-    );
-  };
-
   const copyInvite = () => {
     if (conv.inviteLink) {
       navigator.clipboard?.writeText(conv.inviteLink);
       onToast("Invite link copied");
     }
+  };
+
+  const resetInviteLink = () => {
+    if (!window.confirm("Reset the invite link? The current link stops working and anyone with it can no longer join.")) return;
+    resetInvite.mutate(undefined, {
+      onSuccess: () => onToast("Invite link reset"),
+      onError: (err) => onToast((err as Error)?.message ?? "Couldn’t reset the link"),
+    });
   };
 
   const copyValue = (value: string, label: string) => {
@@ -531,14 +520,31 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
             {conv.slaDueAt && <SlaBlock iso={conv.slaDueAt} now={now} />}
             <LabelsBlock conversationId={conv.id} labels={conv.labels} />
 
-            {conv.inviteLink && (
-              <Block title="Invite link">
-                <div className="invite">
-                  <code>{conv.inviteLink}</code>
-                  <button type="button" onClick={copyInvite}>Copy</button>
-                </div>
-              </Block>
-            )}
+            <Block title="Invite link">
+              {conv.inviteLink ? (
+                <>
+                  <div className="invite">
+                    <code>{conv.inviteLink}</code>
+                    <button type="button" onClick={copyInvite}>Copy</button>
+                  </div>
+                  <div className="invite__acts">
+                    <button
+                      type="button"
+                      className="invite__reset"
+                      onClick={resetInviteLink}
+                      disabled={resetInvite.isPending}
+                    >
+                      {resetInvite.isPending ? "Resetting…" : "Reset link"}
+                    </button>
+                  </div>
+                  <p className="capnote">
+                    Share this link to invite people — they join through it (up to {GROUP_MAX_MEMBERS}).
+                  </p>
+                </>
+              ) : (
+                <p className="capnote">No invite link yet.</p>
+              )}
+            </Block>
             <div className="block">
               <div className="t">
                 Members <span className="count">{memberCount} / {GROUP_MAX_MEMBERS}</span>
@@ -561,14 +567,12 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
                   </div>
                 ))}
               </div>
-              {memberCount < GROUP_MAX_MEMBERS ? (
-                <form className="addmember" onSubmit={addMember}>
-                  <input value={memberPhone} onChange={(e) => setMemberPhone(e.target.value)} placeholder="+44 7…" />
-                  <input value={memberName} onChange={(e) => setMemberName(e.target.value)} placeholder="Name (optional)" />
-                  <button type="submit" disabled={addParticipant.isPending || !memberPhone.trim()}>Add</button>
-                </form>
-              ) : (
+              {memberCount === 0 ? (
+                <div className="capnote">No one has joined yet. Share the invite link to add people.</div>
+              ) : memberCount >= GROUP_MAX_MEMBERS ? (
                 <div className="capnote">Group is at the {GROUP_MAX_MEMBERS}-member limit.</div>
+              ) : (
+                <div className="capnote">People join via the invite link — WhatsApp groups have no add-by-number.</div>
               )}
             </div>
           </>

@@ -1,10 +1,5 @@
 import { Body, Controller, Delete, NotFoundException, Param, Post } from "@nestjs/common";
-import {
-  addParticipantInputSchema,
-  createGroupInputSchema,
-  type AddParticipantInput,
-  type CreateGroupInput,
-} from "@ding/schemas";
+import { createGroupInputSchema, type CreateGroupInput } from "@ding/schemas";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { Store } from "../../data/store";
@@ -28,14 +23,13 @@ export class GroupsController {
     return this.groups.createGroup(body);
   }
 
-  @Post(":id/participants")
-  addParticipant(
-    @Param("id") id: string,
-    @Body(new ZodValidationPipe(addParticipantInputSchema)) body: AddParticipantInput,
-  ) {
-    return this.groups.addParticipant(id, body);
+  /** Revoke and regenerate the group's invite link. */
+  @Post(":id/invite/reset")
+  resetInvite(@Param("id") id: string) {
+    return this.groups.resetInviteLink(id);
   }
 
+  /** Remove a member from the group (Meta confirms via webhook). */
   @Delete(":id/participants/:contactId")
   async removeParticipant(@Param("id") id: string, @Param("contactId") contactId: string) {
     await this.groups.removeParticipant(id, contactId);

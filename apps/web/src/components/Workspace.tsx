@@ -6,6 +6,7 @@ import { Thread } from "./Thread";
 import { ContextPanel } from "./ContextPanel";
 import { CommandPalette } from "./CommandPalette";
 import { Compose } from "./Compose";
+import { CreateGroupModal } from "./CreateGroupModal";
 import { Settings } from "./Settings";
 import { PersonalSettings } from "./PersonalSettings";
 import { Customers } from "./Customers";
@@ -26,6 +27,7 @@ export function Workspace() {
   );
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [groupOpen, setGroupOpen] = useState(false);
   const [section, setSection] = useState<"inbox" | "customers" | "settings">("inbox");
   const [focusContact, setFocusContact] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -222,7 +224,23 @@ export function Workspace() {
             selectConversation(id);
             setComposeOpen(false);
           }}
+          onNewGroup={() => {
+            setComposeOpen(false);
+            setGroupOpen(true);
+          }}
           onToast={notify}
+        />
+      )}
+
+      {groupOpen && (
+        <CreateGroupModal
+          onClose={() => setGroupOpen(false)}
+          onToast={notify}
+          onSelectView={(key) => {
+            setSection("inbox");
+            selectView(key);
+            setGroupOpen(false);
+          }}
         />
       )}
 

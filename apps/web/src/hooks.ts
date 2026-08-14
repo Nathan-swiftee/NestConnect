@@ -9,7 +9,6 @@ import {
 import {
   ClientEvent,
   ServerEvent,
-  type AddParticipantInput,
   type ConversationStatus,
   type ConversationWithMessages,
   type Priority,
@@ -135,18 +134,19 @@ export function useCreateGroup() {
   });
 }
 
-export function useAddParticipant(conversationId: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: AddParticipantInput) => api.addParticipant(conversationId, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversation", conversationId] }),
-  });
-}
-
 export function useRemoveParticipant(conversationId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (contactId: string) => api.removeParticipant(conversationId, contactId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["conversation", conversationId] }),
+  });
+}
+
+/** Revoke a group's invite link and get a fresh one (people re-join via the new link). */
+export function useResetGroupInvite(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.resetGroupInvite(conversationId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversation", conversationId] }),
   });
 }

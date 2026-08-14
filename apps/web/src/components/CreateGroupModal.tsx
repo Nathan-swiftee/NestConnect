@@ -1,101 +1,139 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { GROUP_MAX_MEMBERS } from "@ding/schemas";
-import { useCreateGroup, useViews } from "../hooks";
+import { useCreateGroup, useInboxes } from "../hooks";
 import { XIcon } from "../lib/icons";
 
-interface Member {
-  phone: string;
-  name: string;
-}
 interface Props {
   onClose: () => void;
   onToast: (msg: string) => void;
   onSelectView: (key: string) => void;
 }
 
+/**
+ * Create a WhatsApp group. The Groups API is invite-only, so this is a two-step
+ * flow: pick a host number + name → we create the group and hand back a
+ * shareable invite link. People join through the link (there's no add-by-number);
+ * removing members and resetting the link happen from the group's details panel.
+ */
 export function CreateGroupModal({ onClose, onToast, onSelectView }: Props) {
-  const { data: views } = useViews();
+  const { data: inboxes } = useInboxes();
   const create = useCreateGroup();
-  const groupInboxes = (views?.shared.inboxes ?? []).filter((i) => i.channel === "whatsapp_group");
+  const waNumbers = (inboxes ?? []).filter((i) => i.type === "whatsapp" && i.connected);
 
-  const [inboxId, setInboxId] = useState(groupInboxes[0]?.key.slice(6) ?? "");
+  const [inboxId, setInboxId] = useState("");
   const [name, setName] = useState("");
-  const [members, setMembers] = useState<Member[]>([{ phone: "", name: "" }]);
+  const [created, setCreated] = useState<{ inboxId: string; inviteLink?: string } | null>(null);
 
-  const setMember = (i: number, patch: Partial<Member>) =>
-    setMembers((ms) => ms.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
-  const addRow = () => setMembers((ms) => (ms.length < GROUP_MAX_MEMBERS ? [...ms, { phone: "", name: "" }] : ms));
-  const removeRow = (i: number) => setMembers((ms) => ms.filter((_, idx) => idx !== i));
+  useEffect(() => {
+    if (!inboxId && waNumbers.length) setInboxId(waNumbers[0].id);
+  }, [waNumbers, inboxId]);
 
-  const cleanMembers = members
-    .map((m) => ({ phone: m.phone.trim(), name: m.name.trim() || undefined }))
-    .filter((m) => m.phone);
-  const valid = Boolean(inboxId && name.trim() && cleanMembers.length > 0);
+  const valid = Boolean(inboxId && name.trim());
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!valid) return;
     create.mutate(
-      { inboxId, name: name.trim(), members: cleanMembers },
+      // Invite-only: no roster at creation — members join via the link.
+      { inboxId, name: name.trim(), members: [] },
       {
         onSuccess: (conv) => {
+          setCreated({ inboxId: conv.inboxId, inviteLink: conv.inviteLink ?? undefined });
           onToast(`Group “${name.trim()}” created`);
-          onSelectView(`inbox:${conv.inboxId}`);
-          onClose();
         },
+        onError: (err) => onToast((err as Error)?.message ?? "Couldn’t create the group"),
       },
     );
+  };
+
+  const copyLink = () => {
+    if (created?.inviteLink) {
+      navigator.clipboard?.writeText(created.inviteLink);
+      onToast("Invite link copied");
+    }
+  };
+  const openGroup = () => {
+    if (created) {
+      onSelectView(`inbox:${created.inboxId}`);
+      onClose();
+    }
   };
 
   return (
     <div className="modal" onClick={onClose}>
       <form className="modal__box" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="modal__head">
-          <h2>New group space</h2>
+          <h2>New WhatsApp group</h2>
           <button type="button" className="modal__x" onClick={onClose} aria-label="Close"><XIcon /></button>
         </div>
+
         <div className="modal__body">
-          {groupInboxes.length === 0 && (
-            <div className="login__err">
-              Create a WhatsApp-group inbox first (New inbox &amp; route → WhatsApp group).
-            </div>
-          )}
-          <label className="field">
-            <span>Group inbox</span>
-            <select value={inboxId} onChange={(e) => setInboxId(e.target.value)}>
-              {groupInboxes.map((i) => (
-                <option key={i.key} value={i.key.slice(6)}>{i.title}</option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>Group name</span>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="The Ivy House" required />
-          </label>
-          <div className="field">
-            <span>
-              Members <span className="count">{cleanMembers.length} / {GROUP_MAX_MEMBERS}</span>
-            </span>
-            <div className="memrows">
-              {members.map((m, i) => (
-                <div className="memrow" key={i}>
-                  <input value={m.phone} onChange={(e) => setMember(i, { phone: e.target.value })} placeholder="+44 7…" />
-                  <input value={m.name} onChange={(e) => setMember(i, { name: e.target.value })} placeholder="Name (optional)" />
-                  <button type="button" className="rm" onClick={() => removeRow(i)} disabled={members.length === 1} aria-label="Remove member"><XIcon /></button>
+          {created ? (
+            <>
+              <p className="fieldhint">
+                Your group is ready. Share this invite link — people join through it (up to {GROUP_MAX_MEMBERS}).
+              </p>
+              {created.inviteLink ? (
+                <div className="invite">
+                  <code>{created.inviteLink}</code>
+                  <button type="button" onClick={copyLink}>Copy</button>
                 </div>
-              ))}
-            </div>
-            {members.length < GROUP_MAX_MEMBERS && (
-              <button type="button" className="addrow" onClick={addRow}>+ Add member</button>
-            )}
-          </div>
-          {create.isError && <div className="login__err">Couldn’t create the group.</div>}
+              ) : (
+                <div className="login__err">
+                  No invite link came back yet — open the group and use “Reset link” in its details panel.
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {waNumbers.length === 0 && (
+                <div className="login__err">
+                  Connect a WhatsApp number under Settings → Channels first — a group is hosted by a number.
+                </div>
+              )}
+              <label className="field">
+                <span>Host number</span>
+                <select value={inboxId} onChange={(e) => setInboxId(e.target.value)}>
+                  {waNumbers.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                      {i.channelConfigPublic?.displayNumber ? ` · ${i.channelConfigPublic.displayNumber}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Group name</span>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="The Ivy House regulars"
+                  autoFocus
+                  required
+                />
+              </label>
+              <p className="fieldhint">
+                Groups are invite-only (max {GROUP_MAX_MEMBERS}). You’ll get a link to share — there’s no
+                add-by-number. This needs the number to be an Official Business Account.
+              </p>
+            </>
+          )}
         </div>
+
         <div className="modal__foot">
-          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn-primary" disabled={create.isPending || !valid}>
-            {create.isPending ? "Creating…" : "Create group"}
-          </button>
+          {created ? (
+            <>
+              <button type="button" className="btn-ghost" onClick={onClose}>Close</button>
+              <button type="button" className="btn-primary" onClick={openGroup}>Open group</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+              <button type="submit" className="btn-primary" disabled={create.isPending || !valid}>
+                {create.isPending ? "Creating…" : "Create group"}
+              </button>
+            </>
+          )}
         </div>
       </form>
     </div>

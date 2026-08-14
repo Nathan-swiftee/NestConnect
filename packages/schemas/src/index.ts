@@ -777,7 +777,10 @@ export type GroupMemberInput = z.infer<typeof groupMemberInputSchema>;
 export const createGroupInputSchema = z.object({
   inboxId: z.string(),
   name: z.string().min(1),
-  members: z.array(groupMemberInputSchema).max(GROUP_MAX_MEMBERS),
+  // Optional/ignored for the real Groups API: a group is invite-only, so members
+  // join via the shared invite link (there is no add-by-phone endpoint). Kept for
+  // backward-compatibility with callers that still pass a roster.
+  members: z.array(groupMemberInputSchema).max(GROUP_MAX_MEMBERS).optional().default([]),
 });
 export type CreateGroupInput = z.infer<typeof createGroupInputSchema>;
 

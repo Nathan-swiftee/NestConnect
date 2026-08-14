@@ -59,10 +59,13 @@ export function Compose({
   onClose,
   onOpen,
   onToast,
+  onNewGroup,
 }: {
   onClose: () => void;
   onOpen: (id: string) => void;
   onToast: (msg: string) => void;
+  /** Switch to the "new WhatsApp group" flow (invite-only group creation). */
+  onNewGroup?: () => void;
 }) {
   const { data: contacts } = useContacts();
   const { data: inboxes } = useInboxes();
@@ -244,6 +247,12 @@ export function Compose({
                 </label>
                 {renderChannels(!!phone.trim(), !!email.trim(), (ch, inboxId) => createAndStart(ch, inboxId))}
               </div>
+            )}
+
+            {onNewGroup && (
+              <button type="button" className="compose__grouplink" onClick={onNewGroup}>
+                Start a WhatsApp group instead →
+              </button>
             )}
           </div>
         )}

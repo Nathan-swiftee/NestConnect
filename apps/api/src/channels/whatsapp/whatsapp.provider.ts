@@ -195,22 +195,26 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       this.logger.log(`[mock] WhatsApp → ${params.to}: ${what}`);
       return { ok: true, channelMsgId: `wamid.mock_${Date.now()}`, simulated: true };
     }
-    if (params.template) return this.sendTemplateMessage(creds, params.to, params.template);
+    if (params.template) return this.sendTemplateMessage(creds, params);
     return media.length ? this.sendWithMedia(creds, params, media) : this.sendTextOnly(creds, params);
   }
 
+  /** A message to a WhatsApp group must declare `recipient_type: "group"`; a 1:1
+   *  message defaults to "individual", so we only add the field for groups. */
+  private recipientType(params: SendParams): { recipient_type?: "group" } {
+    return params.conversation.channel === "whatsapp_group" ? { recipient_type: "group" } : {};
+  }
+
   /** Send an approved template (type:template) with its body variables filled. */
-  private async sendTemplateMessage(
-    creds: WhatsAppCreds,
-    to: string,
-    tpl: OutboundTemplate,
-  ): Promise<SendResult> {
+  private async sendTemplateMessage(creds: WhatsAppCreds, params: SendParams): Promise<SendResult> {
+    const tpl = params.template as OutboundTemplate;
     const components = tpl.params.length
       ? [{ type: "body", parameters: tpl.params.map((text) => ({ type: "text", text })) }]
       : [];
     return this.postMessage(creds, {
       messaging_product: "whatsapp",
-      to,
+      to: params.to,
+      ...this.recipientType(params),
       type: "template",
       template: { name: tpl.name, language: { code: tpl.language }, components },
     });
@@ -220,6 +224,7 @@ export class WhatsAppCloudProvider extends ChannelProvider {
     return this.postMessage(creds, {
       messaging_product: "whatsapp",
       to: params.to,
+      ...this.recipientType(params),
       type: "text",
       // Quote the message being replied to, so it renders as a WhatsApp reply.
       ...(params.replyToChannelMsgId ? { context: { message_id: params.replyToChannelMsgId } } : {}),
@@ -257,6 +262,7 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       const res = await this.postMessage(creds, {
         messaging_product: "whatsapp",
         to: params.to,
+        ...this.recipientType(params),
         type,
         [type]: obj,
       });

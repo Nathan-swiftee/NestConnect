@@ -333,6 +333,12 @@ export abstract class Store {
     subject: string | null,
   ): Promise<Conversation | undefined>;
 
+  /** Set a group conversation's shareable invite link (after create/reset). */
+  abstract setInviteLink(
+    conversationId: string,
+    inviteLink: string,
+  ): Promise<Conversation | undefined>;
+
   /** Point a conversation at a different channel inbox — used when a customer's
    *  most-recent message arrives on another channel of the same thread, so the
    *  chat shows under the channel they're actually using now (not the origin).

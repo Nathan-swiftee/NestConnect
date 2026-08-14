@@ -72,7 +72,14 @@ export class ChannelDispatcher {
       return { ok: false, retryable: false, reason: `No provider configured for ${channel}` };
     }
 
-    const to = channel === "email" ? conversation.contact.email : conversation.contact.phone;
+    // A group message is addressed to the group id (kept on channelRef), not a
+    // person's number; a 1:1 message goes to the customer's phone / email.
+    const to =
+      channel === "email"
+        ? conversation.contact.email
+        : channel === "whatsapp_group"
+          ? conversation.channelRef
+          : conversation.contact.phone;
     if (!to) {
       return { ok: false, retryable: false, reason: `Conversation has no ${channel} address` };
     }

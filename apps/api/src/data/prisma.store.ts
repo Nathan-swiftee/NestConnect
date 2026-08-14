@@ -1000,6 +1000,19 @@ export class PrismaStore extends Store {
     }
   }
 
+  async setInviteLink(conversationId: string, inviteLink: string): Promise<Conversation | undefined> {
+    try {
+      const row = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { inviteLink },
+        include: convInclude,
+      });
+      return mapConversation(row);
+    } catch {
+      return undefined;
+    }
+  }
+
   async setConversationInbox(conversationId: string, inboxId: string): Promise<Conversation | undefined> {
     const cur = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
