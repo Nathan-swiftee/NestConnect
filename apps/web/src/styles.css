@@ -1320,12 +1320,22 @@ input,textarea{font:inherit}
 .custblock small{font-size:var(--fs-xs);color:var(--text-muted)}
 .dtable--ppl{--dtable-min:660px}
 .dtable--ppl .dtable__head,.dtable--ppl .dtable__row{grid-template-columns:minmax(180px,2fr) minmax(150px,1.7fr) 110px minmax(120px,1.4fr) 28px}
-.dtable--tpl{--dtable-min:680px}
-.dtable--tpl .dtable__head,.dtable--tpl .dtable__row{grid-template-columns:minmax(150px,1.4fr) 110px 70px 120px minmax(160px,2fr) 28px}
-.dtable--team{--dtable-min:520px}
-.dtable--team .dtable__head,.dtable--team .dtable__row{grid-template-columns:minmax(200px,2fr) 120px 120px 28px}
-.dtable--label{--dtable-min:420px}
-.dtable--label .dtable__head,.dtable--label .dtable__row{grid-template-columns:minmax(220px,1fr) 120px 28px}
+.dtable--tpl{--dtable-min:720px}
+.dtable--tpl .dtable__head,.dtable--tpl .dtable__row{grid-template-columns:minmax(150px,1.4fr) 110px 70px 120px minmax(160px,1.8fr) 74px}
+/* a form that sits directly in a modal body (no extra card chrome/margins) */
+.setform--flush{border:0;background:transparent;padding:0;gap:var(--sp-3)}
+.setform--flush .setform__foot{padding-bottom:0}
+.dtable--team{--dtable-min:560px}
+.dtable--team .dtable__head,.dtable--team .dtable__row{grid-template-columns:minmax(200px,2fr) 100px 110px 116px}
+.dtable--label{--dtable-min:380px}
+.dtable--label .dtable__head,.dtable--label .dtable__row{grid-template-columns:minmax(220px,1fr) 96px}
+/* row action buttons (reorder/edit) in a non-clickable data row */
+.dacts{display:flex;align-items:center;justify-content:flex-end;gap:2px}
+.dtable__row--static{cursor:default}
+/* compact inline "create" form that sits in a pane header (Teams) */
+.setinlineadd{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.setinlineadd input{width:190px;max-width:44vw;padding:9px 12px;border-radius:var(--r-10,10px);border:1px solid var(--border);background:var(--surface-2);font-size:var(--fs-sm);color:var(--text)}
+.setinlineadd input:focus{outline:none;border-color:var(--brand);background:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
 .dname__av{width:36px;height:36px;font-size:13px}
 
 /* Shared settings/data-view chrome: count badge, search bar, empty state. */

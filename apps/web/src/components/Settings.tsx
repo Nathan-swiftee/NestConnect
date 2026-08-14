@@ -819,11 +819,13 @@ function LabelsPane({ onToast }: { onToast: (msg: string) => void }) {
     });
   };
 
+  const editLabel = list.find((l) => l.id === editingId) ?? null;
+
   return (
-    <div className="setpane">
+    <div className="setpane setpane--wide">
       <div className="setpane__head">
         <div>
-          <h2>Labels</h2>
+          <h2>Labels <span className="setcount">{list.length}</span></h2>
           <p>Tag conversations by topic, priority or state (Billing, Complaint, VIP…). Apply them from a thread's Tag button and filter the inbox by any label from the sidebar.</p>
         </div>
       </div>
@@ -831,84 +833,70 @@ function LabelsPane({ onToast }: { onToast: (msg: string) => void }) {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New label name…" maxLength={40} />
         <div className="lblswatches">
           {LABEL_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={"lblswatch" + (color === c ? " on" : "")}
-              style={{ background: c }}
-              onClick={() => setColor(c)}
-              aria-label={`Colour ${c}`}
-            />
+            <button key={c} type="button" className={"lblswatch" + (color === c ? " on" : "")} style={{ background: c }} onClick={() => setColor(c)} aria-label={`Colour ${c}`} />
           ))}
         </div>
         <button className="btn-primary" type="submit" disabled={create.isPending || !name.trim()}>
           <PlusIcon /> Create label
         </button>
       </form>
-      <div className="setlist">
-        {list.length === 0 && <p className="setpane__empty">No labels yet — create one above.</p>}
-        {list.map((l) => {
-          const editing = editingId === l.id;
-          return (
-            <div className="setmember" key={l.id}>
-              <div className="setrow">
-                <span className="setrow__ic">
-                  <span className="cdot" style={{ background: l.color, width: 14, height: 14 }} />
-                </span>
-                <div className="setrow__main">
-                  <b>{l.name}</b>
-                </div>
-                <div className="rowacts">
-                  <button className="iconbtn" title="Edit label" onClick={() => (editing ? setEditingId(null) : startEdit(l))}>
-                    <EditIcon />
-                  </button>
-                  <button className="iconbtn danger" title="Delete label" onClick={() => remove(l.id, l.name)}>
-                    <TrashIcon />
-                  </button>
+
+      <div className="dwrap">
+        <div className="dtable dtable--label">
+          <div className="dtable__head">
+            <span>Label</span>
+            <span />
+          </div>
+          {list.map((l) => (
+            <div className="dtable__row dtable__row--static" key={l.id}>
+              <span className="dcell dname">
+                <span className="cdot" style={{ background: l.color, width: 14, height: 14 }} />
+                <span className="dcell__t">{l.name}</span>
+              </span>
+              <span className="dcell dacts">
+                <button className="iconbtn" title="Edit label" onClick={() => startEdit(l)}><EditIcon /></button>
+              </span>
+            </div>
+          ))}
+          {list.length === 0 && <div className="dtable__empty">No labels yet — create one above.</div>}
+        </div>
+      </div>
+
+      {editLabel && (
+        <div className="modal" onClick={() => setEditingId(null)}>
+          <div className="modal__box modal--form" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h2>Edit label</h2>
+              <button type="button" className="modal__x" onClick={() => setEditingId(null)} aria-label="Close"><XIcon /></button>
+            </div>
+            <div className="modal__body">
+              <label className="field">
+                <span>Label name</span>
+                <input value={draftName} autoFocus maxLength={40} onChange={(e) => setDraftName(e.target.value)} />
+              </label>
+              <div className="field">
+                <span>Colour</span>
+                <div className="lblswatches">
+                  {LABEL_COLORS.map((c) => (
+                    <button key={c} type="button" className={"lblswatch" + (draftColor === c ? " on" : "")} style={{ background: c }} onClick={() => setDraftColor(c)} aria-label={`Colour ${c}`} />
+                  ))}
                 </div>
               </div>
-              {editing && (
-                <div className="editbox">
-                  <label className="field">
-                    <span>Label name</span>
-                    <input
-                      value={draftName}
-                      autoFocus
-                      maxLength={40}
-                      onChange={(e) => setDraftName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") saveEdit(l.id);
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
-                    />
-                  </label>
-                  <div className="field">
-                    <span>Colour</span>
-                    <div className="lblswatches">
-                      {LABEL_COLORS.map((c) => (
-                        <button
-                          key={c}
-                          type="button"
-                          className={"lblswatch" + (draftColor === c ? " on" : "")}
-                          style={{ background: c }}
-                          onClick={() => setDraftColor(c)}
-                          aria-label={`Colour ${c}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="setform__foot">
-                    <button className="btn-ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
-                    <button className="btn-primary" type="button" onClick={() => saveEdit(l.id)} disabled={update.isPending || !draftName.trim()}>
-                      Save changes
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
-          );
-        })}
-      </div>
+            <div className="modal__foot modal__foot--split">
+              <button type="button" className="btn-ghost btn-danger" onClick={() => remove(editLabel.id, editLabel.name)}>
+                <TrashIcon /> Delete
+              </button>
+              <div className="setform__footactions">
+                <button className="btn-ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                <button className="btn-primary" type="button" onClick={() => saveEdit(editLabel.id)} disabled={update.isPending || !draftName.trim()}>
+                  Save changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -973,110 +961,99 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
     reorder.mutate(ids);
   };
 
+  const editTeam = ordered.find((t) => t.id === editingId) ?? null;
+
   return (
-    <div className="setpane">
+    <div className="setpane setpane--wide">
       <div className="setpane__head">
         <div>
-          <h2>Teams</h2>
+          <h2>Teams <span className="setcount">{ordered.length}</span></h2>
           <p>Channels route to teams; a person can belong to several. Reorder with the arrows and give each an icon.</p>
         </div>
+        <form className="setinlineadd" onSubmit={submit}>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New team name…" />
+          <button className="btn-primary" type="submit" disabled={create.isPending || !name.trim()}>
+            <PlusIcon /> Create
+          </button>
+        </form>
       </div>
-      <form className="setadd" onSubmit={submit}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="New team name…" />
-        <button className="btn-primary" type="submit" disabled={create.isPending || !name.trim()}>
-          <PlusIcon /> Create team
-        </button>
-      </form>
-      <div className="setlist">
-        {ordered.map((t, i) => {
-          const n = memberCount(t.id);
-          const editing = editingId === t.id;
-          return (
-            <div className="setmember" key={t.id}>
-              <div className="setrow">
-                <span className="setrow__ic">
-                  <TeamGlyph icon={t.icon} />
+
+      <div className="dwrap">
+        <div className="dtable dtable--team">
+          <div className="dtable__head">
+            <span>Team</span>
+            <span>Members</span>
+            <span>SLA</span>
+            <span />
+          </div>
+          {ordered.map((t, i) => {
+            const n = memberCount(t.id);
+            return (
+              <div className="dtable__row dtable__row--static" key={t.id}>
+                <span className="dcell dname">
+                  <span className="chcard__ic" style={{ width: 34, height: 34 }}><TeamGlyph icon={t.icon} /></span>
+                  <span className="dname__x"><span className="dcell__t">{t.name}</span></span>
                 </span>
-                <div className="setrow__main">
-                  <b>{t.name}</b>
-                  <small>
-                    {n} member{n === 1 ? "" : "s"}
-                    {slaLabel(t.slaMinutes) ? ` · SLA ${slaLabel(t.slaMinutes)}` : ""}
-                  </small>
-                </div>
-                <div className="rowacts">
-                  <button className="iconbtn" title="Move up" disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)}>
-                    <ChevronUp />
-                  </button>
-                  <button className="iconbtn" title="Move down" disabled={i === ordered.length - 1 || reorder.isPending} onClick={() => move(i, 1)}>
-                    <ChevronDown />
-                  </button>
-                  <button className="iconbtn" title="Edit team" onClick={() => (editing ? setEditingId(null) : startEdit(t))}>
-                    <EditIcon />
-                  </button>
-                  <button className="iconbtn danger" title="Delete team" onClick={() => remove(t.id, t.name)}>
-                    <TrashIcon />
-                  </button>
+                <span className="dcell dcell--muted">{n} member{n === 1 ? "" : "s"}</span>
+                <span className="dcell dcell--muted">{slaLabel(t.slaMinutes) || "—"}</span>
+                <span className="dcell dacts">
+                  <button className="iconbtn" title="Move up" disabled={i === 0 || reorder.isPending} onClick={() => move(i, -1)}><ChevronUp /></button>
+                  <button className="iconbtn" title="Move down" disabled={i === ordered.length - 1 || reorder.isPending} onClick={() => move(i, 1)}><ChevronDown /></button>
+                  <button className="iconbtn" title="Edit team" onClick={() => startEdit(t)}><EditIcon /></button>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {editTeam && (
+        <div className="modal" onClick={() => setEditingId(null)}>
+          <div className="modal__box modal--form" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h2>Edit team</h2>
+              <button type="button" className="modal__x" onClick={() => setEditingId(null)} aria-label="Close"><XIcon /></button>
+            </div>
+            <div className="modal__body">
+              <label className="field">
+                <span>Team name</span>
+                <input value={draftName} autoFocus onChange={(e) => setDraftName(e.target.value)} />
+              </label>
+              <div className="field">
+                <span>Icon</span>
+                <div className="iconpick">
+                  {TEAM_ICON_KEYS.map((k) => {
+                    const Ic = TEAM_ICONS[k];
+                    return (
+                      <button key={k} type="button" className={"iconpick__btn" + (draftIcon === k ? " on" : "")} onClick={() => setDraftIcon(draftIcon === k ? null : k)} title={k} aria-label={k}>
+                        <Ic />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              {editing && (
-                <div className="editbox">
-                  <label className="field">
-                    <span>Team name</span>
-                    <input
-                      value={draftName}
-                      autoFocus
-                      onChange={(e) => setDraftName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") saveEdit(t.id);
-                        if (e.key === "Escape") setEditingId(null);
-                      }}
-                    />
-                  </label>
-                  <div className="field">
-                    <span>Icon</span>
-                    <div className="iconpick">
-                      {TEAM_ICON_KEYS.map((k) => {
-                        const Ic = TEAM_ICONS[k];
-                        return (
-                          <button
-                            key={k}
-                            type="button"
-                            className={"iconpick__btn" + (draftIcon === k ? " on" : "")}
-                            onClick={() => setDraftIcon(draftIcon === k ? null : k)}
-                            title={k}
-                            aria-label={k}
-                          >
-                            <Ic />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  <label className="field">
-                    <span>First-response SLA</span>
-                    <select
-                      value={draftSla ?? ""}
-                      onChange={(e) => setDraftSla(e.target.value ? Number(e.target.value) : null)}
-                    >
-                      {SLA_OPTIONS.map((o) => (
-                        <option key={o.label} value={o.minutes ?? ""}>{o.label}</option>
-                      ))}
-                    </select>
-                    <small className="fieldhint">New conversations routed to this team get a “respond within” timer; it clears on your first reply.</small>
-                  </label>
-                  <div className="setform__foot">
-                    <button className="btn-ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
-                    <button className="btn-primary" type="button" onClick={() => saveEdit(t.id)} disabled={update.isPending || !draftName.trim()}>
-                      Save changes
-                    </button>
-                  </div>
-                </div>
-              )}
+              <label className="field">
+                <span>First-response SLA</span>
+                <select value={draftSla ?? ""} onChange={(e) => setDraftSla(e.target.value ? Number(e.target.value) : null)}>
+                  {SLA_OPTIONS.map((o) => (<option key={o.label} value={o.minutes ?? ""}>{o.label}</option>))}
+                </select>
+                <small className="fieldhint">New conversations routed to this team get a “respond within” timer; it clears on your first reply.</small>
+              </label>
             </div>
-          );
-        })}
-      </div>
+            <div className="modal__foot modal__foot--split">
+              <button type="button" className="btn-ghost btn-danger" onClick={() => remove(editTeam.id, editTeam.name)}>
+                <TrashIcon /> Delete
+              </button>
+              <div className="setform__footactions">
+                <button className="btn-ghost" type="button" onClick={() => setEditingId(null)}>Cancel</button>
+                <button className="btn-primary" type="button" onClick={() => saveEdit(editTeam.id)} disabled={update.isPending || !draftName.trim()}>
+                  Save changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1170,14 +1147,17 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
     });
   };
 
+  const editMember = people.data?.find((m) => m.user.id === editId) ?? null;
+  const editIsSelf = me.data?.user.id === editId;
+
   return (
-    <div className="setpane">
+    <div className="setpane setpane--wide">
       <div className="setpane__head">
         <div>
-          <h2>People</h2>
+          <h2>People <span className="setcount">{people.data?.length ?? 0}</span></h2>
           <p>Team members who pick up conversations. Invited people get a link to set their own password.</p>
         </div>
-        <button className="btn-primary" onClick={() => { setEditId(null); setOpen((o) => !o); }}>
+        <button className="btn-primary" onClick={() => { setEditId(null); setOpen(true); }}>
           <PlusIcon /> Invite person
         </button>
       </div>
@@ -1204,115 +1184,136 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
         </div>
       )}
 
-      {open && (
-        <form className="setform" onSubmit={submit}>
-          <div className="setform__grid">
-            <label className="field">
-              <span>Name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" required />
-            </label>
-            <label className="field">
-              <span>Email</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@swiftee.co.uk" required />
-            </label>
-            <label className="field">
-              <span>Role</span>
-              <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                {ROLES.map((r) => (
-                  <option key={r.value} value={r.value}>{r.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="field">
+      <div className="dwrap">
+        <div className="dtable dtable--ppl">
+          <div className="dtable__head">
+            <span>Name</span>
+            <span>Email</span>
+            <span>Role</span>
             <span>Teams</span>
-            <div className="checks">
-              {teams.data?.map((t) => (
-                <label key={t.id} className={"check" + (teamIds.includes(t.id) ? " on" : "")}>
-                  <input type="checkbox" checked={teamIds.includes(t.id)} onChange={() => toggleTeam(t.id)} />
-                  {t.name}
-                </label>
-              ))}
-            </div>
+            <span />
           </div>
-          <div className="setform__foot">
-            <button className="btn-ghost" type="button" onClick={() => setOpen(false)}>Cancel</button>
-            <button className="btn-primary" type="submit" disabled={create.isPending || !valid}>Invite</button>
-          </div>
-        </form>
-      )}
-
-      <div className="setlist">
-        {people.data?.map((m) => {
-          const isSelf = me.data?.user.id === m.user.id;
-          const editing = editId === m.user.id;
-          return (
-            <div className="setmember" key={m.user.id}>
-              <div className="setrow">
-                <span className="av" style={{ background: avatarBg(m.user.name, m.user.avatarColor), width: 34, height: 34, fontSize: 12 }}>
-                  {m.user.avatarUrl ? <img className="av__photo" src={m.user.avatarUrl} alt="" /> : initials(m.user.name)}
-                </span>
-                <div className="setrow__main">
-                  <b>{m.user.name}{isSelf && <span className="youtag">You</span>}</b>
-                  <small>{m.user.email}</small>
-                </div>
-                <div className="setrow__meta">
-                  <span className="setrow__tag">{m.user.role}</span>
-                  <span className="setrow__routing" title={m.teamIds.map(teamName).join(", ")}>
-                    {summariseTeams(m.teamIds.map(teamName)) || "No team"}
+          {people.data?.map((m) => {
+            const isSelf = me.data?.user.id === m.user.id;
+            return (
+              <div
+                className="dtable__row"
+                key={m.user.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => startEdit(m.user.id, m.user.name, m.user.role, m.teamIds)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); startEdit(m.user.id, m.user.name, m.user.role, m.teamIds); } }}
+              >
+                <span className="dcell dname">
+                  <span className="av dname__av" style={{ background: avatarBg(m.user.name, m.user.avatarColor) }}>
+                    {m.user.avatarUrl ? <img className="av__photo" src={m.user.avatarUrl} alt="" /> : initials(m.user.name)}
                   </span>
-                </div>
-                <div className="rowacts">
-                  <button className="iconbtn" title="Edit member" onClick={() => startEdit(m.user.id, m.user.name, m.user.role, m.teamIds)}>
-                    <EditIcon />
-                  </button>
-                  {!isSelf && (
-                    <button className="iconbtn danger" title="Remove member" onClick={() => remove(m.user.id, m.user.name)}>
-                      <TrashIcon />
-                    </button>
-                  )}
+                  <span className="dname__x">
+                    <span className="dcell__t">{m.user.name}{isSelf && <span className="youtag">You</span>}</span>
+                  </span>
+                </span>
+                <span className="dcell dcell--muted">{m.user.email}</span>
+                <span className="dcell"><span className="dpill dpill--off" style={{ textTransform: "capitalize" }}>{m.user.role}</span></span>
+                <span className="dcell dcell--muted" title={m.teamIds.map(teamName).join(", ")}>{summariseTeams(m.teamIds.map(teamName)) || "No team"}</span>
+                <span className="dcell dcell--end"><span className="dchev"><EditIcon /></span></span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {open && (
+        <div className="modal" onClick={() => setOpen(false)}>
+          <form className="modal__box modal--form" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+            <div className="modal__head">
+              <h2>Invite person</h2>
+              <button type="button" className="modal__x" onClick={() => setOpen(false)} aria-label="Close"><XIcon /></button>
+            </div>
+            <div className="modal__body">
+              <div className="setform__grid two">
+                <label className="field">
+                  <span>Name</span>
+                  <input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" required />
+                </label>
+                <label className="field">
+                  <span>Email</span>
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@swiftee.co.uk" required />
+                </label>
+              </div>
+              <label className="field">
+                <span>Role</span>
+                <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                  {ROLES.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
+                </select>
+              </label>
+              <div className="field">
+                <span>Teams</span>
+                <div className="checks">
+                  {teams.data?.map((t) => (
+                    <label key={t.id} className={"check" + (teamIds.includes(t.id) ? " on" : "")}>
+                      <input type="checkbox" checked={teamIds.includes(t.id)} onChange={() => toggleTeam(t.id)} />
+                      {t.name}
+                    </label>
+                  ))}
                 </div>
               </div>
-
-              {editing && (
-                <div className="editbox">
-                  <div className="setform__grid">
-                    <label className="field">
-                      <span>Name</span>
-                      <input value={eName} onChange={(e) => setEName(e.target.value)} placeholder="Full name" />
-                    </label>
-                    <label className="field">
-                      <span>Role</span>
-                      <select value={eRole} onChange={(e) => setERole(e.target.value as Role)}>
-                        {ROLES.map((r) => (
-                          <option key={r.value} value={r.value}>{r.label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="field">
-                    <span>Teams</span>
-                    <div className="checks">
-                      {teams.data?.map((t) => (
-                        <label key={t.id} className={"check" + (eTeams.includes(t.id) ? " on" : "")}>
-                          <input type="checkbox" checked={eTeams.includes(t.id)} onChange={() => toggleETeam(t.id)} />
-                          {t.name}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="setform__foot">
-                    <button className="btn-ghost" type="button" onClick={() => setEditId(null)}>Cancel</button>
-                    <button className="btn-primary" type="button" onClick={() => saveEdit(m.user.id)} disabled={update.isPending || !eName.trim()}>
-                      Save changes
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
-          );
-        })}
-      </div>
+            <div className="modal__foot">
+              <button className="btn-ghost" type="button" onClick={() => setOpen(false)}>Cancel</button>
+              <button className="btn-primary" type="submit" disabled={create.isPending || !valid}>Invite</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {editMember && (
+        <div className="modal" onClick={() => setEditId(null)}>
+          <div className="modal__box modal--form" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h2>Edit {editMember.user.name}</h2>
+              <button type="button" className="modal__x" onClick={() => setEditId(null)} aria-label="Close"><XIcon /></button>
+            </div>
+            <div className="modal__body">
+              <div className="setform__grid two">
+                <label className="field">
+                  <span>Name</span>
+                  <input value={eName} autoFocus onChange={(e) => setEName(e.target.value)} placeholder="Full name" />
+                </label>
+                <label className="field">
+                  <span>Role</span>
+                  <select value={eRole} onChange={(e) => setERole(e.target.value as Role)}>
+                    {ROLES.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
+                  </select>
+                </label>
+              </div>
+              <div className="field">
+                <span>Teams</span>
+                <div className="checks">
+                  {teams.data?.map((t) => (
+                    <label key={t.id} className={"check" + (eTeams.includes(t.id) ? " on" : "")}>
+                      <input type="checkbox" checked={eTeams.includes(t.id)} onChange={() => toggleETeam(t.id)} />
+                      {t.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className={"modal__foot" + (editIsSelf ? "" : " modal__foot--split")}>
+              {!editIsSelf && (
+                <button type="button" className="btn-ghost btn-danger" onClick={() => remove(editMember.user.id, editMember.user.name)}>
+                  <TrashIcon /> Remove
+                </button>
+              )}
+              <div className="setform__footactions">
+                <button className="btn-ghost" type="button" onClick={() => setEditId(null)}>Cancel</button>
+                <button className="btn-primary" type="button" onClick={() => saveEdit(editMember.user.id)} disabled={update.isPending || !eName.trim()}>
+                  Save changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1342,11 +1343,15 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
     });
   };
 
+  const editingTpl = templates.data?.find((t) => t.id === editingId) ?? null;
+  const showForm = open || !!editingTpl;
+  const closeForm = () => { setOpen(false); setEditingId(null); };
+
   return (
-    <div className="setpane">
+    <div className="setpane setpane--wide">
       <div className="setpane__head">
         <div>
-          <h2>Message templates</h2>
+          <h2>Message templates <span className="setcount">{templates.data?.length ?? 0}</span></h2>
           <p>
             Pre-approved WhatsApp messages used to re-open a chat once its 24-hour window has
             closed. Variables like <code>{"{{1}}"}</code> are filled in when you send.
@@ -1356,11 +1361,9 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
           <button className="btn-ghost" type="button" onClick={doSync} disabled={sync.isPending}>
             <RefreshIcon /> Sync from Meta
           </button>
-          {!open && (
-            <button className="btn-primary" onClick={() => { setEditingId(null); setOpen(true); }}>
-              <PlusIcon /> New template
-            </button>
-          )}
+          <button className="btn-primary" onClick={() => { setEditingId(null); setOpen(true); }}>
+            <PlusIcon /> New template
+          </button>
         </div>
       </div>
 
@@ -1369,52 +1372,53 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
         no-op until you connect one under Channels.
       </p>
 
-      {open && <TemplateForm onDone={() => setOpen(false)} onToast={onToast} />}
-
-      <div className="setlist">
-        {templates.data?.map((t) => {
-          const editing = editingId === t.id;
-          const ap = approvalMeta(t.approvalStatus);
-          return (
-            <div className="setmember" key={t.id}>
-              <div className="tpl-item">
-                <div className="tpl-item__main">
-                  <div className="tpl-item__top">
-                    <b className="tpl-item__name">{t.name}</b>
-                    <span className={"tpl-cat tpl-cat--" + t.category}>{t.category}</span>
-                    <span className="tpl-lang">{t.language}</span>
-                    <span className={"tpl-appr " + ap.cls}>
-                      <span className="tpl-appr__dot" />
-                      {ap.label}
-                    </span>
-                  </div>
-                  <div className="tpl-item__body">{t.body}</div>
-                </div>
-                <div className="rowacts">
-                  <button
-                    className="iconbtn"
-                    title="Edit template"
-                    onClick={() => { setOpen(false); setEditingId(editing ? null : t.id); }}
-                  >
-                    <EditIcon />
-                  </button>
-                  <button className="iconbtn danger" title="Delete template" onClick={() => remove(t)}>
-                    <TrashIcon />
-                  </button>
-                </div>
-              </div>
-              {editing && (
-                <TemplateForm template={t} onDone={() => setEditingId(null)} onToast={onToast} />
-              )}
-            </div>
-          );
-        })}
-        {templates.data && templates.data.length === 0 && !open && (
-          <div className="setempty">
-            No templates yet. Create one, or sync approved templates from a connected WhatsApp number.
+      <div className="dwrap">
+        <div className="dtable dtable--tpl">
+          <div className="dtable__head">
+            <span>Name</span>
+            <span>Category</span>
+            <span>Language</span>
+            <span>Status</span>
+            <span>Message</span>
+            <span />
           </div>
-        )}
+          {templates.data?.map((t) => {
+            const ap = approvalMeta(t.approvalStatus);
+            return (
+              <div className="dtable__row dtable__row--static" key={t.id}>
+                <span className="dcell dcell__t">{t.name}</span>
+                <span className="dcell"><span className={"tpl-cat tpl-cat--" + t.category}>{t.category}</span></span>
+                <span className="dcell dcell--muted">{t.language}</span>
+                <span className="dcell"><span className={"tpl-appr " + ap.cls}><span className="tpl-appr__dot" />{ap.label}</span></span>
+                <span className="dcell dcell--muted" title={t.body}>{t.body}</span>
+                <span className="dcell dacts">
+                  <button className="iconbtn" title="Edit template" onClick={() => { setOpen(false); setEditingId(t.id); }}><EditIcon /></button>
+                  <button className="iconbtn danger" title="Delete template" onClick={() => remove(t)}><TrashIcon /></button>
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
+      {templates.data && templates.data.length === 0 && (
+        <div className="setzero">
+          <p>No templates yet. Create one, or sync approved templates from a connected WhatsApp number.</p>
+        </div>
+      )}
+
+      {showForm && (
+        <div className="modal" onClick={closeForm}>
+          <div className="modal__box modal--form" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h2>{editingTpl ? "Edit template" : "New template"}</h2>
+              <button type="button" className="modal__x" onClick={closeForm} aria-label="Close"><XIcon /></button>
+            </div>
+            <div className="modal__body">
+              <TemplateForm template={editingTpl ?? undefined} onDone={closeForm} onToast={onToast} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1462,7 +1466,7 @@ function TemplateForm({
   };
 
   return (
-    <form className={editing ? "editbox" : "setform"} onSubmit={submit}>
+    <form className="setform setform--flush" onSubmit={submit}>
       <div className="setform__grid two">
         <label className="field">
           <span>Name</span>
