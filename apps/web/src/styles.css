@@ -1258,8 +1258,67 @@ input,textarea{font:inherit}
 .notif__time{font-size:var(--fs-2xs);color:var(--text-faint);margin-top:1px}
 .notif__unreaddot{flex:0 0 8px;width:8px;height:8px;border-radius:50%;background:var(--brand);margin-top:6px}
 
-/* ─── Personal settings modal (availability + email signature) ─── */
-.modal__box.perssettings{width:min(560px,94vw)}
+/* Wider modal for edit/create forms (2-column field grids, tag editors, …). */
+.modal__box.modal--form{width:min(600px,94vw)}
+.modal__box.modal--wide{width:min(760px,94vw)}
+
+/* ─── Enterprise data tables (Customers, People, Templates, Teams, Labels) ─────
+   A full-width table: a column-label header over grid rows. Each table sets its
+   own column template via a .dtable--<name> modifier. Rows are clickable and
+   open a modal editor. Horizontally scrolls on narrow screens (min-width set). */
+.dwrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-16);background:var(--surface);-webkit-overflow-scrolling:touch}
+.dtable{display:flex;flex-direction:column;min-width:var(--dtable-min,660px)}
+.dtable__head,.dtable__row{display:grid;align-items:center;column-gap:var(--sp-4);padding:0 var(--sp-4)}
+.dtable__head{height:38px;background:var(--surface-2);border-bottom:1px solid var(--border);
+  font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint)}
+.dtable__head span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dtable__row{width:100%;min-height:60px;padding-block:9px;text-align:left;border-bottom:1px solid var(--border);
+  transition:background .12s;cursor:pointer;color:var(--text)}
+.dtable__row:last-child{border-bottom:0}
+.dtable__row:hover{background:var(--surface-2)}
+.dtable__row:focus-visible{outline:2px solid var(--brand-ring);outline-offset:-2px}
+.dtable__row .dchev{opacity:0;color:var(--text-faint);transition:opacity .12s,transform .12s}
+.dtable__row:hover .dchev{opacity:1;transform:translateX(2px)}
+.dcell{min-width:0;font-size:var(--fs-sm)}
+.dcell--num{text-align:right;font-variant-numeric:tabular-nums}
+.dcell--end{display:flex;justify-content:flex-end}
+.dcell__t{font-weight:650;font-size:var(--fs-md);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcell__s{font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dcell--muted{color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dname{display:flex;align-items:center;gap:var(--sp-3);min-width:0}
+.dname .av,.dname__av{flex:0 0 auto}
+.dname__x{min-width:0;display:flex;flex-direction:column}
+.dtags{display:flex;flex-wrap:wrap;gap:5px;overflow:hidden;max-height:24px}
+.dtag{font-size:var(--fs-2xs);font-weight:650;padding:3px 8px;border-radius:var(--r-full);background:var(--surface-2);color:var(--text-muted);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.dpill{display:inline-flex;align-items:center;gap:5px;flex:none;font-size:var(--fs-2xs);font-weight:700;padding:4px 9px;border-radius:var(--r-full)}
+.dpill svg{width:12px;height:12px}
+.dpill--on{background:var(--brand-tint);color:var(--brand-strong)}
+.dpill--off{background:var(--surface-2);color:var(--text-faint)}
+.dtable__empty{padding:var(--sp-6) var(--sp-4);text-align:center;color:var(--text-faint);font-size:var(--fs-sm)}
+
+/* per-table column templates */
+.dtable--cust{--dtable-min:720px}
+.dtable--cust .dtable__head,.dtable--cust .dtable__row{grid-template-columns:minmax(170px,2fr) minmax(110px,1.2fr) minmax(150px,1.6fr) minmax(110px,1.3fr) 128px 28px}
+.dtable--ppl{--dtable-min:660px}
+.dtable--ppl .dtable__head,.dtable--ppl .dtable__row{grid-template-columns:minmax(180px,2fr) minmax(150px,1.7fr) 110px minmax(120px,1.4fr) 28px}
+.dtable--tpl{--dtable-min:680px}
+.dtable--tpl .dtable__head,.dtable--tpl .dtable__row{grid-template-columns:minmax(150px,1.4fr) 110px 70px 120px minmax(160px,2fr) 28px}
+.dtable--team{--dtable-min:520px}
+.dtable--team .dtable__head,.dtable--team .dtable__row{grid-template-columns:minmax(200px,2fr) 120px 120px 28px}
+.dtable--label{--dtable-min:420px}
+.dtable--label .dtable__head,.dtable--label .dtable__row{grid-template-columns:minmax(220px,1fr) 120px 28px}
+.dname__av{width:36px;height:36px;font-size:13px}
+
+/* Shared settings/data-view chrome: count badge, search bar, empty state. */
+.setcount{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 7px;margin-left:8px;border-radius:var(--r-full);background:var(--surface-2);color:var(--text-muted);font-size:var(--fs-2xs);font-weight:700;vertical-align:middle;font-variant-numeric:tabular-nums}
+.setsearch{display:flex;align-items:center;gap:var(--sp-2);background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-full);padding:9px var(--sp-4);margin-bottom:16px;color:var(--text-faint);transition:border-color .14s,background .14s}
+.setsearch:focus-within{border-color:var(--brand);background:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
+.setsearch svg{width:16px;height:16px;flex:none}
+.setsearch input{flex:1;min-width:0;background:transparent;border:0;outline:none;font-size:var(--fs-md);color:var(--text)}
+.setzero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:12px;padding:44px 20px;color:var(--text-muted)}
+.setzero p{margin:0;font-size:var(--fs-sm);max-width:340px;line-height:1.45}
+.setzero__ic{width:52px;height:52px;border-radius:var(--r-16);background:var(--surface-2);display:grid;place-items:center;color:var(--text-faint)}
+.setzero__ic svg{width:24px;height:24px}
 .pers-field + .pers-field{margin-top:4px;padding-top:var(--sp-4);border-top:1px solid var(--glass-line)}
 .pers-field__hd{display:flex;align-items:center;gap:10px}
 .pers-field__lbl{font-weight:600;font-size:var(--fs-md)}
@@ -1362,6 +1421,9 @@ input,textarea{font:inherit}
 .settings__pane{flex:1;overflow-y:auto;padding:var(--sp-6) 28px;animation:paneIn .26s var(--ease)}
 @keyframes paneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .setpane{max-width:880px;margin:0}
+/* Data-table panes (Customers, People, Templates …) want more width than the
+   readable 880px form column. */
+.setpane.setpane--wide{max-width:1240px}
 .setpane__head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp-4);margin-bottom:18px}
 .setpane__head h2{margin:0 0 3px;font-size:var(--fs-lg);font-weight:750}
 .setpane__head p{margin:0;font-size:var(--fs-sm);color:var(--text-muted);max-width:470px}
