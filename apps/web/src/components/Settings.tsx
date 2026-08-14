@@ -230,8 +230,8 @@ interface ChannelKind {
 const CHANNEL_KINDS: ChannelKind[] = [
   {
     type: "whatsapp",
-    label: "WhatsApp number",
-    desc: "A WhatsApp Business number via the Meta Cloud API.",
+    label: "WhatsApp",
+    desc: "A WhatsApp Business number via Meta — one click, or paste credentials.",
     handleLabel: "Business phone number",
     handlePlaceholder: "+44 20 7946 0100",
     fields: [
@@ -612,16 +612,6 @@ function ConnectChannel({
             <b>Gmail</b>
             <small>Connect with Google — one click, no tokens to copy.</small>
           </button>
-          <button className="kindcard" onClick={connectWhatsApp}>
-            <span className="kindcard__ic" style={{ color: channelMeta("whatsapp").color }}>
-              {(() => {
-                const G = channelMeta("whatsapp").Glyph;
-                return <G />;
-              })()}
-            </span>
-            <b>WhatsApp</b>
-            <small>Connect with Facebook — one click via Meta, no tokens to copy.</small>
-          </button>
         </div>
       </div>
     );
@@ -654,6 +644,17 @@ function ConnectChannel({
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={handle || "Shown in the sidebar"} />
         </label>
       </div>
+
+      {kind.type === "whatsapp" && (
+        <div style={{ display: "grid", gap: 8, margin: "4px 0 2px" }}>
+          <button type="button" className="btn-primary" onClick={connectWhatsApp}>
+            Connect with Facebook — one click
+          </button>
+          <div className="fieldhint" style={{ textAlign: "center" }}>
+            — or paste your number’s Phone number ID + Access token from Meta’s API Setup page below —
+          </div>
+        </div>
+      )}
 
       <div className="connect__creds">
         <div className="connect__credhead">Integration</div>
