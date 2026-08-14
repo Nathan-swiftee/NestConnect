@@ -1807,6 +1807,23 @@ button.tpl-row:active{transform:scale(.99)}
 .bcast-pill--ok{background:color-mix(in srgb,var(--ok,#16a34a) 16%,transparent);color:var(--ok,#16a34a)}
 .bcast-pill--fail{background:color-mix(in srgb,var(--danger,#dc2626) 16%,transparent);color:var(--danger,#dc2626)}
 .bcast-fails{margin:0;padding-left:var(--sp-4);display:flex;flex-direction:column;gap:2px;font-size:var(--fs-sm);color:var(--text-faint);max-height:180px;overflow:auto}
+/* broadcast recipients: segmented mode toggle + customer checklist */
+.bseg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-2);border-radius:var(--r-full);margin-bottom:10px;align-self:flex-start}
+.bseg button{padding:6px 14px;border-radius:var(--r-full);font-size:var(--fs-sm);font-weight:600;color:var(--text-muted);transition:background .14s,color .14s}
+.bseg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.bpick{display:flex;flex-direction:column;gap:8px}
+.bpick__search{margin-bottom:0}
+.bpick__all{display:flex;align-items:center;gap:8px;font-size:var(--fs-sm);font-weight:600;color:var(--text-muted);cursor:pointer;padding:2px}
+.bpick__list{display:flex;flex-direction:column;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface)}
+.bpick__row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s}
+.bpick__row:last-child{border-bottom:0}
+.bpick__row:hover{background:var(--surface-2)}
+.bpick__row.on{background:var(--brand-tint)}
+/* the picker lives inside a .field, so undo the full-width form-input styling
+   for its checkboxes (otherwise they stretch and hide the name/phone). */
+.bpick input[type="checkbox"],.bpick__all input[type="checkbox"]{width:auto;flex:none;padding:0;border:0;background:none;box-shadow:none;accent-color:var(--brand)}
+.bpick__name{flex:1;min-width:0;font-size:var(--fs-sm);font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bpick__phone{flex:none;font-size:var(--fs-xs);color:var(--text-muted);font-variant-numeric:tabular-nums}
 
 /* mobile chrome (hidden on desktop) */
 .thread__back{display:none;width:38px;height:38px;color:var(--text-muted);flex:0 0 38px;margin-right:-2px}

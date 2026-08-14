@@ -14,6 +14,7 @@ import type {
 } from "@ding/schemas";
 import { WHATSAPP_VERTICALS } from "@ding/schemas";
 import {
+  useContacts,
   useCreateInbox,
   useCreateLabel,
   useCreateTeam,
@@ -58,6 +59,7 @@ import {
   MailIcon,
   PlusIcon,
   RefreshIcon,
+  SearchIcon,
   StorageIcon,
   TeamGlyph,
   TEAM_ICON_KEYS,
@@ -1791,7 +1793,32 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
   const [recipientsRaw, setRecipientsRaw] = useState("");
   const [result, setResult] = useState<BroadcastResult | null>(null);
 
-  const recipients = parseRecipients(recipientsRaw);
+  // Recipients can be picked from the customer directory or pasted as numbers.
+  const contacts = useContacts();
+  const [mode, setMode] = useState<"contacts" | "paste">("contacts");
+  const [cq, setCq] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Only customers reachable on WhatsApp (have a number) and not blocked.
+  const reachable = (contacts.data ?? []).filter((c) => c.phone && !c.blocked);
+  const cqFiltered = reachable.filter((c) => {
+    const s = cq.trim().toLowerCase();
+    return !s || [c.displayName, c.phone, c.company].some((v) => (v ?? "").toLowerCase().includes(s));
+  });
+  const togglePick = (id: string) =>
+    setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allChecked = cqFiltered.length > 0 && cqFiltered.every((c) => picked.has(c.id));
+  const toggleAll = () =>
+    setPicked((p) => {
+      const n = new Set(p);
+      if (allChecked) cqFiltered.forEach((c) => n.delete(c.id));
+      else cqFiltered.forEach((c) => n.add(c.id));
+      return n;
+    });
+
+  const recipients =
+    mode === "contacts"
+      ? reachable.filter((c) => picked.has(c.id)).map((c) => ({ phone: c.phone as string, name: c.displayName }))
+      : parseRecipients(recipientsRaw);
   const varCount = template?.variableCount ?? 0;
   const paramsReady = Array.from({ length: varCount }).every((_, i) => (params[i] ?? "").trim().length > 0);
   const canSend =
@@ -1909,20 +1936,60 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
             </small>
           )}
 
-          <label className="field">
+          <div className="field">
             <span>
               Recipients {recipients.length > 0 && <em>{recipients.length}</em>}
             </span>
-            <textarea
-              value={recipientsRaw}
-              rows={6}
-              onChange={(e) => setRecipientsRaw(e.target.value)}
-              placeholder={"One phone number per line, e.g.\n+447700900123\n+447700900124, Jane Smith"}
-            />
-            <small className="fieldhint">
-              Include the country code. Optionally add a name after a comma. Up to 500 per broadcast.
-            </small>
-          </label>
+            <div className="bseg">
+              <button type="button" className={mode === "contacts" ? "on" : ""} onClick={() => setMode("contacts")}>
+                From customers
+              </button>
+              <button type="button" className={mode === "paste" ? "on" : ""} onClick={() => setMode("paste")}>
+                Paste numbers
+              </button>
+            </div>
+
+            {mode === "contacts" ? (
+              <div className="bpick">
+                <div className="setsearch bpick__search">
+                  <SearchIcon />
+                  <input value={cq} onChange={(e) => setCq(e.target.value)} placeholder="Search customers by name or number…" />
+                </div>
+                {reachable.length === 0 ? (
+                  <div className="setempty">No customers with a WhatsApp number yet — add some under Customers.</div>
+                ) : (
+                  <>
+                    <label className="bpick__all">
+                      <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+                      Select all{cq.trim() ? ` matching · ${cqFiltered.length}` : ` customers · ${cqFiltered.length}`}
+                    </label>
+                    <div className="bpick__list">
+                      {cqFiltered.map((c) => (
+                        <label key={c.id} className={"bpick__row" + (picked.has(c.id) ? " on" : "")}>
+                          <input type="checkbox" checked={picked.has(c.id)} onChange={() => togglePick(c.id)} />
+                          <span className="bpick__name">{c.displayName}</span>
+                          <span className="bpick__phone">{c.phone}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <small className="fieldhint">Only customers with a WhatsApp number appear; blocked customers are excluded.</small>
+              </div>
+            ) : (
+              <>
+                <textarea
+                  value={recipientsRaw}
+                  rows={6}
+                  onChange={(e) => setRecipientsRaw(e.target.value)}
+                  placeholder={"One phone number per line, e.g.\n+447700900123\n+447700900124, Jane Smith"}
+                />
+                <small className="fieldhint">
+                  Include the country code. Optionally add a name after a comma. Up to 500 per broadcast.
+                </small>
+              </>
+            )}
+          </div>
 
           <div className="setform__foot">
             <button className="btn-primary" type="button" onClick={doSend} disabled={!canSend}>
