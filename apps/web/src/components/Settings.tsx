@@ -10,6 +10,7 @@ import type {
   Template,
   TemplateCategory,
   WhatsAppVertical,
+  BroadcastResult,
 } from "@ding/schemas";
 import { WHATSAPP_VERTICALS } from "@ding/schemas";
 import {
@@ -41,6 +42,7 @@ import {
   useUpdateUser,
   useWhatsappProfile,
   useUpdateWhatsappProfile,
+  useSendBroadcast,
 } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
 import { api } from "../lib/api";
@@ -102,6 +104,7 @@ const NAV: NavSection[] = [
       { key: "channels", label: "Channels" },
       { key: "templates", label: "Templates" },
       { key: "profile", label: "Business profile" },
+      { key: "broadcast", label: "Broadcast" },
     ],
   },
   {
@@ -219,6 +222,7 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "channels" && <ChannelsPane onToast={onToast} />}
             {active === "templates" && <TemplatesPane onToast={onToast} />}
             {active === "profile" && <ProfilePane onToast={onToast} />}
+            {active === "broadcast" && <BroadcastPane onToast={onToast} />}
             {active === "teams" && <TeamsPane onToast={onToast} />}
             {active === "people" && <PeoplePane onToast={onToast} />}
             {active === "labels" && <LabelsPane onToast={onToast} />}
@@ -1732,6 +1736,216 @@ function ProfileForm({
         </button>
       </div>
     </form>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* WhatsApp broadcast                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Parse a recipients textarea — one per line, "phone" or "phone, Name" —
+ *  into de-duplicated {phone, name} rows, keeping only digits and a leading +. */
+function parseRecipients(raw: string): { phone: string; name?: string }[] {
+  const seen = new Set<string>();
+  const out: { phone: string; name?: string }[] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const [rawPhone, ...rest] = line.split(",");
+    const phone = rawPhone.replace(/[^\d+]/g, "");
+    if (!phone || seen.has(phone)) continue;
+    seen.add(phone);
+    const name = rest.join(",").trim();
+    out.push({ phone, name: name || undefined });
+  }
+  return out;
+}
+
+function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
+  const inboxes = useInboxes();
+  const templates = useTemplates();
+  const send = useSendBroadcast();
+
+  const waNumbers = (inboxes.data ?? []).filter((i) => i.type === "whatsapp");
+  const approved = (templates.data ?? []).filter((t) => t.approvalStatus === "approved");
+
+  const [inboxId, setInboxId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!inboxId && waNumbers.length) setInboxId(waNumbers[0].id);
+  }, [waNumbers, inboxId]);
+  const selected = waNumbers.find((n) => n.id === inboxId) ?? null;
+
+  const [templateId, setTemplateId] = useState<string>("");
+  const template = approved.find((t) => t.id === templateId) ?? null;
+  const [params, setParams] = useState<string[]>([]);
+  const [recipientsRaw, setRecipientsRaw] = useState("");
+  const [result, setResult] = useState<BroadcastResult | null>(null);
+
+  const recipients = parseRecipients(recipientsRaw);
+  const varCount = template?.variableCount ?? 0;
+  const paramsReady = Array.from({ length: varCount }).every((_, i) => (params[i] ?? "").trim().length > 0);
+  const canSend =
+    !!selected?.connected && !!template && recipients.length > 0 && paramsReady && !send.isPending;
+
+  const doSend = () => {
+    if (!selected || !template) return;
+    setResult(null);
+    send.mutate(
+      {
+        inboxId: selected.id,
+        templateId: template.id,
+        params: params.slice(0, varCount).map((p) => p ?? ""),
+        recipients,
+      },
+      {
+        onSuccess: (r) => {
+          setResult(r);
+          onToast(`Broadcast sent to ${r.sent}/${r.total} recipient${r.total === 1 ? "" : "s"}`);
+        },
+        onError: (err) => onToast((err as Error)?.message ?? "Couldn’t send the broadcast"),
+      },
+    );
+  };
+
+  return (
+    <div className="setpane">
+      <div className="setpane__head">
+        <div>
+          <h2>Broadcast</h2>
+          <p>
+            Send an approved template to many people at once. Each person gets their own 1:1
+            WhatsApp message — the compliant way to reach a list. Replies land back in your inbox.
+          </p>
+        </div>
+      </div>
+
+      {inboxes.isSuccess && waNumbers.length === 0 && (
+        <div className="setempty">
+          Connect a WhatsApp number under Channels first — a broadcast is sent from a number.
+        </div>
+      )}
+
+      {waNumbers.length > 0 && (
+        <div className="setform">
+          {waNumbers.length > 1 && (
+            <label className="field">
+              <span>Send from</span>
+              <select value={inboxId ?? ""} onChange={(e) => setInboxId(e.target.value)}>
+                {waNumbers.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.name}
+                    {n.channelConfigPublic?.displayNumber ? ` · ${n.channelConfigPublic.displayNumber}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {selected && !selected.connected && (
+            <div className="setempty">
+              This number isn’t connected yet — add its Phone number ID and access token under
+              Channels first.
+            </div>
+          )}
+
+          <label className="field">
+            <span>Template</span>
+            <select
+              value={templateId}
+              onChange={(e) => {
+                setTemplateId(e.target.value);
+                setParams([]);
+                setResult(null);
+              }}
+            >
+              <option value="">Choose an approved template…</option>
+              {approved.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} ({t.language})
+                </option>
+              ))}
+            </select>
+            {templates.isSuccess && approved.length === 0 && (
+              <small className="fieldhint">
+                No approved templates yet. Create and approve one under Templates, or sync from Meta.
+              </small>
+            )}
+            {template && <small className="fieldhint">{template.body}</small>}
+          </label>
+
+          {varCount > 0 && (
+            <div className="setform__grid two">
+              {Array.from({ length: varCount }).map((_, i) => (
+                <label className="field" key={i}>
+                  <span>{`Value for {{${i + 1}}}`}</span>
+                  <input
+                    value={params[i] ?? ""}
+                    autoComplete="off"
+                    onChange={(e) => {
+                      const next = params.slice();
+                      next[i] = e.target.value;
+                      setParams(next);
+                    }}
+                    placeholder={`{{${i + 1}}}`}
+                  />
+                </label>
+              ))}
+            </div>
+          )}
+          {varCount > 0 && (
+            <small className="fieldhint">
+              These values fill the template for every recipient. Per-person values aren’t
+              supported here yet.
+            </small>
+          )}
+
+          <label className="field">
+            <span>
+              Recipients {recipients.length > 0 && <em>{recipients.length}</em>}
+            </span>
+            <textarea
+              value={recipientsRaw}
+              rows={6}
+              onChange={(e) => setRecipientsRaw(e.target.value)}
+              placeholder={"One phone number per line, e.g.\n+447700900123\n+447700900124, Jane Smith"}
+            />
+            <small className="fieldhint">
+              Include the country code. Optionally add a name after a comma. Up to 500 per broadcast.
+            </small>
+          </label>
+
+          <div className="setform__foot">
+            <button className="btn-primary" type="button" onClick={doSend} disabled={!canSend}>
+              {send.isPending
+                ? "Sending…"
+                : recipients.length > 0
+                  ? `Send to ${recipients.length}`
+                  : "Send broadcast"}
+            </button>
+          </div>
+
+          {result && (
+            <div className="bcast-result">
+              <div className="bcast-result__summary">
+                <span className="bcast-pill bcast-pill--ok">{result.sent} sent</span>
+                {result.failed > 0 && (
+                  <span className="bcast-pill bcast-pill--fail">{result.failed} failed</span>
+                )}
+              </div>
+              {result.results.some((r) => !r.ok) && (
+                <ul className="bcast-fails">
+                  {result.results
+                    .filter((r) => !r.ok)
+                    .map((r, i) => (
+                      <li key={`${r.phone}-${i}`}>
+                        <b>{r.phone}</b> — {r.error ?? "failed"}
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

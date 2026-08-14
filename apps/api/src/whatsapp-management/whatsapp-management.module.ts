@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { BusinessProfileController } from "./business-profile.controller";
 import { BusinessProfileService } from "./business-profile.service";
+import { BroadcastController } from "./broadcast.controller";
+import { BroadcastService } from "./broadcast.service";
 
 /**
  * WhatsApp management features that sit alongside the messaging channel: the
@@ -9,7 +11,7 @@ import { BusinessProfileService } from "./business-profile.service";
  * the send/receive pipeline of ChannelsModule.
  */
 @Module({
-  controllers: [BusinessProfileController],
-  providers: [BusinessProfileService],
+  controllers: [BusinessProfileController, BroadcastController],
+  providers: [BusinessProfileService, BroadcastService],
 })
 export class WhatsAppManagementModule {}
