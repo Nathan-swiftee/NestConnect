@@ -1570,9 +1570,9 @@ function ProfilePane({ onToast }: { onToast: (msg: string) => void }) {
         </div>
       )}
 
-      {waNumbers.length > 1 && (
+      {waNumbers.length > 0 && (
         <label className="field">
-          <span>WhatsApp number</span>
+          <span>WhatsApp number{waNumbers.length > 1 ? " — each number has its own profile" : ""}</span>
           <select value={inboxId ?? ""} onChange={(e) => setInboxId(e.target.value)}>
             {waNumbers.map((n) => (
               <option key={n.id} value={n.id}>

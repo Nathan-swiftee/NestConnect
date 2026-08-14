@@ -155,8 +155,8 @@ input,textarea{font:inherit}
 /* "show inboxes" button — appears in the list header when the sidebar is collapsed */
 .list__expand{width:32px;height:32px;color:var(--text-muted);flex:0 0 32px;margin-right:1px}
 .list__expand svg{width:19px;height:19px}
-.kbd{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--text-faint);background:var(--surface-2);border-radius:var(--r-8);padding:var(--sp-1) var(--sp-2);transition:color .14s}
-.kbd:hover{color:var(--text)}
+.kbd{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--text-faint);background:var(--surface-2);border-radius:var(--r-full);height:30px;padding:0 11px;transition:color .14s,background .14s}
+.kbd:hover{color:var(--text);background:color-mix(in srgb,var(--surface-2),var(--text) 5%)}
 /* manual refresh — pull any new mail now (pairs with pull-to-refresh) */
 .list__refresh{margin-left:auto;width:30px;height:30px;display:inline-grid;place-items:center;border-radius:var(--r-full);color:var(--text-faint);background:var(--surface-2);transition:color .14s,background .14s}
 .list__refresh:hover{color:var(--text)}
@@ -526,6 +526,10 @@ input,textarea{font:inherit}
   transition:opacity .12s,color .12s,transform .1s var(--ease)}
 .msg.in .msg__reactbtn{right:-38px}
 .msg.out .msg__reactbtn{left:-38px}
+/* The reaction chip adds a fixed 15px (19px tall, -4 margin) below the bubble,
+   which would drag this vertically-centred smiley down with it. Nudge it back up
+   by half that so it stays centred on the BUBBLE, not the bubble + reaction. */
+.bubblewrap:has(.reacts) .msg__reactbtn{margin-top:-7.5px}
 /* An always-present transparent hover zone in the gutter beside the bubble.
    Because it's part of .bubblewrap, hovering the side near the bubble also reveals
    the smiley, and the cursor can travel from the bubble to the smiley without
