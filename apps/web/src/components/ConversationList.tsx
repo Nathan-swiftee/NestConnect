@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useConversations, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
 import { listTime, slaCountdown, timeUntil } from "../lib/format";
 import { Avatar } from "./Avatar";
-import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon, PanelLeftIcon } from "../lib/icons";
+import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon, PanelLeftIcon, MicIcon } from "../lib/icons";
 import { NotificationBell } from "./NotificationBell";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { usePullToRefresh } from "../lib/usePullToRefresh";
@@ -300,6 +300,10 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
               const mine = !!c.assigneeUserId && c.assigneeUserId === myId;
               const assignedOther = !!c.assigneeUserId && !mine;
               const Glyph = cm.Glyph;
+              // A voice-note preview arrives as "🎤 Voice message" — swap the
+              // emoji for a proper mic icon (WhatsApp-style) and keep the label.
+              const voice = c.preview.startsWith("🎤");
+              const previewText = voice ? c.preview.replace(/^🎤\s*/u, "") : c.preview;
               return (
                 <div
                   key={vr.key}
@@ -311,18 +315,31 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                     className={"conv group" + (c.unread ? " unread" : "") + (selectedId === c.id ? " active" : "")}
                     onClick={() => onSelect(c.id)}
                   >
-              <Avatar name={c.contact.displayName} email={c.contact.email} color={c.contact.avatarColor} className="av">
-                <span className="ch" style={{ background: cm.color }}>
-                  <Glyph />
-                </span>
-              </Avatar>
+              <Avatar name={c.contact.displayName} email={c.contact.email} color={c.contact.avatarColor} className="av" size={50} fontSize={18} />
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className={"text-md whitespace-nowrap overflow-hidden text-ellipsis flex-1 " + (c.unread ? "font-[750]" : "font-[650]")}>{c.contact.displayName}</span>
-                  <span className="text-2xs text-faint flex-none tabular-nums">{listTime(c.lastActivityAt)}</span>
+                  <span className={"text-md whitespace-nowrap overflow-hidden text-ellipsis flex-initial min-w-0 " + (c.unread ? "font-[750]" : "font-[650]")}>{c.contact.displayName}</span>
+                  {/* Channel glyph sits after the name (like the thread header),
+                      not as a badge on the avatar. One channel per row. */}
+                  <span
+                    className="inline-flex items-center py-[2px] px-[7px] rounded-full bg-surface-2 flex-none self-center [&>svg]:w-3 [&>svg]:h-3"
+                    style={{ color: cm.color }}
+                    title={cm.label}
+                    aria-label={cm.label}
+                  >
+                    <Glyph />
+                  </span>
+                  <span className="text-2xs text-faint flex-none tabular-nums ml-auto">{listTime(c.lastActivityAt)}</span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-[3px]">
-                  <p className={"m-0 text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1 " + (c.unread ? "text-fg" : "text-muted")}>{c.preview}</p>
+                  <p className={"m-0 text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1 " + (c.unread ? "text-fg" : "text-muted")}>
+                    {voice && (
+                      <span className="inline-flex align-[-2px] mr-1 [&>svg]:w-[13px] [&>svg]:h-[13px]">
+                        <MicIcon />
+                      </span>
+                    )}
+                    {previewText}
+                  </p>
                   {c.unread &&
                     (c.unreadCount > 0 ? (
                       <span
