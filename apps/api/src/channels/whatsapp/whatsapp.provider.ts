@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -362,11 +363,16 @@ export class WhatsAppCloudProvider extends ChannelProvider {
           : item.filename;
       const form = new FormData();
       form.append("messaging_product", "whatsapp");
-      // WhatsApp identifies a voice note by the OPUS codec qualifier. Bare
-      // "audio/ogg" uploads fine and even stores as audio/ogg, but its voice-note
-      // delivery pipeline can't prepare the media for the recipient without it —
-      // so the message arrives yet plays as "no longer available". Declare it.
-      const uploadType = mime === "audio/ogg" ? "audio/ogg; codecs=opus" : mime;
+      // The bytes are now a genuine mono Ogg/Opus voice note, so upload it as
+      // Meta's DOCUMENTED base audio type — plain "audio/ogg". We used to append
+      // "; codecs=opus" believing the voice-note pipeline needed it, but a valid
+      // Opus/Ogg upload (verified mono, 48 kHz, real duration) still arrives and
+      // plays as "audio no longer available" with that qualifier. It's the prime
+      // suspect: Meta echoes the exact upload `type` back as the media's stored
+      // `mime_type`, and a recipient client that expects "audio/ogg" can fail to
+      // prepare a voice note tagged "audio/ogg; codecs=opus". The GET /{media-id}
+      // line below records how Meta actually stored this upload for diagnosis.
+      const uploadType = mime;
       form.append("type", uploadType);
       form.append("file", new Blob([bytes], { type: uploadType }), filename);
       const res = await fetch(url, {
@@ -382,8 +388,16 @@ export class WhatsAppCloudProvider extends ChannelProvider {
         return null;
       }
       if (isAudio) {
+        // Ground truth: ask Meta how it stored THIS upload — the recipient
+        // downloads exactly this, so a mismatched mime_type (or an altered
+        // size/sha vs. what we sent) explains a clip that arrives yet plays as
+        // "no longer available". localSha256 vs metaStored sha256 tells us
+        // whether Meta kept our exact bytes or re-processed them.
+        const localSha = createHash("sha256").update(bytes).digest("hex").slice(0, 12);
+        const stored = await this.describeMedia(creds, json.id);
         this.logger.log(
-          `[voice] upload OK id=${json.id} sentType=${uploadType} sentBytes=${bytes.length} head=${headHex(bytes)}`,
+          `[voice] upload OK id=${json.id} sentType=${uploadType} sentBytes=${bytes.length} ` +
+            `localSha256=${localSha} head=${headHex(bytes)} | metaStored ${stored}`,
         );
       }
       return json.id;
@@ -453,6 +467,30 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       return null;
     } finally {
       if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /**
+   * Fetch Meta's stored view of an uploaded media object (`GET /{media-id}`) for
+   * diagnostics. The recipient downloads exactly what Meta stored here, so its
+   * `mime_type`, `file_size` and `sha256` reveal whether our upload survived
+   * intact and is tagged the way a voice note needs. Best-effort — never logs the
+   * signed `url` (it carries a token); returns a compact summary or an error tag.
+   */
+  private async describeMedia(creds: WhatsAppCreds, mediaId: string): Promise<string> {
+    try {
+      const url = `https://graph.facebook.com/${env.whatsapp.apiVersion}/${mediaId}`;
+      const res = await fetch(url, { headers: { authorization: `Bearer ${creds.accessToken}` } });
+      const json = (await res.json()) as {
+        mime_type?: string;
+        file_size?: number;
+        sha256?: string;
+        error?: { message?: string };
+      };
+      if (!res.ok) return `describe-failed(${res.status}): ${json.error?.message ?? "?"}`;
+      return `mime=${json.mime_type} size=${json.file_size} sha256=${(json.sha256 ?? "").slice(0, 12)}`;
+    } catch (err) {
+      return `describe-error: ${String(err)}`;
     }
   }
 
