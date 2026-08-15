@@ -7,7 +7,14 @@
 /* Rounded, contemporary line-icons everywhere. */
 svg{stroke-linecap:round;stroke-linejoin:round}
 html,body,#root{height:100%}
-body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);
+/* iOS Safari tints its top/bottom browser bars with the document's background
+   colour (and reveals it on overscroll rubber-banding) — theme-color alone is
+   only honoured for installed PWAs. Our header/composer are --surface (white),
+   so paint html/body the SAME colour; otherwise Safari extends the grey app
+   canvas (--bg) into its chrome and the bars read as a grey tint. The visible
+   app canvas is drawn by .stage/.app on top, so this only affects the edges. */
+html{background:var(--surface)}
+body{margin:0;background:var(--surface);color:var(--text);font-family:var(--sans);
   font-size:var(--fs-md);line-height:1.45;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow:hidden;overscroll-behavior:none}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 input,textarea{font:inherit}
