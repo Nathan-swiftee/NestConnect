@@ -250,10 +250,11 @@ export class WhatsAppCloudProvider extends ChannelProvider {
       }
       const type = waMediaType(item.kind);
       const obj: Record<string, unknown> = { id: mediaId };
-      // Flag a voice recording so WhatsApp delivers it as a native voice note
-      // (PTT) rather than a generic audio file — without `voice: true` the clip
-      // can arrive but play as "no longer available" on the recipient.
-      if (item.kind === "voice") obj.voice = true;
+      // NB: intentionally no `voice: true`. Voice recordings are delivered as a
+      // regular MP3 audio message (see uploadMedia). WhatsApp's native Ogg/Opus
+      // voice-note (PTT) path is unreliable on the Cloud API — a byte-perfect
+      // mono Opus/Ogg that Meta stores intact still plays as "audio no longer
+      // available" for the recipient — whereas MP3 audio plays reliably.
       // Ride the text body on the first captionable media, once.
       if (!captionUsed && params.body && captionable(type)) {
         obj.caption = params.body;
@@ -328,50 +329,73 @@ export class WhatsAppCloudProvider extends ChannelProvider {
             `head=${headHex(item.bytes)} sniff=${audioContainer(item.bytes, item.mime)} intendedMime=${mime}`,
         );
       }
-      // A voice note must be Ogg/Opus, but browsers disagree on the recorder
-      // container: Chrome/Android emit WebM/Opus, iOS Safari emits MP4/AAC. When
-      // we intend audio/ogg but the bytes aren't already an Ogg container,
-      // transcode whatever we got to Ogg/Opus (ffmpeg auto-detects the input).
-      if (mime === "audio/ogg" && audioContainer(item.bytes, item.mime) !== "ogg") {
+      // Voice recordings go out as a regular mono-MP3 audio message, NOT a native
+      // Ogg/Opus voice note (PTT). WhatsApp's Cloud-API PTT path is unreliable: a
+      // byte-perfect mono Opus/Ogg that Meta stores intact (verified — identical
+      // sha256/size, clean audio/ogg mime) still plays as "audio no longer
+      // available" for the recipient. MP3 audio is delivered reliably, so
+      // re-encode whatever the browser recorded (WebM/Opus, iOS MP4/AAC, …) to
+      // mono MP3. ffmpeg auto-detects the input container.
+      if (item.kind === "voice") {
+        const mp3 = await this.transcodeToMp3(item.bytes);
+        if (mp3) {
+          bytes = mp3;
+          mime = "audio/mpeg";
+          this.logger.log(`[voice] transcode OK → mp3 bytes=${mp3.length} head=${headHex(mp3)}`);
+        } else {
+          // ffmpeg missing/failed. Fall back to the original recording only if
+          // WhatsApp can already play it (mp3/mp4/aac/ogg/amr); a WebM recording
+          // is unplayable there, so drop it rather than deliver a broken clip.
+          const base = item.mime.split(";")[0].trim().toLowerCase();
+          if (WA_PLAYABLE_AUDIO.has(base)) {
+            mime = base;
+            this.logger.warn(`[voice] no ffmpeg — sending original ${base} as-is`);
+          } else {
+            this.logger.warn(
+              `WhatsApp voice: can't transcode ${item.mime} to MP3 and it isn't a WhatsApp-playable audio type — dropping to avoid a broken clip`,
+            );
+            return null;
+          }
+        }
+      } else if (mime === "audio/ogg" && audioContainer(item.bytes, item.mime) !== "ogg") {
+        // Non-voice audio declared audio/ogg but not actually an Ogg container:
+        // transcode to Ogg/Opus (ffmpeg auto-detects the input).
         const ogg = await this.transcodeToOggOpus(item.bytes);
         if (ogg) {
           bytes = ogg;
           this.logger.log(`[voice] transcode OK → ogg/opus bytes=${ogg.length} head=${headHex(ogg)}`);
         } else {
-          // No transcode (ffmpeg missing) or it failed. NEVER upload non-Ogg
-          // bytes labelled audio/ogg — Meta accepts the upload but the clip plays
-          // as "audio no longer available". Fall back to the real type if
-          // WhatsApp can play it (mp4/aac/mp3 → a plain audio message, not a PTT
-          // voice note); WebM is unplayable there, so drop it with a warning
-          // rather than deliver a broken clip.
           const base = item.mime.split(";")[0].trim().toLowerCase();
           if (base !== "audio/ogg" && WA_PLAYABLE_AUDIO.has(base)) {
             mime = base;
           } else {
             this.logger.warn(
-              `WhatsApp voice: can't transcode ${item.mime} to Ogg/Opus and it isn't a WhatsApp-playable audio type — dropping to avoid a broken clip`,
+              `WhatsApp audio: can't transcode ${item.mime} to Ogg/Opus and it isn't a WhatsApp-playable audio type — dropping to avoid a broken clip`,
             );
             return null;
           }
         }
       }
-      // Meta keys the container partly off the filename, so an Ogg upload gets a
-      // .ogg name; a non-Ogg fallback (mp4/…) keeps its own extension.
+      // Meta keys the container partly off the filename, so give the upload an
+      // extension matching its final MIME; anything else keeps its own name.
+      const audioExt: Record<string, string> = {
+        "audio/mpeg": "mp3",
+        "audio/ogg": "ogg",
+        "audio/mp4": "m4a",
+        "audio/aac": "aac",
+      };
+      const wantExt = audioExt[mime];
       const filename =
-        mime === "audio/ogg" && !item.filename.toLowerCase().endsWith(".ogg")
-          ? item.filename.replace(/\.[^./\\]+$/, "") + ".ogg"
+        wantExt && !item.filename.toLowerCase().endsWith("." + wantExt)
+          ? item.filename.replace(/\.[^./\\]+$/, "") + "." + wantExt
           : item.filename;
       const form = new FormData();
       form.append("messaging_product", "whatsapp");
-      // The bytes are now a genuine mono Ogg/Opus voice note, so upload it as
-      // Meta's DOCUMENTED base audio type — plain "audio/ogg". We used to append
-      // "; codecs=opus" believing the voice-note pipeline needed it, but a valid
-      // Opus/Ogg upload (verified mono, 48 kHz, real duration) still arrives and
-      // plays as "audio no longer available" with that qualifier. It's the prime
-      // suspect: Meta echoes the exact upload `type` back as the media's stored
-      // `mime_type`, and a recipient client that expects "audio/ogg" can fail to
-      // prepare a voice note tagged "audio/ogg; codecs=opus". The GET /{media-id}
-      // line below records how Meta actually stored this upload for diagnosis.
+      // Upload under the normalized MIME (mp3 for voice; the real type otherwise)
+      // as its plain base — never a "; codecs=…" qualifier. Meta echoes the
+      // upload `type` back as the media's stored mime_type, and a qualifier there
+      // breaks playback for the recipient. The GET /{media-id} line below records
+      // exactly how Meta stored this upload.
       const uploadType = mime;
       form.append("type", uploadType);
       form.append("file", new Blob([bytes], { type: uploadType }), filename);
@@ -408,22 +432,40 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   }
 
   /**
-   * Produce a WhatsApp-ready voice note from an arbitrary recording. Native
-   * WhatsApp voice notes (PTT) are Ogg/Opus, MONO, voice-tuned — never the
-   * stereo, music-mode Opus a browser's `MediaRecorder` emits. So instead of
-   * copying the browser stream, RE-ENCODE every recording (WebM/Opus, iOS
-   * MP4/AAC, …) to mono VoIP Opus. Combined with `voice: true` on the send and
-   * the `codecs=opus` upload type, this is what makes WhatsApp deliver a playable
-   * voice note rather than "audio no longer available". ffmpeg auto-detects the
-   * input container. Returns the Ogg bytes, or null if ffmpeg is missing/fails.
+   * Re-encode any recording to mono MP3. Voice notes are delivered as a regular
+   * MP3 audio message (play button, not the PTT waveform) because WhatsApp's
+   * native Ogg/Opus voice-note path is unreliable on the Cloud API — a
+   * byte-perfect mono Opus/Ogg that Meta stores intact still plays as "audio no
+   * longer available" for the recipient, while MP3 audio plays reliably. ffmpeg
+   * auto-detects the input container. Returns the MP3 bytes, or null if ffmpeg is
+   * missing/fails (caller then falls back or drops).
+   */
+  private async transcodeToMp3(input: Buffer): Promise<Buffer | null> {
+    const encoded = await this.runFfmpeg(
+      input,
+      // Mono, 64 kbps MP3 at 44.1 kHz — small, universally playable, speech-clean.
+      ["-vn", "-map", "0:a:0", "-map_metadata", "-1", "-c:a", "libmp3lame", "-b:a", "64k", "-ar", "44100", "-ac", "1"],
+      "mp3",
+      "voice-mp3",
+    );
+    if (encoded && encoded.length > 0) {
+      this.logger.log(`[voice] re-encode → mono MP3 OK bytes=${encoded.length}`);
+      return encoded;
+    }
+    return null;
+  }
+
+  /**
+   * Re-encode an arbitrary recording to mono VoIP Opus in an Ogg container. Kept
+   * for non-voice audio that declares audio/ogg but isn't actually an Ogg stream;
+   * voice recordings now go out as MP3 (see transcodeToMp3). ffmpeg auto-detects
+   * the input container. Returns the Ogg bytes, or null if ffmpeg is missing/fails.
    */
   private async transcodeToOggOpus(input: Buffer): Promise<Buffer | null> {
-    const encoded = await this.runFfmpegToOgg(
+    const encoded = await this.runFfmpeg(
       input,
-      // Mono, 24 kbps, VoIP-tuned Opus — WhatsApp's native voice-note format. A
-      // browser records stereo, music-mode Opus; copying that verbatim makes the
-      // recipient's client reject it, so always re-encode to the voice profile.
       ["-vn", "-map", "0:a:0", "-map_metadata", "-1", "-c:a", "libopus", "-b:a", "24k", "-ar", "48000", "-ac", "1", "-application", "voip"],
+      "ogg",
       "voice-encode",
     );
     if (encoded && audioContainer(encoded, "") === "ogg") {
@@ -434,19 +476,25 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   }
 
   /**
-   * Run ffmpeg with the given codec args, muxing to an Ogg file, and return the
-   * bytes (or null on failure). Temp files under the OS tmpdir; the input has no
-   * extension so ffmpeg sniffs the container. `label` tags the log line.
+   * Run ffmpeg with the given codec args, muxing to `container` (e.g. "mp3" or
+   * "ogg"), and return the bytes (or null on failure). Temp files under the OS
+   * tmpdir; the input has no extension so ffmpeg sniffs the container. `label`
+   * tags the log line.
    */
-  private async runFfmpegToOgg(input: Buffer, codecArgs: string[], label: string): Promise<Buffer | null> {
+  private async runFfmpeg(
+    input: Buffer,
+    codecArgs: string[],
+    container: string,
+    label: string,
+  ): Promise<Buffer | null> {
     let dir: string | undefined;
     try {
       dir = await mkdtemp(join(tmpdir(), "wa-voice-"));
       const inPath = join(dir, "in.bin");
-      const outPath = join(dir, "out.ogg");
+      const outPath = join(dir, `out.${container}`);
       await writeFile(inPath, input);
       await new Promise<void>((resolve, reject) => {
-        const ff = spawn("ffmpeg", ["-y", "-i", inPath, ...codecArgs, "-f", "ogg", outPath], {
+        const ff = spawn("ffmpeg", ["-y", "-i", inPath, ...codecArgs, "-f", container, outPath], {
           stdio: ["ignore", "ignore", "pipe"],
         });
         let stderr = "";
