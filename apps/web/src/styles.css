@@ -575,6 +575,12 @@ input,textarea{font:inherit}
    the right edge and flip it to point the natural way. */
 .msg.out .msg__swipehint{left:auto;right:6px}
 .msg.out .msg__swipehint svg{transform:scaleX(-1)}
+/* Same reaction-chip offset as the desktop smiley: the chip adds a fixed 15px
+   below the bubble, which would drag this vertically-centred swipe arrow down
+   with it. Nudge it back up by half so it stays centred on the BUBBLE, not the
+   bubble + reaction. margin-top is layout-only, so it composes with the
+   translateY(-50%) scale the swipe JS keeps writing to `transform`. */
+.bubblewrap:has(.reacts) .msg__swipehint{margin-top:-7.5px}
 
 /* Desktop: reveal on hover/focus. The emoji row pops just above the message's
    near corner (WhatsApp-web style) — a horizontal 6-emoji row can't fit the side
