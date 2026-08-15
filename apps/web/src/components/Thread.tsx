@@ -59,6 +59,11 @@ interface Props {
   onToast: (msg: string) => void;
   onBack?: () => void;
   onClosed?: () => void;
+  /** True only when this thread pane is actually the one on-screen. On mobile the
+   *  list and the thread are separate panes (never both), and the thread stays
+   *  MOUNTED behind the list — so this gates read receipts to when the agent can
+   *  really see the message. Defaults to true (desktop always shows the thread). */
+  active?: boolean;
 }
 
 function renderMention(body: string): JSX.Element[] {
@@ -931,7 +936,7 @@ function StagedChip({
   );
 }
 
-export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed }: Props) {
+export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed, active = true }: Props) {
   const { data: conv } = useConversation(conversationId);
   const { loadOlder, loading: loadingOlder } = useLoadOlderMessages(conversationId);
   const { data: me } = useMe();
@@ -1232,12 +1237,30 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setRecPaused(false);
   }, [conversationId]);
 
-  // Mark the conversation read on open, and again whenever a fresh inbound
-  // message arrives while it's open — clearing the unread badge and sending a
-  // WhatsApp read receipt. Gated on (id changed) or (count grew with an inbound
-  // newest) so it never fires on every render.
+  // Track browser-tab focus: a read receipt should only go out when the agent can
+  // actually see the message, so a backgrounded tab (or a phone with the screen
+  // off) never marks a customer's message read behind their back.
+  const [docVisible, setDocVisible] = useState(
+    () => typeof document === "undefined" || document.visibilityState === "visible",
+  );
   useEffect(() => {
-    if (!conversationId || !conv) return;
+    const onVis = () => setDocVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+  // Read receipts fire only when the thread is genuinely on-screen: it's the
+  // active pane (on mobile the thread stays mounted behind the list) AND the tab
+  // is focused. Otherwise a new inbound arriving while you're back on the list
+  // would send the customer blue ticks you never earned.
+  const canMarkRead = active && docVisible;
+
+  // Mark the conversation read on open, and again whenever a fresh inbound
+  // message arrives WHILE THE THREAD IS ON-SCREEN — clearing the unread badge and
+  // sending a WhatsApp read receipt. When it isn't on-screen the effect bails
+  // BEFORE recording the new message count, so returning to the thread (or
+  // refocusing the tab) still marks the messages that arrived while you were away.
+  useEffect(() => {
+    if (!conversationId || !conv || !canMarkRead) return;
     const len = conv.messages.length;
     const prev = seenRef.current;
     seenRef.current = { id: conversationId, len };
@@ -1247,7 +1270,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       const newest = conv.messages[len - 1];
       if (newest && newest.direction === "in" && !newest.internal) markRead(conversationId);
     }
-  }, [conversationId, conv, markRead]);
+  }, [conversationId, conv, markRead, canMarkRead]);
 
   // Listen for another agent's typing on THIS conversation. Auto-clears after 4s
   // of silence and on an explicit typing:false; fully torn down on switch/unmount

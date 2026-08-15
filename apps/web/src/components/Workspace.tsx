@@ -172,6 +172,10 @@ export function Workspace() {
                 onToast={notify}
                 onBack={isMobile ? () => setMobilePane("list") : undefined}
                 onClosed={goToNextAfterClosed}
+                // On mobile the thread stays mounted behind the list pane; only
+                // treat it as on-screen (→ eligible to send read receipts) when
+                // its pane is actually showing.
+                active={pane !== "list"}
               />
               {showPanel && (
                 <>
