@@ -236,7 +236,12 @@ function StatusTick({ status }: { status: MessageStatus }) {
   let title: string;
   let icon: JSX.Element;
   switch (status) {
+    // Both pre-sent states show WhatsApp's clock: "queued" (accepted, awaiting
+    // dispatch) and "sending" (mid dispatch to Meta, not yet acked). Without the
+    // "sending" case it fell through to the single-tick default, so a message
+    // briefly showed 1 tick before it had actually been sent.
     case "queued":
+    case "sending":
       cls += " pending";
       title = "Sending…";
       icon = <ClockIcon />;
