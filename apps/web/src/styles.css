@@ -21,7 +21,10 @@ input,textarea{font:inherit}
 ::selection{background:var(--brand-ring)}
 .tnum{font-variant-numeric:tabular-nums}
 
-.stage{height:100dvh;min-height:600px;overflow:hidden;background:var(--bg)}
+/* --surface (not --bg) so the full-viewport root layer Safari can sample at the
+   screen edges is the same white as the toolbars — see the html/body note above.
+   The visible app canvas is painted by the panels on top, so this isn't seen. */
+.stage{height:100dvh;min-height:600px;overflow:hidden;background:var(--surface)}
 .app{display:flex;height:100dvh;min-height:600px;min-width:0;position:relative}
 
 /* ─── Primitives ────────────────────────────────────────────────────
