@@ -1861,7 +1861,17 @@ button.tpl-row:active{transform:scale(.99)}
 .side__signout:active{transform:scale(.9)}
 .panel__mhead{display:none;align-items:center;justify-content:space-between;padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);font-weight:700;font-size:var(--fs-lg)}
 .panel__mhead button{width:34px;height:34px;color:var(--text-muted);font-size:var(--fs-sm)}
-.drawer-backdrop,.panel-backdrop{position:fixed;inset:0;background:rgba(6,12,10,.42);z-index:44}
+/* Opening the drawer / details panel softly BLURS the rest of the screen rather
+   than laying a dark scrim over it — a grey wash covered the white header and
+   composer too, so the app read as two colours (grey behind, white drawer).
+   A near-clear blur keeps those white toolbars white and just defocuses the
+   content behind the drawer. The drawer's own shadow provides the separation. */
+.drawer-backdrop,.panel-backdrop{position:fixed;inset:0;background:transparent;
+  backdrop-filter:blur(8px) saturate(1.08);-webkit-backdrop-filter:blur(8px) saturate(1.08);z-index:44}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  /* No blur support → fall back to a very light veil (still not a heavy grey). */
+  .drawer-backdrop,.panel-backdrop{background:color-mix(in srgb,var(--text) 10%,transparent)}
+}
 
 /* ─── Motion primitives ─────────────────────────────────────────────
    Floating surfaces settle into place; overlays fade. Nothing snaps. */
