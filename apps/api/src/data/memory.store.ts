@@ -47,12 +47,12 @@ import {
 } from "./store";
 
 const AVATAR_PALETTE = [
-  "linear-gradient(135deg,#F97316,#DB2777)",
-  "linear-gradient(135deg,#0EA5E9,#2563EB)",
-  "linear-gradient(135deg,#10B981,#059669)",
-  "linear-gradient(135deg,#6366F1,#A855F7)",
-  "linear-gradient(135deg,#F59E0B,#EF4444)",
-  "linear-gradient(135deg,#14B8A6,#0EA5E9)",
+  "#F97316",
+  "#0EA5E9",
+  "#10B981",
+  "#6366F1",
+  "#F59E0B",
+  "#14B8A6",
 ];
 
 /** Recency ordering matching the Postgres store: lastActivityAt desc, id desc. */

@@ -76,7 +76,10 @@ function tooLightForWhite(color: string): boolean {
  * contact synced without a colour is never a blank white circle.
  */
 export function avatarBg(seed: string, provided?: string | null): string {
-  if (provided && !tooLightForWhite(provided)) return provided;
+  // Flat colours only. A gradient avatar reads as dated, so ignore any gradient
+  // value (older seed data set `linear-gradient(...)` colours) and fall through to
+  // a solid from the palette, hashed off the name so it's still stable per person.
+  if (provided && !provided.includes("gradient") && !tooLightForWhite(provided)) return provided;
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
   return AVATAR_BG[h % AVATAR_BG.length];

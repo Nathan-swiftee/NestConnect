@@ -9,7 +9,7 @@ import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { RoutingService } from "../routing.service";
 import { WhatsAppGroupsProvider } from "../whatsapp/whatsapp-groups.provider";
 
-const GROUP_AVATAR = "linear-gradient(135deg,#6366F1,#A855F7)";
+const GROUP_AVATAR = "#6366F1";
 
 @Injectable()
 export class GroupsService {

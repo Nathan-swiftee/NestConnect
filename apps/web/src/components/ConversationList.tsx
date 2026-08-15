@@ -224,7 +224,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             <ComposeIcon />
           </button>
         </div>
-        <div className="mt-[11px] flex items-center gap-2 bg-surface-2 border border-solid border-transparent rounded-full py-2 px-4 text-faint shadow-[inset_0_1px_2px_rgba(13,21,18,.05)] [transition:box-shadow_.15s,border-color_.15s] focus-within:border-brand focus-within:shadow-[0_0_0_3px_var(--brand-ring)] [&>svg]:w-[15px] [&>svg]:h-[15px]">
+        <div className="mt-[11px] flex items-center gap-2 bg-surface-2 border border-solid border-transparent rounded-full py-2 px-4 text-faint shadow-[inset_0_1px_2px_rgba(13,21,18,.05)] [transition:box-shadow_.15s,border-color_.15s] focus-within:border-[var(--border-strong)] [&>svg]:w-[15px] [&>svg]:h-[15px]">
           <SearchIcon />
           <input
             className="border-0 bg-transparent [outline:none] text-fg w-full text-sm"
