@@ -47,7 +47,6 @@ import {
   DownloadIcon,
   XIcon,
   MicIcon,
-  StopIcon,
   TrashIcon,
   RefreshIcon,
   EditIcon,
@@ -1022,6 +1021,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [staged, setStaged] = useState<Staged[]>([]);
   const [dragging, setDragging] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recPaused, setRecPaused] = useState(false);
   const [recSecs, setRecSecs] = useState(0);
   const stagedRef = useRef<Staged[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1031,7 +1031,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const recChunksRef = useRef<Blob[]>([]);
   const recTimerRef = useRef<number | null>(null);
   const recStartRef = useRef(0);
+  const recBaseRef = useRef(0); // ms accumulated across pause/resume segments
   const recCancelRef = useRef(false);
+  const recSendRef = useRef(false); // send the clip the instant it finalizes
 
   // Scroll behaviour:
   //  • Opening a thread → jump to the OLDEST UNREAD message (top-aligned), so you
@@ -1220,7 +1222,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       window.clearInterval(recTimerRef.current);
       recTimerRef.current = null;
     }
+    recSendRef.current = false;
     setRecording(false);
+    setRecPaused(false);
   }, [conversationId]);
 
   // Mark the conversation read on open, and again whenever a fresh inbound
@@ -1682,22 +1686,73 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     }
   };
 
+  // Tick the elapsed readout from the accumulated base + the running segment, so
+  // pausing freezes the clock and resuming continues from where it stopped.
+  const startRecTimer = () => {
+    if (recTimerRef.current != null) window.clearInterval(recTimerRef.current);
+    recTimerRef.current = window.setInterval(() => {
+      setRecSecs(Math.floor((recBaseRef.current + (Date.now() - recStartRef.current)) / 1000));
+    }, 250);
+  };
+
+  // Fold the running segment into the accumulator — call right before pausing or
+  // stopping so the final duration is correct even after several pauses.
+  const finalizeElapsed = () => {
+    const rec = mediaRecorderRef.current;
+    if (rec && rec.state === "recording") recBaseRef.current += Date.now() - recStartRef.current;
+  };
+
+  // Upload a freshly recorded clip and send it immediately — WhatsApp-style
+  // record → send, with no intermediate "staged in the composer" step. Empty
+  // body; rides the current compose channel.
+  const sendVoiceNote = async (
+    blob: Blob,
+    name: string,
+    durationMs: number,
+    waveform: number[] | undefined,
+  ) => {
+    try {
+      const attachment = await api.uploadMedia(blob, { filename: name, kind: "voice", durationMs, waveform });
+      unlock();
+      send.mutate(
+        {
+          id: conv.id,
+          body: "",
+          internal: false,
+          attachmentIds: [attachment.id],
+          channel: composeChannel !== conv.channel ? composeChannel : undefined,
+        },
+        { onError: () => onToast("Couldn’t send your voice message. Please try again.") },
+      );
+    } catch {
+      onToast("Couldn’t send your voice message. Please try again.");
+    }
+  };
+
   const finishRecording = async () => {
     const rec = mediaRecorderRef.current;
     const mime = rec?.mimeType || "audio/webm";
     const chunks = recChunksRef.current;
-    const elapsedMs = Date.now() - recStartRef.current;
+    const elapsedMs = recBaseRef.current;
+    const shouldSend = recSendRef.current;
     mediaRecorderRef.current = null;
     recChunksRef.current = [];
+    recSendRef.current = false;
     teardownRec();
     if (recCancelRef.current || chunks.length === 0) return;
     const blob = new Blob(chunks, { type: mime });
     const { durationMs, waveform } = await analyzeAudio(blob, elapsedMs);
     const ext = mime.includes("ogg") ? "ogg" : "webm";
+    const name = "voice-message." + ext;
+    // Record → send: skip staging and fire it straight off.
+    if (shouldSend) {
+      void sendVoiceNote(blob, name, durationMs, waveform);
+      return;
+    }
     const item: Staged = {
       localId: crypto.randomUUID(),
       file: blob,
-      name: "voice-message." + ext,
+      name,
       kind: "voice",
       status: "uploading",
       durationMs,
@@ -1722,7 +1777,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     }
     recStreamRef.current = stream;
     recCancelRef.current = false;
+    recSendRef.current = false;
     recChunksRef.current = [];
+    recBaseRef.current = 0;
     const mime = pickAudioMime();
     const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
     mediaRecorderRef.current = rec;
@@ -1735,23 +1792,54 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     rec.start();
     recStartRef.current = Date.now();
     setRecSecs(0);
+    setRecPaused(false);
     setRecording(true);
-    recTimerRef.current = window.setInterval(() => {
-      setRecSecs(Math.floor((Date.now() - recStartRef.current) / 1000));
-    }, 250);
+    startRecTimer();
   };
 
-  const stopRecording = () => {
+  // Pause/resume the recording (MediaRecorder buffers across the gap). Guarded
+  // in case a browser doesn't support pause — the UI state only flips on success.
+  const togglePause = () => {
     const rec = mediaRecorderRef.current;
+    if (!rec) return;
+    try {
+      if (rec.state === "recording") {
+        rec.pause();
+        // Segment ended: fold its elapsed into the accumulator, then freeze the clock.
+        recBaseRef.current += Date.now() - recStartRef.current;
+        if (recTimerRef.current != null) {
+          window.clearInterval(recTimerRef.current);
+          recTimerRef.current = null;
+        }
+        setRecPaused(true);
+      } else if (rec.state === "paused") {
+        rec.resume();
+        recStartRef.current = Date.now();
+        startRecTimer();
+        setRecPaused(false);
+      }
+    } catch {
+      onToast("Pause isn’t supported here");
+    }
+  };
+
+  // Stop and send the clip in one action (the paper-plane in the recording bar).
+  const sendRecording = () => {
+    const rec = mediaRecorderRef.current;
+    recSendRef.current = true;
+    finalizeElapsed();
     setRecording(false);
+    setRecPaused(false);
     if (rec && rec.state !== "inactive") rec.stop();
     else teardownRec();
   };
 
   const cancelRecording = () => {
     recCancelRef.current = true;
+    recSendRef.current = false;
     const rec = mediaRecorderRef.current;
     setRecording(false);
+    setRecPaused(false);
     if (rec && rec.state !== "inactive") rec.stop();
     else teardownRec();
   };
@@ -2358,24 +2446,33 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             <div className="comp-rec" role="group" aria-label="Recording voice message">
               <button
                 type="button"
-                className="comp-rec__cancel"
+                className="comp-rec__del"
                 onClick={cancelRecording}
-                title="Cancel"
-                aria-label="Cancel recording"
+                title="Delete"
+                aria-label="Delete recording"
               >
                 <TrashIcon />
               </button>
-              <span className="comp-rec__dot" aria-hidden="true" />
+              <span className={"comp-rec__dot" + (recPaused ? " paused" : "")} aria-hidden="true" />
               <span className="comp-rec__time tnum">{formatDuration(recSecs * 1000)}</span>
-              <span className="comp-rec__hint">Recording…</span>
+              <span className="comp-rec__hint">{recPaused ? "Paused" : "Recording…"}</span>
               <button
                 type="button"
-                className="comp-rec__stop"
-                onClick={stopRecording}
-                title="Stop and attach"
-                aria-label="Stop and attach recording"
+                className="comp-rec__pause"
+                onClick={togglePause}
+                title={recPaused ? "Resume" : "Pause"}
+                aria-label={recPaused ? "Resume recording" : "Pause recording"}
               >
-                <StopIcon />
+                {recPaused ? <MicIcon /> : <PauseIcon />}
+              </button>
+              <button
+                type="button"
+                className="send comp-rec__send"
+                onClick={sendRecording}
+                title="Send"
+                aria-label="Send voice message"
+              >
+                <SendIcon />
               </button>
             </div>
           ) : (
