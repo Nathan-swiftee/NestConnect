@@ -655,6 +655,16 @@ export function useUpdateWhatsappProfile() {
   });
 }
 
+/** Upload a new public profile photo for a number (pushed to Meta). */
+export function useSetWhatsappProfilePhoto() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { inboxId: string; file: File | Blob }) =>
+      api.setWhatsappProfilePhoto(v.inboxId, v.file),
+    onSuccess: (data, v) => qc.setQueryData(["wa-profile", v.inboxId], data),
+  });
+}
+
 /* ---- WhatsApp broadcast ---- */
 /** Send an approved template to many recipients at once (a compliant 1:1 loop). */
 export function useSendBroadcast() {

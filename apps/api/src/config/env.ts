@@ -30,6 +30,9 @@ export const env = {
     // fails (or is faked only when MOCK_MESSAGING=true in dev).
     token: process.env.WHATSAPP_TOKEN ?? "",
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID ?? "",
+    // Meta App ID — needed only to change the profile photo from here (Meta's
+    // resumable-upload API is app-scoped). Per-number config can override it.
+    appId: process.env.WHATSAPP_APP_ID ?? "",
     apiVersion: process.env.WHATSAPP_API_VERSION ?? "v21.0",
   },
   auth: {

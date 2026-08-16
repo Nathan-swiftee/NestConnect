@@ -1888,6 +1888,27 @@ button.tpl-row:active{transform:scale(.99)}
 .setempty{padding:var(--sp-5) var(--sp-4);text-align:center;font-size:var(--fs-sm);color:var(--text-faint);border:1px dashed var(--border);border-radius:var(--r-12);background:var(--surface-2)}
 .wa-profile__photo{display:flex;flex-direction:column;gap:var(--sp-2);align-items:flex-start}
 .wa-profile__photo img{width:72px;height:72px;border-radius:var(--r-12);object-fit:cover;border:1px solid var(--border);background:var(--surface-2)}
+/* Business-profile photo uploader */
+.wa-photo{display:flex;align-items:center;gap:var(--sp-4);padding:var(--sp-3);border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface-2)}
+.wa-photo__img{width:64px;height:64px;flex:0 0 64px;border-radius:50%;overflow:hidden;background:var(--surface);border:1px solid var(--border);display:grid;place-items:center}
+.wa-photo__img img{width:100%;height:100%;object-fit:cover}
+.wa-photo__ph{font-size:var(--fs-2xs);color:var(--text-faint);font-weight:600}
+.wa-photo__ctl{display:flex;flex-direction:column;gap:6px;min-width:0}
+.wa-photo__ctl .fieldhint{margin:0}
+/* Business-profile opening hours */
+.wa-hours{display:flex;flex-direction:column;gap:5px;border:1px solid var(--border);border-radius:var(--r-12);padding:var(--sp-3);background:var(--surface-2)}
+.wa-hours__row{display:flex;align-items:center;gap:var(--sp-3);min-height:34px}
+.wa-hours__row.off{opacity:.66}
+.wa-hours__day{flex:0 0 92px;font-size:var(--fs-sm);font-weight:600;color:var(--text)}
+.wa-hours__sw{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:600;color:var(--text-muted);cursor:pointer;flex:0 0 72px}
+.wa-hours__times{display:inline-flex;align-items:center;gap:8px;margin-left:auto}
+.wa-hours__times input[type=time]{padding:5px 8px;border:1px solid var(--border);border-radius:var(--r-8);background:var(--surface);color:var(--text);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+.wa-hours__to{color:var(--text-faint)}
+@media (max-width:820px){
+  .wa-hours__day{flex-basis:60px;font-size:var(--fs-xs)}
+  .wa-hours__sw{flex-basis:auto}
+  .wa-hours__times input[type=time]{padding:4px 6px}
+}
 .bcast-result{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-3);border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface-2)}
 .bcast-result__summary{display:flex;gap:var(--sp-2)}
 .bcast-pill{font-size:var(--fs-sm);font-weight:600;padding:2px 10px;border-radius:999px}

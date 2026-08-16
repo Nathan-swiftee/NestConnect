@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -6,7 +7,11 @@ import {
   NotFoundException,
   Param,
   Patch,
+  Post,
+  UploadedFile,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import {
   updateWhatsAppBusinessProfileInputSchema,
   type UpdateWhatsAppBusinessProfileInput,
@@ -47,6 +52,19 @@ export class BusinessProfileController {
   ): Promise<WhatsAppBusinessProfile> {
     await this.requireManager(userId);
     return this.profiles.update(inboxId, body);
+  }
+
+  /** Upload/replace the number's public profile photo (JPG/PNG). */
+  @Post(":inboxId/photo")
+  @UseInterceptors(FileInterceptor("file"))
+  async setPhoto(
+    @CurrentUserId() userId: string,
+    @Param("inboxId") inboxId: string,
+    @UploadedFile() file: { buffer: Buffer; mimetype: string; originalname?: string } | undefined,
+  ): Promise<WhatsAppBusinessProfile> {
+    await this.requireManager(userId);
+    if (!file) throw new BadRequestException("No image received.");
+    return this.profiles.setPhoto(inboxId, file);
   }
 
   private async requireManager(userId: string): Promise<void> {

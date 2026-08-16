@@ -244,6 +244,11 @@ export const api = {
     get<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}`),
   updateWhatsappProfile: (inboxId: string, input: UpdateWhatsAppBusinessProfileInput) =>
     patch<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}`, input),
+  setWhatsappProfilePhoto: (inboxId: string, file: File | Blob) => {
+    const form = new FormData();
+    form.append("file", file, file instanceof File ? file.name : "profile.jpg");
+    return request<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}/photo`, { method: "POST", body: form });
+  },
   // WhatsApp broadcast — send an approved template to many recipients at once
   sendBroadcast: (input: SendBroadcastInput) => post<BroadcastResult>("/whatsapp/broadcast", input),
   assign: (

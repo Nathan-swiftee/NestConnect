@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   ChannelType,
@@ -11,8 +11,11 @@ import type {
   TemplateCategory,
   WhatsAppVertical,
   BroadcastResult,
+  OpeningHours,
+  OpeningDay,
+  OpeningHoursDay,
 } from "@ding/schemas";
-import { WHATSAPP_VERTICALS } from "@ding/schemas";
+import { WHATSAPP_VERTICALS, OPENING_DAYS } from "@ding/schemas";
 import {
   useContacts,
   useCreateInbox,
@@ -43,6 +46,7 @@ import {
   useUpdateUser,
   useWhatsappProfile,
   useUpdateWhatsappProfile,
+  useSetWhatsappProfilePhoto,
   useSendBroadcast,
 } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
@@ -1622,6 +1626,28 @@ function ProfilePane({ onToast }: { onToast: (msg: string) => void }) {
   );
 }
 
+const DAY_LABELS: Record<OpeningDay, string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+  sun: "Sunday",
+};
+const DEFAULT_DAY: OpeningHoursDay = { closed: false, open: "09:00", close: "17:00" };
+function defaultHours(): OpeningHours {
+  return {
+    mon: { ...DEFAULT_DAY },
+    tue: { ...DEFAULT_DAY },
+    wed: { ...DEFAULT_DAY },
+    thu: { ...DEFAULT_DAY },
+    fri: { ...DEFAULT_DAY },
+    sat: { closed: true, open: "10:00", close: "16:00" },
+    sun: { closed: true, open: "10:00", close: "16:00" },
+  };
+}
+
 function ProfileForm({
   inboxId,
   profile,
@@ -1639,12 +1665,29 @@ function ProfileForm({
   const [vertical, setVertical] = useState<WhatsAppVertical>(profile.vertical ?? "UNDEFINED");
   const [web1, setWeb1] = useState(profile.websites?.[0] ?? "");
   const [web2, setWeb2] = useState(profile.websites?.[1] ?? "");
+  const setPhoto = useSetWhatsappProfilePhoto();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [hours, setHours] = useState<OpeningHours>(profile.openingHours ?? defaultHours());
+  const setDay = (d: OpeningDay, patch: Partial<OpeningHoursDay>) =>
+    setHours((prev) => ({ ...prev, [d]: { ...prev[d], ...patch } }));
+  const onPhoto = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setPhoto.mutate(
+      { inboxId, file },
+      {
+        onSuccess: () => onToast("Profile photo updated"),
+        onError: (err) => onToast((err as Error)?.message ?? "Couldn’t update the photo"),
+      },
+    );
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const websites = [web1, web2].map(normalizeUrl).filter(Boolean);
     update.mutate(
-      { inboxId, input: { about, description, address, email, vertical, websites } },
+      { inboxId, input: { about, description, address, email, vertical, websites, openingHours: hours } },
       {
         onSuccess: () => onToast("Business profile saved"),
         onError: (err) => onToast((err as Error)?.message ?? "Couldn’t save the profile"),
@@ -1654,14 +1697,22 @@ function ProfileForm({
 
   return (
     <form className="setform" onSubmit={submit}>
-      {profile.profilePictureUrl && (
-        <div className="wa-profile__photo">
-          <img src={profile.profilePictureUrl} alt="Current WhatsApp profile photo" />
-          <small className="fieldhint">
-            Profile photo is set in WhatsApp Manager — it’s shown here for reference.
-          </small>
+      <div className="wa-photo">
+        <div className="wa-photo__img">
+          {profile.profilePictureUrl ? (
+            <img src={profile.profilePictureUrl} alt="WhatsApp profile photo" />
+          ) : (
+            <span className="wa-photo__ph">No photo</span>
+          )}
         </div>
-      )}
+        <div className="wa-photo__ctl">
+          <button type="button" className="btn-ghost sm" onClick={() => fileRef.current?.click()} disabled={setPhoto.isPending}>
+            {setPhoto.isPending ? "Uploading…" : profile.profilePictureUrl ? "Change photo" : "Add photo"}
+          </button>
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={onPhoto} />
+          <small className="fieldhint">JPG or PNG, shown on your WhatsApp business card. Needs your Meta App ID set under Channels.</small>
+        </div>
+      </div>
 
       <label className="field">
         <span>
@@ -1742,6 +1793,39 @@ function ProfileForm({
             placeholder="Optional"
           />
         </label>
+      </div>
+
+      <div className="field">
+        <span>Opening hours <em>shown in Nest Connect</em></span>
+        <div className="wa-hours">
+          {OPENING_DAYS.map((d) => {
+            const day = hours[d];
+            return (
+              <div className={"wa-hours__row" + (day.closed ? " off" : "")} key={d}>
+                <span className="wa-hours__day">{DAY_LABELS[d]}</span>
+                <label className="wa-hours__sw">
+                  <input
+                    type="checkbox"
+                    checked={!day.closed}
+                    onChange={(e) => setDay(d, { closed: !e.target.checked })}
+                  />
+                  <span>{day.closed ? "Closed" : "Open"}</span>
+                </label>
+                {!day.closed && (
+                  <span className="wa-hours__times">
+                    <input type="time" value={day.open} onChange={(e) => setDay(d, { open: e.target.value })} />
+                    <span className="wa-hours__to">–</span>
+                    <input type="time" value={day.close} onChange={(e) => setDay(d, { close: e.target.value })} />
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <small className="fieldhint">
+          WhatsApp has no opening-hours field, so these are kept in Nest Connect (they don’t appear on the WhatsApp
+          business card).
+        </small>
       </div>
 
       <div className="setform__foot">
