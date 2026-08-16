@@ -211,14 +211,17 @@ model Contact {
 model ContactIdentity {
   id        String  @id @default(cuid())
   contactId String
+  orgId     String? // denormalized from the contact, for per-org identity lookups
   kind      String // phone | email | wa_id
-  value     String
+  value     String // as entered / received (kept for display)
+  normalizedValue String? // canonical form for dedup: E.164 phone, lowercase email
   verified  Boolean @default(false)
 
   contact Contact @relation(fields: [contactId], references: [id])
 
   @@unique([kind, value])
   @@index([contactId])
+  @@index([orgId, kind, normalizedValue])
 }
 
 model Conversation {

@@ -157,7 +157,8 @@ export const api = {
   // customers (CRM)
   contacts: () => get<Contact[]>("/contacts"),
   contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),
-  createContact: (input: CreateContactInput) => post<Contact>("/contacts", input),
+  createContact: (input: CreateContactInput) =>
+    post<{ contact: Contact; existed: boolean }>("/contacts", input),
   updateContact: (id: string, input: UpdateContactInput) => patch<Contact>(`/contacts/${id}`, input),
   deleteContact: (id: string) => del<{ ok: boolean }>(`/contacts/${id}`),
   // Open (or start) this customer's conversation on another channel. An explicit

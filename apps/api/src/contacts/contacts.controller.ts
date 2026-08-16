@@ -49,7 +49,10 @@ export class ContactsController {
   ) {
     const me = await this.store.getUser(userId);
     if (!me) throw new NotFoundException("Current user not found");
-    return this.store.createContact({ orgId: me.orgId, ...body });
+    // Get-or-create: `existed` is true when the phone/email already matched a
+    // contact, so the UI can open that one instead of adding a duplicate.
+    const { contact, created } = await this.store.createContact({ orgId: me.orgId, ...body });
+    return { contact, existed: !created };
   }
 
   @Patch(":id")

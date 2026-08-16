@@ -511,7 +511,11 @@ export abstract class Store {
 
   abstract findConversationByChannelRef(channelRef: string): Promise<string | undefined>;
 
-  /** Create a contact (a group's synthetic contact, or a customer added by hand). */
+  /**
+   * Create a contact (a group's synthetic contact, or a customer added by hand),
+   * OR return the existing one if the phone/email already resolves to a contact
+   * in this org — `created` is false when an existing contact was returned.
+   */
   abstract createContact(params: {
     orgId: string;
     displayName: string;
@@ -522,7 +526,10 @@ export abstract class Store {
     tags?: string[];
     ownerUserId?: string | null;
     ownerTeamId?: string | null;
-  }): Promise<Contact>;
+  }): Promise<{ contact: Contact; created: boolean }>;
+
+  /** One-time (idempotent) backfill of normalizedValue/orgId on identity rows. */
+  abstract backfillIdentityNormalization(): Promise<{ updated: number }>;
 
   /* ---- customers directory ---- */
   abstract listContacts(): Promise<Contact[]>;

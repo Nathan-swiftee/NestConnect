@@ -38,7 +38,7 @@ export class GroupsService {
 
     const { groupId, inviteLink } = await this.provider.createGroup(inbox.id, input.name);
 
-    const groupContact = await this.store.createContact({
+    const { contact: groupContact } = await this.store.createContact({
       orgId: inbox.orgId,
       displayName: input.name,
       avatarColor: GROUP_AVATAR,

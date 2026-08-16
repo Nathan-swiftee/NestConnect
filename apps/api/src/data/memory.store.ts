@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { hashInviteToken, newInviteToken } from "../auth/invite-token";
+import { normalizeIdentity, type IdentityKind } from "../contacts/identity";
 import type {
   Attachment,
   ChannelType,
@@ -1127,7 +1128,15 @@ export class MemoryStore extends Store {
     avatarColor?: string;
   }): Promise<Contact> {
     const key = params.kind === "email" ? "email" : "phone";
-    const existing = this.contacts.find((c) => (c as Record<string, unknown>)[key] === params.value);
+    const matchKind: IdentityKind = params.kind === "email" ? "email" : "phone";
+    const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
+    // Match on the canonical value so number formats / wa_id all resolve to one.
+    const existing = this.contacts.find((c) => {
+      if (c.orgId !== params.orgId) return false;
+      const cv = (c as Record<string, unknown>)[key] as string | undefined;
+      if (!cv) return false;
+      return (normalizeIdentity(matchKind, cv)?.normalized ?? cv) === normalized;
+    });
     if (existing) return existing;
     const contact: Contact = {
       id: `ct_${++this.idSeq}`,
@@ -1394,7 +1403,20 @@ export class MemoryStore extends Store {
     tags?: string[];
     ownerUserId?: string | null;
     ownerTeamId?: string | null;
-  }): Promise<Contact> {
+  }): Promise<{ contact: Contact; created: boolean }> {
+    // Get-or-create: reuse an existing contact whose phone/email canonicalizes
+    // to the same value, rather than forking a duplicate.
+    const pnorm = params.phone ? normalizeIdentity("phone", params.phone)?.normalized : undefined;
+    const enorm = params.email ? normalizeIdentity("email", params.email)?.normalized : undefined;
+    if (pnorm || enorm) {
+      const hit = this.contacts.find((c) => {
+        if (c.orgId !== params.orgId) return false;
+        if (pnorm && c.phone && (normalizeIdentity("phone", c.phone)?.normalized ?? c.phone) === pnorm) return true;
+        if (enorm && c.email && (normalizeIdentity("email", c.email)?.normalized ?? c.email) === enorm) return true;
+        return false;
+      });
+      if (hit) return { contact: hit, created: false };
+    }
     const contact: Contact = {
       id: `ct_${++this.idSeq}`,
       orgId: params.orgId,
@@ -1408,7 +1430,12 @@ export class MemoryStore extends Store {
       avatarColor: params.avatarColor ?? AVATAR_PALETTE[this.contacts.length % AVATAR_PALETTE.length],
     };
     this.contacts.push(contact);
-    return contact;
+    return { contact, created: true };
+  }
+
+  /** Memory store normalizes on the fly, so there's nothing to backfill. */
+  async backfillIdentityNormalization(): Promise<{ updated: number }> {
+    return { updated: 0 };
   }
 
   async listContacts(): Promise<Contact[]> {

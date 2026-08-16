@@ -111,7 +111,7 @@ export function Compose({
     }
     setBusy(channel);
     try {
-      const contact = await api.createContact({
+      const { contact } = await api.createContact({
         displayName: name.trim(),
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,

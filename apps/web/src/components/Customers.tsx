@@ -173,8 +173,10 @@ function CustomerModal({
           ownerUserId,
         },
         {
-          onSuccess: () => {
-            onToast(`Added ${name}`);
+          onSuccess: (res) => {
+            // Get-or-create: if the phone/email already matched a customer, we
+            // opened theirs instead of forking a duplicate — say so.
+            onToast(res.existed ? `Already on file — ${res.contact.displayName}` : `Added ${name}`);
             onClose();
           },
           onError: () => onToast("Couldn't add customer"),

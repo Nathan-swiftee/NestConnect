@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { hashInviteToken, newInviteToken } from "../auth/invite-token";
+import { normalizeIdentity, type IdentityKind } from "../contacts/identity";
 import type { Prisma } from "@prisma/client";
 import type {
   Attachment,
@@ -1344,23 +1345,39 @@ export class PrismaStore extends Store {
     // A phone number can arrive as either `phone` or `wa_id` — match across both
     // so we don't fork one customer into two contacts (mirrors setIdentity).
     const matchKinds = params.kind === "email" ? ["email"] : ["phone", "wa_id"];
+    // Match on the CANONICAL value (scoped to the org): "+44 7911…", "07911…"
+    // and WhatsApp's "447911…" all resolve to one contact.
+    const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
     const ident = await this.prisma.contactIdentity.findFirst({
-      where: { kind: { in: matchKinds }, value: params.value },
+      where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },
       include: { contact: { include: { identities: true } } },
     });
     if (ident) return mapContact(ident.contact);
 
-    const contact = await this.prisma.contact.create({
-      data: {
-        orgId: params.orgId,
-        displayName: params.displayName,
-        company: params.company,
-        avatarColor: params.avatarColor,
-        identities: { create: [{ kind: params.kind, value: params.value }] },
-      },
-      include: { identities: true },
-    });
-    return mapContact(contact);
+    try {
+      const contact = await this.prisma.contact.create({
+        data: {
+          orgId: params.orgId,
+          displayName: params.displayName,
+          company: params.company,
+          avatarColor: params.avatarColor,
+          identities: {
+            create: [{ orgId: params.orgId, kind: params.kind, value: params.value, normalizedValue: normalized }],
+          },
+        },
+        include: { identities: true },
+      });
+      return mapContact(contact);
+    } catch {
+      // Concurrent webhook raced us to the same identity (global [kind,value]
+      // unique) — re-fetch and return the contact that won.
+      const raced = await this.prisma.contactIdentity.findFirst({
+        where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },
+        include: { contact: { include: { identities: true } } },
+      });
+      if (raced) return mapContact(raced.contact);
+      throw new Error("Failed to create or resolve contact identity");
+    }
   }
 
   async findOrCreateOpenConversation(params: {
@@ -1640,7 +1657,22 @@ export class PrismaStore extends Store {
     tags?: string[];
     ownerUserId?: string | null;
     ownerTeamId?: string | null;
-  }): Promise<Contact> {
+  }): Promise<{ contact: Contact; created: boolean }> {
+    // Get-or-create: if the phone or email already resolves to a contact in this
+    // org, return that one instead of forking a duplicate.
+    const phone = params.phone ? normalizeIdentity("phone", params.phone) : null;
+    const email = params.email ? normalizeIdentity("email", params.email) : null;
+    const or: Prisma.ContactIdentityWhereInput[] = [];
+    if (phone) or.push({ kind: { in: ["phone", "wa_id"] }, normalizedValue: phone.normalized });
+    if (email) or.push({ kind: "email", normalizedValue: email.normalized });
+    if (or.length) {
+      const hit = await this.prisma.contactIdentity.findFirst({
+        where: { orgId: params.orgId, OR: or },
+        include: { contact: { include: { identities: true } } },
+      });
+      if (hit) return { contact: mapContact(hit.contact), created: false };
+    }
+
     const count = await this.prisma.contact.count({ where: { orgId: params.orgId } });
     const created = await this.prisma.contact.create({
       data: {
@@ -1653,13 +1685,38 @@ export class PrismaStore extends Store {
         ownerTeamId: params.ownerTeamId ?? null,
       },
     });
-    await this.setIdentity(created.id, ["phone", "wa_id"], "phone", params.phone);
-    await this.setIdentity(created.id, ["email"], "email", params.email);
+    await this.setIdentity(created.id, params.orgId, ["phone", "wa_id"], "phone", params.phone);
+    await this.setIdentity(created.id, params.orgId, ["email"], "email", params.email);
     const full = await this.prisma.contact.findUnique({
       where: { id: created.id },
       include: { identities: true },
     });
-    return mapContact(full!);
+    return { contact: mapContact(full!), created: true };
+  }
+
+  /**
+   * Backfill normalizedValue (and orgId) for identity rows that don't have them
+   * yet — a one-time pass after the migration, idempotent on later boots. Existing
+   * contacts must carry a normalized value or an inbound message would fail to
+   * match them and fork a duplicate.
+   */
+  async backfillIdentityNormalization(): Promise<{ updated: number }> {
+    const rows = await this.prisma.contactIdentity.findMany({
+      where: { OR: [{ normalizedValue: null }, { orgId: null }] },
+      include: { contact: { select: { orgId: true } } },
+    });
+    let updated = 0;
+    for (const r of rows) {
+      const normalized = normalizeIdentity(r.kind as IdentityKind, r.value)?.normalized ?? r.value;
+      await this.prisma.contactIdentity
+        .update({
+          where: { id: r.id },
+          data: { normalizedValue: normalized, orgId: r.orgId ?? r.contact.orgId },
+        })
+        .catch(() => {});
+      updated++;
+    }
+    return { updated };
   }
 
   /* ---- customers directory ---- */
@@ -1672,6 +1729,7 @@ export class PrismaStore extends Store {
    */
   private async setIdentity(
     contactId: string,
+    orgId: string,
     matchKinds: string[],
     writeKind: string,
     value: string | undefined,
@@ -1685,12 +1743,18 @@ export class PrismaStore extends Store {
       if (existing) await this.prisma.contactIdentity.delete({ where: { id: existing.id } }).catch(() => {});
       return;
     }
+    const normalized = normalizeIdentity(writeKind as IdentityKind, v)?.normalized ?? v;
     try {
       if (existing) {
-        if (existing.value !== v)
-          await this.prisma.contactIdentity.update({ where: { id: existing.id }, data: { value: v } });
+        if (existing.value !== v || existing.normalizedValue !== normalized || existing.orgId !== orgId)
+          await this.prisma.contactIdentity.update({
+            where: { id: existing.id },
+            data: { value: v, normalizedValue: normalized, orgId },
+          });
       } else {
-        await this.prisma.contactIdentity.create({ data: { contactId, kind: writeKind, value: v } });
+        await this.prisma.contactIdentity.create({
+          data: { contactId, orgId, kind: writeKind, value: v, normalizedValue: normalized },
+        });
       }
     } catch {
       /* [kind,value] is globally unique — another contact already owns it; skip */
@@ -1739,8 +1803,8 @@ export class PrismaStore extends Store {
     if (params.ownerTeamId !== undefined) data.ownerTeamId = params.ownerTeamId ?? null;
     if (params.blocked !== undefined) data.blocked = params.blocked;
     if (Object.keys(data).length) await this.prisma.contact.update({ where: { id }, data });
-    await this.setIdentity(id, ["phone", "wa_id"], "phone", params.phone);
-    await this.setIdentity(id, ["email"], "email", params.email);
+    await this.setIdentity(id, existing.orgId, ["phone", "wa_id"], "phone", params.phone);
+    await this.setIdentity(id, existing.orgId, ["email"], "email", params.email);
     const full = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
     return full ? mapContact(full) : undefined;
   }

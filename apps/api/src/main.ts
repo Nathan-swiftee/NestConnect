@@ -4,6 +4,7 @@ import { Logger } from "@nestjs/common";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
+import { Store } from "./data/store";
 import { env, assertProdSecrets } from "./config/env";
 import { StructuredLogger } from "./common/structured-logger";
 
@@ -49,6 +50,16 @@ async function bootstrap() {
   // Graceful shutdown: on SIGTERM/SIGINT, Nest runs OnModuleDestroy hooks so the
   // BullMQ worker stops taking jobs and lets in-flight deliveries drain.
   app.enableShutdownHooks();
+
+  // One-time (idempotent) backfill: give every existing contact identity a
+  // canonical normalizedValue before we serve traffic, so inbound messages match
+  // existing contacts instead of forking duplicates. Never blocks boot on error.
+  try {
+    const { updated } = await app.get(Store).backfillIdentityNormalization();
+    if (updated) new Logger("Bootstrap").log(`Normalized ${updated} contact identit${updated === 1 ? "y" : "ies"}`);
+  } catch (err) {
+    new Logger("Bootstrap").warn(`Identity normalization backfill skipped: ${String(err)}`);
+  }
 
   await app.listen(env.port);
 
