@@ -573,6 +573,13 @@ export abstract class Store {
     avatarColor?: string;
   }): Promise<Contact>;
 
+  /**
+   * The open conversation for this contact ON THIS INBOX, or a new one if none.
+   * Threading is per-inbox (channel endpoint): a customer reaching a different
+   * number / email address / channel opens a SEPARATE conversation, and a closed
+   * thread starts a new one — only one open per (contact, inbox) at a time.
+   * (Agents can still reply cross-channel within a thread; that's the send path.)
+   */
   abstract findOrCreateOpenConversation(params: {
     orgId: string;
     inboxId: string;

@@ -1278,12 +1278,16 @@ export class MemoryStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
-    // Unify by CONTACT across channels while a thread is open (closed → new chat).
+    // One open conversation per contact PER INBOX (channel endpoint): a different
+    // inbox — another number, email address, or channel — starts a separate
+    // conversation, and a closed thread starts a new one. (Agents still reply
+    // cross-channel inside a thread via the send path; this governs inbound + reach.)
     const open = [...this.conversations]
       .sort(byRecencyDesc)
       .find(
         (c) =>
           c.orgId === params.orgId &&
+          c.inboxId === params.inboxId &&
           c.contact.id === params.contact.id &&
           (c.status === "open" || c.status === "pending"),
       );

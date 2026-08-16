@@ -1519,11 +1519,13 @@ export class PrismaStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
-    // Unify by CONTACT across channels while a thread is open: an inbound on any
-    // channel (or an agent reaching out on another) threads into the customer's
-    // one open conversation. Once it's closed, the next message starts a new chat.
+    // One open conversation per contact PER INBOX (channel endpoint): an inbound
+    // to this inbox threads into the customer's open thread here; a different inbox
+    // — another number, email address, or channel — is a separate conversation,
+    // and a closed thread starts a new one. (Agents still reply cross-channel
+    // inside a thread via the send path; this governs inbound + reach.)
     const open = await this.prisma.conversation.findFirst({
-      where: { orgId: params.orgId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
+      where: { orgId: params.orgId, inboxId: params.inboxId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
       include: convInclude,
       orderBy: { lastActivityAt: "desc" },
     });

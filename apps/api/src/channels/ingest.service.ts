@@ -104,16 +104,6 @@ export class IngestService {
         `New WhatsApp conversation ${conv.id} from ${input.from} → ` +
           `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
       );
-    } else if (conv.inboxId !== inbox.id) {
-      // Cross-channel: this open thread has been living under a different inbox
-      // (e.g. it started on email). The customer is now reaching us on WhatsApp,
-      // so move it onto this inbox — the channel views filter by inboxId, so it
-      // now shows under the channel they're actually using.
-      const moved = await this.store.setConversationInbox(conv.id, inbox.id);
-      if (moved) {
-        conv = moved;
-        this.realtime.emitConversationUpdated(moved);
-      }
     }
 
     const message = await this.store.appendInboundMessage(conv.id, {
@@ -242,14 +232,6 @@ export class IngestService {
             `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
         );
       }
-    }
-
-    // Cross-channel: an email landing on a thread that's been living under a
-    // different inbox (e.g. after the customer WhatsApp'd) moves it here, so it
-    // shows under the channel now in use. New threads already start on this inbox.
-    if (!created) {
-      const moved = await this.store.setConversationInbox(conversationId, inbox.id);
-      if (moved) this.realtime.emitConversationUpdated(moved);
     }
 
     // Remember the latest inbound Gmail thread id on the conversation so an
