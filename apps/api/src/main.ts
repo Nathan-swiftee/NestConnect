@@ -61,6 +61,23 @@ async function bootstrap() {
     new Logger("Bootstrap").warn(`Identity normalization backfill skipped: ${String(err)}`);
   }
 
+  // Consolidate any residual duplicate customers (legacy rows sharing a phone/
+  // email) and apply the per-org identity uniqueness index. Idempotent — a
+  // no-op once the index exists — and never blocks boot on error.
+  try {
+    const bl = new Logger("Bootstrap");
+    const r = await app.get(Store).reconcileIdentityUniqueness();
+    if (r.mergedContacts || r.collapsedIdentities)
+      bl.log(`Identity dedup: merged ${r.mergedContacts} duplicate contact(s), collapsed ${r.collapsedIdentities} identity row(s)`);
+    bl.log(
+      r.constraintApplied
+        ? `Per-org identity uniqueness: enforced${env.usingDatabase ? " (DB unique index in place)" : ""}`
+        : "Per-org identity uniqueness: NOT applied — residual duplicates remain (get-or-create dedup still active)",
+    );
+  } catch (err) {
+    new Logger("Bootstrap").warn(`Identity uniqueness reconcile skipped: ${String(err)}`);
+  }
+
   await app.listen(env.port);
 
   const log = new Logger("Bootstrap");

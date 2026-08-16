@@ -1796,6 +1796,98 @@ export class PrismaStore extends Store {
     return { updated };
   }
 
+  /**
+   * Consolidate residual duplicate identities and enforce per-org uniqueness.
+   * See the Store interface for the contract. Runs at boot, after the
+   * normalization backfill has given every row a canonical normalizedValue.
+   */
+  async reconcileIdentityUniqueness(): Promise<{ mergedContacts: number; collapsedIdentities: number; constraintApplied: boolean }> {
+    const INDEX = "ContactIdentity_orgId_kind_normalizedValue_key";
+    // Fast path: once the unique index is in place, the data is already clean.
+    const already = await this.prisma.$queryRawUnsafe<{ exists: boolean }[]>(
+      `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = $1) AS "exists"`,
+      INDEX,
+    );
+    if (already[0]?.exists) return { mergedContacts: 0, collapsedIdentities: 0, constraintApplied: true };
+
+    // 1) Merge every set of contacts that collide on the EXACT index key
+    //    (orgId, kind, normalizedValue) — keyed identically to the constraint so
+    //    nothing it would reject is left behind. This is stricter than the
+    //    phone/email contact view that drives the manual merge tool: it also
+    //    catches a collision hidden on a contact's 2nd+ identity row. Oldest
+    //    contact wins; mergeContacts moves the conversations across safely.
+    const rows = await this.prisma.contactIdentity.findMany({
+      where: { normalizedValue: { not: null }, orgId: { not: null } },
+      select: { contactId: true, orgId: true, kind: true, normalizedValue: true },
+    });
+    // Union-find: contacts that co-occur on any key are the same customer.
+    const parent = new Map<string, string>();
+    const find = (x: string): string => {
+      let root = x;
+      while (parent.has(root) && parent.get(root) !== root) root = parent.get(root)!;
+      return root;
+    };
+    const union = (a: string, b: string) => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) parent.set(ra, rb);
+    };
+    const byKey = new Map<string, string[]>();
+    for (const r of rows) {
+      const key = `${r.orgId} ${r.kind} ${r.normalizedValue}`;
+      const list = byKey.get(key);
+      if (list) list.push(r.contactId);
+      else byKey.set(key, [r.contactId]);
+    }
+    for (const ids of byKey.values()) for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+    const clusters = new Map<string, string[]>();
+    for (const cid of new Set(rows.map((r) => r.contactId))) {
+      const root = find(cid);
+      const arr = clusters.get(root);
+      if (arr) arr.push(cid);
+      else clusters.set(root, [cid]);
+    }
+    let mergedContacts = 0;
+    for (const ids of clusters.values()) {
+      if (ids.length < 2) continue;
+      const meta = await this.prisma.contact.findMany({ where: { id: { in: ids } }, select: { id: true, createdAt: true } });
+      if (meta.length < 2) continue;
+      const winner = meta.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b));
+      await this.mergeContacts({ winnerId: winner.id, loserIds: meta.filter((m) => m.id !== winner.id).map((m) => m.id) });
+      mergedContacts += meta.length - 1;
+    }
+
+    // 2) Collapse redundant rows now left on a SINGLE contact — same
+    //    (orgId, kind, normalizedValue) but a different raw format (e.g.
+    //    "+447700900123" and "07700 900123"). The contactId guard keeps this
+    //    lossless: only a same-contact twin is removed, the customer keeps one.
+    const collapsedIdentities = await this.prisma.$executeRawUnsafe(`
+      DELETE FROM "ContactIdentity" AS a
+      USING "ContactIdentity" AS b
+      WHERE a."orgId" = b."orgId"
+        AND a."kind" = b."kind"
+        AND a."normalizedValue" = b."normalizedValue"
+        AND a."normalizedValue" IS NOT NULL
+        AND a."contactId" = b."contactId"
+        AND a."id" > b."id"
+    `);
+
+    // 3) Apply the hard guarantee. Created at runtime (NOT a Prisma migration)
+    //    so it lands AFTER the cleanup above — a migration runs before boot and
+    //    would fail on any legacy duplicate. Idempotent; never blocks boot.
+    let constraintApplied = false;
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `CREATE UNIQUE INDEX IF NOT EXISTS "${INDEX}" ON "ContactIdentity" ("orgId", "kind", "normalizedValue") WHERE "normalizedValue" IS NOT NULL`,
+      );
+      constraintApplied = true;
+    } catch {
+      // A residual cross-contact collision the merge above couldn't resolve —
+      // leave the data intact; get-or-create dedup still blocks new duplicates.
+    }
+    return { mergedContacts, collapsedIdentities: Number(collapsedIdentities) || 0, constraintApplied };
+  }
+
   /* ---- customers directory ---- */
 
   /**

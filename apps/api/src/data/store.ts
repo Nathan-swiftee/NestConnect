@@ -551,6 +551,22 @@ export abstract class Store {
   /** One-time (idempotent) backfill of normalizedValue/orgId on identity rows. */
   abstract backfillIdentityNormalization(): Promise<{ updated: number }>;
 
+  /**
+   * Consolidate any residual duplicate customer identities — legacy rows that
+   * share a canonical phone/email but were created before get-or-create dedup,
+   * or missed in a manual merge — and then enforce the hard guarantee that no
+   * two identities of the same kind in an org can share a normalised value.
+   * Idempotent and safe to run on every boot; never removes a customer's only
+   * copy of an identity. `constraintApplied` is false only if a residual
+   * cross-contact collision blocked the unique index (app-level dedup still
+   * prevents new duplicates in that case).
+   */
+  abstract reconcileIdentityUniqueness(): Promise<{
+    mergedContacts: number;
+    collapsedIdentities: number;
+    constraintApplied: boolean;
+  }>;
+
   /* ---- customers directory ---- */
   abstract listContacts(): Promise<Contact[]>;
   /** Clusters of contacts that probably represent the same customer (shared

@@ -1494,6 +1494,20 @@ export class MemoryStore extends Store {
     return { updated: 0 };
   }
 
+  async reconcileIdentityUniqueness(): Promise<{ mergedContacts: number; collapsedIdentities: number; constraintApplied: boolean }> {
+    // Fold any contacts that share a canonical phone/email into one. In-memory
+    // uniqueness is otherwise enforced live by upsertContactByIdentity's
+    // get-or-create, so there is no separate DB index to apply here.
+    let mergedContacts = 0;
+    for (const g of await this.findDuplicateContacts()) {
+      const ids = g.contacts.map((c) => c.id);
+      if (ids.length < 2) continue;
+      await this.mergeContacts({ winnerId: ids[0], loserIds: ids.slice(1) });
+      mergedContacts += ids.length - 1;
+    }
+    return { mergedContacts, collapsedIdentities: 0, constraintApplied: true };
+  }
+
   async listContacts(): Promise<Contact[]> {
     return [...this.contacts]
       .map((c) => ({ ...c, tags: c.tags ?? [] }))
