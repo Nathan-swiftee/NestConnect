@@ -270,22 +270,24 @@ function AssignmentBlock({
     : "Unassigned";
   return (
     <Block title="Assignment">
-      <div className="kv">
-        <span className="k">Assignee</span>
-        <span className="v">{assignee}</span>
-      </div>
-      <div className="kv">
-        <span className="k">Team</span>
-        <span className="v">
-          {(conv.assignedTeamId && teamName(conv.assignedTeamId)) || "—"}
-          {!conv.assigneeUserId ? " · in queue" : ""}
-        </span>
-      </div>
-      <div className="kv">
-        <span className="k">Priority</span>
-        <span className="v">
-          <PriorityControl conv={conv} onToast={onToast} />
-        </span>
+      <div className="pcard">
+        <div className="kv">
+          <span className="k">Assignee</span>
+          <span className="v">{assignee}</span>
+        </div>
+        <div className="kv">
+          <span className="k">Team</span>
+          <span className="v">
+            {(conv.assignedTeamId && teamName(conv.assignedTeamId)) || "—"}
+            {!conv.assigneeUserId ? " · in queue" : ""}
+          </span>
+        </div>
+        <div className="kv">
+          <span className="k">Priority</span>
+          <span className="v">
+            <PriorityControl conv={conv} onToast={onToast} />
+          </span>
+        </div>
       </div>
     </Block>
   );
@@ -325,39 +327,41 @@ function RoutingBlock({ contact, isGroup, onToast }: { contact: Contact; isGroup
   const who = isGroup ? "this group" : contact.displayName;
   return (
     <Block title="Auto-routing">
-      <p className="routehint">New conversations from {who} go straight here.</p>
-      <label className="routesel">
-        <span>Team</span>
-        <select
-          value={teamId}
-          onChange={(e) => {
-            const v = e.target.value;
-            setTeamId(v);
-            save({ ownerTeamId: v || null });
-          }}
-        >
-          <option value="">Automatic (channel routing)</option>
-          {teams.data?.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
-      </label>
-      <label className="routesel">
-        <span>Person</span>
-        <select
-          value={userId}
-          onChange={(e) => {
-            const v = e.target.value;
-            setUserId(v);
-            save({ ownerUserId: v || null });
-          }}
-        >
-          <option value="">No one specific</option>
-          {people.data?.map((m) => (
-            <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
-          ))}
-        </select>
-      </label>
+      <div className="pcard">
+        <p className="routehint">New conversations from {who} go straight here.</p>
+        <label className="routesel">
+          <span>Team</span>
+          <select
+            value={teamId}
+            onChange={(e) => {
+              const v = e.target.value;
+              setTeamId(v);
+              save({ ownerTeamId: v || null });
+            }}
+          >
+            <option value="">Automatic (channel routing)</option>
+            {teams.data?.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="routesel">
+          <span>Person</span>
+          <select
+            value={userId}
+            onChange={(e) => {
+              const v = e.target.value;
+              setUserId(v);
+              save({ ownerUserId: v || null });
+            }}
+          >
+            <option value="">No one specific</option>
+            {people.data?.map((m) => (
+              <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
     </Block>
   );
 }

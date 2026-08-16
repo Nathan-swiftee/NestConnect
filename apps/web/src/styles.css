@@ -1013,7 +1013,7 @@ input,textarea{font:inherit}
 
 /* context panel — matte structural surface */
 .panel{width:300px;flex:0 0 300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
-.panel__scroll{overflow-y:auto;padding:var(--sp-5) var(--sp-4);display:flex;flex-direction:column;gap:18px}
+.panel__scroll{overflow-y:auto;padding:var(--sp-5) var(--sp-5) 44px;display:flex;flex-direction:column;gap:26px}
 /* ContextPanel contact header (.cust container, the .big avatar, name, company)
    → Tailwind utilities inline in ContextPanel.tsx. (.cust .quick was dead.) */
 /* Contact info list under the name: shows the actual phone/email (click to
@@ -1045,14 +1045,19 @@ input,textarea{font:inherit}
 .chanrow__go{flex:0 0 auto;color:var(--text-faint);display:grid;place-items:center;transition:transform .12s var(--ease)}
 .chanrow:hover .chanrow__go{transform:translateX(2px);color:var(--text-muted)}
 .chanrow__go svg{width:16px;height:16px}
-/* Panel section: hairline divider, generous space above the eyebrow title
-   (20px) and a clear gap down to its content (13px) so each heading reads as
-   a deliberate label that owns the block beneath it. */
-.block{border-top:1px solid var(--border);padding-top:var(--sp-5);display:flex;flex-direction:column;gap:13px}
-.block > .t{display:flex;align-items:center;flex-wrap:wrap;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted)}
-.kv{display:flex;align-items:center;gap:10px}
-.kv .k{font-size:var(--fs-xs);color:var(--text-muted);width:74px;flex:0 0 74px}
-.kv .v{font-size:var(--fs-sm);font-weight:600;display:flex;align-items:center;gap:var(--sp-2);min-width:0}
+/* Panel section = a quiet eyebrow label with clear air below it, then its
+   content grouped in a soft card. No tight hairline rules: sections are set
+   apart by generous whitespace, and each heading sits distinctly above the
+   card it names — so titles never crowd their content. */
+.block{display:flex;flex-direction:column;gap:12px}
+.block > .t{display:flex;align-items:center;flex-wrap:wrap;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);padding:0 2px}
+/* soft content card — groups the loose key/value sections (assignment, routing) */
+.pcard{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-16);padding:var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-3)}
+.pcard .routesel{margin-bottom:0}
+.pcard .routehint{margin:0 0 2px}
+.kv{display:flex;align-items:center;gap:12px}
+.kv .k{font-size:var(--fs-xs);color:var(--text-muted);width:66px;flex:0 0 66px;font-weight:500}
+.kv .v{font-size:var(--fs-sm);font-weight:650;color:var(--text);display:flex;align-items:center;gap:var(--sp-2);min-width:0}
 .kv .v .mini{width:22px;height:22px;border-radius:50%;color:#fff;display:grid;place-items:center;font-size:var(--fs-2xs);font-weight:700}
 .prio{font-size:var(--fs-2xs);font-weight:700;padding:3px var(--sp-2);border-radius:var(--r-8);background:var(--danger-tint);color:var(--danger);text-transform:capitalize}
 /* priority pill as a dropdown trigger + its menu */
