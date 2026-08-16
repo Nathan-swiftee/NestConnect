@@ -1704,10 +1704,13 @@ input,textarea{font:inherit}
   .dtable__row > .dcell:not(.dname){font-size:var(--fs-xs);white-space:normal;overflow:visible;text-overflow:clip}
   /* Templates aren't tappable rows — keep their edit/delete actions reachable. */
   .dtable--tpl .dtable__row > .dacts{justify-content:flex-start;gap:var(--sp-2)}
-  /* The row itself opens the editor, so the trailing chevron is redundant; the
-     channel-glyph column just repeats the contact line. */
+  /* The row itself opens the editor, so the trailing chevron is redundant. */
   .dtable__row > .dcell--end{display:none}
-  .dtable--cust .dtable__row > .dchips{display:none}
+  /* Keep the reachable-on channel glyphs visible, with a small label since the
+     column header is hidden on mobile. */
+  .dtable--cust .dtable__row > .dchips{display:flex;align-items:center;gap:9px}
+  .dtable--cust .dtable__row > .dchips::before{content:"Channels";font-size:var(--fs-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint)}
+  .dtable--cust .dtable__row > .dchips svg{width:16px;height:16px}
 
   /* Possible-duplicates review: let the merge control wrap under the members. */
   .dupmerge{margin-left:0;width:100%}
