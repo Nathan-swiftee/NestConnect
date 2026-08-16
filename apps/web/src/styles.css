@@ -1454,6 +1454,22 @@ input,textarea{font:inherit}
 .pers-session__meta{font-size:var(--fs-2xs);color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
 .pers-session__badge{margin-left:auto;flex:none;font-size:var(--fs-2xs);font-weight:700;color:var(--brand-strong);background:var(--brand-tint);padding:var(--sp-1) var(--sp-2);border-radius:999px}
 .pers-session__revoke{margin-left:auto;flex:none;border:1px solid var(--border);white-space:nowrap;font-size:var(--fs-2xs);color:var(--danger)}
+/* Two-factor auth setup */
+.tfa-status,.tfa-setup,.tfa-recovery{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:9px}
+.tfa-status__row{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);flex-wrap:wrap}
+.tfa-status__on{font-size:var(--fs-xs);font-weight:750;color:var(--wa,#0a7a55)}
+.tfa-actions{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:2px}
+.tfa-actions .btn-ghost{border:1px solid var(--border);white-space:nowrap}
+.tfa-danger{color:var(--danger)}
+.tfa-qr{display:flex;gap:var(--sp-3);align-items:center;flex-wrap:wrap;padding:10px;border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface-2)}
+.tfa-qr img{border-radius:8px;background:#fff;padding:6px;flex:none}
+.tfa-qr__manual{display:flex;flex-direction:column;gap:4px;min-width:0}
+.tfa-qr__manual code{font-size:var(--fs-xs);font-weight:700;letter-spacing:1px;word-break:break-all;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:4px 8px}
+.tfa-codefield{max-width:240px}
+.tfa-recovery{padding:12px;border:1px solid var(--amber);border-radius:var(--r-12);background:var(--amber-tint)}
+.tfa-recovery__hd{font-size:var(--fs-sm);font-weight:750;color:var(--text)}
+.tfa-recovery__grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:6px 0}
+.tfa-recovery__grid code{font-size:var(--fs-xs);font-weight:700;letter-spacing:1px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;text-align:center}
 @media (max-width:560px){
   .pers-grid{grid-template-columns:1fr}
   .pers-prof{flex-wrap:wrap}

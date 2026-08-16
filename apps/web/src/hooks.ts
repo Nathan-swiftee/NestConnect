@@ -56,6 +56,19 @@ export function useLogin() {
   return useMutation({
     mutationFn: (v: { email: string; password: string }) => api.login(v.email, v.password),
     onSuccess: (data) => {
+      // A 2FA challenge isn't a session yet — the LoginScreen shows the code step.
+      if ("twoFactorRequired" in data) return;
+      qc.setQueryData(["session"], data);
+      qc.invalidateQueries();
+    },
+  });
+}
+
+export function useLoginTwoFactor() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (code: string) => api.loginTwoFactor(code),
+    onSuccess: (data) => {
       qc.setQueryData(["session"], data);
       qc.invalidateQueries();
     },
@@ -184,6 +197,9 @@ export function useChangePassword() {
     mutationFn: (input: ChangePasswordInput) => api.changePassword(input),
   });
 }
+
+/* ---- two-factor auth ---- */
+export const useTwoFactorStatus = () => useQuery({ queryKey: ["2fa-status"], queryFn: api.twoFactorStatus });
 
 /* ---- signed-in sessions ("where you're logged in") ---- */
 export const useSessions = () => useQuery({ queryKey: ["sessions"], queryFn: api.sessions });

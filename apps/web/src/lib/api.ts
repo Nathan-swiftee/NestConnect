@@ -36,6 +36,9 @@ import type {
   UpdateMyProfileInput,
   ChangePasswordInput,
   SessionInfo,
+  TwoFactorChallenge,
+  TwoFactorStatus,
+  TotpSetup,
   UpdateUserInput,
   User,
   WhatsAppBusinessProfile,
@@ -108,12 +111,24 @@ const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 export const api = {
   // auth
   session: () => get<MeResponse>("/auth/session"),
-  login: (email: string, password: string) => post<MeResponse>("/auth/login", { email, password }),
+  // Login → a session, OR a 2FA challenge when the account has 2FA on.
+  login: (email: string, password: string) => post<MeResponse | TwoFactorChallenge>("/auth/login", { email, password }),
+  // Second login step: submit the 2FA (or recovery) code → a session.
+  loginTwoFactor: (code: string) => post<MeResponse>("/auth/login/2fa", { code }),
+  resendLoginCode: () => post<{ ok: boolean }>("/auth/login/2fa/resend", {}),
   // Set an initial password from an emailed invite link, then sign in.
   setPassword: (token: string, password: string) => post<MeResponse>("/auth/set-password", { token, password }),
   // Request a password-reset link (always resolves; never reveals if the email exists).
   forgotPassword: (email: string) => post<{ ok: boolean }>("/auth/forgot-password", { email }),
   logout: () => post<{ ok: boolean }>("/auth/logout", {}),
+  // Two-factor auth (personal settings).
+  twoFactorStatus: () => get<TwoFactorStatus>("/auth/2fa/status"),
+  startTotp: () => post<TotpSetup>("/auth/2fa/totp/start", {}),
+  enableTotp: (code: string) => post<{ recoveryCodes: string[] }>("/auth/2fa/totp/enable", { code }),
+  startEmail2fa: () => post<{ ok: boolean }>("/auth/2fa/email/start", {}),
+  enableEmail2fa: (code: string) => post<{ recoveryCodes: string[] }>("/auth/2fa/email/enable", { code }),
+  regenerateRecovery: () => post<{ recoveryCodes: string[] }>("/auth/2fa/recovery/regenerate", {}),
+  disable2fa: () => post<{ ok: boolean }>("/auth/2fa/disable", {}),
   // workspace
   me: () => get<MeResponse>("/me"),
   // The current user's own personal settings (availability + email signature).

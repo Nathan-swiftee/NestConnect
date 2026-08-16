@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useLogin } from "../hooks";
+import { useLogin, useLoginTwoFactor } from "../hooks";
 import { api } from "../lib/api";
 import { Logo, channelMeta, CheckDouble, SendIcon } from "../lib/icons";
 
@@ -8,15 +8,29 @@ const email = channelMeta("email");
 
 export function LoginScreen() {
   const login = useLogin();
+  const verify = useLoginTwoFactor();
   const [emailAddr, setEmailAddr] = useState("nathan@swiftee.co.uk");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "forgot">("signin");
   const [resetSent, setResetSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [code, setCode] = useState("");
+
+  // Set once the password step returns a 2FA challenge; cleared by login.reset().
+  const challenge = login.data && "twoFactorRequired" in login.data ? login.data : null;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (challenge) {
+      if (code.trim()) verify.mutate(code.trim());
+      return;
+    }
     login.mutate({ email: emailAddr, password });
+  };
+  const cancelChallenge = () => {
+    login.reset();
+    verify.reset();
+    setCode("");
   };
   const submitForgot = async (e: FormEvent) => {
     e.preventDefault();
@@ -113,7 +127,7 @@ export function LoginScreen() {
 
       {/* ── Right: the sign-in form ── */}
       <section className="login__panel">
-        <form className="login__card" onSubmit={mode === "signin" ? submit : submitForgot}>
+        <form className="login__card" onSubmit={challenge || mode === "signin" ? submit : submitForgot}>
           <div className="flex items-center gap-2 mb-1">
             <div className="brandmark">
               <Logo />
@@ -122,7 +136,59 @@ export function LoginScreen() {
               Nest <span className="dot">Connect</span>
             </span>
           </div>
-          {mode === "signin" ? (
+          {challenge ? (
+            <>
+              <h1>Two-step verification</h1>
+              <p className="m-0 mb-2 text-muted text-sm">
+                {challenge.method === "email"
+                  ? "Enter the 6-digit code we just emailed you."
+                  : "Enter the 6-digit code from your authenticator app."}
+              </p>
+              <label className="field">
+                <span>Verification code</span>
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="123456"
+                  required
+                />
+              </label>
+              {verify.isError && (
+                <div className="text-danger text-xs font-semibold bg-danger-tint py-2 px-3 rounded-8">
+                  That code isn't right — try again.
+                </div>
+              )}
+              <button
+                className="mt-1.5 p-3 rounded-12 font-bold text-md text-white bg-brand shadow-[0_6px_16px_-8px_var(--brand-ring)] [transition:filter_.15s,transform_.12s_var(--ease)] hover:brightness-[1.05] active:scale-[.98] disabled:opacity-60"
+                type="submit"
+                disabled={verify.isPending || !code.trim()}
+              >
+                {verify.isPending ? "Verifying…" : "Verify"}
+              </button>
+              {challenge.method === "email" && (
+                <button
+                  type="button"
+                  className="self-center mt-0.5 bg-transparent border-0 p-1 text-xs font-semibold text-brand cursor-pointer [transition:color_.15s] hover:text-brand-strong hover:underline"
+                  onClick={() => api.resendLoginCode().catch(() => {})}
+                >
+                  Resend code
+                </button>
+              )}
+              <div className="mt-0.5 text-center text-xs text-faint">
+                Lost your device? Enter a <b className="text-muted">recovery code</b> above.
+              </div>
+              <button
+                type="button"
+                className="self-center mt-0.5 bg-transparent border-0 p-1 text-xs font-semibold text-brand cursor-pointer [transition:color_.15s] hover:text-brand-strong hover:underline"
+                onClick={cancelChallenge}
+              >
+                ← Back to sign in
+              </button>
+            </>
+          ) : mode === "signin" ? (
             <>
               <h1>Welcome back</h1>
               <p className="m-0 mb-2 text-muted text-sm">Sign in to your team inbox</p>

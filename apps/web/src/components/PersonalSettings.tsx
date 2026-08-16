@@ -22,6 +22,7 @@ import {
   useRevokeOtherSessions,
 } from "../hooks";
 import type { SessionInfo } from "@ding/schemas";
+import { TwoFactorSettings } from "./TwoFactorSettings";
 import { useScrollLock } from "../lib/useScrollLock";
 import { api } from "../lib/api";
 import { XIcon } from "../lib/icons";
@@ -516,6 +517,14 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
                 {changePw.isPending ? "Updating…" : "Update password"}
               </button>
             </div>
+          </div>
+
+          {/* Two-factor authentication */}
+          <div className="pers-field">
+            <div className="pers-field__hd">
+              <span className="pers-field__lbl">Two-factor authentication</span>
+            </div>
+            <TwoFactorSettings onToast={onToast} />
           </div>
 
           {/* Where you're signed in */}
