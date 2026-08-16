@@ -760,6 +760,8 @@ function ConnectChannel({
 /** First-response SLA presets offered per team (stored as minutes). */
 const SLA_OPTIONS: { label: string; minutes: number | null }[] = [
   { label: "No SLA", minutes: null },
+  { label: "5 minutes", minutes: 5 },
+  { label: "10 minutes", minutes: 10 },
   { label: "15 minutes", minutes: 15 },
   { label: "30 minutes", minutes: 30 },
   { label: "1 hour", minutes: 60 },
@@ -767,6 +769,7 @@ const SLA_OPTIONS: { label: string; minutes: number | null }[] = [
   { label: "4 hours", minutes: 240 },
   { label: "8 hours", minutes: 480 },
   { label: "1 day", minutes: 1440 },
+  { label: "48 hours", minutes: 2880 },
 ];
 
 /** Short human label for an SLA target, e.g. 90 → "1h 30m". */
