@@ -1272,6 +1272,18 @@ input,textarea{font:inherit}
 /* Wider modal for edit/create forms (2-column field grids, tag editors, …). */
 .modal__box.modal--form{width:min(600px,94vw)}
 .modal__box.modal--wide{width:min(760px,94vw)}
+/* Personal settings holds a lot now (profile, availability, signature, password,
+   2FA, sessions) — go wide + two-column (landscape) on desktop so it isn't one
+   long vertical scroll. Profile + signature span the full width; the rest pair
+   up. Phones keep the single-column stack. */
+@media (min-width:721px){
+  .modal__box.perssettings{width:min(920px,94vw)}
+  .perssettings .modal__body{
+    display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3) var(--sp-4);
+    align-items:start;grid-auto-flow:row dense;max-height:80vh;
+  }
+  .perssettings .pers-field--full{grid-column:1 / -1}
+}
 
 /* ─── Possible duplicates ─────────────────────────────────────────────────────
    An amber banner above the customer table when contacts share a normalised

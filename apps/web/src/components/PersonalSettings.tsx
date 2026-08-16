@@ -363,7 +363,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
 
         <div className="modal__body">
           {/* Profile — photo, name, email */}
-          <div className="pers-field">
+          <div className="pers-field pers-field--full">
             <div className="pers-field__hd">
               <span className="pers-field__lbl">Profile</span>
               {roleLabel && <span className="pers-role">{roleLabel}</span>}
@@ -428,7 +428,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
           </div>
 
           {/* Email signature */}
-          <div className="pers-field">
+          <div className="pers-field pers-field--full">
             <div className="pers-field__hd">
               <span className="pers-field__lbl">Email signature</span>
               <small className="pers-field__hint">Added to emails you send · not shown in the thread</small>
