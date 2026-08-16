@@ -1030,19 +1030,9 @@ input,textarea{font:inherit}
 .slabox{background:var(--amber-tint);border-radius:var(--r-12);padding:var(--sp-3) var(--sp-3);display:flex;align-items:center;gap:10px}
 .slabox .txt small{display:block;font-size:var(--fs-2xs);color:var(--text-muted);font-weight:600}
 .slabox .txt .cd{font-size:var(--fs-lg);font-weight:800;color:var(--amber);font-variant-numeric:tabular-nums}
-.lbls{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.lbl-chip{font-size:var(--fs-2xs);font-weight:650;padding:var(--sp-1) var(--sp-2);border-radius:var(--r-8);background:var(--surface-2);color:var(--text-muted);display:inline-flex;align-items:center;gap:6px}
-.lbl-chip .d{width:7px;height:7px;border-radius:50%}
-/* "+ Add / Edit" trigger in the Details-panel Labels block */
-.lbls__addwrap{position:relative;display:inline-flex}
-.lbls__add{font-size:var(--fs-2xs);font-weight:700;padding:var(--sp-1) var(--sp-2);border-radius:var(--r-8);color:var(--brand-strong);
-  border:1px dashed var(--border-strong,var(--border));transition:background .12s}
-.lbls__add:hover{background:var(--brand-tint)}
-
-/* Label picker popover (thread header + Details panel) */
+/* Label picker popover (thread header) */
 .labelwrap{position:relative;display:inline-flex}
 .menu.labelmenu{min-width:214px;padding:6px;top:calc(100% + 8px);right:0;left:auto}
-.menu.labelmenu--panel{top:28px;left:0;right:auto}
 /* .labelpick* migrated to Tailwind utilities in LabelPicker.tsx (first component
    of the CSS→utilities migration). */
 
@@ -2081,7 +2071,7 @@ button.tpl-row:active{transform:scale(.99)}
   /* Header label picker drops to a fixed panel below the header on phones (like
      the snooze menu) so it can't clip off the right edge. The Details-panel
      variant keeps its in-panel positioning. */
-  .menu.labelmenu:not(.labelmenu--panel){position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:auto;min-width:210px;max-width:min(300px,calc(100vw - 24px))}
+  .menu.labelmenu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:auto;min-width:210px;max-width:min(300px,calc(100vw - 24px))}
   .menu.moremenu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:auto;min-width:200px;max-width:min(280px,calc(100vw - 24px))}
   /* Mobile header: only Resolve + Assign + ⋯ stay, as three identical round
      buttons, so the contact name/subject always has room (Snooze, Labels and
