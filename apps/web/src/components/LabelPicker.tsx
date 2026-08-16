@@ -1,6 +1,7 @@
 import type { Label } from "@ding/schemas";
 import { useLabels, useSetConversationLabels } from "../hooks";
 import { CheckIcon } from "../lib/icons";
+import { useHoverGlide } from "./GlideMenu";
 
 /** A checklist of the org's labels with the ones on this conversation ticked.
  *  Toggling a row applies/removes it immediately. Rendered inside a popover by
@@ -18,8 +19,10 @@ export function LabelPicker({ conversationId, current }: { conversationId: strin
   };
 
   const list = labels.data ?? [];
+  const { hoverProps, glide } = useHoverGlide();
   return (
-    <div className="flex flex-col gap-px max-h-[280px] overflow-auto" role="menu" aria-label="Labels">
+    <div className="has-glide relative flex flex-col gap-px max-h-[280px] overflow-auto" role="menu" aria-label="Labels" {...hoverProps}>
+      {glide}
       {list.length === 0 ? (
         <div className="p-2 text-xs text-muted">No labels yet — create them in Settings ▸ Labels.</div>
       ) : (
@@ -32,7 +35,7 @@ export function LabelPicker({ conversationId, current }: { conversationId: strin
               role="menuitemcheckbox"
               aria-checked={on}
               className={
-                "flex items-center gap-2 w-full py-[7px] px-2 rounded-8 text-left text-sm text-fg [transition:background_.12s] hover:bg-surface-2" +
+                "relative z-[1] flex items-center gap-2 w-full py-[7px] px-2 rounded-8 text-left text-sm text-fg" +
                 (on ? " font-[650]" : "")
               }
               onClick={() => toggle(l.id)}

@@ -10,6 +10,7 @@ import { ClientEvent, ServerEvent } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
+import { GlideMenu } from "./GlideMenu";
 import { getSocket } from "../lib/socket";
 import { relativeTime, lastActive, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
 import { Avatar } from "./Avatar";
@@ -27,6 +28,7 @@ import {
   SendIcon,
   AttachIcon,
   EmojiIcon,
+  LinkIcon,
   NoteIcon,
   ProfileIcon,
   RouteIcon,
@@ -2078,14 +2080,14 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             {snoozeMenu && (
               <>
                 <div className="menu-backdrop" onClick={() => setSnoozeMenu(false)} />
-                <div className="menu snoozemenu" role="menu">
+                <GlideMenu className="menu snoozemenu" role="menu">
                   <div className="menu__hd">Snooze until</div>
                   {snoozeOpts.map((o) => (
                     <button key={o.short} onClick={() => doSnooze(o.until(), o.short)}>
                       <SnoozeIcon /> {o.label}
                     </button>
                   ))}
-                </div>
+                </GlideMenu>
               </>
             )}
           </div>
@@ -2129,7 +2131,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             {moreMenu && (
               <>
                 <div className="menu-backdrop" onClick={() => setMoreMenu(false)} />
-                <div className="menu moremenu" role="menu">
+                <GlideMenu className="menu moremenu" role="menu">
                   <button onClick={() => { setMoreMenu(false); setSnoozeMenu(true); }}>
                     <SnoozeIcon /> Snooze…
                   </button>
@@ -2139,7 +2141,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   <button onClick={() => { setMoreMenu(false); onTogglePanel(); }}>
                     <DetailsIcon /> {showPanel ? "Hide details" : "Details"}
                   </button>
-                </div>
+                </GlideMenu>
               </>
             )}
           </div>
@@ -2149,7 +2151,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       {menu && (
         <>
           <div className="menu-backdrop" onClick={() => setMenu(false)} />
-          <div className="menu" role="menu">
+          <GlideMenu className="menu" role="menu">
             {conv.assigneeUserId !== me?.user.id && (
               <button onClick={take}>
                 <ProfileIcon /> Assign to me
@@ -2193,7 +2195,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <CheckCircleIcon /> Close conversation
               </button>
             )}
-          </div>
+          </GlideMenu>
         </>
       )}
 
@@ -2452,8 +2454,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 1.&nbsp;—
               </button>
               <span className="richbar__sep" aria-hidden="true" />
-              <button type="button" className={"richbar__b" + (editor?.isActive("link") ? " on" : "")} title="Insert link" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={toggleLink}>
-                🔗
+              <button type="button" className={"richbar__b richbar__b--ico" + (editor?.isActive("link") ? " on" : "")} title="Insert link" aria-label="Insert link" onMouseDown={(e) => e.preventDefault()} onClick={toggleLink}>
+                <LinkIcon />
               </button>
             </div>
           )}

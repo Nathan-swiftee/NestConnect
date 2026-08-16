@@ -85,8 +85,19 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
     };
     move();
     window.addEventListener("resize", move);
-    return () => window.removeEventListener("resize", move);
-  }, [view, data, collapsed, teamList]);
+    // Re-measure once the collapse/expand width transition settles, otherwise the
+    // active capsule stays stuck at the collapsed (square) size after expanding.
+    const aside = scroll.closest(".side");
+    const onTransitionEnd = (e: Event) => {
+      const p = (e as TransitionEvent).propertyName;
+      if (p === "width" || p === "flex-basis") move();
+    };
+    aside?.addEventListener("transitionend", onTransitionEnd);
+    return () => {
+      window.removeEventListener("resize", move);
+      aside?.removeEventListener("transitionend", onTransitionEnd);
+    };
+  }, [view, data, collapsed, teamList, isCollapsed]);
 
   // A second, subtler capsule that glides under the pointer as you hover across
   // rows (snaps in on first entry so it doesn't streak across from nowhere).
