@@ -745,10 +745,15 @@ input,textarea{font:inherit}
 .richbar__color::-webkit-color-swatch-wrapper{padding:0}
 .richbar__color::-webkit-color-swatch{border:none;border-radius:var(--r-6)}
 .richbar__color::-moz-color-swatch{border:none;border-radius:var(--r-6)}
-.compinput .richedit{flex:1;min-height:24px;max-height:200px;overflow-y:auto;padding:6px 0;color:var(--text);
+/* Single line sits in a 38px box (== the send circle) with 9px top/bottom
+   padding so the text is vertically centred against the send/attach buttons;
+   the editor grows downward from there and stays bottom-pinned (flex-end). */
+.compinput .richedit{flex:1;min-height:20px;max-height:200px;overflow-y:auto;padding:9px 0;color:var(--text);
   outline:none;font-size:var(--fs-md);line-height:1.45;border:0;background:none;word-break:break-word;overflow-wrap:anywhere}
 .compinput .richedit:empty::before{content:attr(data-placeholder);color:var(--text-faint);pointer-events:none}
 .compinput .richedit p{margin:0 0 6px}
+/* no trailing gap under the last/only paragraph — it would shove a single line up */
+.compinput .richedit p:last-child{margin-bottom:0}
 .compinput .richedit ul,.compinput .richedit ol{margin:4px 0;padding-left:22px}
 .compinput .richedit a{color:var(--brand-strong)}
 
