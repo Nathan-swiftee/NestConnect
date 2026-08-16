@@ -11,6 +11,7 @@ import {
   type OutboundTemplate,
   type SendContext,
 } from "./channel-provider";
+import { forwardSubject } from "./email/email.provider";
 
 /**
  * The result of a single provider send attempt, in the domain's terms. The
@@ -43,7 +44,7 @@ export class ChannelDispatcher {
     conversation: ConversationWithMessages,
     message: Message,
     template?: OutboundTemplate,
-    opts?: { cc?: string[]; bcc?: string[]; signatureHtml?: string },
+    opts?: { cc?: string[]; bcc?: string[]; signatureHtml?: string; forwardTo?: string[] },
   ): Promise<DeliveryOutcome> {
     // A message may be sent on a different channel than the conversation's own
     // (cross-channel reply within one open thread). Resolve the effective channel
@@ -72,20 +73,34 @@ export class ChannelDispatcher {
       return { ok: false, retryable: false, reason: `No provider configured for ${channel}` };
     }
 
+    // A forward (email only) re-addresses this send to other people instead of
+    // the customer: the first address is the To, any others ride as Cc, and it
+    // goes out as a fresh "Fwd:" thread (built below) rather than a reply.
+    const forwardTo = channel === "email" ? opts?.forwardTo?.filter((a) => a.trim()) : undefined;
+    const isForward = Boolean(forwardTo?.length);
+
     // A group message is addressed to the group id (kept on channelRef), not a
     // person's number; a 1:1 message goes to the customer's phone / email.
     const to =
       channel === "email"
-        ? conversation.contact.email
+        ? isForward
+          ? forwardTo![0]
+          : conversation.contact.email
         : channel === "whatsapp_group"
           ? conversation.channelRef
           : conversation.contact.phone;
     if (!to) {
       return { ok: false, retryable: false, reason: `Conversation has no ${channel} address` };
     }
+    // Extra forward recipients (beyond the To) join any explicit Cc.
+    const cc = isForward ? [...forwardTo!.slice(1), ...(opts?.cc ?? [])] : opts?.cc;
 
     let context: SendContext | undefined;
-    if (channel === "email") {
+    if (isForward) {
+      // A forward opens a NEW thread to a new recipient — no In-Reply-To /
+      // References / Gmail threadId, so it never lands in the customer's thread.
+      context = { subject: forwardSubject(conversation.subject), toName: undefined };
+    } else if (channel === "email") {
       // Prior EMAIL messages in this thread that carry a Message-ID, oldest→newest
       // (a WhatsApp wamid is not an email Message-ID, so other channels are out).
       const priorEmail = conversation.messages.filter(
@@ -119,7 +134,7 @@ export class ChannelDispatcher {
       to,
       body: message.body,
       bodyHtml: message.bodyHtml ?? undefined,
-      cc: opts?.cc,
+      cc,
       bcc: opts?.bcc,
       signatureHtml: opts?.signatureHtml,
       conversation,

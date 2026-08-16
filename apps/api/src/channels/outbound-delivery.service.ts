@@ -74,11 +74,13 @@ export class OutboundDeliveryService {
     const cc = ref.deliveryMeta?.cc;
     const bcc = ref.deliveryMeta?.bcc;
     const signatureHtml = ref.deliveryMeta?.signatureHtml;
+    const forwardTo = ref.deliveryMeta?.forwardTo;
 
     const outcome = await this.dispatcher.attemptSend(conversation, message, template, {
       cc,
       bcc,
       signatureHtml,
+      forwardTo,
     });
 
     if (outcome.ok) {

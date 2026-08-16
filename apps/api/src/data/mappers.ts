@@ -275,10 +275,12 @@ export function parseReactions(raw: unknown): Message["reactions"] {
 }
 
 export function mapMessage(m: MessageRow): Message {
-  const dm = m.deliveryMeta as { subject?: string; cc?: string[]; bcc?: string[] } | null;
+  const dm = m.deliveryMeta as
+    | { subject?: string; cc?: string[]; bcc?: string[]; forwardTo?: string[] }
+    | null;
   const email =
-    dm && (dm.subject || dm.cc?.length || dm.bcc?.length)
-      ? { subject: dm.subject, cc: dm.cc, bcc: dm.bcc }
+    dm && (dm.subject || dm.cc?.length || dm.bcc?.length || dm.forwardTo?.length)
+      ? { subject: dm.subject, cc: dm.cc, bcc: dm.bcc, forwardedTo: dm.forwardTo }
       : undefined;
   return {
     id: m.id,

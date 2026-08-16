@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent, PointerEvent as RPointerEvent } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -42,6 +42,7 @@ import {
   CheckDouble,
   AlertIcon,
   ReplyIcon,
+  ForwardIcon,
   ImageIcon,
   PlayIcon,
   PauseIcon,
@@ -66,6 +67,17 @@ interface Props {
    *  MOUNTED behind the list — so this gates read receipts to when the agent can
    *  really see the message. Defaults to true (desktop always shows the thread). */
   active?: boolean;
+}
+
+/** Escape text so it can be safely interpolated into forwarded-email HTML. The
+ *  server re-sanitizes the whole body before send; this just prevents a stray
+ *  "<" or "&" in the original from mangling the composed markup. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 function renderMention(body: string): JSX.Element[] {
@@ -436,6 +448,86 @@ function quotedSnippet(q: Message): string {
   return "Message";
 }
 
+/** Forward an email on to other people. Collects recipient(s) + an optional
+ *  note; the original email is quoted automatically. The send goes out as a
+ *  fresh "Fwd:" email addressed to those people — not a reply to the customer —
+ *  while still being logged in this conversation (Front-style). */
+function ForwardModal({
+  message,
+  contactName,
+  subject,
+  onSubmit,
+  onClose,
+}: {
+  message: Message;
+  contactName: string;
+  subject: string;
+  onSubmit: (to: string, note: string) => void;
+  onClose: () => void;
+}) {
+  const [to, setTo] = useState("");
+  const [note, setNote] = useState("");
+  // Enabled once at least one entered address looks like an email.
+  const valid = to
+    .split(/[,\s]+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .some((a) => a.includes("@"));
+  const who = message.direction === "out" ? message.authorName || "You" : message.authorName || contactName;
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (valid) onSubmit(to, note);
+  };
+  return (
+    <div className="modal" onClick={onClose}>
+      <form className="modal__box modal--form" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <div className="modal__head">
+          <h2>Forward email</h2>
+          <button type="button" className="modal__x" onClick={onClose} aria-label="Close"><XIcon /></button>
+        </div>
+        <div className="modal__body">
+          <label className="field">
+            <span>To</span>
+            <input
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              placeholder="name@example.com"
+              type="text"
+              inputMode="email"
+              autoFocus
+            />
+          </label>
+          <label className="field">
+            <span>Note <em className="field__opt">optional</em></span>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Add a message above the forwarded email…"
+              rows={3}
+            />
+          </label>
+          <div className="fwdprev">
+            <div className="fwdprev__subj">Fwd: {subject || "(no subject)"}</div>
+            <div className="fwdprev__meta">From {who}</div>
+            <div className="fwdprev__snip">{quotedSnippet(message)}</div>
+          </div>
+          <p className="fieldhint">
+            This goes out as a new email to the people above — it won’t reply to the customer, but it stays
+            logged in this conversation. Separate multiple addresses with commas.
+          </p>
+        </div>
+        <div className="modal__foot">
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary fwd-go" disabled={!valid}>
+            <ForwardIcon />
+            Forward
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 /** Per-message affordances threaded down from the Thread (react + reply). */
 interface MsgActions {
   /** Display name to attribute the customer's reaction to. */
@@ -452,6 +544,8 @@ interface MsgActions {
   onReact: (emoji: string) => void;
   /** Start a quoted reply to this message. */
   onReply: () => void;
+  /** Forward this email on to someone else (email messages only; absent otherwise). */
+  onForward?: () => void;
   /** Scroll to a quoted message when its preview is tapped. */
   onJump: (messageId: string) => void;
 }
@@ -608,23 +702,33 @@ function MessageBubble({
             (isMailMsg && !isEmailHtml ? " bubble--mail" : "")
           }
         >
-          {m.email && (m.email.subject || m.email.cc?.length || m.email.bcc?.length) && (
-            <div className="emailmeta">
-              {m.email.subject && <div className="emailmeta__subj">{m.email.subject}</div>}
-              {m.email.cc?.length ? (
-                <div className="emailmeta__row">
-                  <span className="emailmeta__lbl">Cc</span>
-                  {m.email.cc.join(", ")}
-                </div>
-              ) : null}
-              {m.email.bcc?.length ? (
-                <div className="emailmeta__row">
-                  <span className="emailmeta__lbl">Bcc</span>
-                  {m.email.bcc.join(", ")}
-                </div>
-              ) : null}
-            </div>
-          )}
+          {m.email &&
+            (m.email.subject || m.email.cc?.length || m.email.bcc?.length || m.email.forwardedTo?.length) && (
+              <div className="emailmeta">
+                {m.email.forwardedTo?.length ? (
+                  <div className="emailmeta__row emailmeta__fwd">
+                    <span className="emailmeta__lbl">
+                      <ForwardIcon />
+                      Forwarded to
+                    </span>
+                    {m.email.forwardedTo.join(", ")}
+                  </div>
+                ) : null}
+                {m.email.subject && <div className="emailmeta__subj">{m.email.subject}</div>}
+                {m.email.cc?.length ? (
+                  <div className="emailmeta__row">
+                    <span className="emailmeta__lbl">Cc</span>
+                    {m.email.cc.join(", ")}
+                  </div>
+                ) : null}
+                {m.email.bcc?.length ? (
+                  <div className="emailmeta__row">
+                    <span className="emailmeta__lbl">Bcc</span>
+                    {m.email.bcc.join(", ")}
+                  </div>
+                ) : null}
+              </div>
+            )}
           {quoted && (
             <button
               type="button"
@@ -711,6 +815,12 @@ function MessageBubble({
                   <ReplyIcon />
                   <span>Reply</span>
                 </button>
+                {actions.onForward && (
+                  <button type="button" className="msg__menuitem" role="menuitem" onClick={actions.onForward}>
+                    <ForwardIcon />
+                    <span>Forward</span>
+                  </button>
+                )}
               </div>
             )}
             {/* Quick-reaction row — desktop: above the near corner (hover); mobile: centred (held) */}
@@ -986,6 +1096,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [reactFor, setReactFor] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // The email message currently being forwarded (drives the forward modal).
+  const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
   // Rich-text HTML for an email reply (mirrors the Tiptap editor's content).
   const [html, setHtml] = useState("");
   // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
@@ -1505,6 +1617,38 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setMenuFor(null);
     setInternal(false);
     requestAnimationFrame(() => taRef.current?.focus());
+  };
+
+  // Open the forward modal for an email message.
+  const startForward = (m: Message) => {
+    setForwardMsg(m);
+    setReactFor(null);
+    setMenuFor(null);
+  };
+
+  // Forward `forwardMsg` on to `toRaw` (comma/space-separated addresses) with an
+  // optional note. Sends a fresh "Fwd:" email — logged in this conversation, but
+  // addressed to the new recipients, not the customer (Front-style).
+  const submitForward = (toRaw: string, note: string) => {
+    const m = forwardMsg;
+    if (!m) return;
+    const toList = toRaw.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
+    if (!toList.length) return;
+    const subject = m.email?.subject ?? conv.subject ?? "";
+    const who = m.direction === "out" ? m.authorName || "You" : m.authorName || conv.contact.displayName;
+    const when = new Date(m.createdAt).toLocaleString();
+    const origHtml = m.bodyHtml?.trim() || escapeHtml(m.body).replace(/\n/g, "<br>");
+    const noteHtml = note.trim() ? `<p>${escapeHtml(note.trim()).replace(/\n/g, "<br>")}</p>` : "";
+    const forwardHtml =
+      `${noteHtml}<p>---------- Forwarded message ----------<br>` +
+      `From: ${escapeHtml(who)}<br>` +
+      (subject ? `Subject: ${escapeHtml(subject)}<br>` : "") +
+      `Date: ${escapeHtml(when)}</p><blockquote>${origHtml}</blockquote>`;
+    send.mutate(
+      { id: conv.id, body: note.trim(), bodyHtml: forwardHtml, forwardTo: toList },
+      { onError: () => onToast("Couldn’t forward the email. Please try again.") },
+    );
+    setForwardMsg(null);
   };
 
   // Apply or remove the agent's reaction to a message; the bar closes after.
@@ -2274,6 +2418,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     onMenuToggle: () => { setReactFor(null); setMenuFor((cur) => (cur === m.id ? null : m.id)); },
                     onReact: (emoji) => applyReaction(m.id, emoji),
                     onReply: () => startReply(m),
+                    // Forward is an email action — offered only on email messages.
+                    onForward:
+                      (m.channel ?? conv.channel) === "email" ? () => startForward(m) : undefined,
                     onJump: jumpToMessage,
                   }}
                 />
@@ -2724,6 +2871,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           channel={composeChannel}
           onClose={() => setPicker(false)}
           onToast={onToast}
+        />
+      )}
+
+      {forwardMsg && (
+        <ForwardModal
+          message={forwardMsg}
+          contactName={conv.contact.displayName}
+          subject={forwardMsg.email?.subject ?? conv.subject ?? ""}
+          onSubmit={submitForward}
+          onClose={() => setForwardMsg(null)}
         />
       )}
     </main>

@@ -536,6 +536,8 @@ export function useSendMessage() {
       bcc?: string[];
       /** Reply on a channel other than the conversation's own (cross-channel). */
       channel?: ChannelType;
+      /** Forward this email on to other people (fresh "Fwd:" thread, logged here). */
+      forwardTo?: string[];
     }) =>
       api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, {
         template: v.template,
@@ -545,6 +547,7 @@ export function useSendMessage() {
         cc: v.cc,
         bcc: v.bcc,
         channel: v.channel,
+        forwardTo: v.forwardTo,
       }),
     // Optimistically render a plain text/HTML reply immediately (skip when it
     // carries attachments or a template — those render from the server result).
@@ -568,6 +571,8 @@ export function useSendMessage() {
         reactions: [],
         bodyHtml: v.bodyHtml,
         channel: v.channel,
+        // Show "Forwarded to …" on the bubble immediately (the server echoes it).
+        email: v.forwardTo?.length ? { forwardedTo: v.forwardTo } : undefined,
         createdAt: new Date().toISOString(),
       };
       qc.setQueryData<ConversationWithMessages>(["conversation", v.id], {

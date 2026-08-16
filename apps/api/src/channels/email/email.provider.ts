@@ -229,3 +229,15 @@ export function subjectLine(context?: { subject?: string; inReplyTo?: string }):
   if (!isReply) return s;
   return /^re:/i.test(s) ? s : `Re: ${s}`;
 }
+
+/**
+ * The subject for a forwarded email: the original subject prefixed with "Fwd:"
+ * (kept as-is if it already carries one). A forward opens a NEW thread to a new
+ * recipient, so — unlike a reply — inventing a subject is correct: there's no
+ * prior exchange with that recipient to fork.
+ */
+export function forwardSubject(subject?: string | null): string {
+  const s = (subject ?? "").trim();
+  if (!s) return "Fwd: (no subject)";
+  return /^fwd:/i.test(s) ? s : `Fwd: ${s}`;
+}

@@ -124,6 +124,9 @@ export const MenuIcon = () => (
 export const ReplyIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M9 8 4 12l5 4M4.5 12H14a6 6 0 0 1 6 6v1" /></svg>
 );
+export const ForwardIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="m15 8 5 4-5 4M19.5 12H10a6 6 0 0 0-6 6v1" /></svg>
+);
 export const ImageIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9.5" r="1.6" /><path d="m4 17 4.5-4.5a2 2 0 0 1 2.8 0L18 19" /></svg>
 );

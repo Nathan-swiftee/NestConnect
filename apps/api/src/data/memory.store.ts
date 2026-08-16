@@ -842,11 +842,15 @@ export class MemoryStore extends Store {
       // Surface the email headers on the message so the bubble can show them.
       email:
         input.deliveryMeta &&
-        (input.deliveryMeta.subject || input.deliveryMeta.cc?.length || input.deliveryMeta.bcc?.length)
+        (input.deliveryMeta.subject ||
+          input.deliveryMeta.cc?.length ||
+          input.deliveryMeta.bcc?.length ||
+          input.deliveryMeta.forwardTo?.length)
           ? {
               subject: input.deliveryMeta.subject,
               cc: input.deliveryMeta.cc,
               bcc: input.deliveryMeta.bcc,
+              forwardedTo: input.deliveryMeta.forwardTo,
             }
           : undefined,
       ...(input.internal ? {} : { attemptCount: 0 }),

@@ -120,6 +120,11 @@ export interface OutboundDeliveryMeta {
   /** The sender's HTML signature, snapshotted at send time. Appended to the
    *  outbound email body only — never stored on the message shown in-app. */
   signatureHtml?: string;
+  /** Forward recipients (email channel). When set, the send is routed to these
+   *  addresses as a fresh "Fwd:" email — a new thread, not a reply to the
+   *  customer — while still logged in the current conversation. First address is
+   *  the To; any others are Cc. */
+  forwardTo?: string[];
 }
 
 /** The minimal record the delivery worker needs to (re)send an outbound message. */

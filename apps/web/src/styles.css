@@ -493,6 +493,11 @@ input,textarea{font:inherit}
 .emailmeta__subj{font-weight:750;word-break:break-word}
 .emailmeta__row{margin-top:2px;color:color-mix(in srgb,currentColor 62%,transparent);word-break:break-word}
 .emailmeta__lbl{font-weight:700;margin-right:6px;opacity:.8}
+/* Forwarded-to banner sits above the subject and reads as a distinct action. */
+.emailmeta__fwd{display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;margin-top:0;margin-bottom:3px;
+  font-weight:650;color:color-mix(in srgb,currentColor 80%,transparent)}
+.emailmeta__fwd .emailmeta__lbl{display:inline-flex;align-items:center;gap:5px;margin-right:0;opacity:1}
+.emailmeta__fwd .emailmeta__lbl svg{width:14px;height:14px}
 
 /* quoted-reply preview stacked at the top of a bubble — a nested card with a
    rounded accent bar and coloured author, WhatsApp-style */
@@ -1320,6 +1325,17 @@ input,textarea{font:inherit}
 /* Wider modal for edit/create forms (2-column field grids, tag editors, …). */
 .modal__box.modal--form{width:min(600px,94vw)}
 .modal__box.modal--wide{width:min(760px,94vw)}
+
+/* Forward-email modal: a quiet card previewing the original being passed on. */
+.field__opt{font-style:normal;font-weight:600;color:var(--text-faint);font-size:var(--fs-2xs)}
+.fwdprev{margin-top:2px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-12);
+  background:var(--surface-2);display:flex;flex-direction:column;gap:2px;min-width:0}
+.fwdprev__subj{font-weight:700;font-size:var(--fs-sm);color:var(--text);word-break:break-word}
+.fwdprev__meta{font-size:var(--fs-2xs);color:var(--text-faint);font-weight:500}
+.fwdprev__snip{margin-top:3px;font-size:var(--fs-xs);color:var(--text-muted);line-height:1.4;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.fwd-go{display:inline-flex;align-items:center;gap:7px}
+.fwd-go svg{width:16px;height:16px}
 /* Personal settings holds a lot (profile, availability, signature, password, 2FA,
    sessions), so it's split into sub-tabs — only one focused group shows at a
    time, keeping the modal short instead of one long scroll. */

@@ -286,6 +286,9 @@ export const messageSchema = z.object({
       subject: z.string().optional(),
       cc: z.array(z.string()).optional(),
       bcc: z.array(z.string()).optional(),
+      /** Present on a forwarded email: the people it was forwarded on to, shown
+       *  on the bubble as "Forwarded to …" (distinct from a reply's recipient). */
+      forwardedTo: z.array(z.string()).optional(),
     })
     .optional(),
   createdAt: z.string(), // ISO-8601
@@ -624,10 +627,21 @@ export const sendMessageInputSchema = z
     /** Additional email recipients (email channel only). */
     cc: z.array(z.string()).optional(),
     bcc: z.array(z.string()).optional(),
+    /** Forward this email on to other people (email channel only). When set, the
+     *  send goes to these addresses as a fresh "Fwd:" email — a new thread, not a
+     *  reply to the customer — but it's still logged in the current conversation so
+     *  the timeline shows the forward (Front-style). The first address is the To;
+     *  any others ride as Cc. */
+    forwardTo: z.array(z.string()).optional(),
   })
-  // Must carry something — text, an attachment, or a template.
+  // Must carry something — text, an attachment, a template, or a forward (which
+  // carries the original email it's passing on).
   .refine(
-    (v) => v.body.trim().length > 0 || (v.attachmentIds?.length ?? 0) > 0 || !!v.template,
+    (v) =>
+      v.body.trim().length > 0 ||
+      (v.attachmentIds?.length ?? 0) > 0 ||
+      !!v.template ||
+      (v.forwardTo?.length ?? 0) > 0,
     { message: "Message needs text, an attachment, or a template", path: ["body"] },
   );
 export type SendMessageInput = z.infer<typeof sendMessageInputSchema>;

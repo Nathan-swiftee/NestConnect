@@ -241,6 +241,7 @@ export const api = {
       cc?: string[];
       bcc?: string[];
       channel?: ChannelType;
+      forwardTo?: string[];
     },
   ) =>
     post<Message>(`/conversations/${id}/messages`, {
@@ -254,6 +255,7 @@ export const api = {
       ...(extras?.cc?.length ? { cc: extras.cc } : {}),
       ...(extras?.bcc?.length ? { bcc: extras.bcc } : {}),
       ...(extras?.channel ? { channel: extras.channel } : {}),
+      ...(extras?.forwardTo?.length ? { forwardTo: extras.forwardTo } : {}),
     }),
   // React to a message with an emoji (empty string removes the agent's reaction).
   react: (conversationId: string, messageId: string, emoji: string) =>

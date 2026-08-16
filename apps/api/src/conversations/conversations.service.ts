@@ -19,6 +19,7 @@ import type { OutboundTemplate } from "../channels/channel-provider";
 import { OutboundQueue } from "../queue/outbound-queue";
 import { NotificationsService } from "../notifications/notifications.service";
 import { sanitizeOutboundHtml, htmlToText } from "../channels/email/html-sanitize";
+import { forwardSubject } from "../channels/email/email.provider";
 
 /** WhatsApp's 24-hour customer-service window: open while the last WhatsApp
  *  inbound in the thread is under 24h old. Computed from the messages (with a
@@ -44,6 +45,7 @@ function buildDeliveryMeta(
   cc?: string[],
   bcc?: string[],
   signatureHtml?: string,
+  forwardTo?: string[],
 ): OutboundDeliveryMeta | undefined {
   const meta: OutboundDeliveryMeta = {};
   if (template) meta.template = template;
@@ -51,6 +53,7 @@ function buildDeliveryMeta(
   if (cc?.length) meta.cc = cc;
   if (bcc?.length) meta.bcc = bcc;
   if (signatureHtml) meta.signatureHtml = signatureHtml;
+  if (forwardTo?.length) meta.forwardTo = forwardTo;
   return Object.keys(meta).length ? meta : undefined;
 }
 
@@ -158,16 +161,29 @@ export class ConversationsService {
     // (re)delivery can be reconstructed from the DB alone after a restart.
     const cc = input.internal ? undefined : input.cc?.filter((a) => a.trim());
     const bcc = input.internal ? undefined : input.bcc?.filter((a) => a.trim());
-    // Record the subject on email sends so the message can show it (the thread's
-    // subject was just updated above from any edit).
-    const emailSubject = !input.internal && sendingEmail ? conv.subject ?? undefined : undefined;
+    // Forward: send this email on to other people as a fresh "Fwd:" thread (email
+    // only, non-internal). It's logged here but doesn't reply to the customer.
+    const forwardTo =
+      !input.internal && sendingEmail ? input.forwardTo?.map((a) => a.trim()).filter(Boolean) : undefined;
+    const isForward = Boolean(forwardTo?.length);
+    if (isForward && !forwardTo!.every((a) => a.includes("@"))) {
+      throw new BadRequestException("Forward needs a valid email address.");
+    }
+    // Record the subject on email sends so the message can show it. A forward
+    // carries the "Fwd:" subject it was actually sent with; a reply carries the
+    // thread's subject (just updated above from any edit).
+    const emailSubject = !input.internal && sendingEmail
+      ? isForward
+        ? forwardSubject(conv.subject)
+        : conv.subject ?? undefined
+      : undefined;
     // Snapshot the sender's signature so the outbound email carries it — appended
     // to the wire body only, never stored on the shown message.
     const signatureHtml =
       !input.internal && sendingEmail ? author.emailSignature?.trim() || undefined : undefined;
     const deliveryMeta: OutboundDeliveryMeta | undefined = input.internal
       ? undefined
-      : buildDeliveryMeta(template, emailSubject, cc, bcc, signatureHtml);
+      : buildDeliveryMeta(template, emailSubject, cc, bcc, signatureHtml, forwardTo);
     // Idempotency key doubles as the delivery job id, so duplicate sends collapse.
     const idempotencyKey = input.internal ? undefined : randomUUID();
 
@@ -201,9 +217,13 @@ export class ConversationsService {
     // with retries, so a crash here never loses it — the recovery sweep re-drives
     // any message left queued/sending.
     if (!input.internal) {
-      // An agent reply meets the first-response SLA — stop the clock.
-      const cleared = await this.store.setSla(id, null);
-      if (cleared) this.realtime.emitConversationUpdated(cleared);
+      // An agent reply to the CUSTOMER meets the first-response SLA — stop the
+      // clock. A forward goes to a third party, not the customer, so it leaves the
+      // SLA running (the customer still hasn't been answered).
+      if (!isForward) {
+        const cleared = await this.store.setSla(id, null);
+        if (cleared) this.realtime.emitConversationUpdated(cleared);
+      }
       await this.queue.enqueueDelivery({ messageId: message.id, conversationId: id }, idempotencyKey);
     }
     return message;
