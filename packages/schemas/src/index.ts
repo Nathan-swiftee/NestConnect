@@ -107,11 +107,20 @@ export interface ContactDuplicateReason {
   value: string;
 }
 /** A cluster of contacts that probably represent the same customer, found by
- *  matching normalised phone/email. Surfaced for review (merge comes later). */
+ *  matching normalised phone/email. Surfaced for review, then merged. */
 export interface ContactDuplicateGroup {
   contacts: Contact[];
   reasons: ContactDuplicateReason[];
 }
+
+/** Merge duplicate customers into one surviving record. The winner keeps its
+ *  name; the losers' identities, conversations and blank-filled fields move
+ *  onto it and the loser records are deleted. */
+export const mergeContactsInputSchema = z.object({
+  winnerId: z.string(),
+  loserIds: z.array(z.string()).min(1),
+});
+export type MergeContactsInput = z.infer<typeof mergeContactsInputSchema>;
 
 export const inboxSchema = z.object({
   id: z.string(),

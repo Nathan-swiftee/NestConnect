@@ -3,6 +3,7 @@ import type {
   ChannelType,
   Contact,
   ContactDuplicateGroup,
+  MergeContactsInput,
   CreateTemplateInput,
   Template,
   UpdateTemplateInput,
@@ -158,6 +159,7 @@ export const api = {
   // customers (CRM)
   contacts: () => get<Contact[]>("/contacts"),
   contactDuplicates: () => get<ContactDuplicateGroup[]>("/contacts/duplicates"),
+  mergeContacts: (input: MergeContactsInput) => post<{ contact: Contact }>("/contacts/merge", input),
   contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),
   createContact: (input: CreateContactInput) =>
     post<{ contact: Contact; existed: boolean }>("/contacts", input),

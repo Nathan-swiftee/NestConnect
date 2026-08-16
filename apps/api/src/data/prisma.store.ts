@@ -1775,6 +1775,72 @@ export class PrismaStore extends Store {
     return groupDuplicateContacts(await this.listContacts());
   }
 
+  async mergeContacts(params: { winnerId: string; loserIds: string[] }): Promise<Contact> {
+    const loserIds = [...new Set(params.loserIds)].filter((id) => id !== params.winnerId);
+    if (loserIds.length) {
+      await this.prisma.$transaction(async (tx) => {
+        const winner = await tx.contact.findUnique({ where: { id: params.winnerId }, include: { identities: true } });
+        if (!winner) throw new Error("Winner contact not found");
+        const losers = await tx.contact.findMany({ where: { id: { in: loserIds } }, include: { identities: true } });
+        for (const l of losers) {
+          if (l.orgId !== winner.orgId) throw new Error("Cannot merge contacts across organisations");
+        }
+
+        // Conversations (and their messages/notes/labels) move to the winner.
+        await tx.conversation.updateMany({ where: { contactId: { in: loserIds } }, data: { contactId: params.winnerId } });
+
+        // Participants move too, but a conversation can list a contact only once
+        // (@@unique conversationId+contactId) — drop the loser's row if the
+        // winner is already a participant there.
+        const winnerConvs = new Set(
+          (await tx.participant.findMany({ where: { contactId: params.winnerId }, select: { conversationId: true } })).map((p) => p.conversationId),
+        );
+        for (const p of await tx.participant.findMany({ where: { contactId: { in: loserIds } } })) {
+          if (winnerConvs.has(p.conversationId)) await tx.participant.delete({ where: { id: p.id } });
+          else {
+            await tx.participant.update({ where: { id: p.id }, data: { contactId: params.winnerId } });
+            winnerConvs.add(p.conversationId);
+          }
+        }
+
+        // Identities move too, honouring the global @@unique(kind,value): drop a
+        // loser identity the winner already carries verbatim.
+        const winnerKeys = new Set(winner.identities.map((i) => `${i.kind}::${i.value}`));
+        for (const l of losers) {
+          for (const idn of l.identities) {
+            const key = `${idn.kind}::${idn.value}`;
+            if (winnerKeys.has(key)) await tx.contactIdentity.delete({ where: { id: idn.id } });
+            else {
+              await tx.contactIdentity.update({ where: { id: idn.id }, data: { contactId: params.winnerId, orgId: winner.orgId } });
+              winnerKeys.add(key);
+            }
+          }
+        }
+
+        // Fill the winner's blank fields from the losers and union their tags.
+        const pick = (get: (c: (typeof losers)[number]) => string | null): string | null => {
+          for (const l of losers) { const v = get(l); if (v) return v; }
+          return null;
+        };
+        await tx.contact.update({
+          where: { id: params.winnerId },
+          data: {
+            company: winner.company ?? pick((l) => l.company),
+            avatarColor: winner.avatarColor ?? pick((l) => l.avatarColor),
+            ownerUserId: winner.ownerUserId ?? pick((l) => l.ownerUserId),
+            ownerTeamId: winner.ownerTeamId ?? pick((l) => l.ownerTeamId),
+            tags: [...new Set([...(winner.tags ?? []), ...losers.flatMap((l) => l.tags ?? [])])],
+          },
+        });
+
+        await tx.contact.deleteMany({ where: { id: { in: loserIds } } });
+      });
+    }
+    const merged = await this.prisma.contact.findUnique({ where: { id: params.winnerId }, include: { identities: true } });
+    if (!merged) throw new Error("Winner contact not found");
+    return mapContact(merged);
+  }
+
   async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {
     const contact = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
     if (!contact) return undefined;

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { Contact, Team } from "@ding/schemas";
+import type { Contact, ContactDuplicateGroup, Team } from "@ding/schemas";
 import {
   useContact,
   useContacts,
   useContactDuplicates,
   useCreateContact,
   useDeleteContact,
+  useMergeContacts,
   usePeople,
   useTeams,
   useUpdateContact,
@@ -281,6 +282,66 @@ function CustomerModal({
   );
 }
 
+/** One possible-duplicate cluster: shows why the contacts matched, lets the
+ *  agent choose which record survives, and merges the rest into it. */
+function DuplicateGroupCard({
+  group,
+  busy,
+  onOpen,
+  onMerge,
+}: {
+  group: ContactDuplicateGroup;
+  busy: boolean;
+  onOpen: (c: Contact) => void;
+  onMerge: (winner: Contact, loserIds: string[]) => void;
+}) {
+  const [winnerId, setWinnerId] = useState(group.contacts[0].id);
+  const winner = group.contacts.find((c) => c.id === winnerId) ?? group.contacts[0];
+  const loserIds = group.contacts.filter((c) => c.id !== winner.id).map((c) => c.id);
+  return (
+    <div className="dupgroup">
+      <div className="dupgroup__why">
+        {group.reasons.map((r, j) => (
+          <span className="dupreason" key={j} title={r.kind === "phone" ? "Shared number" : "Shared email"}>
+            {r.kind === "phone" ? <PhoneIcon /> : <MailIcon />} {r.value}
+          </span>
+        ))}
+      </div>
+      <div className="dupgroup__members">
+        {group.contacts.map((c) => (
+          <button
+            type="button"
+            className={"dupmember" + (c.id === winner.id ? " keep" : "")}
+            key={c.id}
+            onClick={() => onOpen(c)}
+            title="Open this customer"
+          >
+            <Avatar name={c.displayName} email={c.email} color={c.avatarColor} className="dupmember__av av" />
+            <span className="dupmember__x">
+              <b>{c.displayName}{c.blocked && <span className="dupblocked">Blocked</span>}</b>
+              <small>{c.company || c.phone || c.email || "No details"}</small>
+            </span>
+            {c.id === winner.id && <span className="dupmember__tag">Keeps</span>}
+          </button>
+        ))}
+      </div>
+      <div className="dupgroup__act">
+        <label className="dupkeep">
+          Keep
+          <select value={winnerId} onChange={(e) => setWinnerId(e.target.value)} disabled={busy}>
+            {group.contacts.map((c) => (
+              <option key={c.id} value={c.id}>{c.displayName}</option>
+            ))}
+          </select>
+        </label>
+        <button type="button" className="btn-primary dupmerge" disabled={busy} onClick={() => onMerge(winner, loserIds)}>
+          Merge {loserIds.length} into {winner.displayName}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function Customers({ onClose, onToast, onOpenConversation, focusContactId }: Props) {
   const contacts = useContacts();
   const teams = useTeams();
@@ -288,6 +349,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
   const [showBlocked, setShowBlocked] = useState(false);
   const duplicates = useContactDuplicates();
   const [showDupes, setShowDupes] = useState(false);
+  const merge = useMergeContacts();
   // null = closed; { contact: null } = add; { contact } = edit.
   const [modal, setModal] = useState<{ contact: Contact | null } | null>(null);
 
@@ -324,6 +386,21 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
       : c.ownerUserId
         ? { label: "Direct", pinned: true }
         : { label: "Automatic", pinned: false };
+
+  const handleMerge = (winner: Contact, loserIds: string[]) => {
+    if (merge.isPending) return;
+    const n = loserIds.length;
+    if (!window.confirm(
+      `Merge ${n} duplicate${n === 1 ? "" : "s"} into ${winner.displayName}? Their conversations and details move onto this record and the duplicate${n === 1 ? " is" : "s are"} deleted. This can't be undone.`,
+    )) return;
+    merge.mutate(
+      { winnerId: winner.id, loserIds },
+      {
+        onSuccess: (res) => onToast(`Merged into ${res.contact.displayName}`),
+        onError: () => onToast("Couldn't merge those customers"),
+      },
+    );
+  };
 
   return (
     <div className="settings" role="region" aria-label="Customers">
@@ -379,32 +456,13 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
               {showDupes && (
                 <div className="dupgroups">
                   {duplicates.data!.map((g, i) => (
-                    <div className="dupgroup" key={i}>
-                      <div className="dupgroup__why">
-                        {g.reasons.map((r, j) => (
-                          <span className="dupreason" key={j} title={r.kind === "phone" ? "Shared number" : "Shared email"}>
-                            {r.kind === "phone" ? <PhoneIcon /> : <MailIcon />} {r.value}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="dupgroup__members">
-                        {g.contacts.map((c) => (
-                          <button
-                            type="button"
-                            className="dupmember"
-                            key={c.id}
-                            onClick={() => setModal({ contact: c })}
-                            title="Open this customer"
-                          >
-                            <Avatar name={c.displayName} email={c.email} color={c.avatarColor} className="dupmember__av av" />
-                            <span className="dupmember__x">
-                              <b>{c.displayName}{c.blocked && <span className="dupblocked">Blocked</span>}</b>
-                              <small>{c.company || c.phone || c.email || "No details"}</small>
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    <DuplicateGroupCard
+                      key={i}
+                      group={g}
+                      busy={merge.isPending}
+                      onOpen={(c) => setModal({ contact: c })}
+                      onMerge={handleMerge}
+                    />
                   ))}
                 </div>
               )}

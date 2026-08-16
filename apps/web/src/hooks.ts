@@ -13,6 +13,7 @@ import {
   type ConversationWithMessages,
   type Priority,
   type CreateContactInput,
+  type MergeContactsInput,
   type CreateGroupInput,
   type CreateInboxInput,
   type CreateLabelInput,
@@ -357,6 +358,20 @@ export function useDeleteUser() {
 export const useContacts = () => useQuery({ queryKey: ["contacts"], queryFn: api.contacts });
 export const useContactDuplicates = () =>
   useQuery({ queryKey: ["contact-duplicates"], queryFn: api.contactDuplicates });
+
+export function useMergeContacts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: MergeContactsInput) => api.mergeContacts(input),
+    onSuccess: () => {
+      // Contacts, duplicate clusters and conversations (which moved to the
+      // winner) all change on a merge.
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["contact-duplicates"] });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+}
 export const useContact = (id: string | null) =>
   useQuery({
     queryKey: ["contact", id],

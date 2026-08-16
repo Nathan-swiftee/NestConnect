@@ -1450,6 +1450,45 @@ export class MemoryStore extends Store {
     return groupDuplicateContacts(await this.listContacts());
   }
 
+  async mergeContacts(params: { winnerId: string; loserIds: string[] }): Promise<Contact> {
+    const loserIds = [...new Set(params.loserIds)].filter((id) => id !== params.winnerId);
+    const winner = this.contacts.find((c) => c.id === params.winnerId);
+    if (!winner) throw new Error("Winner contact not found");
+    if (!loserIds.length) return { ...winner, tags: winner.tags ?? [] };
+    const loserSet = new Set(loserIds);
+    const losers = this.contacts.filter((c) => loserSet.has(c.id));
+
+    // Fill the winner's blanks from the losers (first non-empty wins) + union tags.
+    for (const l of losers) {
+      winner.company ??= l.company;
+      winner.phone ??= l.phone;
+      winner.email ??= l.email;
+      winner.avatarColor ??= l.avatarColor;
+      winner.ownerUserId ??= l.ownerUserId;
+      winner.ownerTeamId ??= l.ownerTeamId;
+    }
+    winner.tags = [...new Set([...(winner.tags ?? []), ...losers.flatMap((l) => l.tags ?? [])])];
+
+    // Repoint every conversation/participant that referenced the winner or a
+    // loser onto the single merged winner object; a contact appears once per
+    // conversation's participant list.
+    for (const r of this.conversations) {
+      if (r.contact.id === winner.id || loserSet.has(r.contact.id)) r.contact = winner;
+      if (r.participants?.length) {
+        const seen = new Set<string>();
+        r.participants = r.participants
+          .map((p) => (p.contact.id === winner.id || loserSet.has(p.contact.id) ? { ...p, contact: winner } : p))
+          .filter((p) => {
+            if (seen.has(p.contact.id)) return false;
+            seen.add(p.contact.id);
+            return true;
+          });
+      }
+    }
+    this.contacts = this.contacts.filter((c) => !loserSet.has(c.id));
+    return { ...winner, tags: winner.tags ?? [] };
+  }
+
   async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {
     const contact = this.contacts.find((c) => c.id === id);
     if (!contact) return undefined;

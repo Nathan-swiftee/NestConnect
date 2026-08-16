@@ -537,6 +537,10 @@ export abstract class Store {
   /** Clusters of contacts that probably represent the same customer (shared
    *  normalised phone/email), surfaced for review before merging. */
   abstract findDuplicateContacts(): Promise<ContactDuplicateGroup[]>;
+  /** Merge duplicate contacts into `winnerId`: move the losers' identities,
+   *  conversations and participations onto the winner, blank-fill its fields and
+   *  union tags, then delete the losers. Returns the surviving contact. */
+  abstract mergeContacts(params: { winnerId: string; loserIds: string[] }): Promise<Contact>;
   abstract getContactWithConversations(id: string): Promise<ContactWithConversations | undefined>;
   abstract updateContact(
     id: string,

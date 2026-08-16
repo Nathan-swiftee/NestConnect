@@ -1318,6 +1318,13 @@ input,textarea{font:inherit}
 .dupmember__x small{font-size:var(--fs-2xs);color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dupblocked{flex:0 0 auto;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
   color:var(--danger,#dc2626);border:1px solid color-mix(in srgb,var(--danger,#dc2626) 40%,transparent);border-radius:var(--r-full);padding:0 5px}
+.dupmember.keep{border-color:color-mix(in srgb,var(--brand) 55%,transparent);background:var(--brand-tint)}
+.dupmember__tag{flex:0 0 auto;margin-left:2px;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--brand-strong);background:color-mix(in srgb,var(--brand) 18%,transparent);border-radius:var(--r-full);padding:2px 6px}
+.dupgroup__act{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap;padding-top:var(--sp-3);border-top:1px solid var(--border)}
+.dupkeep{display:inline-flex;align-items:center;gap:var(--sp-2);font-size:var(--fs-xs);font-weight:650;color:var(--text-muted)}
+.dupkeep select{padding:5px 8px;border-radius:var(--r-8);border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:var(--fs-xs);font-weight:600;max-width:170px}
+.dupmerge{margin-left:auto;padding:7px 14px;font-size:var(--fs-xs)}
 
 /* ─── Enterprise data tables (Customers, People, Templates, Teams, Labels) ─────
    A full-width table: a column-label header over grid rows. Each table sets its

@@ -11,9 +11,11 @@ import {
 } from "@nestjs/common";
 import {
   createContactInputSchema,
+  mergeContactsInputSchema,
   reachInputSchema,
   updateContactInputSchema,
   type CreateContactInput,
+  type MergeContactsInput,
   type ReachInput,
   type UpdateContactInput,
 } from "@ding/schemas";
@@ -60,6 +62,18 @@ export class ContactsController {
     // contact, so the UI can open that one instead of adding a duplicate.
     const { contact, created } = await this.store.createContact({ orgId: me.orgId, ...body });
     return { contact, existed: !created };
+  }
+
+  /** Merge duplicate customers into one surviving record (winnerId). The losers'
+   *  identities, conversations and blank fields fold into the winner, then the
+   *  losers are deleted. */
+  @Post("merge")
+  async merge(@Body(new ZodValidationPipe(mergeContactsInputSchema)) body: MergeContactsInput) {
+    if (body.loserIds.includes(body.winnerId)) {
+      throw new BadRequestException("A customer can't be merged into itself.");
+    }
+    const contact = await this.store.mergeContacts(body);
+    return { contact };
   }
 
   @Patch(":id")
