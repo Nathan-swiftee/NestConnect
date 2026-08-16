@@ -1293,18 +1293,17 @@ input,textarea{font:inherit}
 /* Wider modal for edit/create forms (2-column field grids, tag editors, …). */
 .modal__box.modal--form{width:min(600px,94vw)}
 .modal__box.modal--wide{width:min(760px,94vw)}
-/* Personal settings holds a lot now (profile, availability, signature, password,
-   2FA, sessions) — go wide + two-column (landscape) on desktop so it isn't one
-   long vertical scroll. Profile + signature span the full width; the rest pair
-   up. Phones keep the single-column stack. */
-@media (min-width:721px){
-  .modal__box.perssettings{width:min(920px,94vw)}
-  .perssettings .modal__body{
-    display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-3) var(--sp-4);
-    align-items:start;grid-auto-flow:row dense;max-height:80vh;
-  }
-  .perssettings .pers-field--full{grid-column:1 / -1}
-}
+/* Personal settings holds a lot (profile, availability, signature, password, 2FA,
+   sessions), so it's split into sub-tabs — only one focused group shows at a
+   time, keeping the modal short instead of one long scroll. */
+.modal__box.perssettings{width:min(560px,94vw)}
+.pers-tabs{display:flex;gap:2px;padding:0 var(--sp-4);border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none}
+.pers-tabs::-webkit-scrollbar{display:none}
+.pers-tab{flex:0 0 auto;border:0;background:none;font:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--text-muted);
+  padding:11px 13px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;
+  transition:color .15s,border-color .15s}
+.pers-tab:hover{color:var(--text)}
+.pers-tab.on{color:var(--brand-strong);border-bottom-color:var(--brand)}
 
 /* ─── Possible duplicates ─────────────────────────────────────────────────────
    An amber banner above the customer table when contacts share a normalised

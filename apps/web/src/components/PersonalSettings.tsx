@@ -352,6 +352,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
   );
 
   const roleLabel = me ? me.role.charAt(0).toUpperCase() + me.role.slice(1) : "";
+  const [tab, setTab] = useState<"profile" | "signature" | "security" | "sessions">("profile");
 
   return createPortal(
     <div className="modal" onClick={onClose}>
@@ -361,9 +362,18 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
           <button type="button" className="modal__x" onClick={onClose} aria-label="Close"><XIcon /></button>
         </div>
 
+        <div className="pers-tabs" role="tablist" aria-label="Personal settings sections">
+          <button type="button" role="tab" aria-selected={tab === "profile"} className={"pers-tab" + (tab === "profile" ? " on" : "")} onClick={() => setTab("profile")}>Profile</button>
+          <button type="button" role="tab" aria-selected={tab === "signature"} className={"pers-tab" + (tab === "signature" ? " on" : "")} onClick={() => setTab("signature")}>Signature</button>
+          <button type="button" role="tab" aria-selected={tab === "security"} className={"pers-tab" + (tab === "security" ? " on" : "")} onClick={() => setTab("security")}>Security</button>
+          <button type="button" role="tab" aria-selected={tab === "sessions"} className={"pers-tab" + (tab === "sessions" ? " on" : "")} onClick={() => setTab("sessions")}>Sessions</button>
+        </div>
+
         <div className="modal__body">
+          {tab === "profile" && (
+          <>
           {/* Profile — photo, name, email */}
-          <div className="pers-field pers-field--full">
+          <div className="pers-field">
             <div className="pers-field__hd">
               <span className="pers-field__lbl">Profile</span>
               {roleLabel && <span className="pers-role">{roleLabel}</span>}
@@ -426,9 +436,13 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
               {available ? "Available — you’re in the round-robin for new chats." : "Unavailable — new chats skip you until you’re back."}
             </p>
           </div>
+          </>
+          )}
 
+          {tab === "signature" && (
+          <>
           {/* Email signature */}
-          <div className="pers-field pers-field--full">
+          <div className="pers-field">
             <div className="pers-field__hd">
               <span className="pers-field__lbl">Email signature</span>
               <small className="pers-field__hint">Added to emails you send · not shown in the thread</small>
@@ -487,6 +501,11 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
             </div>
           </div>
 
+          </>
+          )}
+
+          {tab === "security" && (
+          <>
           {/* Password */}
           <div className="pers-field">
             <div className="pers-field__hd">
@@ -527,6 +546,11 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
             <TwoFactorSettings onToast={onToast} />
           </div>
 
+          </>
+          )}
+
+          {tab === "sessions" && (
+          <>
           {/* Where you're signed in */}
           <div className="pers-field">
             <div className="pers-field__hd">
@@ -589,6 +613,8 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
               )}
             </div>
           </div>
+          </>
+          )}
         </div>
 
         <div className="modal__foot">
