@@ -59,6 +59,15 @@ export interface StoredSession {
   revokedAt: string | null;
 }
 
+/** A user's two-factor state (the TOTP secret is encrypted at rest). */
+export interface TwoFactorState {
+  enabled: boolean;
+  method: string | null; // "totp" | "email"
+  totpSecret: string | null;
+  emailCodeHash: string | null;
+  emailCodeExpires: string | null;
+}
+
 /** Canonical inbound message handed to the store by a channel gateway. */
 export interface InboundContact {
   kind: "phone" | "email" | "wa_id";
@@ -273,6 +282,19 @@ export abstract class Store {
   abstract revokeSession(userId: string, id: string): Promise<boolean>;
   /** Revoke all of a user's sessions except `keepId`; returns the count revoked. */
   abstract revokeOtherSessions(userId: string, keepId: string): Promise<number>;
+
+  /* ---- two-factor auth ---- */
+
+  /** A user's 2FA state (undefined if the user doesn't exist). */
+  abstract getTwoFactor(userId: string): Promise<TwoFactorState | undefined>;
+  /** Patch any subset of a user's 2FA fields. */
+  abstract updateTwoFactor(userId: string, patch: Partial<TwoFactorState>): Promise<void>;
+  /** A user's recovery codes (hashed), for verification/counting. */
+  abstract listRecoveryCodes(userId: string): Promise<{ id: string; codeHash: string; usedAt: string | null }[]>;
+  /** Replace a user's recovery codes with a fresh hashed set. */
+  abstract replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void>;
+  /** Mark one recovery code spent so it can't be reused. */
+  abstract markRecoveryCodeUsed(id: string): Promise<void>;
   abstract views(userId: string): Promise<SidebarViews>;
   /** A cursor page of conversations for a view (most-recent first). */
   abstract listConversations(

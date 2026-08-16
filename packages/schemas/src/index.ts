@@ -66,6 +66,10 @@ export const userSchema = z.object({
   available: z.boolean().default(true),
   /** Personal HTML email signature, appended to outbound email this user sends. */
   emailSignature: z.string().nullable().optional(),
+  /** Two-factor status, surfaced so the UI can show it + gate mandatory setup.
+   *  The secret itself is never sent to the client. */
+  twoFactorEnabled: z.boolean().optional(),
+  twoFactorMethod: z.enum(["totp", "email"]).nullable().optional(),
 });
 export type User = z.infer<typeof userSchema>;
 
@@ -829,6 +833,41 @@ export const setPasswordInputSchema = z.object({
   password: z.string().min(8, "Use at least 8 characters"),
 });
 export type SetPasswordInput = z.infer<typeof setPasswordInputSchema>;
+
+/* ---- Two-factor auth ---- */
+
+/** A 6-digit authenticator/email code — or a one-time recovery code. */
+export const twoFactorCodeInputSchema = z.object({ code: z.string().trim().min(4).max(32) });
+export type TwoFactorCodeInput = z.infer<typeof twoFactorCodeInputSchema>;
+
+/** Starting authenticator setup: the secret to store + a QR to scan. */
+export interface TotpSetup {
+  /** Base32 secret, shown for manual entry when a QR can't be scanned. */
+  secret: string;
+  /** otpauth://… URI encoded in the QR. */
+  otpauthUrl: string;
+  /** data:image/png;base64,… QR image of `otpauthUrl`. */
+  qrDataUrl: string;
+}
+
+/** Returned once when 2FA is switched on — the recovery codes to save. */
+export interface TwoFactorEnabled {
+  recoveryCodes: string[];
+}
+
+/** Current 2FA status for the settings panel. */
+export interface TwoFactorStatus {
+  enabled: boolean;
+  method: "totp" | "email" | null;
+  recoveryCodesRemaining: number;
+}
+
+/** Login when the account has 2FA on: the password step returns this instead of
+ *  a session, and the client then posts the code to /auth/login/2fa. */
+export interface TwoFactorChallenge {
+  twoFactorRequired: true;
+  method: "totp" | "email";
+}
 
 export const groupMemberInputSchema = z.object({
   phone: z.string().min(1),

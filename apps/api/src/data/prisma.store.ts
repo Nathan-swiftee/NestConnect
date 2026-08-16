@@ -67,6 +67,7 @@ import {
   type SidebarViews,
   type StoredAttachmentRef,
   type StoredSession,
+  type TwoFactorState,
   type ViewItem,
   type WebhookDiagnostic,
 } from "./store";
@@ -595,6 +596,56 @@ export class PrismaStore extends Store {
       data: { revokedAt: new Date() },
     });
     return res.count;
+  }
+
+  async getTwoFactor(userId: string): Promise<TwoFactorState | undefined> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        twoFactorEnabled: true,
+        twoFactorMethod: true,
+        totpSecret: true,
+        twoFactorEmailCodeHash: true,
+        twoFactorEmailCodeExpires: true,
+      },
+    });
+    if (!u) return undefined;
+    return {
+      enabled: u.twoFactorEnabled,
+      method: u.twoFactorMethod,
+      totpSecret: u.totpSecret,
+      emailCodeHash: u.twoFactorEmailCodeHash,
+      emailCodeExpires: u.twoFactorEmailCodeExpires ? u.twoFactorEmailCodeExpires.toISOString() : null,
+    };
+  }
+
+  async updateTwoFactor(userId: string, patch: Partial<TwoFactorState>): Promise<void> {
+    const data: Prisma.UserUpdateInput = {};
+    if (patch.enabled !== undefined) data.twoFactorEnabled = patch.enabled;
+    if (patch.method !== undefined) data.twoFactorMethod = patch.method;
+    if (patch.totpSecret !== undefined) data.totpSecret = patch.totpSecret;
+    if (patch.emailCodeHash !== undefined) data.twoFactorEmailCodeHash = patch.emailCodeHash;
+    if (patch.emailCodeExpires !== undefined)
+      data.twoFactorEmailCodeExpires = patch.emailCodeExpires ? new Date(patch.emailCodeExpires) : null;
+    if (Object.keys(data).length) await this.prisma.user.update({ where: { id: userId }, data });
+  }
+
+  async listRecoveryCodes(userId: string): Promise<{ id: string; codeHash: string; usedAt: string | null }[]> {
+    const rows = await this.prisma.recoveryCode.findMany({ where: { userId } });
+    return rows.map((r) => ({ id: r.id, codeHash: r.codeHash, usedAt: r.usedAt ? r.usedAt.toISOString() : null }));
+  }
+
+  async replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.recoveryCode.deleteMany({ where: { userId } }),
+      ...(codeHashes.length
+        ? [this.prisma.recoveryCode.createMany({ data: codeHashes.map((h) => ({ userId, codeHash: h })) })]
+        : []),
+    ]);
+  }
+
+  async markRecoveryCodeUsed(id: string): Promise<void> {
+    await this.prisma.recoveryCode.updateMany({ where: { id, usedAt: null }, data: { usedAt: new Date() } });
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

@@ -46,6 +46,7 @@ import {
   type SidebarViews,
   type StoredAttachmentRef,
   type StoredSession,
+  type TwoFactorState,
   type ViewItem,
   type WebhookDiagnostic,
 } from "./store";
@@ -115,6 +116,8 @@ export class MemoryStore extends Store {
   >();
   private idSeq = 10_000;
   private sessions: StoredSession[] = [];
+  private twoFactor = new Map<string, TwoFactorState>();
+  private recoveryCodes: Array<{ id: string; userId: string; codeHash: string; usedAt: string | null }> = [];
 
   constructor() {
     super();
@@ -464,6 +467,8 @@ export class MemoryStore extends Store {
     delete this.membership[id];
     this.passwords.delete(id);
     this.sessions = this.sessions.filter((s) => s.userId !== id);
+    this.twoFactor.delete(id);
+    this.recoveryCodes = this.recoveryCodes.filter((c) => c.userId !== id);
     for (const c of this.conversations) if (c.assigneeUserId === id) c.assigneeUserId = null;
   }
 
@@ -515,6 +520,42 @@ export class MemoryStore extends Store {
       }
     }
     return n;
+  }
+
+  private emptyTwoFactor(): TwoFactorState {
+    return { enabled: false, method: null, totpSecret: null, emailCodeHash: null, emailCodeExpires: null };
+  }
+
+  async getTwoFactor(userId: string): Promise<TwoFactorState | undefined> {
+    if (!this.users.some((u) => u.id === userId)) return undefined;
+    return this.twoFactor.get(userId) ?? this.emptyTwoFactor();
+  }
+
+  async updateTwoFactor(userId: string, patch: Partial<TwoFactorState>): Promise<void> {
+    const next = { ...(this.twoFactor.get(userId) ?? this.emptyTwoFactor()), ...patch };
+    this.twoFactor.set(userId, next);
+    // Mirror the public flags onto the user so me()/mapUser reflect them.
+    const user = this.users.find((u) => u.id === userId);
+    if (user) {
+      user.twoFactorEnabled = next.enabled;
+      user.twoFactorMethod = (next.method as "totp" | "email" | null) ?? null;
+    }
+  }
+
+  async listRecoveryCodes(userId: string): Promise<{ id: string; codeHash: string; usedAt: string | null }[]> {
+    return this.recoveryCodes
+      .filter((c) => c.userId === userId)
+      .map((c) => ({ id: c.id, codeHash: c.codeHash, usedAt: c.usedAt }));
+  }
+
+  async replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void> {
+    this.recoveryCodes = this.recoveryCodes.filter((c) => c.userId !== userId);
+    for (const h of codeHashes) this.recoveryCodes.push({ id: `rc_${++this.idSeq}`, userId, codeHash: h, usedAt: null });
+  }
+
+  async markRecoveryCodeUsed(id: string): Promise<void> {
+    const c = this.recoveryCodes.find((x) => x.id === id);
+    if (c && !c.usedAt) c.usedAt = new Date().toISOString();
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

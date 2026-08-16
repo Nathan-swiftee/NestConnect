@@ -206,6 +206,8 @@ export function mapUser(u: Prisma.UserGetPayload<object>): User {
     online: u.online,
     available: u.available,
     emailSignature: u.emailSignature ?? undefined,
+    twoFactorEnabled: u.twoFactorEnabled,
+    twoFactorMethod: (u.twoFactorMethod as "totp" | "email" | null) ?? null,
   };
 }
 

@@ -73,9 +73,25 @@ export class AuthService {
 
   verify(token: string): { userId: string; sessionId?: string } | undefined {
     try {
-      const p = jwt.verify(token, env.auth.jwtSecret) as { sub?: string; jti?: string };
-      if (!p.sub) return undefined;
+      const p = jwt.verify(token, env.auth.jwtSecret) as { sub?: string; jti?: string; twofa?: string };
+      // A half-authenticated "2FA pending" token is never a full session.
+      if (!p.sub || p.twofa) return undefined;
       return { userId: p.sub, sessionId: p.jti };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Short-lived token issued after the password step when 2FA is required — it
+   *  ONLY authorises the /auth/login/2fa code check, never a real session. */
+  signPending(userId: string): string {
+    return jwt.sign({ sub: userId, twofa: "pending" }, env.auth.jwtSecret, { expiresIn: 300 });
+  }
+
+  verifyPending(token: string): string | undefined {
+    try {
+      const p = jwt.verify(token, env.auth.jwtSecret) as { sub?: string; twofa?: string };
+      return p.twofa === "pending" ? p.sub : undefined;
     } catch {
       return undefined;
     }

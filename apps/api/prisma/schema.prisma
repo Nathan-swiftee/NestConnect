@@ -102,6 +102,15 @@ model User {
   // once the invitee sets their password.
   inviteTokenHash String?
   inviteExpiresAt DateTime?
+  // Two-factor auth. `twoFactorEnabled` gates login; `twoFactorMethod` is
+  // "totp" (authenticator app) or "email". `totpSecret` is the base32 secret,
+  // encrypted at rest — present-but-not-enabled means enrolment is in progress.
+  twoFactorEnabled Boolean @default(false)
+  twoFactorMethod  String?
+  totpSecret       String?
+  // Emailed one-time code for the "email" method / enrolment: hash + expiry.
+  twoFactorEmailCodeHash    String?
+  twoFactorEmailCodeExpires DateTime?
   createdAt    DateTime @default(now())
 
   org         Organization   @relation(fields: [orgId], references: [id])
@@ -111,9 +120,24 @@ model User {
   notes       Note[]
   notifications Notification[]
   sessions    Session[]
+  recoveryCodes RecoveryCode[]
 
   @@unique([orgId, email])
   @@index([orgId])
+}
+
+// One-time backup codes for 2FA recovery (lost authenticator). Stored hashed;
+// `usedAt` marks a spent code so it can't be replayed.
+model RecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // A signed-in device/browser. The session id rides in the JWT as its `jti`, so a
