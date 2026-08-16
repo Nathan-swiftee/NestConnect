@@ -369,6 +369,11 @@ export abstract class Store {
   /** Snoozed conversations whose wake time has passed — driven by the sweep that
    *  wakes them and raises a "due" notification for the assignee. */
   abstract listDueSnoozed(): Promise<Conversation[]>;
+  /** Wake a due snoozed conversation back to "open" while KEEPING its snooze
+   *  timestamp as a "came back from Later" marker (the list shows a badge off
+   *  it; it's cleared when the agent opens the conversation). No-op unless the
+   *  conversation is currently snoozed. */
+  abstract wakeSnoozed(conversationId: string): Promise<Conversation | undefined>;
 
   /* ---- Notifications (the bell) ---- */
   abstract createNotification(input: {

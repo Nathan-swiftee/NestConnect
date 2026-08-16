@@ -977,6 +977,20 @@ export class PrismaStore extends Store {
     }
   }
 
+  async wakeSnoozed(conversationId: string): Promise<Conversation | undefined> {
+    const row = await this.prisma.conversation.findUnique({ where: { id: conversationId }, include: convInclude });
+    if (!row) return undefined;
+    if (row.status !== "snoozed") return mapConversation(row);
+    // Wake into the active queue but KEEP snoozedUntil as the "back from Later"
+    // marker (cleared when the agent opens it — see clearUnread).
+    const updated = await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { status: "open" },
+      include: convInclude,
+    });
+    return mapConversation(updated);
+  }
+
   async setPriority(conversationId: string, priority: Priority): Promise<Conversation | undefined> {
     try {
       const row = await this.prisma.conversation.update({
@@ -1532,6 +1546,16 @@ export class PrismaStore extends Store {
         data: { unread: false, unreadCount: 0 },
         include: convInclude,
       });
+      // Opening a conversation that woke from Later acknowledges it → drop the
+      // "back from Later" marker so the badge disappears.
+      if (row.status !== "snoozed" && row.snoozedUntil) {
+        const cleared = await this.prisma.conversation.update({
+          where: { id: conversationId },
+          data: { snoozedUntil: null },
+          include: convInclude,
+        });
+        return mapConversation(cleared);
+      }
       return mapConversation(row);
     } catch {
       return undefined;

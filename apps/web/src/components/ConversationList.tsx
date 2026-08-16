@@ -371,6 +371,15 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                     )
                   ) : (
                     <>
+                      {c.snoozedUntil && new Date(c.snoozedUntil).getTime() <= Date.now() && (
+                        <span
+                          className="inline-flex items-center gap-[5px] text-2xs font-bold py-[3px] px-2 rounded-full bg-amber-tint text-amber whitespace-nowrap [&>svg]:w-3 [&>svg]:h-3"
+                          title={`Back from Later — was snoozed until ${new Date(c.snoozedUntil).toLocaleString()}`}
+                        >
+                          <SnoozeIcon />
+                          Back from Later
+                        </span>
+                      )}
                       <span
                         className={
                           "text-2xs py-[3px] px-2 rounded-full tracking-[.02em] min-[821px]:group-[.active]:bg-surface " +

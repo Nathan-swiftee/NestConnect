@@ -858,6 +858,15 @@ export class MemoryStore extends Store {
     return this.summary(rec);
   }
 
+  async wakeSnoozed(conversationId: string): Promise<Conversation | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    // Wake into the active queue but KEEP snoozedUntil as the "back from Later"
+    // marker (cleared when the agent opens it — see clearUnread).
+    if (rec.status === "snoozed") rec.status = "open";
+    return this.summary(rec);
+  }
+
   async setPriority(conversationId: string, priority: Priority): Promise<Conversation | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;
@@ -1308,6 +1317,9 @@ export class MemoryStore extends Store {
     if (!rec) return undefined;
     rec.unread = false;
     rec.unreadCount = 0;
+    // Opening a conversation that woke from Later acknowledges it → drop the
+    // "back from Later" marker so the badge disappears.
+    if (rec.status !== "snoozed" && rec.snoozedUntil) rec.snoozedUntil = null;
     return this.summary(rec);
   }
 

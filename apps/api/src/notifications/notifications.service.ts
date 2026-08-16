@@ -65,7 +65,7 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
     try {
       const due = await this.store.listDueSnoozed();
       for (const conv of due) {
-        const woken = await this.store.setStatus(conv.id, "open");
+        const woken = await this.store.wakeSnoozed(conv.id);
         if (!woken) continue;
         this.realtime.emitConversationUpdated(woken);
         if (conv.assigneeUserId) {
