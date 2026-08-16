@@ -1,9 +1,22 @@
 import { BadGatewayException, BadRequestException, Injectable, Logger } from "@nestjs/common";
-import type { OpeningHours, UpdateWhatsAppBusinessProfileInput, WhatsAppBusinessProfile } from "@ding/schemas";
+import type { OpeningDay, OpeningHours, UpdateWhatsAppBusinessProfileInput, WhatsAppBusinessProfile } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
 import { metaErrorMessage, resolveWhatsAppCreds } from "../channels/whatsapp/whatsapp-creds";
 import { META_APP_ID_KEY } from "../channels/meta/meta-oauth.service";
+
+/** Opening hours sync to WhatsApp as "call hours" (the only API-settable hours);
+ *  times are interpreted in this timezone. */
+const CALL_HOURS_TIMEZONE = "Europe/London";
+const CALL_HOURS_DOW: Record<OpeningDay, string> = {
+  mon: "MONDAY",
+  tue: "TUESDAY",
+  wed: "WEDNESDAY",
+  thu: "THURSDAY",
+  fri: "FRIDAY",
+  sat: "SATURDAY",
+  sun: "SUNDAY",
+};
 
 /** The subset of Meta's `whatsapp_business_profile` node we read/write. */
 interface MetaProfile {
@@ -133,6 +146,11 @@ export class BusinessProfileService {
       }
       this.logger.log(`Updated WhatsApp business profile for inbox ${inboxId}`);
     }
+    // WhatsApp has no general profile-hours field, so opening hours are also
+    // pushed as "call hours" (this enables Calling on the number).
+    if (input.openingHours !== undefined) {
+      await this.syncCallHours(creds, input.openingHours);
+    }
     return this.get(inboxId);
   }
 
@@ -209,6 +227,46 @@ export class BusinessProfileService {
       throw new BadGatewayException(metaErrorMessage(json.error, res.status));
     }
     return json;
+  }
+
+  /**
+   * Push opening hours to WhatsApp as "call hours" and enable Calling on the
+   * number. WhatsApp's business profile has no hours field — call hours (part of
+   * WhatsApp Business Calling) are the only API-settable operating hours.
+   * `POST /{phone-number-id}/settings`. Closed days are omitted; when every day
+   * is closed we just disable call hours (calls follow the default).
+   */
+  private async syncCallHours(
+    creds: { phoneNumberId: string; accessToken: string },
+    hours: OpeningHours,
+  ): Promise<void> {
+    const weekly = (Object.keys(CALL_HOURS_DOW) as OpeningDay[])
+      .filter((d) => !hours[d]?.closed)
+      .map((d) => ({
+        day_of_week: CALL_HOURS_DOW[d],
+        open_time: hours[d].open.replace(":", ""),
+        close_time: hours[d].close.replace(":", ""),
+      }));
+    const callHours = weekly.length
+      ? { status: "ENABLED", timezone_id: CALL_HOURS_TIMEZONE, weekly_operating_hours: weekly }
+      : { status: "DISABLED" };
+    const url = `https://graph.facebook.com/${env.whatsapp.apiVersion}/${creds.phoneNumberId}/settings`;
+    try {
+      await this.metaJson(url, {
+        method: "POST",
+        headers: { authorization: `Bearer ${creds.accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ calling: { status: "ENABLED", call_hours: callHours } }),
+      });
+      this.logger.log(`Synced ${weekly.length} call-hours day(s) to WhatsApp for ${creds.phoneNumberId}`);
+    } catch (err) {
+      // The profile + local hours already saved; make clear only the WhatsApp
+      // calling-hours push failed (e.g. the number isn't enabled for Calling).
+      throw new BadGatewayException(
+        `Saved in Nest Connect, but WhatsApp wouldn't accept the calling hours: ${
+          (err as Error)?.message ?? String(err)
+        }. This number may not be enabled for WhatsApp Calling yet.`,
+      );
+    }
   }
 }
 

@@ -1796,7 +1796,7 @@ function ProfileForm({
       </div>
 
       <div className="field">
-        <span>Opening hours <em>shown in Nest Connect</em></span>
+        <span>Opening hours <em>synced to WhatsApp call hours</em></span>
         <div className="wa-hours">
           {OPENING_DAYS.map((d) => {
             const day = hours[d];
@@ -1823,8 +1823,9 @@ function ProfileForm({
           })}
         </div>
         <small className="fieldhint">
-          WhatsApp has no opening-hours field, so these are kept in Nest Connect (they don’t appear on the WhatsApp
-          business card).
+          Saved in Nest Connect and pushed to WhatsApp as your <strong>call hours</strong> — when the number accepts
+          WhatsApp voice calls (saving enables Calling on the number). WhatsApp has no general profile-hours field, so
+          these don’t appear on the business card. Changes can take a few days to show for customers.
         </small>
       </div>
 
