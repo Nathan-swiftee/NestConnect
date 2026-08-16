@@ -9,7 +9,7 @@ const email = channelMeta("email");
 export function LoginScreen() {
   const login = useLogin();
   const verify = useLoginTwoFactor();
-  const [emailAddr, setEmailAddr] = useState("nathan@swiftee.co.uk");
+  const [emailAddr, setEmailAddr] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "forgot">("signin");
   const [resetSent, setResetSent] = useState(false);
@@ -224,10 +224,6 @@ export function LoginScreen() {
               <button type="button" className="self-center mt-0.5 bg-transparent border-0 p-1 text-xs font-semibold text-brand cursor-pointer [transition:color_.15s] hover:text-brand-strong hover:underline" onClick={() => { setResetSent(false); setMode("forgot"); }}>
                 Forgot password?
               </button>
-
-              <div className="mt-1 text-center text-xs text-faint [&_b]:text-muted">
-                Demo login — <b>nathan@swiftee.co.uk</b> / <b>ding1234</b>
-              </div>
             </>
           ) : (
             <>

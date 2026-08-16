@@ -10,6 +10,7 @@ import { CreateGroupModal } from "./CreateGroupModal";
 import { Settings } from "./Settings";
 import { PersonalSettings } from "./PersonalSettings";
 import { Customers } from "./Customers";
+import { Analytics } from "./Analytics";
 import { useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
 import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/layout";
@@ -28,7 +29,7 @@ export function Workspace() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
-  const [section, setSection] = useState<"inbox" | "customers" | "settings">("inbox");
+  const [section, setSection] = useState<"inbox" | "customers" | "settings" | "insights">("inbox");
   const [focusContact, setFocusContact] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [personalOpen, setPersonalOpen] = useState(false);
@@ -149,6 +150,7 @@ export function Workspace() {
                 onClose={isCompact ? () => setDrawerOpen(false) : undefined}
                 onOpenSettings={() => { setSection("settings"); setDrawerOpen(false); }}
                 onOpenCustomers={() => { setSection("customers"); setDrawerOpen(false); }}
+                onOpenInsights={() => { setSection("insights"); setDrawerOpen(false); }}
                 onOpenPersonalSettings={() => { setPersonalOpen(true); setDrawerOpen(false); }}
                 isCollapsed={sidebarHidden}
                 onToggleCollapse={isCompact ? undefined : () => setSidebarCollapsed((v) => !v)}
@@ -162,8 +164,6 @@ export function Workspace() {
                 onOpenCmdk={() => setCmdkOpen(true)}
                 onCompose={() => setComposeOpen(true)}
                 onOpenDrawer={() => setDrawerOpen(true)}
-                sidebarCollapsed={sidebarHidden}
-                onExpandSidebar={() => setSidebarCollapsed(false)}
               />
               <Thread
                 conversationId={selectedId}
@@ -202,6 +202,8 @@ export function Workspace() {
           )}
 
           {section === "settings" && <Settings onClose={() => setSection("inbox")} onToast={notify} />}
+
+          {section === "insights" && <Analytics />}
         </div>
       </div>
 

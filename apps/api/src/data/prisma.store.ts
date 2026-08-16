@@ -59,6 +59,10 @@ import { PrismaService } from "./prisma.service";
 import { SecretEncryptionService } from "../crypto/secret-encryption.service";
 import {
   Store,
+  type AnalyticsBundle,
+  type AnalyticsConvo,
+  type AnalyticsMsg,
+  type AnalyticsQuery,
   type AppendInboundInput,
   type AttachmentInput,
   type MessageStatusChange,
@@ -2023,6 +2027,115 @@ export class PrismaStore extends Store {
     } catch {
       /* [kind,value] is globally unique — another contact already owns it; skip */
     }
+  }
+
+  async getAnalytics(orgId: string, q: AnalyticsQuery): Promise<AnalyticsBundle> {
+    const from = new Date(q.from);
+    const to = new Date(q.to);
+    // The channel/team/agent filter, shared by every query below.
+    const convWhere: Prisma.ConversationWhereInput = {
+      orgId,
+      ...(q.channel ? { channel: q.channel as ChannelType } : {}),
+      ...(q.teamId ? { assignedTeamId: q.teamId } : {}),
+      ...(q.agentUserId ? { assigneeUserId: q.agentUserId } : {}),
+    };
+
+    // "Right now" status counts across the filtered set.
+    const [statusGroups, unassigned] = await Promise.all([
+      this.prisma.conversation.groupBy({ by: ["status"], where: convWhere, _count: { _all: true } }),
+      this.prisma.conversation.count({ where: { ...convWhere, assigneeUserId: null } }),
+    ]);
+    const snapshot = { open: 0, pending: 0, snoozed: 0, closed: 0, unassigned, total: 0 };
+    for (const g of statusGroups) {
+      const n = g._count._all;
+      snapshot.total += n;
+      if (g.status === "open") snapshot.open = n;
+      else if (g.status === "pending") snapshot.pending = n;
+      else if (g.status === "snoozed") snapshot.snoozed = n;
+      else if (g.status === "closed") snapshot.closed = n;
+    }
+
+    // Conversations created in the window (+ their labels + messages), so we can
+    // derive first-response facts per thread.
+    const rangeConvs = await this.prisma.conversation.findMany({
+      where: { ...convWhere, createdAt: { gte: from, lt: to } },
+      select: {
+        id: true,
+        channel: true,
+        status: true,
+        assigneeUserId: true,
+        assignedTeamId: true,
+        priority: true,
+        createdAt: true,
+        lastActivityAt: true,
+        labels: { select: { labelId: true } },
+        messages: {
+          select: { direction: true, internal: true, authorUserId: true, createdAt: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+    const conversations: AnalyticsConvo[] = rangeConvs.map((c) => {
+      let firstInboundAt: string | null = null;
+      let firstReplyAt: string | null = null;
+      let firstReplyUserId: string | null = null;
+      let inbound = 0;
+      let outbound = 0;
+      for (const m of c.messages) {
+        if (m.direction === "in") {
+          inbound++;
+          if (!firstInboundAt) firstInboundAt = m.createdAt.toISOString();
+        } else {
+          if (m.internal) continue;
+          outbound++;
+          if (!firstReplyAt) {
+            firstReplyAt = m.createdAt.toISOString();
+            firstReplyUserId = m.authorUserId ?? null;
+          }
+        }
+      }
+      return {
+        id: c.id,
+        channel: c.channel as ChannelType,
+        status: c.status as ConversationStatus,
+        assigneeUserId: c.assigneeUserId ?? null,
+        assignedTeamId: c.assignedTeamId ?? null,
+        priority: c.priority as Priority,
+        createdAt: c.createdAt.toISOString(),
+        lastActivityAt: c.lastActivityAt.toISOString(),
+        firstInboundAt,
+        firstReplyAt,
+        firstReplyUserId,
+        labelIds: c.labels.map((l) => l.labelId),
+        inbound,
+        outbound,
+      };
+    });
+
+    // Messages sent in the window whose conversation matches the filter.
+    const msgRows = await this.prisma.message.findMany({
+      where: { createdAt: { gte: from, lt: to }, conversation: convWhere },
+      select: {
+        createdAt: true,
+        direction: true,
+        internal: true,
+        authorUserId: true,
+        conversation: { select: { channel: true } },
+      },
+    });
+    const messages: AnalyticsMsg[] = msgRows.map((m) => ({
+      createdAt: m.createdAt.toISOString(),
+      direction: m.direction as "in" | "out",
+      internal: m.internal,
+      authorUserId: m.authorUserId ?? null,
+      channel: m.conversation.channel as ChannelType,
+    }));
+
+    const newContacts = await this.prisma.contact.count({
+      where: { orgId, createdAt: { gte: from, lt: to } },
+    });
+
+    return { conversations, messages, newContacts, snapshot };
   }
 
   async listContacts(): Promise<Contact[]> {

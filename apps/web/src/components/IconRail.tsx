@@ -14,7 +14,7 @@ import {
   SoundOffIcon,
 } from "../lib/icons";
 
-type Section = "inbox" | "customers" | "settings";
+type Section = "inbox" | "customers" | "settings" | "insights";
 
 export function IconRail({
   section,
@@ -65,9 +65,15 @@ export function IconRail({
       >
         <ContactsIcon />
       </button>
-      <button className="railbtn" title="Insights">
-        <InsightsIcon />
-      </button>
+      {(me?.role === "admin" || me?.role === "manager") && (
+        <button
+          className={"railbtn" + (section === "insights" ? " active" : "")}
+          title="Insights"
+          onClick={() => onSection("insights")}
+        >
+          <InsightsIcon />
+        </button>
+      )}
       <button
         className={"railbtn" + (section === "settings" ? " active" : "")}
         title="Settings"

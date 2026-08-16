@@ -5,6 +5,7 @@ import {
   ChevronsLeftIcon,
   ContactsIcon,
   InboxIcon,
+  InsightsIcon,
   SnoozeIcon,
   TeamGlyph,
   ThemeIcon,
@@ -26,6 +27,9 @@ interface Props {
   onClose?: () => void;
   onOpenSettings?: () => void;
   onOpenCustomers?: () => void;
+  /** Opens the insights dashboard (admin/manager only — the button self-hides
+   *  for agents). The desktop route is the icon rail; this is the drawer route. */
+  onOpenInsights?: () => void;
   /** Opens the current user's own personal settings (profile, availability,
    *  signature, password). On desktop this lives in the icon-rail avatar menu;
    *  in the drawer it's reached by tapping your profile. */
@@ -35,7 +39,7 @@ interface Props {
   onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
+export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenInsights, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
   const { data } = useViews();
   const { data: meData } = useMe();
   const { data: teamList } = useTeams();
@@ -136,8 +140,8 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           <button
             className="side__collapse"
             onClick={onToggleCollapse}
-            aria-label="Collapse inboxes"
-            title="Collapse inboxes"
+            aria-label={isCollapsed ? "Expand inboxes" : "Collapse inboxes"}
+            title={isCollapsed ? "Expand inboxes" : "Collapse inboxes"}
           >
             <ChevronsLeftIcon />
           </button>
@@ -166,7 +170,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
             <span className="badge on">{inbound.count}</span>
           </button>
         )}
-        <div className="flex flex-col gap-px my-0.5 ml-[30px] [animation:subIn_.22s_var(--ease)]">
+        <div className="subwrap flex flex-col gap-px my-0.5 ml-[30px] [animation:subIn_.22s_var(--ease)]">
           {subs.map((s) => {
             const due = s.key === "snoozed" && (s.due ?? 0) > 0;
             return (
@@ -244,7 +248,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
                 <span className={"badge" + (i.count > 0 ? " on" : "")}>{i.count}</span>
               </button>
               {open && (
-                <div className="flex flex-col gap-px my-0.5 ml-[30px] [animation:subIn_.22s_var(--ease)]">
+                <div className="subwrap flex flex-col gap-px my-0.5 ml-[30px] [animation:subIn_.22s_var(--ease)]">
                   {groups.map((g) => (
                     <button key={g.id} className="subrow" onClick={() => onSelectConversation?.(g.id)}>
                       <span className="navicon" style={{ color: gm.color, width: 16, flex: "0 0 16px" }}>
@@ -302,6 +306,11 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           {onOpenPersonalSettings && <span className="side__me-go" aria-hidden="true"><ChevronRight /></span>}
         </button>
         <div className="flex items-center gap-2">
+          {onOpenInsights && (me?.role === "admin" || me?.role === "manager") && (
+            <button className="iconbtn" title="Insights" onClick={onOpenInsights}>
+              <InsightsIcon />
+            </button>
+          )}
           {onOpenCustomers && (
             <button className="iconbtn" title="Customers" onClick={onOpenCustomers}>
               <ContactsIcon />

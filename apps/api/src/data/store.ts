@@ -148,6 +148,58 @@ export interface WebhookDiagnostic {
   createdAt: string;
 }
 
+/** Filter for an analytics query. Null on any field = no filter for that dimension. */
+export interface AnalyticsQuery {
+  from: string; // ISO, inclusive
+  to: string; // ISO, exclusive
+  channel?: ChannelType | null;
+  teamId?: string | null;
+  agentUserId?: string | null;
+}
+
+/** One conversation created in the window, with the per-thread facts analytics
+ *  needs (first response, message counts, labels) already derived by the store. */
+export interface AnalyticsConvo {
+  id: string;
+  channel: ChannelType;
+  status: ConversationStatus;
+  assigneeUserId: string | null;
+  assignedTeamId: string | null;
+  priority: Priority;
+  createdAt: string;
+  lastActivityAt: string;
+  /** First inbound (customer) message time; null if none. */
+  firstInboundAt: string | null;
+  /** First agent reply (non-internal outbound) time; null if unanswered. */
+  firstReplyAt: string | null;
+  /** Author of that first reply, for the per-agent response-time leaderboard. */
+  firstReplyUserId: string | null;
+  labelIds: string[];
+  inbound: number;
+  outbound: number;
+}
+
+/** One message sent/received in the window (lightweight, for series + heatmap). */
+export interface AnalyticsMsg {
+  createdAt: string;
+  direction: "in" | "out";
+  internal: boolean;
+  authorUserId: string | null;
+  channel: ChannelType;
+}
+
+/** The raw materials the analytics service aggregates into an AnalyticsResult.
+ *  `conversations` are those CREATED in the window; `messages` are those SENT in
+ *  it (their conversation may be older). Both respect the query's filters. */
+export interface AnalyticsBundle {
+  conversations: AnalyticsConvo[];
+  messages: AnalyticsMsg[];
+  /** Contacts created in the window (org-wide; not channel/team filtered). */
+  newContacts: number;
+  /** Current status counts across the filtered conversation set (not windowed). */
+  snapshot: { open: number; pending: number; snoozed: number; closed: number; unassigned: number; total: number };
+}
+
 /**
  * The data-access contract for the platform. Two implementations exist:
  * `MemoryStore` (zero-infra fixtures) and `PrismaStore` (Postgres). Services
@@ -614,6 +666,12 @@ export abstract class Store {
     collapsedIdentities: number;
     constraintApplied: boolean;
   }>;
+
+  /* ---- analytics (admin/manager insights) ---- */
+  /** Raw analytics materials for an org over a window, filtered by
+   *  channel/team/agent. Aggregation into the dashboard payload lives in the
+   *  AnalyticsService so both stores share one set of derivations. */
+  abstract getAnalytics(orgId: string, q: AnalyticsQuery): Promise<AnalyticsBundle>;
 
   /* ---- customers directory ---- */
   abstract listContacts(): Promise<Contact[]>;

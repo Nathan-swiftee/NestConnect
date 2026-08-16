@@ -35,6 +35,7 @@ import {
   type UpdateUserInput,
   type UpdateWhatsAppBusinessProfileInput,
   type SendBroadcastInput,
+  type AnalyticsRange,
 } from "@ding/schemas";
 import { api } from "./lib/api";
 import { getSocket } from "./lib/socket";
@@ -166,6 +167,17 @@ export function useResetGroupInvite(conversationId: string) {
 }
 
 export const useMe = () => useQuery({ queryKey: ["me"], queryFn: api.me });
+
+/** The insights dashboard feed (admin/manager). Keeps the previous data on
+ *  screen while a new range/filter loads, so the charts don't flash empty. */
+export function useAnalytics(params: { range: AnalyticsRange; channel: string; teamId: string; agentUserId: string }) {
+  return useQuery({
+    queryKey: ["analytics", params.range, params.channel, params.teamId, params.agentUserId],
+    queryFn: () => api.analytics(params),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
 
 /** Update the current user's own personal settings (availability + signature). */
 export function useUpdateMyPreferences() {

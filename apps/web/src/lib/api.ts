@@ -45,6 +45,8 @@ import type {
   UpdateWhatsAppBusinessProfileInput,
   SendBroadcastInput,
   BroadcastResult,
+  AnalyticsResult,
+  AnalyticsRange,
 } from "@ding/schemas";
 
 export interface ViewItem {
@@ -144,6 +146,12 @@ export const api = {
   // Bell notifications.
   notifications: () => get<Notification[]>("/notifications"),
   markNotificationsRead: (ids?: string[]) => post<{ ok: boolean }>("/notifications/read", ids ? { ids } : {}),
+  // Insights dashboard (admin/manager). Filters ride as query params.
+  analytics: (params: { range: AnalyticsRange; channel: string; teamId: string; agentUserId: string }) =>
+    get<AnalyticsResult>(
+      `/analytics?range=${params.range}&channel=${encodeURIComponent(params.channel)}` +
+        `&teamId=${encodeURIComponent(params.teamId)}&agentUserId=${encodeURIComponent(params.agentUserId)}`,
+    ),
   views: () => get<SidebarViews>("/views"),
   inboxes: () => get<Inbox[]>("/inboxes"),
   createInbox: (input: CreateInboxInput) => post<Inbox>("/inboxes", input),

@@ -38,6 +38,10 @@ import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, pre
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
+  type AnalyticsBundle,
+  type AnalyticsConvo,
+  type AnalyticsMsg,
+  type AnalyticsQuery,
   type AppendInboundInput,
   type AttachmentInput,
   type MessageStatusChange,
@@ -1600,6 +1604,114 @@ export class MemoryStore extends Store {
       mergedContacts += ids.length - 1;
     }
     return { mergedContacts, collapsedIdentities: 0, constraintApplied: true };
+  }
+
+  async getAnalytics(orgId: string, q: AnalyticsQuery): Promise<AnalyticsBundle> {
+    const from = new Date(q.from).getTime();
+    const to = new Date(q.to).getTime();
+    const inRange = (iso: string) => {
+      const t = new Date(iso).getTime();
+      return t >= from && t < to;
+    };
+    const matches = (c: ConversationRecord) =>
+      c.orgId === orgId &&
+      (!q.channel || c.channel === q.channel) &&
+      (!q.teamId || c.assignedTeamId === q.teamId) &&
+      (!q.agentUserId || c.assigneeUserId === q.agentUserId);
+
+    const matched = this.conversations.filter(matches);
+
+    // Fixtures don't carry a conversation createdAt (the schema has none), so
+    // approximate it by the earliest message time, falling back to lastActivityAt.
+    // (Postgres uses the real Conversation.createdAt column.)
+    const createdAtOf = (c: ConversationRecord): string => {
+      let min: string | null = null;
+      for (const m of c.messages) if (min === null || m.createdAt < min) min = m.createdAt;
+      return min ?? c.lastActivityAt;
+    };
+
+    // "Right now" status counts across the filtered set.
+    const snapshot = { open: 0, pending: 0, snoozed: 0, closed: 0, unassigned: 0, total: 0 };
+    for (const c of matched) {
+      snapshot.total++;
+      if (c.status === "open") snapshot.open++;
+      else if (c.status === "pending") snapshot.pending++;
+      else if (c.status === "snoozed") snapshot.snoozed++;
+      else if (c.status === "closed") snapshot.closed++;
+      if (!c.assigneeUserId) snapshot.unassigned++;
+    }
+
+    // Conversations created in the window — derive per-thread response facts.
+    const conversations: AnalyticsConvo[] = [];
+    for (const c of matched) {
+      const createdAt = createdAtOf(c);
+      if (!inRange(createdAt)) continue;
+      let firstInboundAt: string | null = null;
+      let firstReplyAt: string | null = null;
+      let firstReplyUserId: string | null = null;
+      let inbound = 0;
+      let outbound = 0;
+      const msgs = [...c.messages].sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+      for (const m of msgs) {
+        if (m.direction === "in") {
+          inbound++;
+          if (!firstInboundAt) firstInboundAt = m.createdAt;
+        } else {
+          if (m.internal) continue; // internal notes aren't customer-facing replies
+          outbound++;
+          if (!firstReplyAt) {
+            firstReplyAt = m.createdAt;
+            firstReplyUserId = m.authorUserId ?? null;
+          }
+        }
+      }
+      conversations.push({
+        id: c.id,
+        channel: c.channel,
+        status: c.status,
+        assigneeUserId: c.assigneeUserId ?? null,
+        assignedTeamId: c.assignedTeamId ?? null,
+        priority: c.priority,
+        createdAt,
+        lastActivityAt: c.lastActivityAt,
+        firstInboundAt,
+        firstReplyAt,
+        firstReplyUserId,
+        labelIds: (c.labels ?? []).map((l) => l.id),
+        inbound,
+        outbound,
+      });
+    }
+
+    // Messages sent in the window whose conversation matches the filter.
+    const messages: AnalyticsMsg[] = [];
+    for (const c of matched) {
+      for (const m of c.messages) {
+        if (!inRange(m.createdAt)) continue;
+        messages.push({
+          createdAt: m.createdAt,
+          direction: m.direction,
+          internal: !!m.internal,
+          authorUserId: m.authorUserId ?? null,
+          channel: c.channel,
+        });
+      }
+    }
+
+    // New customers: the demo Contact fixtures carry no createdAt, so proxy it by
+    // the contact's earliest conversation falling in the window (Postgres uses the
+    // real Contact.createdAt instead).
+    const earliestByContact = new Map<string, number>();
+    for (const c of this.conversations) {
+      if (c.orgId !== orgId) continue;
+      const t = new Date(createdAtOf(c)).getTime();
+      const prev = earliestByContact.get(c.contact.id);
+      if (prev === undefined || t < prev) earliestByContact.set(c.contact.id, t);
+    }
+    let newContacts = 0;
+    for (const t of earliestByContact.values()) if (t >= from && t < to) newContacts++;
+
+    return { conversations, messages, newContacts, snapshot };
   }
 
   async listContacts(): Promise<Contact[]> {

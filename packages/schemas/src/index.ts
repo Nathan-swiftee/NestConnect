@@ -1038,3 +1038,80 @@ export interface ClientToServerEvents {
   /** `who` is the sender's display name, echoed to other agents on the thread. */
   [ClientEvent.Typing]: (p: { conversationId: string; typing: boolean; who?: string }) => void;
 }
+
+/* ------------------------------------------------------------------ */
+/* Analytics (admin/manager insights dashboard)                        */
+/* ------------------------------------------------------------------ */
+
+/** The named time windows the dashboard offers (plus a resolved from/to). */
+export const analyticsRangeSchema = z.enum(["7d", "30d", "90d", "12m"]);
+export type AnalyticsRange = z.infer<typeof analyticsRangeSchema>;
+
+/** Query params for GET /api/analytics. `channel`/`teamId`/`agentUserId` accept
+ *  "all" (or omission) to mean no filter. */
+export const analyticsQuerySchema = z.object({
+  range: analyticsRangeSchema.default("30d"),
+  channel: z.union([channelTypeSchema, z.literal("all")]).default("all"),
+  teamId: z.string().default("all"),
+  agentUserId: z.string().default("all"),
+});
+export type AnalyticsQueryInput = z.infer<typeof analyticsQuerySchema>;
+
+/** One point on the daily volume series. */
+export interface AnalyticsDailyPoint {
+  date: string; // YYYY-MM-DD
+  conversations: number;
+  inbound: number;
+  outbound: number;
+}
+
+/** The fully-computed dashboard payload returned by the analytics endpoint. */
+export interface AnalyticsResult {
+  range: { key: AnalyticsRange; from: string; to: string; days: number };
+  filters: { channel: ChannelType | "all"; teamId: string | "all"; agentUserId: string | "all" };
+  /** Headline numbers for the KPI cards, each with its previous-period value so
+   *  the UI can show a delta. `firstResponse`/`resolution` are in milliseconds. */
+  kpis: {
+    conversations: number;
+    messages: number;
+    inbound: number;
+    outbound: number;
+    newContacts: number;
+    activeAgents: number;
+    avgFirstResponseMs: number | null;
+    medianFirstResponseMs: number | null;
+    resolved: number;
+    resolutionRate: number; // 0..1
+    responseRate: number; // 0..1 — share of conversations that got an agent reply
+    avgMessagesPerConversation: number;
+    /** Same metrics over the immediately preceding equal-length window. */
+    prev: {
+      conversations: number;
+      messages: number;
+      newContacts: number;
+      avgFirstResponseMs: number | null;
+    };
+  };
+  /** "Right now" status counts across the (filtered) conversation set. */
+  snapshot: { open: number; pending: number; snoozed: number; closed: number; unassigned: number; total: number };
+  daily: AnalyticsDailyPoint[];
+  byChannel: Array<{ channel: ChannelType; conversations: number; messages: number }>;
+  byStatus: Array<{ status: ConversationStatus; count: number }>;
+  byPriority: Array<{ priority: Priority; count: number }>;
+  byTeam: Array<{ teamId: string | null; name: string; conversations: number }>;
+  byLabel: Array<{ labelId: string; name: string; color: string; conversations: number }>;
+  /** Per-agent leaderboard, busiest first. */
+  agents: Array<{
+    userId: string;
+    name: string;
+    avatarColor: string | null;
+    conversations: number;
+    replies: number;
+    avgFirstResponseMs: number | null;
+  }>;
+  /** Message volume by weekday × hour: 168 counts, index = weekday*24 + hour,
+   *  weekday 0 = Monday. Drives the activity heatmap. */
+  heatmap: number[];
+  /** First-response-time distribution across labelled buckets. */
+  responseBuckets: Array<{ label: string; count: number }>;
+}
