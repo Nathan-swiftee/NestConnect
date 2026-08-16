@@ -1690,6 +1690,29 @@ input,textarea{font:inherit}
   .setmember .setrow__meta{grid-column:2;grid-row:2;flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px;max-width:none;text-align:left}
   .setmember .connpill{grid-column:3;grid-row:2;justify-self:end;align-self:center}
   /* .custtags / .routepill mobile reorder → max-[820px]: variants inline in Customers.tsx */
+
+  /* Data tables (Customers, Templates, People, Teams, Labels) can't show six
+     columns on a phone, so each row becomes a stacked card: drop the min-width
+     and sideways scroll, hide the column header, and lay the cells out
+     vertically with the name on top. The whole row stays tappable. */
+  .dwrap{overflow-x:visible}
+  .dtable{min-width:0 !important}
+  .dtable__head{display:none}
+  .dtable__row{display:flex !important;flex-direction:column;align-items:stretch;gap:5px;padding:13px 14px}
+  .dtable__row > .dcell{width:100%;min-width:0;justify-content:flex-start}
+  .dtable__row > .dname{margin-bottom:2px}
+  .dtable__row > .dcell:not(.dname){font-size:var(--fs-xs);white-space:normal;overflow:visible;text-overflow:clip}
+  /* Templates aren't tappable rows — keep their edit/delete actions reachable. */
+  .dtable--tpl .dtable__row > .dacts{justify-content:flex-start;gap:var(--sp-2)}
+  /* The row itself opens the editor, so the trailing chevron is redundant; the
+     channel-glyph column just repeats the contact line. */
+  .dtable__row > .dcell--end{display:none}
+  .dtable--cust .dtable__row > .dchips{display:none}
+
+  /* Possible-duplicates review: let the merge control wrap under the members. */
+  .dupmerge{margin-left:0;width:100%}
+  .dupkeep{width:100%}
+  .dupkeep select{max-width:none;flex:1}
 }
 
 /* groups */
