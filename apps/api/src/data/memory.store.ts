@@ -768,10 +768,11 @@ export class MemoryStore extends Store {
       rec.lastActivityAt = message.createdAt;
       rec.preview = input.body || previewForType(messageType);
       // Replying to a snoozed conversation wakes it back into the active queue.
-      if (rec.status === "snoozed") {
-        rec.status = "open";
-        rec.snoozedUntil = null;
-      }
+      if (rec.status === "snoozed") rec.status = "open";
+      // A real reply clears any snooze state: it un-snoozes a still-snoozed chat
+      // and drops the "Back from Later" marker (a past snooze time the wake sweep
+      // left on an active chat) now that the agent has actually responded.
+      rec.snoozedUntil = null;
       // Replying to an unclaimed chat takes ownership of it.
       if (!rec.assigneeUserId && rec.status !== "closed") rec.assigneeUserId = author.id;
     }
@@ -1283,6 +1284,10 @@ export class MemoryStore extends Store {
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
     rec.preview = input.body || "Email";
+    // A reply sent straight from Gmail is still a reply → clear the "Back from
+    // Later" marker (a past snooze time left on an active chat), same as an
+    // in-app reply. A still-snoozed chat's future timer is left untouched.
+    if (rec.status !== "snoozed" && rec.snoozedUntil) rec.snoozedUntil = null;
     return message;
   }
 
@@ -1347,9 +1352,8 @@ export class MemoryStore extends Store {
     if (!rec) return undefined;
     rec.unread = false;
     rec.unreadCount = 0;
-    // Opening a conversation that woke from Later acknowledges it → drop the
-    // "back from Later" marker so the badge disappears.
-    if (rec.status !== "snoozed" && rec.snoozedUntil) rec.snoozedUntil = null;
+    // NB: opening a chat does NOT clear the "Back from Later" marker — it persists
+    // until the agent actually replies (see addMessage) or resolves the chat.
     return this.summary(rec);
   }
 

@@ -879,7 +879,11 @@ export class PrismaStore extends Store {
           unreadCount: 0,
           // Only a real (non-note) message advances the card's time + list order.
           ...(input.internal ? {} : { lastActivityAt: new Date(), preview }),
-          ...(wakeSnooze ? { status: "open", snoozedUntil: null } : {}),
+          ...(wakeSnooze ? { status: "open" } : {}),
+          // A real reply clears any snooze state: un-snoozes a still-snoozed chat
+          // (status above) and drops the "Back from Later" marker (a past snooze
+          // time the wake sweep left on an active chat) now that the agent replied.
+          ...(input.internal ? {} : { snoozedUntil: null }),
           ...(assignOnReply ? { assigneeUserId: author.id } : {}),
         },
       }),
@@ -1526,7 +1530,15 @@ export class PrismaStore extends Store {
       }),
       this.prisma.conversation.update({
         where: { id: conversationId },
-        data: { seq, lastActivityAt: new Date(), preview: input.body || "Email" },
+        data: {
+          seq,
+          lastActivityAt: new Date(),
+          preview: input.body || "Email",
+          // A reply sent straight from Gmail is still a reply → clear the "Back
+          // from Later" marker, same as an in-app reply. A still-snoozed chat's
+          // future timer is left untouched.
+          ...(conv.status !== "snoozed" && conv.snoozedUntil ? { snoozedUntil: null } : {}),
+        },
       }),
     ]);
     return mapMessage(message);
@@ -1581,16 +1593,9 @@ export class PrismaStore extends Store {
         data: { unread: false, unreadCount: 0 },
         include: convInclude,
       });
-      // Opening a conversation that woke from Later acknowledges it → drop the
-      // "back from Later" marker so the badge disappears.
-      if (row.status !== "snoozed" && row.snoozedUntil) {
-        const cleared = await this.prisma.conversation.update({
-          where: { id: conversationId },
-          data: { snoozedUntil: null },
-          include: convInclude,
-        });
-        return mapConversation(cleared);
-      }
+      // NB: opening a chat does NOT clear the "Back from Later" marker — it
+      // persists until the agent actually replies (see addMessage) or resolves
+      // the chat (setStatus/reopen clear snoozedUntil on a non-snoozed status).
       return mapConversation(row);
     } catch {
       return undefined;
