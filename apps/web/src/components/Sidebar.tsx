@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLogout, useMe, useSound, useTeams, useTheme, useViews } from "../hooks";
 import {
   ChevronRight,
@@ -113,24 +113,14 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
     if (hoverRef.current) hoverRef.current.style.opacity = "0";
   };
 
-  // When collapsed, take the (still-mounted, so it can animate) sidebar out of
-  // the tab order and hide it from assistive tech.
-  const asideRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const el = asideRef.current;
-    if (!el) return;
-    if (isCollapsed) el.setAttribute("inert", "");
-    else el.removeAttribute("inert");
-  }, [isCollapsed]);
-
   if (!data)
-    return <aside ref={asideRef} className={"side" + (isCollapsed ? " is-collapsed" : "")} aria-label="Inboxes" />;
+    return <aside className={"side" + (isCollapsed ? " is-collapsed" : "")} aria-label="Inboxes" />;
 
   const inbound = data.my.find((m) => m.key === "inbound");
   const subs = data.my.filter((m) => m.key !== "inbound");
 
   return (
-    <aside ref={asideRef} className={"side" + (isCollapsed ? " is-collapsed" : "")} aria-label="Inboxes">
+    <aside className={"side" + (isCollapsed ? " is-collapsed" : "")} aria-label="Inboxes">
       <div className="side__head">
         <span className="wordmark">
           Nest <span className="dot">Connect</span>
