@@ -221,7 +221,11 @@ export class EmailProvider extends ChannelProvider {
 export function subjectLine(context?: { subject?: string; inReplyTo?: string }): string {
   const s = (context?.subject ?? "").trim();
   const isReply = Boolean(context?.inReplyTo);
-  if (!s) return isReply ? "Re: your message" : "(no subject)";
+  // A reply must carry the SAME base subject as the thread, or Gmail/Outlook show
+  // it as a brand-new conversation — they thread on the subject as well as the
+  // In-Reply-To/References headers. If the thread has no subject, reply with none
+  // too (an invented "Re: your message" is exactly what forks it into a new email).
+  if (!s) return isReply ? "" : "(no subject)";
   if (!isReply) return s;
   return /^re:/i.test(s) ? s : `Re: ${s}`;
 }
