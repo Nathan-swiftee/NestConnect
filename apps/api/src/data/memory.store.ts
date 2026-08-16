@@ -1133,13 +1133,21 @@ export class MemoryStore extends Store {
     const matchKind: IdentityKind = params.kind === "email" ? "email" : "phone";
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
     // Match on the canonical value so number formats / wa_id all resolve to one.
-    const existing = this.contacts.find((c) => {
+    const matches = this.contacts.filter((c) => {
       if (c.orgId !== params.orgId) return false;
       const cv = (c as Record<string, unknown>)[key] as string | undefined;
       if (!cv) return false;
       return (normalizeIdentity(matchKind, cv)?.normalized ?? cv) === normalized;
     });
-    if (existing) return existing;
+    if (matches.length) {
+      if (matches.length > 1) {
+        // Auto-merge legacy duplicates that share this messaging identity — an
+        // inbound proves they're the same customer (oldest record wins).
+        const [winner, ...losers] = matches;
+        return this.mergeContacts({ winnerId: winner.id, loserIds: losers.map((c) => c.id) });
+      }
+      return matches[0];
+    }
     const contact: Contact = {
       id: `ct_${++this.idSeq}`,
       orgId: params.orgId,

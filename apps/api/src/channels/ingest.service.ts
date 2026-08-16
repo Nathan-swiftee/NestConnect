@@ -74,7 +74,10 @@ export class IngestService {
 
     const contact = await this.store.upsertContactByIdentity({
       orgId: inbox.orgId,
-      kind: "phone",
+      // Record WhatsApp's wa_id (the sender's WhatsApp user id) as `wa_id`, not
+      // `phone`, so identity stays anchored to the WhatsApp account if Meta
+      // migrates to Business-Scoped IDs. Matching still unifies phone↔wa_id.
+      kind: "wa_id",
       value: input.from,
       displayName: input.name || input.from,
     });
@@ -157,7 +160,10 @@ export class IngestService {
     const orgId = conv?.orgId ?? this.tenant.defaultOrgId;
     const contact = await this.store.upsertContactByIdentity({
       orgId,
-      kind: "phone",
+      // Record WhatsApp's wa_id (the sender's WhatsApp user id) as `wa_id`, not
+      // `phone`, so identity stays anchored to the WhatsApp account if Meta
+      // migrates to Business-Scoped IDs. Matching still unifies phone↔wa_id.
+      kind: "wa_id",
       value: input.from,
       displayName: input.name || input.from,
     });

@@ -96,7 +96,8 @@ export class GroupsService {
       const conv = await this.store.getConversation(conversationId);
       const contact = await this.store.upsertContactByIdentity({
         orgId: conv?.orgId ?? "org_swiftee",
-        kind: "phone",
+        // A group participant's wa_id (their WhatsApp user id) — see ingest.
+        kind: "wa_id",
         value: phone,
         displayName: name || phone,
       });

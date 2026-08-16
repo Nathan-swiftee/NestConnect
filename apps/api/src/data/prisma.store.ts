@@ -1350,11 +1350,22 @@ export class PrismaStore extends Store {
     // Match on the CANONICAL value (scoped to the org): "+44 7911…", "07911…"
     // and WhatsApp's "447911…" all resolve to one contact.
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
-    const ident = await this.prisma.contactIdentity.findFirst({
+    const idents = await this.prisma.contactIdentity.findMany({
       where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },
       include: { contact: { include: { identities: true } } },
     });
-    if (ident) return mapContact(ident.contact);
+    if (idents.length) {
+      const byId = new Map<string, (typeof idents)[number]["contact"]>();
+      for (const i of idents) if (!byId.has(i.contactId)) byId.set(i.contactId, i.contact);
+      const contacts = [...byId.values()];
+      if (contacts.length > 1) {
+        // Auto-merge: several contacts share this messaging identity. An inbound
+        // from it proves they're the same customer, so consolidate (oldest wins).
+        const winner = contacts.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b));
+        return this.mergeContacts({ winnerId: winner.id, loserIds: contacts.filter((c) => c.id !== winner.id).map((c) => c.id) });
+      }
+      return mapContact(contacts[0]);
+    }
 
     try {
       const contact = await this.prisma.contact.create({
