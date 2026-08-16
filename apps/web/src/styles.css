@@ -745,10 +745,10 @@ input,textarea{font:inherit}
 .richbar__color::-webkit-color-swatch-wrapper{padding:0}
 .richbar__color::-webkit-color-swatch{border:none;border-radius:var(--r-6)}
 .richbar__color::-moz-color-swatch{border:none;border-radius:var(--r-6)}
-/* Single line sits in a 38px box (== the send circle) with 9px top/bottom
-   padding so the text is vertically centred against the send/attach buttons;
-   the editor grows downward from there and stays bottom-pinned (flex-end). */
-.compinput .richedit{flex:1;min-height:20px;max-height:200px;overflow-y:auto;padding:9px 0;color:var(--text);
+/* Tight single-line box: min-height == one line (no slack) and no trailing
+   <p> margin, so the text centres exactly. The pill (align-items:center)
+   then centres it on the same line as the emoji / attach / send buttons. */
+.compinput .richedit{flex:1;min-height:20px;max-height:200px;overflow-y:auto;padding:6px 0;color:var(--text);
   outline:none;font-size:var(--fs-md);line-height:1.45;border:0;background:none;word-break:break-word;overflow-wrap:anywhere}
 .compinput .richedit:empty::before{content:attr(data-placeholder);color:var(--text-faint);pointer-events:none}
 .compinput .richedit p{margin:0 0 6px}
@@ -921,7 +921,10 @@ input,textarea{font:inherit}
    Single-line message field centres its text; only the taller rich (email)
    editor keeps its buttons bottom-aligned as the body grows. */
 .compinput{display:flex;align-items:center;gap:var(--sp-2);background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-24);padding:4px 6px 4px var(--sp-4)}
-.compinput--rich{align-items:flex-end;padding-top:6px;padding-bottom:6px}
+/* Inherit the pill's align-items:center (same as the plain composer) so the
+   editor text lines up with the emoji/attach/send buttons; just a touch more
+   vertical padding for the taller formatting context. */
+.compinput--rich{padding-top:6px;padding-bottom:6px}
 .compinput textarea{flex:1;min-height:24px;max-height:140px;padding:4px 0;color:var(--text);outline:none;font-size:var(--fs-md);border:0;background:none;resize:none;line-height:1.4}
 .compinput .tool{width:34px;height:34px;color:var(--text-muted);flex:0 0 34px}
 .compinput .tool svg{width:18px;height:18px}
