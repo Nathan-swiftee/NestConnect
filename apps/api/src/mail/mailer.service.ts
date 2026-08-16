@@ -1,8 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { ModuleRef } from "@nestjs/core";
 import nodemailer from "nodemailer";
+import type { Inbox } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
 import { resolveSmtpConfig, type SmtpConfig } from "./smtp-config";
+import { GMAIL_CONFIG, GoogleOAuthService } from "../channels/google/google-oauth.service";
+import { buildMime, gmail } from "../channels/google/gmail-api";
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -29,32 +33,92 @@ export interface MailInput {
 }
 export interface MailResult {
   sent: boolean;
-  via?: "smtp" | "postmark";
+  via?: "smtp" | "postmark" | "gmail";
   error?: string;
 }
 
 /**
  * The app's own transactional mailer — invites, password resets and test sends.
- * Prefers the workspace's SMTP (e.g. Gmail) when configured, otherwise Postmark
- * when a server token is set, otherwise reports `sent:false` so the caller can
- * fall back (e.g. surface an invite link for the admin to share by hand).
+ * Prefers a connected Gmail mailbox, sent via the Gmail API over HTTPS — which
+ * works even where the host blocks outbound SMTP ports (Railway does, so raw
+ * SMTP times out there). Falls back to the workspace's SMTP, then Postmark,
+ * else reports `sent:false` so the caller can fall back (e.g. surface an invite
+ * link for the admin to share by hand).
  */
 @Injectable()
 export class Mailer {
   private readonly logger = new Logger(Mailer.name);
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly moduleRef: ModuleRef,
+  ) {}
 
-  /** True when any transactional transport is available (SMTP or Postmark). */
+  /** True when any transactional transport is available (Gmail, SMTP or Postmark). */
   async isConfigured(): Promise<boolean> {
+    if (await this.findGmailInbox()) return true;
     if (env.email.postmarkToken) return true;
     return (await resolveSmtpConfig(this.store).catch(() => null)) !== null;
   }
 
   async sendMail(input: MailInput): Promise<MailResult> {
+    // Gmail API first: it runs over HTTPS, so it delivers even on hosts that
+    // block outbound SMTP, and reuses the mailbox already connected in
+    // Integrations. Returns null only when no Gmail inbox is connected.
+    const viaGmail = await this.sendViaGmail(input);
+    if (viaGmail) return viaGmail;
     const smtp = await resolveSmtpConfig(this.store).catch(() => null);
     if (smtp) return this.sendViaSmtp(smtp, input);
     if (env.email.postmarkToken) return this.sendViaPostmark(input);
     return { sent: false, error: "No transactional email is configured" };
+  }
+
+  /** The org's Gmail-connected inbox (an email inbox whose provider is gmail),
+   *  or null. In mock/dev there is no real Google, so no Gmail transport. */
+  private async findGmailInbox(): Promise<{ inbox: Inbox; config: Record<string, string> } | null> {
+    let google: GoogleOAuthService;
+    try {
+      google = this.moduleRef.get(GoogleOAuthService, { strict: false });
+    } catch {
+      return null; // Google wiring not present (shouldn't happen in prod)
+    }
+    if (google.isMock) return null;
+    const inboxes = await this.store.listInboxes().catch(() => [] as Inbox[]);
+    for (const inbox of inboxes) {
+      if (inbox.type !== "email") continue;
+      const config = await this.store.getInboxConfig(inbox.id);
+      if (config?.[GMAIL_CONFIG.provider] === "gmail") return { inbox, config };
+    }
+    return null;
+  }
+
+  /** Send through a connected Gmail mailbox via the Gmail API. Returns null when
+   *  no Gmail inbox is connected (caller falls through to SMTP/Postmark), or a
+   *  MailResult when a send was actually attempted. */
+  private async sendViaGmail(input: MailInput): Promise<MailResult | null> {
+    const found = await this.findGmailInbox();
+    if (!found) return null;
+    const { inbox, config } = found;
+    try {
+      const google = this.moduleRef.get(GoogleOAuthService, { strict: false });
+      const accessToken = await google.accessTokenForInbox(inbox, config);
+      const from = config[GMAIL_CONFIG.email] || env.email.from;
+      const domain = from.split("@")[1] || env.email.domain;
+      const raw = buildMime({
+        from,
+        fromName: inbox.name || "Nest Connect",
+        to: input.to,
+        subject: input.subject,
+        body: input.text,
+        html: input.html,
+        messageId: `<ding.mail.${Date.now()}@${domain}>`,
+      });
+      await withTimeout(gmail.send(accessToken, raw), 20_000, "Timed out sending via the Gmail API");
+      return { sent: true, via: "gmail" };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Gmail send to ${input.to} failed: ${msg}`);
+      return { sent: false, via: "gmail", error: msg };
+    }
   }
 
   private async sendViaSmtp(cfg: SmtpConfig, input: MailInput): Promise<MailResult> {
