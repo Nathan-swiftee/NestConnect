@@ -300,7 +300,9 @@ function EmailHtml({ html }: { html: string }) {
       `<!doctype html><html><head><meta charset="utf-8">` +
       `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
       `<base target="_blank">` +
-      `<style>html,body{margin:0;padding:0}` +
+      // overscroll-behavior:none keeps a drag inside the frame from chaining out
+      // to the page (iOS pull-to-refresh) even before the touch-forwarder attaches.
+      `<style>html,body{margin:0;padding:0;overscroll-behavior:none}` +
       `body{padding:1px 2px;background:#fff;color:#1a1a1a;` +
       `font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;` +
       `word-break:break-word;overflow-wrap:anywhere}` +
@@ -326,30 +328,55 @@ function EmailHtml({ html }: { html: string }) {
     return () => timers.forEach((t) => window.clearTimeout(t));
   }, [srcDoc]);
 
-  // The sandboxed iframe swallows wheel events, so scrolling while hovering the
-  // email would scroll the page instead of the conversation (until you click
-  // into the thread). Forward the wheel from inside the frame to the thread's
-  // scroll container so hovering the email scrolls the chat straight away.
+  // The sandboxed iframe is its own scrolling context, so a gesture that starts
+  // over the email doesn't reach the thread's scroll container — it escapes to
+  // the page (which scrolls, and on iOS triggers pull-to-refresh). Forward both
+  // wheel (desktop) and touch-drag (iPad/touch) from inside the frame to the
+  // thread's scroller so scrolling over the email scrolls the chat, and swallow
+  // the default so the page can't scroll or reload.
   useEffect(() => {
     const iframe = ref.current;
     const scroller = iframe?.closest(".msgs") as HTMLElement | null;
     if (!iframe || !scroller) return;
     let doc: Document | null = null;
+    let ty = 0;
+    let tx = 0;
     const onWheel = (e: WheelEvent) => {
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? scroller.clientHeight : 1;
       scroller.scrollTop += e.deltaY * unit;
       scroller.scrollLeft += e.deltaX * unit;
       e.preventDefault();
     };
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return; // let two-finger pinch-zoom through
+      ty = e.touches[0].clientY;
+      tx = e.touches[0].clientX;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      const x = e.touches[0].clientX;
+      scroller.scrollTop += ty - y;
+      scroller.scrollLeft += tx - x;
+      ty = y;
+      tx = x;
+      e.preventDefault(); // keep the gesture off the page (no scroll, no pull-to-refresh)
+    };
     const attach = () => {
       doc?.removeEventListener("wheel", onWheel);
+      doc?.removeEventListener("touchstart", onTouchStart);
+      doc?.removeEventListener("touchmove", onTouchMove);
       doc = iframe.contentDocument;
       doc?.addEventListener("wheel", onWheel, { passive: false });
+      doc?.addEventListener("touchstart", onTouchStart, { passive: false });
+      doc?.addEventListener("touchmove", onTouchMove, { passive: false });
     };
     attach();
     iframe.addEventListener("load", attach);
     return () => {
       doc?.removeEventListener("wheel", onWheel);
+      doc?.removeEventListener("touchstart", onTouchStart);
+      doc?.removeEventListener("touchmove", onTouchMove);
       iframe.removeEventListener("load", attach);
     };
   }, [srcDoc]);
