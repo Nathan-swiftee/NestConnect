@@ -3,11 +3,13 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { hashInviteToken, newInviteToken } from "../auth/invite-token";
 import { normalizeIdentity, type IdentityKind } from "../contacts/identity";
+import { groupDuplicateContacts } from "../contacts/duplicates";
 import type { Prisma } from "@prisma/client";
 import type {
   Attachment,
   ChannelType,
   Contact,
+  ContactDuplicateGroup,
   ContactWithConversations,
   Conversation,
   ConversationPage,
@@ -1767,6 +1769,10 @@ export class PrismaStore extends Store {
       include: { identities: true },
     });
     return rows.map(mapContact).sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+
+  async findDuplicateContacts(): Promise<ContactDuplicateGroup[]> {
+    return groupDuplicateContacts(await this.listContacts());
   }
 
   async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {

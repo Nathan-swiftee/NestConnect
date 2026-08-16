@@ -3,6 +3,7 @@ import type {
   AttachmentKind,
   ChannelType,
   Contact,
+  ContactDuplicateGroup,
   ContactWithConversations,
   Conversation,
   ConversationPage,
@@ -533,6 +534,9 @@ export abstract class Store {
 
   /* ---- customers directory ---- */
   abstract listContacts(): Promise<Contact[]>;
+  /** Clusters of contacts that probably represent the same customer (shared
+   *  normalised phone/email), surfaced for review before merging. */
+  abstract findDuplicateContacts(): Promise<ContactDuplicateGroup[]>;
   abstract getContactWithConversations(id: string): Promise<ContactWithConversations | undefined>;
   abstract updateContact(
     id: string,

@@ -3,10 +3,12 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { hashInviteToken, newInviteToken } from "../auth/invite-token";
 import { normalizeIdentity, type IdentityKind } from "../contacts/identity";
+import { groupDuplicateContacts } from "../contacts/duplicates";
 import type {
   Attachment,
   ChannelType,
   Contact,
+  ContactDuplicateGroup,
   ContactWithConversations,
   Conversation,
   ConversationPage,
@@ -1442,6 +1444,10 @@ export class MemoryStore extends Store {
     return [...this.contacts]
       .map((c) => ({ ...c, tags: c.tags ?? [] }))
       .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+
+  async findDuplicateContacts(): Promise<ContactDuplicateGroup[]> {
+    return groupDuplicateContacts(await this.listContacts());
   }
 
   async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {

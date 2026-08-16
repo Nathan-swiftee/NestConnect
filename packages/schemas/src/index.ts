@@ -100,6 +100,19 @@ export const contactSchema = z.object({
 });
 export type Contact = z.infer<typeof contactSchema>;
 
+/** Why two contacts were flagged as possible duplicates: a shared, canonicalised
+ *  identifier (E.164 phone or lower-cased email). */
+export interface ContactDuplicateReason {
+  kind: "phone" | "email";
+  value: string;
+}
+/** A cluster of contacts that probably represent the same customer, found by
+ *  matching normalised phone/email. Surfaced for review (merge comes later). */
+export interface ContactDuplicateGroup {
+  contacts: Contact[];
+  reasons: ContactDuplicateReason[];
+}
+
 export const inboxSchema = z.object({
   id: z.string(),
   orgId: z.string(),

@@ -2,6 +2,7 @@ import type {
   Attachment,
   ChannelType,
   Contact,
+  ContactDuplicateGroup,
   CreateTemplateInput,
   Template,
   UpdateTemplateInput,
@@ -156,6 +157,7 @@ export const api = {
   syncGmail: () => post<{ ok: boolean; synced: number }>("/channels/google/sync", {}),
   // customers (CRM)
   contacts: () => get<Contact[]>("/contacts"),
+  contactDuplicates: () => get<ContactDuplicateGroup[]>("/contacts/duplicates"),
   contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),
   createContact: (input: CreateContactInput) =>
     post<{ contact: Contact; existed: boolean }>("/contacts", input),

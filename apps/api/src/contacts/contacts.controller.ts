@@ -35,6 +35,13 @@ export class ContactsController {
     return this.store.listContacts();
   }
 
+  /** Possible-duplicate clusters — contacts that share a normalised phone or
+   *  email. Declared before `:id` so the literal path isn't read as an id. */
+  @Get("duplicates")
+  duplicates() {
+    return this.store.findDuplicateContacts();
+  }
+
   @Get(":id")
   async detail(@Param("id") id: string) {
     const contact = await this.store.getContactWithConversations(id);

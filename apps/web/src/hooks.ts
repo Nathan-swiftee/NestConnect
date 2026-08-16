@@ -355,6 +355,8 @@ export function useDeleteUser() {
 }
 /* ---- customers (CRM) ---- */
 export const useContacts = () => useQuery({ queryKey: ["contacts"], queryFn: api.contacts });
+export const useContactDuplicates = () =>
+  useQuery({ queryKey: ["contact-duplicates"], queryFn: api.contactDuplicates });
 export const useContact = (id: string | null) =>
   useQuery({
     queryKey: ["contact", id],

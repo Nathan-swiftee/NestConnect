@@ -3,6 +3,7 @@ import type { Contact, Team } from "@ding/schemas";
 import {
   useContact,
   useContacts,
+  useContactDuplicates,
   useCreateContact,
   useDeleteContact,
   usePeople,
@@ -14,7 +15,9 @@ import { Avatar } from "./Avatar";
 import { TagEditor } from "./TagEditor";
 import {
   channelMeta,
+  AlertIcon,
   EditIcon,
+  MailIcon,
   PhoneIcon,
   PlusIcon,
   RouteIcon,
@@ -283,6 +286,8 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
   const teams = useTeams();
   const [q, setQ] = useState("");
   const [showBlocked, setShowBlocked] = useState(false);
+  const duplicates = useContactDuplicates();
+  const [showDupes, setShowDupes] = useState(false);
   // null = closed; { contact: null } = add; { contact } = edit.
   const [modal, setModal] = useState<{ contact: Contact | null } | null>(null);
 
@@ -355,6 +360,56 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
               </button>
             )}
           </div>
+
+          {(duplicates.data?.length ?? 0) > 0 && (
+            <div className="dupwrap">
+              <button
+                type="button"
+                className={"dupbanner" + (showDupes ? " open" : "")}
+                onClick={() => setShowDupes((v) => !v)}
+                aria-expanded={showDupes}
+              >
+                <span className="dupbanner__ic"><AlertIcon /></span>
+                <span className="dupbanner__main">
+                  <b>{duplicates.data!.length} possible duplicate{duplicates.data!.length === 1 ? "" : "s"}</b>
+                  <small>These customers share a phone number or email — likely the same person on file more than once.</small>
+                </span>
+                <span className="dupbanner__act">{showDupes ? "Hide" : "Review"}</span>
+              </button>
+              {showDupes && (
+                <div className="dupgroups">
+                  {duplicates.data!.map((g, i) => (
+                    <div className="dupgroup" key={i}>
+                      <div className="dupgroup__why">
+                        {g.reasons.map((r, j) => (
+                          <span className="dupreason" key={j} title={r.kind === "phone" ? "Shared number" : "Shared email"}>
+                            {r.kind === "phone" ? <PhoneIcon /> : <MailIcon />} {r.value}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="dupgroup__members">
+                        {g.contacts.map((c) => (
+                          <button
+                            type="button"
+                            className="dupmember"
+                            key={c.id}
+                            onClick={() => setModal({ contact: c })}
+                            title="Open this customer"
+                          >
+                            <Avatar name={c.displayName} email={c.email} color={c.avatarColor} className="dupmember__av av" />
+                            <span className="dupmember__x">
+                              <b>{c.displayName}{c.blocked && <span className="dupblocked">Blocked</span>}</b>
+                              <small>{c.company || c.phone || c.email || "No details"}</small>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="dwrap">
             <div className="dtable dtable--cust">
