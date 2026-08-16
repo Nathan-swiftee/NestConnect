@@ -1470,6 +1470,11 @@ input,textarea{font:inherit}
 .tfa-recovery__hd{font-size:var(--fs-sm);font-weight:750;color:var(--text)}
 .tfa-recovery__grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:6px 0}
 .tfa-recovery__grid code{font-size:var(--fs-xs);font-weight:700;letter-spacing:1px;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:5px 8px;text-align:center}
+/* Mandatory-2FA enrolment gate (full screen, shown after login until enrolled) */
+.tfa-gate{min-height:100dvh;display:grid;place-items:center;padding:24px;background:var(--bg)}
+.tfa-gate__card{width:100%;max-width:460px;display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 18px 50px -20px rgba(13,21,18,.4)}
+.tfa-gate__card h1{font-size:var(--fs-xl);margin:4px 0 0}
+.tfa-gate__toast{font-size:var(--fs-xs);color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-top:4px}
 @media (max-width:560px){
   .pers-grid{grid-template-columns:1fr}
   .pers-prof{flex-wrap:wrap}

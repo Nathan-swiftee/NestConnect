@@ -2,6 +2,7 @@ import { useSession } from "./hooks";
 import { Workspace } from "./components/Workspace";
 import { LoginScreen } from "./components/LoginScreen";
 import { SetPassword } from "./components/SetPassword";
+import { TwoFactorGate } from "./components/TwoFactorGate";
 
 export function App() {
   const params = new URLSearchParams(window.location.search);
@@ -16,8 +17,14 @@ export function App() {
   if (session.isLoading) {
     return <div className="center-note" style={{ height: "100dvh" }}>Loading…</div>;
   }
-  if (session.isError || !session.data?.user) {
+  const user = session.data?.user;
+  if (session.isError || !user) {
     return <LoginScreen />;
+  }
+  // Mandatory 2FA: an authenticated user who hasn't enrolled is held at the
+  // enrolment gate until they set it up (or sign out).
+  if (!user.twoFactorEnabled) {
+    return <TwoFactorGate />;
   }
   return <Workspace />;
 }

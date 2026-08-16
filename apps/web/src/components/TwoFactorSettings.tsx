@@ -48,8 +48,11 @@ export function TwoFactorSettings({ onToast, onChange }: { onToast: (m: string) 
   const [busy, setBusy] = useState(false);
   const [recovery, setRecovery] = useState<string[] | null>(null);
 
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["2fa-status"] });
+  const refreshStatus = () => qc.invalidateQueries({ queryKey: ["2fa-status"] });
+  // Refreshing the session flips the mandatory-2FA gate to the app — deferred
+  // until AFTER the recovery codes are acknowledged, so the gate can't vanish
+  // out from under the codes the moment 2FA turns on.
+  const commitSession = () => {
     qc.invalidateQueries({ queryKey: ["session"] });
     qc.invalidateQueries({ queryKey: ["me"] });
     onChange?.();
@@ -92,7 +95,7 @@ export function TwoFactorSettings({ onToast, onChange }: { onToast: (m: string) 
       const res = flow === "totp" ? await api.enableTotp(code.trim()) : await api.enableEmail2fa(code.trim());
       setRecovery(res.recoveryCodes);
       cancel();
-      refresh();
+      refreshStatus(); // session refresh happens on "I've saved them" (see RecoveryCodes)
       onToast("Two-factor is on.");
     } catch {
       onToast("That code isn't right — try again.");
@@ -105,7 +108,8 @@ export function TwoFactorSettings({ onToast, onChange }: { onToast: (m: string) 
     try {
       await api.disable2fa();
       setRecovery(null);
-      refresh();
+      refreshStatus();
+      commitSession();
       onToast("Two-factor turned off.");
     } catch {
       onToast("Couldn't turn it off.");
@@ -117,7 +121,7 @@ export function TwoFactorSettings({ onToast, onChange }: { onToast: (m: string) 
     setBusy(true);
     try {
       setRecovery((await api.regenerateRecovery()).recoveryCodes);
-      refresh();
+      refreshStatus();
     } catch {
       onToast("Couldn't regenerate codes.");
     } finally {
@@ -125,8 +129,18 @@ export function TwoFactorSettings({ onToast, onChange }: { onToast: (m: string) 
     }
   };
 
-  // 1) Just enabled / regenerated → show the codes to save.
-  if (recovery) return <RecoveryCodes codes={recovery} onDone={() => setRecovery(null)} />;
+  // 1) Just enabled / regenerated → show the codes to save. Acknowledging them
+  //    commits the session refresh (which, under the mandatory gate, reveals the app).
+  if (recovery)
+    return (
+      <RecoveryCodes
+        codes={recovery}
+        onDone={() => {
+          setRecovery(null);
+          commitSession();
+        }}
+      />
+    );
 
   // 2) Mid-setup: confirm a code (authenticator QR, or emailed code).
   if (flow) {
