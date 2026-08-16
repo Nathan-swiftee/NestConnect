@@ -46,6 +46,7 @@ import {
   mapMessage,
   mapNotification,
   mapParticipant,
+  mapSession,
   mapTeam,
   mapTemplate,
   mapUser,
@@ -65,6 +66,7 @@ import {
   type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
+  type StoredSession,
   type ViewItem,
   type WebhookDiagnostic,
 } from "./store";
@@ -551,6 +553,48 @@ export class PrismaStore extends Store {
       await tx.message.updateMany({ where: { authorUserId: id }, data: { authorUserId: null } });
       await tx.user.delete({ where: { id } });
     });
+  }
+
+  async createSession(userId: string, meta: { ip?: string; userAgent?: string }): Promise<StoredSession> {
+    const row = await this.prisma.session.create({
+      data: { userId, ip: meta.ip ?? null, userAgent: meta.userAgent ?? null },
+    });
+    return mapSession(row);
+  }
+
+  async getSession(id: string): Promise<StoredSession | undefined> {
+    const row = await this.prisma.session.findUnique({ where: { id } });
+    return row ? mapSession(row) : undefined;
+  }
+
+  async listSessions(userId: string): Promise<StoredSession[]> {
+    const rows = await this.prisma.session.findMany({ where: { userId }, orderBy: { lastSeenAt: "desc" } });
+    // Active first, then most-recently-seen first.
+    return rows
+      .map(mapSession)
+      .sort((a, b) => (a.revokedAt ? 1 : 0) - (b.revokedAt ? 1 : 0) || b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  async touchSession(id: string): Promise<void> {
+    await this.prisma.session.updateMany({ where: { id, revokedAt: null }, data: { lastSeenAt: new Date() } });
+  }
+
+  async revokeSession(userId: string, id: string): Promise<boolean> {
+    const res = await this.prisma.session.updateMany({
+      where: { id, userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    if (res.count > 0) return true;
+    // It may exist but already be revoked — still "theirs", so report success.
+    return (await this.prisma.session.count({ where: { id, userId } })) > 0;
+  }
+
+  async revokeOtherSessions(userId: string, keepId: string): Promise<number> {
+    const res = await this.prisma.session.updateMany({
+      where: { userId, id: { not: keepId }, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return res.count;
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

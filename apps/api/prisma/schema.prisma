@@ -110,9 +110,29 @@ model User {
   messages    Message[]
   notes       Note[]
   notifications Notification[]
+  sessions    Session[]
 
   @@unique([orgId, email])
   @@index([orgId])
+}
+
+// A signed-in device/browser. The session id rides in the JWT as its `jti`, so a
+// revoked row (revokedAt set) invalidates that cookie on the next request —
+// which is what powers "where you're signed in" + remote sign-out.
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  // Captured at sign-in for the "where you're logged in" list.
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  // Set when the session is signed out (here or remotely); nulls = active.
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// A per-user bell notification (a mention, a snooze coming due, …).

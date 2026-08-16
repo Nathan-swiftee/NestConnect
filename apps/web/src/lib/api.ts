@@ -35,6 +35,7 @@ import type {
   UpdateMyPreferencesInput,
   UpdateMyProfileInput,
   ChangePasswordInput,
+  SessionInfo,
   UpdateUserInput,
   User,
   WhatsAppBusinessProfile,
@@ -121,6 +122,10 @@ export const api = {
   updateMyProfile: (input: UpdateMyProfileInput) => patch<User>("/me/profile", input),
   // Change your own password (current one is re-verified server-side).
   changePassword: (input: ChangePasswordInput) => post<{ ok: boolean }>("/auth/change-password", input),
+  // Signed-in sessions ("where you're logged in").
+  sessions: () => get<SessionInfo[]>("/auth/sessions"),
+  revokeSession: (id: string) => del<{ ok: boolean }>(`/auth/sessions/${id}`),
+  revokeOtherSessions: () => post<{ revoked: number }>("/auth/sessions/revoke-others", {}),
   // Bell notifications.
   notifications: () => get<Notification[]>("/notifications"),
   markNotificationsRead: (ids?: string[]) => post<{ ok: boolean }>("/notifications/read", ids ? { ids } : {}),

@@ -184,6 +184,23 @@ export function useChangePassword() {
     mutationFn: (input: ChangePasswordInput) => api.changePassword(input),
   });
 }
+
+/* ---- signed-in sessions ("where you're logged in") ---- */
+export const useSessions = () => useQuery({ queryKey: ["sessions"], queryFn: api.sessions });
+export function useRevokeSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.revokeSession(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }),
+  });
+}
+export function useRevokeOtherSessions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.revokeOtherSessions(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }),
+  });
+}
 export const useViews = () => useQuery({ queryKey: ["views"], queryFn: api.views });
 
 /* ---- Bell notifications ---- */

@@ -811,6 +811,18 @@ export const loginInputSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
 
+/** A signed-in device/browser shown in "Where you're signed in" (personal
+ *  settings). `current` marks the session making the request. */
+export interface SessionInfo {
+  id: string;
+  current: boolean;
+  ip?: string | null;
+  browser?: string | null;
+  os?: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+}
+
 /** Set an initial password from an emailed invite link (token → new password). */
 export const setPasswordInputSchema = z.object({
   token: z.string().min(10),

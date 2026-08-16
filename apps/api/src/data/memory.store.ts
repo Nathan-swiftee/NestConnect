@@ -45,6 +45,7 @@ import {
   type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
+  type StoredSession,
   type ViewItem,
   type WebhookDiagnostic,
 } from "./store";
@@ -113,6 +114,7 @@ export class MemoryStore extends Store {
     }
   >();
   private idSeq = 10_000;
+  private sessions: StoredSession[] = [];
 
   constructor() {
     super();
@@ -461,7 +463,58 @@ export class MemoryStore extends Store {
     this.users = this.users.filter((u) => u.id !== id);
     delete this.membership[id];
     this.passwords.delete(id);
+    this.sessions = this.sessions.filter((s) => s.userId !== id);
     for (const c of this.conversations) if (c.assigneeUserId === id) c.assigneeUserId = null;
+  }
+
+  async createSession(userId: string, meta: { ip?: string; userAgent?: string }): Promise<StoredSession> {
+    const now = new Date().toISOString();
+    const s: StoredSession = {
+      id: `sess_${++this.idSeq}`,
+      userId,
+      ip: meta.ip ?? null,
+      userAgent: meta.userAgent ?? null,
+      createdAt: now,
+      lastSeenAt: now,
+      revokedAt: null,
+    };
+    this.sessions.push(s);
+    return s;
+  }
+
+  async getSession(id: string): Promise<StoredSession | undefined> {
+    return this.sessions.find((s) => s.id === id);
+  }
+
+  async listSessions(userId: string): Promise<StoredSession[]> {
+    return this.sessions
+      .filter((s) => s.userId === userId)
+      // Active first, then most-recently-seen first.
+      .sort((a, b) => (a.revokedAt ? 1 : 0) - (b.revokedAt ? 1 : 0) || b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  async touchSession(id: string): Promise<void> {
+    const s = this.sessions.find((x) => x.id === id);
+    if (s && !s.revokedAt) s.lastSeenAt = new Date().toISOString();
+  }
+
+  async revokeSession(userId: string, id: string): Promise<boolean> {
+    const s = this.sessions.find((x) => x.id === id && x.userId === userId);
+    if (!s) return false;
+    if (!s.revokedAt) s.revokedAt = new Date().toISOString();
+    return true;
+  }
+
+  async revokeOtherSessions(userId: string, keepId: string): Promise<number> {
+    let n = 0;
+    const now = new Date().toISOString();
+    for (const s of this.sessions) {
+      if (s.userId === userId && s.id !== keepId && !s.revokedAt) {
+        s.revokedAt = now;
+        n++;
+      }
+    }
+    return n;
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

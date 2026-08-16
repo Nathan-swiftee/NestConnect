@@ -1445,6 +1445,15 @@ input,textarea{font:inherit}
 .pers-pw__foot{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);margin-top:12px}
 .pers-pw__foot .btn-ghost{border:1px solid var(--border);white-space:nowrap}
 .pers-pw__warn{color:var(--danger);font-size:var(--fs-xs);font-weight:600}
+/* "Where you're signed in" — active session rows */
+.pers-field__hd .btn-ghost{margin-left:auto;border:1px solid var(--border);white-space:nowrap;font-size:var(--fs-2xs)}
+.pers-sessions{display:flex;flex-direction:column;gap:var(--sp-2);margin-top:9px}
+.pers-session{display:flex;align-items:center;gap:var(--sp-3);padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface-2)}
+.pers-session__info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pers-session__dev{font-size:var(--fs-xs);font-weight:650;color:var(--text)}
+.pers-session__meta{font-size:var(--fs-2xs);color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+.pers-session__badge{margin-left:auto;flex:none;font-size:var(--fs-2xs);font-weight:700;color:var(--brand-strong);background:var(--brand-tint);padding:var(--sp-1) var(--sp-2);border-radius:999px}
+.pers-session__revoke{margin-left:auto;flex:none;border:1px solid var(--border);white-space:nowrap;font-size:var(--fs-2xs);color:var(--danger)}
 @media (max-width:560px){
   .pers-grid{grid-template-columns:1fr}
   .pers-prof{flex-wrap:wrap}

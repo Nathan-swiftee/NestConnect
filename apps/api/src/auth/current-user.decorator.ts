@@ -11,3 +11,10 @@ export const CurrentUserId = createParamDecorator((_data: unknown, ctx: Executio
   if (!req.userId) throw new UnauthorizedException("Not authenticated");
   return req.userId;
 });
+
+/** The current request's session id (the JWT `jti`), set by AuthGuard. Undefined
+ *  for a grandfathered cookie minted before sessions existed. */
+export const CurrentSessionId = createParamDecorator((_data: unknown, ctx: ExecutionContext): string | undefined => {
+  const req = ctx.switchToHttp().getRequest<Request & { sessionId?: string }>();
+  return req.sessionId;
+});

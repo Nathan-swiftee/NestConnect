@@ -61,14 +61,21 @@ export class AuthService {
     return user;
   }
 
-  sign(userId: string): string {
-    return jwt.sign({ sub: userId }, env.auth.jwtSecret, { expiresIn: env.auth.ttlSeconds });
+  /** Sign a session cookie. The session id (when given) rides as the JWT `jti`
+   *  so a revoked session invalidates the cookie server-side. */
+  sign(userId: string, sessionId?: string): string {
+    return jwt.sign(
+      { sub: userId, ...(sessionId ? { jti: sessionId } : {}) },
+      env.auth.jwtSecret,
+      { expiresIn: env.auth.ttlSeconds },
+    );
   }
 
-  verify(token: string): string | undefined {
+  verify(token: string): { userId: string; sessionId?: string } | undefined {
     try {
-      const payload = jwt.verify(token, env.auth.jwtSecret) as { sub?: string };
-      return payload.sub;
+      const p = jwt.verify(token, env.auth.jwtSecret) as { sub?: string; jti?: string };
+      if (!p.sub) return undefined;
+      return { userId: p.sub, sessionId: p.jti };
     } catch {
       return undefined;
     }

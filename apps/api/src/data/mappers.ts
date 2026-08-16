@@ -21,6 +21,20 @@ import type {
   WaWindow,
 } from "@ding/schemas";
 import { isInboxConnected, publicChannelConfig } from "@ding/schemas";
+import type { StoredSession } from "./store";
+
+/** A Prisma Session row → the store's StoredSession (dates as ISO strings). */
+export function mapSession(s: Prisma.SessionGetPayload<object>): StoredSession {
+  return {
+    id: s.id,
+    userId: s.userId,
+    ip: s.ip ?? null,
+    userAgent: s.userAgent ?? null,
+    createdAt: s.createdAt.toISOString(),
+    lastSeenAt: s.lastSeenAt.toISOString(),
+    revokedAt: s.revokedAt ? s.revokedAt.toISOString() : null,
+  };
+}
 
 /** WhatsApp's customer-service window is 24 hours from the last inbound message. */
 const WA_WINDOW_MS = 24 * 60 * 60 * 1000;

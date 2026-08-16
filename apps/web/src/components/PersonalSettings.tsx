@@ -12,7 +12,16 @@ import Color from "@tiptap/extension-color";
 import FontFamily from "@tiptap/extension-font-family";
 import TextAlign from "@tiptap/extension-text-align";
 import type { UpdateMyProfileInput } from "@ding/schemas";
-import { useMe, useUpdateMyPreferences, useUpdateMyProfile, useChangePassword } from "../hooks";
+import {
+  useMe,
+  useUpdateMyPreferences,
+  useUpdateMyProfile,
+  useChangePassword,
+  useSessions,
+  useRevokeSession,
+  useRevokeOtherSessions,
+} from "../hooks";
+import type { SessionInfo } from "@ding/schemas";
 import { useScrollLock } from "../lib/useScrollLock";
 import { api } from "../lib/api";
 import { XIcon } from "../lib/icons";
@@ -118,6 +127,24 @@ function AlignGlyph({ dir }: { dir: "left" | "center" | "right" }) {
   );
 }
 
+/** "Chrome on macOS" from a parsed session, degrading gracefully. */
+function deviceLabel(s: SessionInfo): string {
+  const browser = s.browser ?? "Unknown browser";
+  return s.os ? `${browser} on ${s.os}` : browser;
+}
+
+/** Compact "time ago" for a session's last-active stamp. */
+function timeAgo(iso: string): string {
+  const secs = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (secs < 60) return "just now";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return days < 7 ? `${days}d ago` : new Date(iso).toLocaleDateString();
+}
+
 /**
  * A team member's own personal settings, opened from the avatar menu:
  *  - Profile: photo, display name, and login email.
@@ -132,6 +159,10 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
   const update = useUpdateMyPreferences();
   const profile = useUpdateMyProfile();
   const changePw = useChangePassword();
+  const sessionsQ = useSessions();
+  const revokeSession = useRevokeSession();
+  const revokeOthers = useRevokeOtherSessions();
+  const sessions = sessionsQ.data ?? [];
   const boxRef = useRef<HTMLDivElement>(null);
   useScrollLock(boxRef);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -484,6 +515,69 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
               <button type="button" className="btn-ghost" onClick={updatePassword} disabled={!pwValid || changePw.isPending}>
                 {changePw.isPending ? "Updating…" : "Update password"}
               </button>
+            </div>
+          </div>
+
+          {/* Where you're signed in */}
+          <div className="pers-field">
+            <div className="pers-field__hd">
+              <span className="pers-field__lbl">Where you’re signed in</span>
+              {sessions.length > 1 && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() =>
+                    revokeOthers.mutate(undefined, {
+                      onSuccess: (r) =>
+                        onToast(
+                          r.revoked
+                            ? `Signed out ${r.revoked} other device${r.revoked === 1 ? "" : "s"}`
+                            : "No other sessions to sign out",
+                        ),
+                      onError: () => onToast("Couldn’t sign out other sessions"),
+                    })
+                  }
+                  disabled={revokeOthers.isPending}
+                >
+                  {revokeOthers.isPending ? "Signing out…" : "Sign out all others"}
+                </button>
+              )}
+            </div>
+            <div className="pers-sessions">
+              {sessionsQ.isLoading ? (
+                <small className="pers-field__hint">Loading…</small>
+              ) : sessions.length === 0 ? (
+                <small className="pers-field__hint">No active sessions.</small>
+              ) : (
+                sessions.map((s) => (
+                  <div key={s.id} className="pers-session">
+                    <div className="pers-session__info">
+                      <span className="pers-session__dev">{deviceLabel(s)}</span>
+                      <span className="pers-session__meta">
+                        {s.ip ? `${s.ip} · ` : ""}
+                        {s.current ? "Active now" : `Last active ${timeAgo(s.lastSeenAt)}`}
+                      </span>
+                    </div>
+                    {s.current ? (
+                      <span className="pers-session__badge">This device</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-ghost pers-session__revoke"
+                        onClick={() =>
+                          revokeSession.mutate(s.id, {
+                            onSuccess: () => onToast("Signed out that device"),
+                            onError: () => onToast("Couldn’t sign out that device"),
+                          })
+                        }
+                        disabled={revokeSession.isPending}
+                      >
+                        Sign out
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

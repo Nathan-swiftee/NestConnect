@@ -48,6 +48,17 @@ export interface SidebarViews {
   shared: { teams: ViewItem[]; inboxes: ViewItem[]; labels: ViewItem[] };
 }
 
+/** A sign-in session row, as the store returns it (dates are ISO strings). */
+export interface StoredSession {
+  id: string;
+  userId: string;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  revokedAt: string | null;
+}
+
 /** Canonical inbound message handed to the store by a channel gateway. */
 export interface InboundContact {
   kind: "phone" | "email" | "wa_id";
@@ -247,6 +258,21 @@ export abstract class Store {
   abstract setUserPassword(userId: string, password: string): Promise<void>;
   /** Remove a person, detaching their team memberships and clearing assignments. */
   abstract deleteUser(id: string): Promise<void>;
+
+  /* ---- sign-in sessions ("where you're logged in" + remote sign-out) ---- */
+
+  /** Record a new signed-in device; its id becomes the JWT's `jti`. */
+  abstract createSession(userId: string, meta: { ip?: string; userAgent?: string }): Promise<StoredSession>;
+  /** Fetch a session by id (for the guard's revocation check). */
+  abstract getSession(id: string): Promise<StoredSession | undefined>;
+  /** A user's sessions, active first, newest first (for the settings list). */
+  abstract listSessions(userId: string): Promise<StoredSession[]>;
+  /** Bump a session's lastSeenAt (throttled by the caller). */
+  abstract touchSession(id: string): Promise<void>;
+  /** Revoke one of a user's own sessions. Returns false if it isn't theirs. */
+  abstract revokeSession(userId: string, id: string): Promise<boolean>;
+  /** Revoke all of a user's sessions except `keepId`; returns the count revoked. */
+  abstract revokeOtherSessions(userId: string, keepId: string): Promise<number>;
   abstract views(userId: string): Promise<SidebarViews>;
   /** A cursor page of conversations for a view (most-recent first). */
   abstract listConversations(
