@@ -1710,7 +1710,7 @@ function ProfileForm({
             {setPhoto.isPending ? "Uploading…" : profile.profilePictureUrl ? "Change photo" : "Add photo"}
           </button>
           <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={onPhoto} />
-          <small className="fieldhint">JPG or PNG, shown on your WhatsApp business card. Needs your Meta App ID set under Channels.</small>
+          <small className="fieldhint">JPG or PNG, shown on your WhatsApp business card.</small>
         </div>
       </div>
 

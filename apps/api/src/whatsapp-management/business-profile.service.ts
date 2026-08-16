@@ -3,6 +3,7 @@ import type { OpeningHours, UpdateWhatsAppBusinessProfileInput, WhatsAppBusiness
 import { env } from "../config/env";
 import { Store } from "../data/store";
 import { metaErrorMessage, resolveWhatsAppCreds } from "../channels/whatsapp/whatsapp-creds";
+import { META_APP_ID_KEY } from "../channels/meta/meta-oauth.service";
 
 /** The subset of Meta's `whatsapp_business_profile` node we read/write. */
 interface MetaProfile {
@@ -150,10 +151,17 @@ export class BusinessProfileService {
     if (!/^image\/(jpeg|png)$/.test(file.mimetype)) {
       throw new BadRequestException("Use a JPG or PNG image.");
     }
-    const appId = (await this.store.getInboxConfig(inboxId))?.appId || env.whatsapp.appId;
+    // The resumable upload is app-scoped, so we need the Meta App ID. Prefer the
+    // one saved when WhatsApp was connected (Integrations), then any per-number
+    // config, then env.
+    const orgId = (await this.store.getInbox(inboxId))?.orgId;
+    const appId =
+      (orgId ? (await this.store.getAppSetting(orgId, META_APP_ID_KEY))?.trim() : "") ||
+      (await this.store.getInboxConfig(inboxId))?.appId ||
+      env.whatsapp.appId;
     if (!appId) {
       throw new BadRequestException(
-        "Add your Meta App ID (under Channels → this number) to change the profile photo from here.",
+        "Connect your WhatsApp app under Integrations so we have the Meta App ID needed to upload a photo.",
       );
     }
     const v = env.whatsapp.apiVersion;
