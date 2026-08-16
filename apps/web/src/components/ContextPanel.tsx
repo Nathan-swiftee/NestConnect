@@ -106,7 +106,7 @@ function RecentConversations({
                 onClick={() => !active && onOpen?.(c.id)}
                 title={active ? "Current conversation" : "Open conversation"}
               >
-                <span className="custconv__ic" style={{ color: cm.color }}>
+                <span className="custconv__ic" style={{ background: cm.color }}>
                   <Glyph />
                 </span>
                 <span className="custconv__body">
@@ -121,6 +121,29 @@ function RecentConversations({
         </div>
       )}
     </Block>
+  );
+}
+
+/** At-a-glance counts for this customer across all their conversations. */
+function StatsBlock({ contactId }: { contactId: string }) {
+  const detail = useContact(contactId);
+  const convos = detail.data?.conversations ?? [];
+  const open = convos.filter((c) => c.status === "open" || c.status === "pending").length;
+  const closed = convos.filter((c) => c.status === "closed").length;
+  const tiles: [number, string][] = [
+    [convos.length, "Threads"],
+    [open, "Open"],
+    [closed, "Closed"],
+  ];
+  return (
+    <div className="cstats">
+      {tiles.map(([n, l]) => (
+        <div className="cstat" key={l}>
+          <div className="cstat__n">{n}</div>
+          <div className="cstat__l">{l}</div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -141,7 +164,7 @@ function ChannelsBlock({
   if (contact.email) rows.push({ type: "email", value: contact.email });
 
   return (
-    <Block title="Channels">
+    <Block title="Reach on">
       {rows.length === 0 ? (
         <p className="custconvs__empty">No phone or email on file.</p>
       ) : (
@@ -263,23 +286,47 @@ function AssignmentBlock({
   onToast: (m: string) => void;
 }) {
   const { data: session } = useSession();
-  const assignee = conv.assigneeUserId
+  const assigned = !!conv.assigneeUserId;
+  const assignee = assigned
     ? conv.assigneeUserId === session?.user.id
       ? "You"
       : conv.assigneeName ?? "Assigned"
     : "Unassigned";
+  const team = (conv.assignedTeamId && teamName(conv.assignedTeamId)) || null;
+  const STATUS: Record<string, string> = { open: "Open", pending: "Pending", snoozed: "Snoozed", closed: "Closed" };
+  const statusOpen = conv.status === "open" || conv.status === "pending";
   return (
     <Block title="Assignment">
       <div className="pcard">
         <div className="kv">
+          <span className="k">Status</span>
+          <span className="v">
+            <span className={"cpill " + (statusOpen ? "cpill--open" : "cpill--closed")}>
+              <span className="cdot" />
+              {STATUS[conv.status] ?? conv.status}
+            </span>
+          </span>
+        </div>
+        <div className="kv">
           <span className="k">Assignee</span>
-          <span className="v">{assignee}</span>
+          <span className="v">
+            {assigned ? (
+              <>
+                <Avatar name={assignee} className="cmini" /> {assignee}
+              </>
+            ) : (
+              <span className="cmuted">Unassigned</span>
+            )}
+          </span>
         </div>
         <div className="kv">
           <span className="k">Team</span>
           <span className="v">
-            {(conv.assignedTeamId && teamName(conv.assignedTeamId)) || "—"}
-            {!conv.assigneeUserId ? " · in queue" : ""}
+            {team ? (
+              <span className="cteam"><span className="csq" style={{ background: "var(--brand)" }} />{team}</span>
+            ) : (
+              <span className="cmuted">{assigned ? "—" : "In queue"}</span>
+            )}
           </span>
         </div>
         <div className="kv">
@@ -295,12 +342,18 @@ function AssignmentBlock({
 
 function SlaBlock({ iso, now }: { iso: string; now: number }) {
   return (
-    <Block title="SLA">
-      <div className="slabox">
-        <div className="txt">
-          <small>First response due in</small>
-          <span className="cd">{slaCountdown(iso, now)}</span>
-        </div>
+    <Block title="First response">
+      <div className="csla">
+        <span className="csla__ic" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="13" r="8" />
+            <path d="M12 9v4l2.5 2.5M9 2h6" />
+          </svg>
+        </span>
+        <span className="csla__b">
+          <small>Due in</small>
+          <b>{slaCountdown(iso, now)}</b>
+        </span>
       </div>
     </Block>
   );
@@ -433,52 +486,62 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
         </div>
       )}
       <div className="panel__scroll">
-        <div className="flex flex-col items-center text-center gap-1">
-          <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="relative w-16 h-16 rounded-20 grid place-items-center text-white font-bold text-2xl mb-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,.18),0_8px_20px_-10px_rgba(13,21,18,.35)]" />
-          <h3 className="m-0 text-lg font-[750]">{conv.contact.displayName}</h3>
-          <div className="text-xs text-muted">
+        <div className="chero">
+          <div className="chero__avawrap">
+            <span className="chero__ring" aria-hidden="true" />
+            <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="chero__ava" />
+            {!isGroup && (
+              <span
+                className="chero__dot"
+                style={{ background: channelMeta(conv.channel).color }}
+                title={`On ${channelMeta(conv.channel).label}`}
+              />
+            )}
+          </div>
+          <h3 className="chero__name">{conv.contact.displayName}</h3>
+          <div className="chero__sub">
             {isGroup ? (
               <span className="co-ch">
                 <span className="co-ch__ic" style={{ color: "var(--group)" }}><GroupGlyph /></span>
                 {memberCount} members
               </span>
             ) : (
-              conv.contact.company
+              conv.contact.company || channelMeta(conv.channel).label
             )}
           </div>
           {!isGroup && (
-            <div className="flex flex-col gap-[3px] w-full mt-3 text-left">
-              {conv.contact.phone && (
-                <button
-                  type="button"
-                  className="flex items-center gap-2 w-full p-2 rounded-12 text-sm text-fg [transition:background_.15s] hover:bg-surface-2 [&>svg]:w-4 [&>svg]:h-4 [&>svg]:flex-none [&>svg]:text-faint [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap"
-                  title="Copy phone number"
-                  onClick={() => copyValue(conv.contact.phone as string, "Phone")}
-                >
-                  <PhoneIcon />
-                  <span>{conv.contact.phone}</span>
-                </button>
+            <>
+              {(conv.contact.phone || conv.contact.email) && (
+                <div className="chero__chips">
+                  {conv.contact.phone && (
+                    <button
+                      type="button"
+                      className="cchip"
+                      title="Copy phone number"
+                      onClick={() => copyValue(conv.contact.phone as string, "Phone")}
+                    >
+                      <PhoneIcon />
+                      <span>{conv.contact.phone}</span>
+                    </button>
+                  )}
+                  {conv.contact.email && (
+                    <button
+                      type="button"
+                      className="cchip"
+                      title="Copy email address"
+                      onClick={() => copyValue(conv.contact.email as string, "Email")}
+                    >
+                      <MailIcon />
+                      <span>{conv.contact.email}</span>
+                    </button>
+                  )}
+                </div>
               )}
-              {conv.contact.email && (
-                <button
-                  type="button"
-                  className="flex items-center gap-2 w-full p-2 rounded-12 text-sm text-fg [transition:background_.15s] hover:bg-surface-2 [&>svg]:w-4 [&>svg]:h-4 [&>svg]:flex-none [&>svg]:text-faint [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap"
-                  title="Copy email address"
-                  onClick={() => copyValue(conv.contact.email as string, "Email")}
-                >
-                  <MailIcon />
-                  <span>{conv.contact.email}</span>
-                </button>
-              )}
-              <button
-                type="button"
-                className="flex items-center gap-2 w-full p-2 rounded-12 text-sm text-brand font-semibold [transition:background_.15s] hover:bg-surface-2 [&>svg]:w-4 [&>svg]:h-4 [&>svg]:flex-none [&>svg]:text-brand [&>span]:overflow-hidden [&>span]:text-ellipsis [&>span]:whitespace-nowrap"
-                onClick={() => onOpenProfile?.(conv.contact.id)}
-              >
+              <button type="button" className="cact cact--primary" onClick={() => onOpenProfile?.(conv.contact.id)}>
                 <ProfileIcon />
-                <span>Open full profile</span>
+                Open full profile
               </button>
-            </div>
+            </>
           )}
         </div>
 
@@ -546,6 +609,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
           </>
         ) : (
           <>
+            <StatsBlock contactId={conv.contact.id} />
             <AssignmentBlock conv={conv} teamName={teamName} onToast={onToast} />
             <CustomerTags contact={conv.contact} onToast={onToast} />
             <RecentConversations contactId={conv.contact.id} currentId={conv.id} onOpen={onOpenConversation} />
