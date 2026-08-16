@@ -8,6 +8,19 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Reject with a clear message if `p` hasn't settled within `ms`, so a stalled
+ *  network call can never leave an HTTP request hanging. */
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => {
+      const t = setTimeout(() => reject(new Error(message)), ms);
+      // Don't keep the event loop alive just for this guard timer.
+      (t as { unref?: () => void }).unref?.();
+    }),
+  ]);
+}
+
 export interface MailInput {
   to: string;
   subject: string;
@@ -51,14 +64,26 @@ export class Mailer {
         port: cfg.port,
         secure: cfg.secure, // true → implicit TLS (465); false → STARTTLS (587)
         auth: { user: cfg.username, pass: cfg.password },
+        // Fail fast instead of hanging. Without these a stalled connection —
+        // a port/secure mismatch, or a host that blocks outbound SMTP — leaves
+        // the request pending forever (the "Sending…" button never resolves).
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 15_000,
       });
-      await transport.sendMail({
-        from: cfg.from,
-        to: input.to,
-        subject: input.subject,
-        text: input.text,
-        html: input.html,
-      });
+      // Hard ceiling over the whole exchange so the caller ALWAYS gets a result,
+      // even if nodemailer's own timeouts don't fire.
+      await withTimeout(
+        transport.sendMail({
+          from: cfg.from,
+          to: input.to,
+          subject: input.subject,
+          text: input.text,
+          html: input.html,
+        }),
+        20_000,
+        "Timed out connecting to the SMTP server — check the port/secure combo (587 = off, 465 = on), or your host may block outbound SMTP.",
+      );
       return { sent: true, via: "smtp" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -71,6 +96,7 @@ export class Mailer {
     try {
       const res = await fetch("https://api.postmarkapp.com/email", {
         method: "POST",
+        signal: AbortSignal.timeout(15_000), // never hang on a stalled HTTP call
         headers: {
           "X-Postmark-Server-Token": env.email.postmarkToken,
           "content-type": "application/json",
