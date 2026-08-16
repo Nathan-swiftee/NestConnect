@@ -257,13 +257,34 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     id: string,
   ): Promise<boolean> {
     const msg = await gmail.getMessage(token, id);
-    // Skip our own outbound (self-sends land in INBOX with the SENT label too).
-    if (msg.labelIds?.includes("SENT")) return false;
+    const isSent = msg.labelIds?.includes("SENT") ?? false;
+    const isInbox = msg.labelIds?.includes("INBOX") ?? false;
+    // Only received (INBOX) and sent (SENT) mail matter — ignore drafts etc.
+    if (!isSent && !isInbox) return false;
 
     const messageId = headerValue(msg, "Message-ID");
-    // Idempotency: if we already stored this provider id, don't duplicate it.
+    // Idempotency: skip anything we've already stored. This is also how Nest's
+    // own sends are ignored — the SENT copy carries the Message-ID we stored.
     if (messageId && (await this.store.findConversationByMessageChannelIds([messageId]))) {
       return false;
+    }
+
+    // A reply sent straight from Gmail (SENT, not a received message) → record it
+    // as outbound on its existing thread so the conversation stays complete.
+    if (isSent) {
+      const outAtts = await this.fetchAttachments(token, id, msg);
+      const { name: senderName } = parseAddress(headerValue(msg, "From") ?? "");
+      const res = await this.ingest.ingestOutboundEmail({
+        subject: headerValue(msg, "Subject"),
+        text: extractPlainText(msg),
+        html: extractHtml(msg),
+        messageId,
+        references: threadRefs(msg),
+        threadId: msg.threadId,
+        authorName: senderName || "Gmail",
+        attachments: outAtts.length ? outAtts : undefined,
+      });
+      return !!res;
     }
 
     const { email: from, name: fromName } = parseAddress(headerValue(msg, "From") ?? "");

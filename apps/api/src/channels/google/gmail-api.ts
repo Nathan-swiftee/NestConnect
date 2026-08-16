@@ -110,7 +110,9 @@ export const gmail = {
     });
   },
 
-  /** Incremental change feed since `startHistoryId` (INBOX message adds only). */
+  /** Incremental change feed since `startHistoryId`. No label filter so both
+   *  received (INBOX) and sent (SENT) message adds come through — the caller
+   *  filters and routes them (inbound vs a reply sent straight from Gmail). */
   historyList(
     accessToken: string,
     startHistoryId: string,
@@ -119,7 +121,6 @@ export const gmail = {
     const params = new URLSearchParams({
       startHistoryId,
       historyTypes: "messageAdded",
-      labelId: "INBOX",
     });
     if (pageToken) params.set("pageToken", pageToken);
     return gmailFetch<GmailHistoryList>(accessToken, `/history?${params.toString()}`);
@@ -146,7 +147,8 @@ export const gmail = {
   watch(accessToken: string, topicName: string): Promise<GmailWatchResult> {
     return gmailFetch<GmailWatchResult>(accessToken, "/watch", {
       method: "POST",
-      body: JSON.stringify({ topicName, labelIds: ["INBOX"], labelFilterBehavior: "include" }),
+      // Watch INBOX (received) and SENT (replies sent straight from Gmail).
+      body: JSON.stringify({ topicName, labelIds: ["INBOX", "SENT"], labelFilterBehavior: "include" }),
     });
   },
 

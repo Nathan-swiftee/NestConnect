@@ -1256,6 +1256,36 @@ export class MemoryStore extends Store {
     return message;
   }
 
+  async appendSyncedOutboundEmail(
+    conversationId: string,
+    input: { body: string; bodyHtml?: string; channelMsgId?: string; authorName?: string; attachments?: AttachmentInput[] },
+  ): Promise<Message | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    const message: Message = {
+      id: `msg_out_${++this.idSeq}`,
+      conversationId,
+      seq: ++rec.seq,
+      direction: "out",
+      authorType: "system",
+      authorName: input.authorName ?? "Gmail",
+      body: input.body,
+      bodyHtml: input.bodyHtml,
+      status: "sent",
+      internal: false,
+      channelMsgId: input.channelMsgId,
+      channel: "email",
+      messageType: "text",
+      attachments: this.storeAttachments(input.attachments),
+      reactions: [],
+      createdAt: new Date().toISOString(),
+    };
+    rec.messages.push(message);
+    rec.lastActivityAt = message.createdAt;
+    rec.preview = input.body || "Email";
+    return message;
+  }
+
   async getAttachment(id: string): Promise<StoredAttachmentRef | undefined> {
     return this.mediaRefs.get(id);
   }

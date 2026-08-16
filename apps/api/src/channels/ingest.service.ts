@@ -277,6 +277,53 @@ export class IngestService {
     return { conversationId, created };
   }
 
+  /**
+   * Record a reply the agent sent straight from Gmail (not through Nest) onto its
+   * conversation, so the thread stays complete. Resolves the thread by
+   * References/In-Reply-To, then by the Gmail thread id; a reply to a thread Nest
+   * has never seen is skipped.
+   */
+  async ingestOutboundEmail(input: {
+    subject?: string;
+    text: string;
+    html?: string;
+    messageId?: string;
+    references?: string[];
+    threadId?: string;
+    authorName?: string;
+    attachments?: AttachmentInput[];
+  }): Promise<{ conversationId: string } | undefined> {
+    // Already stored (Nest sent it, or a previous sync grabbed it) → nothing to do.
+    if (input.messageId) {
+      const seen = await this.store.getMessageRefByChannelId(input.messageId);
+      if (seen) return { conversationId: seen.conversationId };
+    }
+    let conversationId = input.references?.length
+      ? await this.store.findConversationByMessageChannelIds(input.references)
+      : undefined;
+    if (!conversationId && input.threadId) {
+      conversationId = await this.store.findConversationByChannelRef(input.threadId);
+    }
+    if (!conversationId) return undefined;
+
+    const { html: bodyHtml } = sanitizeEmailHtml(input.html);
+    const message = await this.store.appendSyncedOutboundEmail(conversationId, {
+      body: input.text,
+      bodyHtml: bodyHtml || undefined,
+      channelMsgId: input.messageId,
+      authorName: input.authorName,
+      attachments: input.attachments,
+    });
+    if (message) {
+      const conv = await this.store.getConversation(conversationId);
+      if (conv) {
+        this.realtime.emitMessageCreated(conversationId, message, conv.orgId);
+        this.realtime.emitConversationUpdated(conv);
+      }
+    }
+    return { conversationId };
+  }
+
   /** A new conversation inherits its routed team's first-response SLA target. */
   private async applyTeamSla(conv: Conversation): Promise<void> {
     if (!conv.assignedTeamId || conv.slaDueAt) return;

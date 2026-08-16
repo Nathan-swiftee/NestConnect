@@ -1497,6 +1497,41 @@ export class PrismaStore extends Store {
     return mapMessage(message);
   }
 
+  async appendSyncedOutboundEmail(
+    conversationId: string,
+    input: { body: string; bodyHtml?: string; channelMsgId?: string; authorName?: string; attachments?: AttachmentInput[] },
+  ): Promise<Message | undefined> {
+    const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return undefined;
+    const seq = conv.seq + 1;
+    const [message] = await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          conversationId,
+          seq,
+          direction: "out",
+          authorType: "system",
+          authorName: input.authorName ?? "Gmail",
+          body: input.body,
+          bodyHtml: input.bodyHtml ?? null,
+          status: "sent",
+          channelMsgId: input.channelMsgId,
+          channel: "email",
+          messageType: "text",
+          ...(input.attachments?.length
+            ? { attachments: { create: input.attachments.map(toAttachmentCreate) } }
+            : {}),
+        },
+        include: { attachments: true },
+      }),
+      this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { seq, lastActivityAt: new Date(), preview: input.body || "Email" },
+      }),
+    ]);
+    return mapMessage(message);
+  }
+
   async getAttachment(id: string): Promise<StoredAttachmentRef | undefined> {
     const a = await this.prisma.attachment.findUnique({ where: { id } });
     return a ? { storageKey: a.r2Key, mime: a.mime, filename: a.filename } : undefined;

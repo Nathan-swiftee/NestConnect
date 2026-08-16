@@ -488,6 +488,20 @@ export abstract class Store {
     input: AppendInboundInput,
   ): Promise<Message | undefined>;
 
+  /** Record an outbound email that was sent straight from Gmail (not through
+   *  Nest) into its conversation, so the thread stays complete. Stored as an
+   *  already-sent outgoing message — no delivery is triggered. */
+  abstract appendSyncedOutboundEmail(
+    conversationId: string,
+    input: {
+      body: string;
+      bodyHtml?: string;
+      channelMsgId?: string;
+      authorName?: string;
+      attachments?: AttachmentInput[];
+    },
+  ): Promise<Message | undefined>;
+
   /** Backend-only: the storage key + mime of an attachment, for serving media. */
   abstract getAttachment(id: string): Promise<StoredAttachmentRef | undefined>;
 
