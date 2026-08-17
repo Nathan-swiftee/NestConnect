@@ -547,6 +547,8 @@ interface MsgActions {
   onReply: () => void;
   /** Forward this email on to someone else (email messages only; absent otherwise). */
   onForward?: () => void;
+  /** Open the read-receipts view for this sent email (email with recipients only). */
+  onReceipts?: () => void;
   /** Scroll to a quoted message when its preview is tapped. */
   onJump: (messageId: string) => void;
 }
@@ -588,6 +590,39 @@ function ReadReceipts({
             <span className="rcpt__time">{r.openedAt ? relativeTime(r.openedAt) : "Sent"}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/** Read receipts for a sent email, opened from the message's ⌄ menu (kept out of
+ *  the thread itself). Live: reflects opens as they arrive over the socket. */
+function ReceiptsModal({
+  recipients,
+  subject,
+  onClose,
+}: {
+  recipients: { address: string; kind: "to" | "cc"; openedAt?: string | null }[];
+  subject: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal__box rcptmodal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <h2>Read receipts</h2>
+          <button type="button" className="modal__x" onClick={onClose} aria-label="Close">
+            <XIcon />
+          </button>
+        </div>
+        <div className="modal__body">
+          {subject && <div className="rcptmodal__subj">{subject}</div>}
+          <ReadReceipts recipients={recipients} />
+          <p className="fieldhint">
+            A “Seen” is recorded when the recipient’s email app loads images. Some apps (e.g. Apple Mail)
+            load them automatically, so treat this as a strong signal, not a guarantee.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -829,10 +864,6 @@ function MessageBubble({
           </div>
         )}
 
-        {out && !m.internal && m.status !== "failed" && !!m.email?.recipients?.length && (
-          <ReadReceipts recipients={m.email.recipients} />
-        )}
-
         {actions && (
           <>
             {/* Desktop: chevron in the bubble's inner corner → actions menu (hover) */}
@@ -873,6 +904,12 @@ function MessageBubble({
                   <button type="button" className="msg__menuitem" role="menuitem" onClick={actions.onForward}>
                     <ForwardIcon />
                     <span>Forward</span>
+                  </button>
+                )}
+                {actions.onReceipts && (
+                  <button type="button" className="msg__menuitem" role="menuitem" onClick={actions.onReceipts}>
+                    <EyeIcon />
+                    <span>Read receipts</span>
                   </button>
                 )}
               </div>
@@ -1152,6 +1189,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [menuFor, setMenuFor] = useState<string | null>(null);
   // The email message currently being forwarded (drives the forward modal).
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
+  // The id of the sent email whose read receipts are open (resolved live from the
+  // thread each render, so the modal updates as opens arrive over the socket).
+  const [receiptsMsgId, setReceiptsMsgId] = useState<string | null>(null);
   // Rich-text HTML for an email reply (mirrors the Tiptap editor's content).
   const [html, setHtml] = useState("");
   // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
@@ -2475,6 +2515,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     // Forward is an email action — offered only on email messages.
                     onForward:
                       (m.channel ?? conv.channel) === "email" ? () => startForward(m) : undefined,
+                    // Read receipts — only on a sent email that has tracked recipients.
+                    onReceipts:
+                      m.direction === "out" && !m.internal && m.email?.recipients?.length
+                        ? () => { setMenuFor(null); setReceiptsMsgId(m.id); }
+                        : undefined,
                     onJump: jumpToMessage,
                   }}
                 />
@@ -2937,6 +2982,20 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           onClose={() => setForwardMsg(null)}
         />
       )}
+
+      {(() => {
+        // Resolve the message live from the thread so opens arriving over the
+        // socket update the modal while it's open.
+        const rm = receiptsMsgId ? conv.messages.find((m) => m.id === receiptsMsgId) : undefined;
+        if (!rm?.email?.recipients?.length) return null;
+        return (
+          <ReceiptsModal
+            recipients={rm.email.recipients}
+            subject={rm.email.subject ?? conv.subject ?? ""}
+            onClose={() => setReceiptsMsgId(null)}
+          />
+        );
+      })()}
     </main>
   );
 }

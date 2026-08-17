@@ -497,6 +497,11 @@ input,textarea{font:inherit}
 .rcpt--seen{color:var(--text-muted)}
 .rcpt--seen .rcpt__ic{color:var(--brand-strong)}
 .rcpt--seen .rcpt__addr{color:var(--text)}
+/* Read-receipts modal (opened from a message's ⌄ menu; kept out of the thread). */
+.modal__box.rcptmodal{width:min(440px,94vw)}
+.rcptmodal__subj{font-weight:750;font-size:var(--fs-md);color:var(--text);margin-bottom:11px;word-break:break-word}
+/* The receipts card is styled for the bubble gutter; fill the modal instead. */
+.rcptmodal .rcpts{align-self:stretch;max-width:none;margin-top:0}
 
 /* ─── Reactions, quoted replies & per-message actions (Phase 5) ───────
    Each bubble lives in a positioning wrapper so the hover toolbar / emoji
