@@ -200,6 +200,9 @@ export const CheckSingle = () => (
 export const CheckDouble = () => (
   <svg viewBox="0 0 22 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 8l3.5 3.5L12 2" /><path d="M9 11l1 1 8.5-9.5" /></svg>
 );
+export const EyeIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+);
 
 /* Channel badges: filled, centred in the 24×24 box so they sit true at
    tiny sizes (the old stroked glyphs read dated and off-centre). */

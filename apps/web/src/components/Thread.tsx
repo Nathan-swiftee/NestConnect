@@ -40,6 +40,7 @@ import {
   BoltIcon,
   CheckSingle,
   CheckDouble,
+  EyeIcon,
   AlertIcon,
   ReplyIcon,
   ForwardIcon,
@@ -550,6 +551,48 @@ interface MsgActions {
   onJump: (messageId: string) => void;
 }
 
+/** Per-recipient read receipts under an outbound email bubble (Front-style): a
+ *  compact "Seen by N of M" line plus one row per To/Cc recipient with their open
+ *  time (or "Sent" while unopened). Each recipient got their own tracked copy. */
+function ReadReceipts({
+  recipients,
+}: {
+  recipients: { address: string; kind: "to" | "cc"; openedAt?: string | null }[];
+}) {
+  const seen = recipients.filter((r) => r.openedAt).length;
+  const total = recipients.length;
+  const summary =
+    seen === 0
+      ? "Not seen yet"
+      : seen === total
+        ? total === 1
+          ? "Seen"
+          : "Seen by everyone"
+        : `Seen by ${seen} of ${total}`;
+  return (
+    <div className="rcpts">
+      <div className={"rcpts__head" + (seen ? " rcpts__head--seen" : "")}>
+        <EyeIcon />
+        <span>{summary}</span>
+      </div>
+      <div className="rcpts__list">
+        {recipients.map((r) => (
+          <div key={r.kind + r.address} className={"rcpt" + (r.openedAt ? " rcpt--seen" : "")}>
+            <span className="rcpt__ic">
+              {r.openedAt ? <CheckDouble /> : <span className="rcpt__dot" aria-hidden="true" />}
+            </span>
+            <span className="rcpt__addr" title={r.address}>
+              {r.address}
+            </span>
+            {r.kind === "cc" && <span className="rcpt__cc">Cc</span>}
+            <span className="rcpt__time">{r.openedAt ? relativeTime(r.openedAt) : "Sent"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** A single customer/agent message bubble, with any media rendered above an
  *  optional caption. Carries a quoted-reply preview, an emoji-reaction chip, and
  *  a hover toolbar (reply + react). Text-only markup is otherwise unchanged. */
@@ -784,6 +827,10 @@ function MessageBubble({
               </button>
             )}
           </div>
+        )}
+
+        {out && !m.internal && m.status !== "failed" && !!m.email?.recipients?.length && (
+          <ReadReceipts recipients={m.email.recipients} />
         )}
 
         {actions && (
