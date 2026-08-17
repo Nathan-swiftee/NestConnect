@@ -493,7 +493,7 @@ input,textarea{font:inherit}
 .rcpt__addr{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .rcpt__cc{flex:0 0 auto;font-size:9px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
   padding:1px 5px;border-radius:var(--r-full);background:var(--surface);color:var(--text-faint)}
-.rcpt__time{flex:0 0 auto;margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums}
+.rcpt__time{flex:0 0 auto;margin-left:auto;padding-left:8px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
 .rcpt--seen{color:var(--text-muted)}
 .rcpt--seen .rcpt__ic{color:var(--brand-strong)}
 .rcpt--seen .rcpt__addr{color:var(--text)}

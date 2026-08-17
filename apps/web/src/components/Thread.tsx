@@ -12,7 +12,7 @@ import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
 import { getSocket } from "../lib/socket";
-import { relativeTime, lastActive, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
+import { relativeTime, seenAt, lastActive, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { unlock } from "../lib/sound";
@@ -587,7 +587,12 @@ function ReadReceipts({
               {r.address}
             </span>
             {r.kind === "cc" && <span className="rcpt__cc">Cc</span>}
-            <span className="rcpt__time">{r.openedAt ? relativeTime(r.openedAt) : "Sent"}</span>
+            <span
+              className="rcpt__time"
+              title={r.openedAt ? new Date(r.openedAt).toLocaleString() : undefined}
+            >
+              {r.openedAt ? seenAt(r.openedAt) : "Sent"}
+            </span>
           </div>
         ))}
       </div>

@@ -27,6 +27,24 @@ export function clockTime(iso: string): string {
   return `${h}:${m < 10 ? "0" : ""}${m}`;
 }
 
+/** A read-receipt "seen at" timestamp — the actual day + clock time rather than a
+ *  relative age, so you can tell exactly when it was opened: "Today 10:53",
+ *  "Yesterday 18:07", "17 Aug 09:41" (with a year once it's not this year). */
+export function seenAt(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const t = clockTime(iso);
+  if (d.toDateString() === now.toDateString()) return `Today ${t}`;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${t}`;
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const date = d.toLocaleDateString(undefined, sameYear
+    ? { day: "numeric", month: "short" }
+    : { day: "numeric", month: "short", year: "2-digit" });
+  return `${date} ${t}`;
+}
+
 /** Conversation-list timestamp in the WhatsApp style, mirroring the in-thread day
  *  dividers rather than a raw age: today → the clock time, yesterday →
  *  "Yesterday", older → a short date ("12 Aug", or "12 Aug 24" across a year). */
