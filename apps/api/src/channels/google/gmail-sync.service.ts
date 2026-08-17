@@ -262,9 +262,15 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     // Only received (INBOX) and sent (SENT) mail matter — ignore drafts etc.
     if (!isSent && !isInbox) return false;
 
+    // Nest's own outbound (via Postmark or Gmail) carries this marker header, which
+    // Gmail preserves. Its Sent copy is the message Nest already stored, so skip it
+    // — otherwise it re-appears as a duplicate (Gmail rewrites the Message-ID it
+    // assigns, so the Message-ID dedup below can't catch a Gmail-sent copy).
+    if (isSent && headerValue(msg, "X-Ding-Origin") === "nest") return false;
+
     const messageId = headerValue(msg, "Message-ID");
-    // Idempotency: skip anything we've already stored. This is also how Nest's
-    // own sends are ignored — the SENT copy carries the Message-ID we stored.
+    // Idempotency: skip anything we've already stored (belt-and-suspenders with the
+    // marker above; also dedups a genuine Gmail-direct send seen twice).
     if (messageId && (await this.store.findConversationByMessageChannelIds([messageId]))) {
       return false;
     }

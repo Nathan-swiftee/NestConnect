@@ -325,6 +325,10 @@ export function buildMime(input: BuildMimeInput): string {
     `Subject: ${encodeHeader(input.subject)}`,
     `Message-ID: ${input.messageId}`,
     "MIME-Version: 1.0",
+    // Marks this as a Nest-originated send. Gmail preserves custom X- headers but
+    // rewrites the Message-ID it assigns, so the sync can't reliably dedup our own
+    // Sent copies by Message-ID — it keys off this header instead (see gmail-sync).
+    "X-Ding-Origin: nest",
   ];
   if (input.cc?.length) headers.push(`Cc: ${input.cc.join(", ")}`);
   if (input.bcc?.length) headers.push(`Bcc: ${input.bcc.join(", ")}`);

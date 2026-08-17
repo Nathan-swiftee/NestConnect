@@ -155,7 +155,11 @@ export class EmailProvider extends ChannelProvider {
     }
 
     try {
-      const headers: Array<{ Name: string; Value: string }> = [{ Name: "Message-ID", Value: messageId }];
+      const headers: Array<{ Name: string; Value: string }> = [
+        { Name: "Message-ID", Value: messageId },
+        // Marks this as a Nest-originated send (see gmail-sync dedup).
+        { Name: "X-Ding-Origin", Value: "nest" },
+      ];
       if (params.context?.inReplyTo) {
         headers.push({ Name: "In-Reply-To", Value: params.context.inReplyTo });
         // References chains the whole thread when known; else just the parent.
