@@ -12,7 +12,7 @@ import { MediaService } from "../../storage/media.service";
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
 import { buildMime, gmail, GmailApiError } from "./gmail-api";
 import { textToHtml } from "../email/html-sanitize";
-import { appendSignature, inlineInternalImages, subjectLine } from "../email/email.provider";
+import { appendSignature, appendTrackingPixel, inlineInternalImages, subjectLine } from "../email/email.provider";
 
 /**
  * Sends outbound email through a Gmail-connected inbox using the Gmail API and
@@ -54,7 +54,8 @@ export class GmailProvider extends ChannelProvider {
 
     if (this.google.isMock) {
       const extra = attachments.length ? ` (+${attachments.length} attachment)` : "";
-      this.logger.log(`[mock] Gmail send → ${params.to} · "${subject}"${extra}`);
+      const track = params.trackingPixelUrl ? ` [track ${params.trackingPixelUrl}]` : "";
+      this.logger.log(`[mock] Gmail send → ${params.to} · "${subject}"${extra}${track}`);
       return { ok: true, channelMsgId: messageId };
     }
 
@@ -70,7 +71,9 @@ export class GmailProvider extends ChannelProvider {
       );
       // Embed any images hosted on our own media endpoint as cid: parts (a
       // multipart/related) so a recipient with no app session can load them.
-      const { html: htmlBody, inlineImages } = await inlineInternalImages(signedHtml, this.media);
+      const { html: htmlInlined, inlineImages } = await inlineInternalImages(signedHtml, this.media);
+      // Append this recipient's open-tracking pixel (per-recipient read receipts).
+      const htmlBody = appendTrackingPixel(htmlInlined, params.trackingPixelUrl);
       const raw = buildMime({
         from: fromAddress,
         fromName: inbox.name,

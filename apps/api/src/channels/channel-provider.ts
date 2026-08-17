@@ -89,6 +89,10 @@ export interface SendParams {
   template?: OutboundTemplate;
   /** Provider id of a message this one quotes/replies to (WhatsApp context). */
   replyToChannelMsgId?: string;
+  /** An open-tracking pixel URL to embed (email providers only). When set, a
+   *  hidden 1×1 `<img>` pointing here is appended to the HTML body so a request
+   *  for it records that THIS recipient opened the email (per-recipient copies). */
+  trackingPixelUrl?: string;
 }
 
 /**

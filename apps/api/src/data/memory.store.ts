@@ -46,6 +46,7 @@ import {
   type AttachmentInput,
   type MessageStatusChange,
   type OutboundDeliveryMeta,
+  type EmailRecipientInput,
   type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
@@ -118,6 +119,9 @@ export class MemoryStore extends Store {
       providerErrorCode?: string;
     }
   >();
+  /** Email tracking-pixel token → the message + recipient address it belongs to,
+   *  so an open (which only knows the token) resolves to a person. */
+  private emailTokenIndex = new Map<string, { messageId: string; address: string }>();
   private idSeq = 10_000;
   private sessions: StoredSession[] = [];
   private twoFactor = new Map<string, TwoFactorState>();
@@ -1127,6 +1131,37 @@ export class MemoryStore extends Store {
       meta.providerError = undefined;
       meta.providerErrorCode = undefined;
     }
+    return { conversationId: hit.rec.id, message: hit.m };
+  }
+
+  async registerEmailRecipients(
+    messageId: string,
+    recipients: EmailRecipientInput[],
+  ): Promise<void> {
+    const hit = this.findMsg(messageId);
+    if (!hit || !recipients.length) return;
+    // Attach the recipient list to the message's email meta (openedAt starts null)
+    // and index each token so an open can be traced back to the person.
+    const existing = hit.m.email ?? {};
+    hit.m.email = {
+      ...existing,
+      recipients: recipients.map((r) => ({ address: r.address, kind: r.kind, openedAt: null })),
+    };
+    for (const r of recipients) {
+      this.emailTokenIndex.set(r.token, { messageId, address: r.address });
+    }
+  }
+
+  async recordEmailOpen(token: string): Promise<MessageStatusChange | undefined> {
+    const ref = this.emailTokenIndex.get(token);
+    if (!ref) return undefined;
+    const hit = this.findMsg(ref.messageId);
+    const rcpt = hit?.m.email?.recipients?.find((r) => r.address === ref.address);
+    if (!hit || !rcpt) return undefined;
+    // First open of this recipient → stamp the time and broadcast the "Seen".
+    // Re-opens (Gmail proxy re-fetches, etc.) are silently ignored for realtime.
+    if (rcpt.openedAt) return undefined;
+    rcpt.openedAt = new Date().toISOString();
     return { conversationId: hit.rec.id, message: hit.m };
   }
 

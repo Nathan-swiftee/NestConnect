@@ -367,6 +367,9 @@ model Message {
   conversation Conversation @relation(fields: [conversationId], references: [id])
   author       User?        @relation(fields: [authorUserId], references: [id])
   attachments  Attachment[]
+  // Per-recipient email open-tracking rows (one per To/Cc address on an
+  // outbound email; each carries a unique tracking-pixel token).
+  emailRecipients EmailRecipient[]
 
   @@index([conversationId, seq])
   // Backs inbound idempotency + delivery-status lookups (both hit channelMsgId).
@@ -396,6 +399,30 @@ model Attachment {
   createdAt  DateTime @default(now())
 
   message Message? @relation(fields: [messageId], references: [id])
+
+  @@index([messageId])
+}
+
+/// One outbound-email recipient (To or Cc), tracked individually for read
+/// receipts. Each recipient gets their own copy of the email carrying a unique
+/// tracking-pixel token; a request for that pixel stamps `openedAt`. This is the
+/// per-recipient model Front uses: you see who opened, not just that someone did.
+model EmailRecipient {
+  id        String    @id @default(cuid())
+  messageId String
+  // The recipient's email address (lower-cased).
+  address   String
+  // "to" | "cc" — where this address sat on the outbound email.
+  kind      String    @default("to")
+  // Unguessable token embedded in this recipient's tracking-pixel URL.
+  token     String    @unique
+  // When the tracking pixel was first requested (null until opened).
+  openedAt  DateTime?
+  // How many times the pixel has been requested (opens + re-opens/prefetches).
+  openCount Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@index([messageId])
 }

@@ -27,6 +27,17 @@ export function appendSignature(
 }
 
 /**
+ * Append a hidden 1×1 open-tracking pixel to the outbound HTML body. When the
+ * recipient's client loads images, a request for this URL records that THIS
+ * recipient opened the email (per-recipient read receipts). No-op without a URL.
+ * Shared by the Postmark + Gmail providers.
+ */
+export function appendTrackingPixel(html: string, url?: string): string {
+  if (!url) return html;
+  return `${html}<img src="${url}" width="1" height="1" alt="" style="display:none;max-height:0;overflow:hidden" />`;
+}
+
+/**
  * An image to embed inline in an outbound email, referenced from the HTML as
  * `cid:<contentId>`. `contentId` is the bare id (the MIME header carries it in
  * angle brackets: `Content-ID: <contentId>`).
@@ -136,7 +147,10 @@ export class EmailProvider extends ChannelProvider {
           errorCode: "not_connected",
         };
       }
-      this.logger.log(`[mock] Email → ${params.to} · "${subject}"`);
+      this.logger.log(
+        `[mock] Email → ${params.to} · "${subject}"` +
+          (params.trackingPixelUrl ? ` [track ${params.trackingPixelUrl}]` : ""),
+      );
       return { ok: true, channelMsgId: messageId };
     }
 
@@ -159,7 +173,9 @@ export class EmailProvider extends ChannelProvider {
       );
       // Embed any images hosted on our own media endpoint as cid: attachments so
       // a recipient (no app session) can load them; external images are left be.
-      const { html: htmlBody, inlineImages } = await inlineInternalImages(signedHtml, this.media);
+      const { html: htmlInlined, inlineImages } = await inlineInternalImages(signedHtml, this.media);
+      // Append this recipient's open-tracking pixel (per-recipient read receipts).
+      const htmlBody = appendTrackingPixel(htmlInlined, params.trackingPixelUrl);
       const attachments = [
         ...(params.media ?? []).map((m) => ({
           Name: m.filename,

@@ -127,6 +127,14 @@ export interface OutboundDeliveryMeta {
   forwardTo?: string[];
 }
 
+/** A per-recipient email open-tracking row to register at send time (one per
+ *  To/Cc address; `token` is the unguessable id embedded in its pixel URL). */
+export interface EmailRecipientInput {
+  address: string;
+  kind: "to" | "cc";
+  token: string;
+}
+
 /** The minimal record the delivery worker needs to (re)send an outbound message. */
 export interface OutboundMessageRef {
   messageId: string;
@@ -511,6 +519,20 @@ export abstract class Store {
     messageId: string,
     channelMsgId?: string,
   ): Promise<MessageStatusChange | undefined>;
+
+  /* ---- per-recipient email open tracking (read receipts) ---- */
+  /** Register the tracking rows for an outbound email — one per To/Cc address,
+   *  each with its own pixel token — so an open can be attributed to a person. */
+  abstract registerEmailRecipients(
+    messageId: string,
+    recipients: EmailRecipientInput[],
+  ): Promise<void>;
+
+  /** Record an email open by its pixel token: stamp `openedAt` the first time and
+   *  bump the open count. Returns the affected message (so the caller can
+   *  broadcast the "Seen") ONLY on the first open of that recipient — undefined
+   *  for a repeat open or an unknown token. */
+  abstract recordEmailOpen(token: string): Promise<MessageStatusChange | undefined>;
 
   /** Record a failed send attempt. `permanent` flips the message to failed
    *  (terminal) with `reason`; otherwise it stays in flight for the queue to

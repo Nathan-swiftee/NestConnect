@@ -289,6 +289,18 @@ export const messageSchema = z.object({
       /** Present on a forwarded email: the people it was forwarded on to, shown
        *  on the bubble as "Forwarded to …" (distinct from a reply's recipient). */
       forwardedTo: z.array(z.string()).optional(),
+      /** Per-recipient read tracking (To/Cc). Each got their own tracked copy;
+       *  `openedAt` is set once their tracking pixel is first requested. Powers
+       *  the per-recipient "Seen" indicators on an outbound email. */
+      recipients: z
+        .array(
+          z.object({
+            address: z.string(),
+            kind: z.enum(["to", "cc"]).default("to"),
+            openedAt: z.string().nullable().optional(),
+          }),
+        )
+        .optional(),
     })
     .optional(),
   createdAt: z.string(), // ISO-8601

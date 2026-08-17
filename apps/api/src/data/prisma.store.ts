@@ -67,6 +67,7 @@ import {
   type AttachmentInput,
   type MessageStatusChange,
   type OutboundDeliveryMeta,
+  type EmailRecipientInput,
   type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
@@ -878,7 +879,7 @@ export class PrismaStore extends Store {
     // older history exists) — never the full lifetime thread.
     const latest = await this.prisma.message.findMany({
       where: { conversationId: id },
-      include: { attachments: true },
+      include: { attachments: true, emailRecipients: true },
       orderBy: { seq: "desc" },
       take: MESSAGES_PAGE_SIZE + 1,
     });
@@ -903,7 +904,7 @@ export class PrismaStore extends Store {
         conversationId,
         ...(beforeSeq != null && Number.isFinite(beforeSeq) ? { seq: { lt: beforeSeq } } : {}),
       },
-      include: { attachments: true },
+      include: { attachments: true, emailRecipients: true },
       orderBy: { seq: "desc" },
       take: limit + 1,
     });
@@ -1304,6 +1305,36 @@ export class PrismaStore extends Store {
       include: { attachments: true },
     });
     return { conversationId: updated.conversationId, message: mapMessage(updated) };
+  }
+
+  async registerEmailRecipients(
+    messageId: string,
+    recipients: EmailRecipientInput[],
+  ): Promise<void> {
+    if (!recipients.length) return;
+    await this.prisma.emailRecipient.createMany({
+      data: recipients.map((r) => ({ messageId, address: r.address, kind: r.kind, token: r.token })),
+      skipDuplicates: true,
+    });
+  }
+
+  async recordEmailOpen(token: string): Promise<MessageStatusChange | undefined> {
+    const rcpt = await this.prisma.emailRecipient.findUnique({ where: { token } });
+    if (!rcpt) return undefined;
+    // Always bump the count; stamp the time only on the first open.
+    const firstOpen = rcpt.openedAt == null;
+    await this.prisma.emailRecipient.update({
+      where: { token },
+      data: { openCount: { increment: 1 }, ...(firstOpen ? { openedAt: new Date() } : {}) },
+    });
+    // Re-opens (Gmail proxy re-fetches, etc.) don't re-broadcast.
+    if (!firstOpen) return undefined;
+    const message = await this.prisma.message.findUnique({
+      where: { id: rcpt.messageId },
+      include: { attachments: true, emailRecipients: true },
+    });
+    if (!message) return undefined;
+    return { conversationId: message.conversationId, message: mapMessage(message) };
   }
 
   async recordSendFailure(

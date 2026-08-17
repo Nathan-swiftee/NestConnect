@@ -1,8 +1,10 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { Store } from "../data/store";
+import { Store, type EmailRecipientInput } from "../data/store";
 import { MediaService } from "../storage/media.service";
 import { redactSecrets } from "../crypto/redact";
+import { env } from "../config/env";
 import {
   CHANNEL_PROVIDERS,
   ChannelProvider,
@@ -10,6 +12,8 @@ import {
   type OutboundMedia,
   type OutboundTemplate,
   type SendContext,
+  type SendParams,
+  type SendResult,
 } from "./channel-provider";
 import { forwardSubject } from "./email/email.provider";
 
@@ -130,12 +134,9 @@ export class ChannelDispatcher {
     const replyToChannelMsgId = message.quotedMsgId
       ? conversation.messages.find((m) => m.id === message.quotedMsgId)?.channelMsgId ?? undefined
       : undefined;
-    const result = await provider.sendText({
-      to,
+    const base = {
       body: message.body,
       bodyHtml: message.bodyHtml ?? undefined,
-      cc,
-      bcc: opts?.bcc,
       signatureHtml: opts?.signatureHtml,
       conversation,
       inboxId: sendingInboxId,
@@ -143,7 +144,13 @@ export class ChannelDispatcher {
       media,
       template,
       replyToChannelMsgId,
-    });
+    };
+    // Email fans out into one tracked copy per recipient (read receipts); other
+    // channels send a single message. A template send skips tracking (WhatsApp).
+    const result =
+      channel === "email" && !template
+        ? await this.sendEmailPerRecipient(provider, message.id, base, to, cc ?? [], opts?.bcc ?? [])
+        : await provider.sendText({ ...base, to, cc, bcc: opts?.bcc });
 
     if (result.ok) {
       return { ok: true, channelMsgId: result.channelMsgId, simulated: Boolean(result.simulated) };
@@ -159,6 +166,75 @@ export class ChannelDispatcher {
       error: result.error,
       code: result.errorCode,
     };
+  }
+
+  /**
+   * Send an email as one copy PER recipient (Front-style read receipts): each
+   * To/Cc address gets its own message carrying a unique tracking pixel, so an
+   * open is attributable to a person, not just "someone". The primary (`to`)
+   * copy carries the full threading context and IS the delivery outcome (its
+   * Message-ID becomes the stored message's); Cc/Bcc copies are best-effort and
+   * drop the Gmail threadId so they don't fold into the customer's server thread.
+   * Bcc addresses get individual, untracked copies (hidden, as Bcc should be).
+   */
+  private async sendEmailPerRecipient(
+    provider: ChannelProvider,
+    messageId: string,
+    base: Omit<SendParams, "to" | "cc" | "bcc" | "trackingPixelUrl">,
+    to: string,
+    cc: string[],
+    bcc: string[],
+  ): Promise<SendResult> {
+    const norm = (a: string) => a.trim().toLowerCase();
+    const seen = new Set<string>();
+    const copies: Array<{ address: string; kind: "to" | "cc" | "bcc"; track: boolean }> = [];
+    const add = (address: string, kind: "to" | "cc" | "bcc", track: boolean) => {
+      const a = norm(address);
+      // De-dup case-insensitively; the primary `to` claims an address over a Cc/Bcc.
+      if (!a || seen.has(a)) return;
+      seen.add(a);
+      copies.push({ address: address.trim(), kind, track });
+    };
+    add(to, "to", true);
+    for (const a of cc) add(a, "cc", true);
+    for (const a of bcc) add(a, "bcc", false);
+
+    // Register the tracked (To/Cc) recipients up-front, each with a unique pixel
+    // token, so an open racing back mid-send still resolves to a person.
+    const tokenByAddress = new Map<string, string>();
+    const tracked: EmailRecipientInput[] = [];
+    for (const c of copies) {
+      if (!c.track) continue;
+      const token = randomUUID().replace(/-/g, "");
+      tokenByAddress.set(norm(c.address), token);
+      tracked.push({ address: norm(c.address), kind: c.kind as "to" | "cc", token });
+    }
+    if (tracked.length) await this.store.registerEmailRecipients(messageId, tracked);
+
+    const trackBase = env.appUrl.replace(/\/+$/, "");
+    let primary: SendResult = { ok: false, retryable: false, error: "No recipient to send to" };
+    for (const c of copies) {
+      const token = tokenByAddress.get(norm(c.address));
+      // Only the primary keeps the Gmail threadId; Cc/Bcc still thread on the
+      // client via In-Reply-To/References but never join the customer's thread.
+      const context =
+        c.kind === "to"
+          ? base.context
+          : base.context
+            ? { ...base.context, threadId: undefined }
+            : undefined;
+      const res = await provider.sendText({
+        ...base,
+        to: c.address,
+        context,
+        trackingPixelUrl: token ? `${trackBase}/api/track/open/${token}.gif` : undefined,
+      });
+      if (c.kind === "to") primary = res;
+      else if (!res.ok) {
+        this.logger.warn(`Email ${c.kind} copy to ${c.address} failed: ${redactSecrets(res.error)}`);
+      }
+    }
+    return primary;
   }
 
   /** The org's first inbox of a given channel type — the send-from inbox for a

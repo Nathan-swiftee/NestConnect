@@ -130,7 +130,11 @@ type ConversationSummaryRow = Prisma.ConversationGetPayload<{
     messages: true;
   };
 }>;
-type MessageRow = Prisma.MessageGetPayload<{ include: { attachments: true } }>;
+// Base row includes attachments; emailRecipients is optional so the many message
+// queries that don't need open-tracking (fresh sends, status writes) still map.
+type MessageRow = Prisma.MessageGetPayload<{ include: { attachments: true } }> & {
+  emailRecipients?: Prisma.EmailRecipientGetPayload<Record<string, never>>[];
+};
 type AttachmentRow = Prisma.AttachmentGetPayload<object>;
 
 /** Same-origin URL the client uses to stream/download the file. */
@@ -278,9 +282,20 @@ export function mapMessage(m: MessageRow): Message {
   const dm = m.deliveryMeta as
     | { subject?: string; cc?: string[]; bcc?: string[]; forwardTo?: string[] }
     | null;
+  // Per-recipient open-tracking rows, To before Cc (the natural reading order).
+  const recipients = (m.emailRecipients ?? []).length
+    ? [...m.emailRecipients!]
+        .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "to" ? -1 : 1))
+        .map((r) => ({
+          address: r.address,
+          kind: (r.kind === "cc" ? "cc" : "to") as "to" | "cc",
+          openedAt: r.openedAt ? r.openedAt.toISOString() : null,
+        }))
+    : undefined;
+  const hasMeta = dm && (dm.subject || dm.cc?.length || dm.bcc?.length || dm.forwardTo?.length);
   const email =
-    dm && (dm.subject || dm.cc?.length || dm.bcc?.length || dm.forwardTo?.length)
-      ? { subject: dm.subject, cc: dm.cc, bcc: dm.bcc, forwardedTo: dm.forwardTo }
+    hasMeta || recipients
+      ? { subject: dm?.subject, cc: dm?.cc, bcc: dm?.bcc, forwardedTo: dm?.forwardTo, recipients }
       : undefined;
   return {
     id: m.id,
