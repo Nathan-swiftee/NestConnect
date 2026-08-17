@@ -135,6 +135,16 @@ export interface EmailRecipientInput {
   token: string;
 }
 
+/**
+ * Ignore email "opens" that arrive within this window of sending. A near-instant
+ * pixel request is almost never a human read — it's an image proxy pre-caching
+ * the image (most notably Gmail's GoogleImageProxy, which fetches images the
+ * moment a message lands, not when it's opened). A real "the customer read it"
+ * essentially never arrives this fast, so treating early hits as opens produces
+ * a false "Seen" the instant you send. Suppressing them removes that.
+ */
+export const EMAIL_OPEN_GRACE_MS = 45_000;
+
 /** The minimal record the delivery worker needs to (re)send an outbound message. */
 export interface OutboundMessageRef {
   messageId: string;

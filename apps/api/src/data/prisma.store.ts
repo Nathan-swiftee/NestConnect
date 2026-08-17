@@ -59,6 +59,7 @@ import { PrismaService } from "./prisma.service";
 import { SecretEncryptionService } from "../crypto/secret-encryption.service";
 import {
   Store,
+  EMAIL_OPEN_GRACE_MS,
   type AnalyticsBundle,
   type AnalyticsConvo,
   type AnalyticsMsg,
@@ -1321,14 +1322,19 @@ export class PrismaStore extends Store {
   async recordEmailOpen(token: string): Promise<MessageStatusChange | undefined> {
     const rcpt = await this.prisma.emailRecipient.findUnique({ where: { token } });
     if (!rcpt) return undefined;
-    // Always bump the count; stamp the time only on the first open.
+    // A hit within the grace window of sending is a proxy pre-cache (e.g. Gmail's
+    // GoogleImageProxy), not a human read — bump the count but don't call it seen.
+    const withinGrace = Date.now() - rcpt.createdAt.getTime() < EMAIL_OPEN_GRACE_MS;
     const firstOpen = rcpt.openedAt == null;
     await this.prisma.emailRecipient.update({
       where: { token },
-      data: { openCount: { increment: 1 }, ...(firstOpen ? { openedAt: new Date() } : {}) },
+      data: {
+        openCount: { increment: 1 },
+        ...(firstOpen && !withinGrace ? { openedAt: new Date() } : {}),
+      },
     });
-    // Re-opens (Gmail proxy re-fetches, etc.) don't re-broadcast.
-    if (!firstOpen) return undefined;
+    // Re-opens (Gmail proxy re-fetches, etc.) and early pre-caches don't broadcast.
+    if (!firstOpen || withinGrace) return undefined;
     const message = await this.prisma.message.findUnique({
       where: { id: rcpt.messageId },
       include: { attachments: true, emailRecipients: true },

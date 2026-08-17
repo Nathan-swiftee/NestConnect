@@ -38,6 +38,7 @@ import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, pre
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
+  EMAIL_OPEN_GRACE_MS,
   type AnalyticsBundle,
   type AnalyticsConvo,
   type AnalyticsMsg,
@@ -119,9 +120,10 @@ export class MemoryStore extends Store {
       providerErrorCode?: string;
     }
   >();
-  /** Email tracking-pixel token → the message + recipient address it belongs to,
-   *  so an open (which only knows the token) resolves to a person. */
-  private emailTokenIndex = new Map<string, { messageId: string; address: string }>();
+  /** Email tracking-pixel token → the message + recipient address it belongs to
+   *  (plus the send time, for the open grace window), so an open (which only
+   *  knows the token) resolves to a person. */
+  private emailTokenIndex = new Map<string, { messageId: string; address: string; sentAt: number }>();
   private idSeq = 10_000;
   private sessions: StoredSession[] = [];
   private twoFactor = new Map<string, TwoFactorState>();
@@ -1147,14 +1149,17 @@ export class MemoryStore extends Store {
       ...existing,
       recipients: recipients.map((r) => ({ address: r.address, kind: r.kind, openedAt: null })),
     };
+    const sentAt = Date.now();
     for (const r of recipients) {
-      this.emailTokenIndex.set(r.token, { messageId, address: r.address });
+      this.emailTokenIndex.set(r.token, { messageId, address: r.address, sentAt });
     }
   }
 
   async recordEmailOpen(token: string): Promise<MessageStatusChange | undefined> {
     const ref = this.emailTokenIndex.get(token);
     if (!ref) return undefined;
+    // A hit within the grace window is a proxy pre-cache (e.g. Gmail), not a read.
+    if (Date.now() - ref.sentAt < EMAIL_OPEN_GRACE_MS) return undefined;
     const hit = this.findMsg(ref.messageId);
     const rcpt = hit?.m.email?.recipients?.find((r) => r.address === ref.address);
     if (!hit || !rcpt) return undefined;
