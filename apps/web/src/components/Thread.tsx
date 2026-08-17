@@ -858,6 +858,13 @@ function MessageBubble({
             </button>
             {actions.menuOpen && (
               <div className="msg__menu" role="menu">
+                {/* React lives in the menu too — it's the reliable path on touch,
+                    where the long-press gesture can't reach an email bubble's
+                    iframe. Opens the same quick-reaction row. */}
+                <button type="button" className="msg__menuitem msg__menuitem--touch" role="menuitem" onClick={actions.onHold}>
+                  <EmojiIcon />
+                  <span>React</span>
+                </button>
                 <button type="button" className="msg__menuitem" role="menuitem" onClick={actions.onReply}>
                   <ReplyIcon />
                   <span>Reply</span>

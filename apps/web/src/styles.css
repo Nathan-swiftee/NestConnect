@@ -616,6 +616,8 @@ input,textarea{font:inherit}
   font-size:var(--fs-sm);font-weight:600;color:var(--text);text-align:left;transition:background .1s}
 .msg__menuitem:hover{background:var(--surface-2)}
 .msg__menuitem svg{width:16px;height:16px;color:var(--text-muted)}
+/* React-in-menu is a touch-only affordance; desktop reacts via the hover smiley. */
+.msg__menuitem--touch{display:none}
 @keyframes popIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
 /* Reaction picker entrance, WhatsApp-style: the pill grows out of the near
    corner, then the emojis pop in one-by-one with a little overshoot. */
@@ -672,6 +674,14 @@ input,textarea{font:inherit}
   /* A long-press is the reaction gesture, so suppress native text selection and
      the iOS "Copy / Look Up" callout on the WhatsApp gesture rows (only). */
   .msg--gesture,.msg--gesture *{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+  /* No hover on touch, so the actions chevron is always tappable (a bigger hit
+     target) — it's the one reliable path to React / Reply / Forward on an email
+     bubble, whose iframe swallows the long-press + swipe gestures. */
+  .msg__menubtn{opacity:1;pointer-events:auto;width:30px;height:26px}
+  .msg__menubtn svg{width:16px;height:16px}
+  /* React joins Reply/Forward in that menu (long-press can't reach the iframe). */
+  .msg__menuitem--touch{display:flex}
+  .msg__menuitem{padding:11px 12px}
   .msg__react.held{opacity:1;pointer-events:auto;animation:reactIn .19s cubic-bezier(.2,.9,.3,1.1)}
   .msg__react.held .msg__react-e{animation:emojiPop .36s cubic-bezier(.25,.8,.35,1) backwards}
   .msg.in .msg__react{top:-52px;left:0;transform-origin:bottom left}
