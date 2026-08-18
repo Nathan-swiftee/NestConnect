@@ -33,7 +33,7 @@ export interface MailInput {
 }
 export interface MailResult {
   sent: boolean;
-  via?: "smtp" | "postmark" | "gmail";
+  via?: "resend" | "smtp" | "postmark" | "gmail";
   error?: string;
 }
 
@@ -53,23 +53,58 @@ export class Mailer {
     private readonly moduleRef: ModuleRef,
   ) {}
 
-  /** True when any transactional transport is available (Gmail, SMTP or Postmark). */
+  /** True when any transactional transport is available (Resend, Gmail, SMTP, Postmark). */
   async isConfigured(): Promise<boolean> {
+    if (env.resend.apiKey) return true;
     if (await this.findGmailInbox()) return true;
     if (env.email.postmarkToken) return true;
     return (await resolveSmtpConfig(this.store).catch(() => null)) !== null;
   }
 
   async sendMail(input: MailInput): Promise<MailResult> {
-    // Gmail API first: it runs over HTTPS, so it delivers even on hosts that
-    // block outbound SMTP, and reuses the mailbox already connected in
-    // Integrations. Returns null only when no Gmail inbox is connected.
+    // Resend first when configured: it's the intended transport for system mail,
+    // runs over HTTPS (delivers even where the host blocks outbound SMTP), and is
+    // a single API call with no mailbox lookup.
+    if (env.resend.apiKey) return this.sendViaResend(input);
+    // Gmail API next: also HTTPS, and reuses the mailbox connected in Integrations.
+    // Returns null only when no Gmail inbox is connected.
     const viaGmail = await this.sendViaGmail(input);
     if (viaGmail) return viaGmail;
     const smtp = await resolveSmtpConfig(this.store).catch(() => null);
     if (smtp) return this.sendViaSmtp(smtp, input);
     if (env.email.postmarkToken) return this.sendViaPostmark(input);
     return { sent: false, error: "No transactional email is configured" };
+  }
+
+  private async sendViaResend(input: MailInput): Promise<MailResult> {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        signal: AbortSignal.timeout(15_000), // never hang on a stalled HTTP call
+        headers: {
+          Authorization: `Bearer ${env.resend.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          from: env.resend.from,
+          to: input.to,
+          subject: input.subject,
+          text: input.text,
+          html: input.html,
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { id?: string; message?: string; name?: string };
+      if (!res.ok || !json.id) {
+        const msg = json.message || json.name || `HTTP ${res.status}`;
+        this.logger.warn(`Resend send to ${input.to} failed: ${msg}`);
+        return { sent: false, via: "resend", error: msg };
+      }
+      return { sent: true, via: "resend" };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Resend send to ${input.to} errored: ${msg}`);
+      return { sent: false, via: "resend", error: msg };
+    }
   }
 
   /** The org's Gmail-connected inbox (an email inbox whose provider is gmail),

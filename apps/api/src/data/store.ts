@@ -136,14 +136,18 @@ export interface EmailRecipientInput {
 }
 
 /**
- * Ignore email "opens" that arrive within this window of sending. A near-instant
- * pixel request is almost never a human read — it's an image proxy pre-caching
- * the image (most notably Gmail's GoogleImageProxy, which fetches images the
- * moment a message lands, not when it's opened). A real "the customer read it"
- * essentially never arrives this fast, so treating early hits as opens produces
- * a false "Seen" the instant you send. Suppressing them removes that.
+ * Ignore email "opens" that arrive within this SHORT window of sending. Gmail (and
+ * other clients) fetch the tracking pixel when the recipient OPENS the mail — not
+ * on delivery — and respect per-recipient URLs, so a genuine open is reliable and
+ * essentially never lands in the first few seconds. This window only swallows the
+ * send-instant race (chiefly the sender's own client rendering the just-sent Sent
+ * copy). It is deliberately small: a longer window was suppressing real opens,
+ * because once a client caches the pixel it won't re-fetch, so a missed early hit
+ * becomes a permanently-missed open. (The complete fix for the sender viewing
+ * their own Sent copy is stripping the pixel from that copy — a Gmail-API step we
+ * can add if self-opens prove a problem in practice.)
  */
-export const EMAIL_OPEN_GRACE_MS = 45_000;
+export const EMAIL_OPEN_GRACE_MS = 10_000;
 
 /** The minimal record the delivery worker needs to (re)send an outbound message. */
 export interface OutboundMessageRef {

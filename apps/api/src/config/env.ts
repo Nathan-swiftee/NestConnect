@@ -71,6 +71,14 @@ export const env = {
     // true → implicit TLS on connect (port 465); false → STARTTLS (port 587).
     secure: (process.env.SMTP_SECURE ?? "") === "true",
   },
+  // Resend (https://resend.com) for the app's OWN transactional email — the
+  // preferred transport for system mail (invites, resets, codes) when set. Runs
+  // over HTTPS, so it delivers on hosts that block outbound SMTP (Railway does).
+  // `from` must be on a domain verified in Resend; falls back to EMAIL_FROM.
+  resend: {
+    apiKey: process.env.RESEND_API_KEY ?? "",
+    from: process.env.RESEND_FROM ?? process.env.EMAIL_FROM ?? "support@swiftee.co.uk",
+  },
   gmail: {
     // Inbound polling cadence in seconds; 0 disables the poller (push-only).
     pollSeconds: Number(process.env.GMAIL_POLL_SECONDS ?? 60),
