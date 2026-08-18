@@ -4,7 +4,7 @@ import nodemailer from "nodemailer";
 import type { Inbox } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
-import { resolveSmtpConfig, type SmtpConfig } from "./smtp-config";
+import { resolveResendConfig, resolveSmtpConfig, type ResendConfig, type SmtpConfig } from "./smtp-config";
 import { GMAIL_CONFIG, GoogleOAuthService } from "../channels/google/google-oauth.service";
 import { buildMime, gmail } from "../channels/google/gmail-api";
 
@@ -55,17 +55,18 @@ export class Mailer {
 
   /** True when any transactional transport is available (Resend, Gmail, SMTP, Postmark). */
   async isConfigured(): Promise<boolean> {
-    if (env.resend.apiKey) return true;
+    if (await resolveResendConfig(this.store).catch(() => null)) return true;
     if (await this.findGmailInbox()) return true;
     if (env.email.postmarkToken) return true;
     return (await resolveSmtpConfig(this.store).catch(() => null)) !== null;
   }
 
   async sendMail(input: MailInput): Promise<MailResult> {
-    // Resend first when configured: it's the intended transport for system mail,
-    // runs over HTTPS (delivers even where the host blocks outbound SMTP), and is
-    // a single API call with no mailbox lookup.
-    if (env.resend.apiKey) return this.sendViaResend(input);
+    // Resend first when configured (in Settings › Integrations or via env): it's
+    // the intended transport for system mail, runs over HTTPS (delivers even where
+    // the host blocks outbound SMTP), and is a single API call with no lookup.
+    const resend = await resolveResendConfig(this.store).catch(() => null);
+    if (resend) return this.sendViaResend(resend, input);
     // Gmail API next: also HTTPS, and reuses the mailbox connected in Integrations.
     // Returns null only when no Gmail inbox is connected.
     const viaGmail = await this.sendViaGmail(input);
@@ -76,17 +77,17 @@ export class Mailer {
     return { sent: false, error: "No transactional email is configured" };
   }
 
-  private async sendViaResend(input: MailInput): Promise<MailResult> {
+  private async sendViaResend(cfg: ResendConfig, input: MailInput): Promise<MailResult> {
     try {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         signal: AbortSignal.timeout(15_000), // never hang on a stalled HTTP call
         headers: {
-          Authorization: `Bearer ${env.resend.apiKey}`,
+          Authorization: `Bearer ${cfg.apiKey}`,
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          from: env.resend.from,
+          from: cfg.from,
           to: input.to,
           subject: input.subject,
           text: input.text,

@@ -50,6 +50,45 @@ export async function resolveSmtpConfig(store: Store, orgId: string = ORG_ID): P
   return null;
 }
 
+/* AppSetting keys for the org's Resend (transactional email) credentials, set in
+   Settings › Setup. `resend_api_key` is encrypted at rest. */
+export const RESEND_API_KEY_KEY = "resend_api_key";
+export const RESEND_FROM_KEY = "resend_from";
+
+/** Everything the mailer needs to send via Resend's HTTPS API. */
+export interface ResendConfig {
+  apiKey: string;
+  from: string;
+}
+
+/**
+ * Resolve the active Resend configuration. An org's saved Setup values override
+ * the environment defaults (RESEND_API_KEY / RESEND_FROM), so Resend can be
+ * enabled from the UI without a redeploy. Returns null unless an API key is
+ * present — the caller then falls back to Gmail/SMTP/Postmark.
+ */
+export async function resolveResendConfig(store: Store, orgId: string = ORG_ID): Promise<ResendConfig | null> {
+  const [apiKey, fromRaw] = await Promise.all([
+    pick(store, orgId, RESEND_API_KEY_KEY, env.resend.apiKey),
+    pick(store, orgId, RESEND_FROM_KEY, env.resend.from),
+  ]);
+  const from = fromRaw || env.email.from; // From defaults to the customer-email from-address.
+  if (apiKey && from) return { apiKey, from };
+  return null;
+}
+
+/** The non-secret Resend settings for echoing back to the UI (key never returned). */
+export async function resendPublicSettings(
+  store: Store,
+  orgId: string = ORG_ID,
+): Promise<{ configured: boolean; from: string }> {
+  const [config, from] = await Promise.all([
+    resolveResendConfig(store, orgId),
+    pick(store, orgId, RESEND_FROM_KEY, env.resend.from),
+  ]);
+  return { configured: config !== null, from: from || env.email.from };
+}
+
 /** The non-secret parts of the current config, for echoing back to the UI. */
 export async function smtpPublicSettings(
   store: Store,

@@ -962,6 +962,14 @@ export const integrationSettingsSchema = z.object({
     from: z.string(),
     secure: z.boolean(),
   }),
+  /** Resend (HTTPS API) for the app's own transactional email — the preferred
+   *  transport when configured (works where the host blocks outbound SMTP). */
+  resend: z.object({
+    /** True when an API key is set. */
+    configured: z.boolean(),
+    /** Non-secret echo — the from-address (the API key is never returned). */
+    from: z.string(),
+  }),
 });
 export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
 
@@ -990,6 +998,11 @@ export const updateIntegrationSettingsInputSchema = z.object({
   smtpPassword: z.string().optional(),
   smtpFrom: z.string().optional(),
   smtpSecure: z.boolean().optional(),
+  /** Resend transactional email. `resendFrom` writes on any change (empty clears);
+   *  the API key is written only when a non-empty value is sent, so it can be left
+   *  blank to keep the stored one. */
+  resendApiKey: z.string().optional(),
+  resendFrom: z.string().optional(),
 });
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
 

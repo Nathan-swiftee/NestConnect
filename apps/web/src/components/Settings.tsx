@@ -2131,6 +2131,11 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const storageConfigured = Boolean(storage?.configured);
   const smtp = integrations.data?.smtp;
   const smtpConfigured = Boolean(smtp?.configured);
+  const resend = integrations.data?.resend;
+  const resendConfigured = Boolean(resend?.configured);
+  // A test send goes via whichever transport is configured (Mailer tries Resend
+  // first, then Gmail/SMTP), so enable the test whenever either is set up.
+  const emailConfigured = resendConfigured || smtpConfigured;
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -2147,6 +2152,8 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const [smtpUsername, setSmtpUsername] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
   const [smtpFrom, setSmtpFrom] = useState("");
+  const [resendApiKey, setResendApiKey] = useState("");
+  const [resendFrom, setResendFrom] = useState("");
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -2181,6 +2188,9 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   useEffect(() => {
     if (smtp?.from !== undefined) setSmtpFrom(smtp.from);
   }, [smtp?.from]);
+  useEffect(() => {
+    if (resend?.from !== undefined) setResendFrom(resend.from);
+  }, [resend?.from]);
 
   const saveGoogle = () => {
     const input: {
@@ -2282,6 +2292,26 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       onSuccess: () => {
         setSmtpPassword("");
         onToast("Email settings saved");
+      },
+      onError: () => onToast("Only admins & managers can change setup"),
+    });
+  };
+
+  const saveResend = () => {
+    const input: { resendApiKey?: string; resendFrom?: string } = {};
+    // From is non-secret — send when changed (empty clears). The API key is
+    // write-only — send only when the field has a value.
+    if (resendFrom.trim() !== (resend?.from ?? "")) input.resendFrom = resendFrom.trim();
+    const key = resendApiKey.trim();
+    if (key) input.resendApiKey = key;
+    if (Object.keys(input).length === 0) {
+      onToast("Enter your Resend API key to save");
+      return;
+    }
+    update.mutate(input, {
+      onSuccess: () => {
+        setResendApiKey("");
+        onToast("Resend settings saved");
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
@@ -2581,6 +2611,62 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       )}
 
       {sub === "email" && (
+      <>
+      <div className="setupcard">
+        <div className="setupcard__head">
+          <span className="setrow__ic" style={{ color: "#5B8DEF" }}>
+            <MailIcon />
+          </span>
+          <div className="setrow__main">
+            <b>Email sending · Resend</b>
+            <small>Recommended for system email — sends over HTTPS, so it works even where SMTP is blocked.</small>
+          </div>
+          <span
+            className={"connpill " + (resendConfigured ? "on" : "off")}
+            title={resendConfigured ? "Resend is configured" : "No Resend API key set"}
+          >
+            <span className="connpill__dot" />
+            {resendConfigured ? "Resend connected" : "Not connected"}
+          </span>
+        </div>
+
+        <p className="fieldhint">
+          Create an API key at <b>resend.com</b> → API Keys, and verify your sending domain (Domains). The from-address
+          must be on a verified domain. Takes effect immediately — no redeploy needed.
+        </p>
+
+        <div className="setform__grid two">
+          <label className="field">
+            <span>Resend API key</span>
+            <input
+              type="password"
+              autoComplete="off"
+              value={resendApiKey}
+              onChange={(e) => setResendApiKey(e.target.value)}
+              placeholder={resendConfigured ? "••••• (hidden)" : "re_…"}
+            />
+          </label>
+          <label className="field">
+            <span>From address</span>
+            <input
+              value={resendFrom}
+              autoComplete="off"
+              onChange={(e) => setResendFrom(e.target.value)}
+              placeholder="Nest Connect <noreply@yourdomain.com>"
+            />
+          </label>
+        </div>
+
+        <div className="setform__foot">
+          <button className="btn-ghost" type="button" onClick={testSmtp} disabled={smtpTesting || !emailConfigured}>
+            {smtpTesting ? "Sending…" : "Send test email"}
+          </button>
+          <button className="btn-primary" type="button" onClick={saveResend} disabled={update.isPending || integrations.isLoading}>
+            Save
+          </button>
+        </div>
+      </div>
+
       <div className="setupcard">
         <div className="setupcard__head">
           <span className="setrow__ic" style={{ color: "#EA4335" }}>
@@ -2588,7 +2674,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
           </span>
           <div className="setrow__main">
             <b>Email sending · SMTP</b>
-            <small>The app’s own emails — invites, password resets and the test send below.</small>
+            <small>Alternative to Resend — e.g. Gmail with an app password. Used only if Resend isn’t set.</small>
           </div>
           <span
             className={"connpill " + (smtpConfigured ? "on" : "off")}
@@ -2639,7 +2725,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
         </div>
 
         <div className="setform__foot">
-          <button className="btn-ghost" type="button" onClick={testSmtp} disabled={smtpTesting || !smtpConfigured}>
+          <button className="btn-ghost" type="button" onClick={testSmtp} disabled={smtpTesting || !emailConfigured}>
             {smtpTesting ? "Sending…" : "Send test email"}
           </button>
           <button className="btn-primary" type="button" onClick={saveSmtp} disabled={update.isPending || integrations.isLoading}>
@@ -2647,6 +2733,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
           </button>
         </div>
       </div>
+      </>
       )}
     </div>
   );

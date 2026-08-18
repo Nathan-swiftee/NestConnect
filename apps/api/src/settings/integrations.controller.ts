@@ -40,7 +40,10 @@ import {
   R2_SECRET_ACCESS_KEY_KEY,
 } from "../storage/r2-config";
 import {
+  resendPublicSettings,
   smtpPublicSettings,
+  RESEND_API_KEY_KEY,
+  RESEND_FROM_KEY,
   SMTP_FROM_KEY,
   SMTP_HOST_KEY,
   SMTP_PASSWORD_KEY,
@@ -116,6 +119,11 @@ export class IntegrationsController {
       await this.store.setAppSetting(me.orgId, SMTP_SECURE_KEY, body.smtpSecure ? "true" : "false");
     const smtpPassword = body.smtpPassword?.trim();
     if (smtpPassword) await this.store.setAppSetting(me.orgId, SMTP_PASSWORD_KEY, smtpPassword);
+    // Resend transactional email. From writes on any change (empty clears); the
+    // API key writes only when supplied, so it can be left blank to keep the stored one.
+    if (body.resendFrom !== undefined) await this.store.setAppSetting(me.orgId, RESEND_FROM_KEY, body.resendFrom.trim());
+    const resendApiKey = body.resendApiKey?.trim();
+    if (resendApiKey) await this.store.setAppSetting(me.orgId, RESEND_API_KEY_KEY, resendApiKey);
     return this.snapshot(me.orgId, req);
   }
 
@@ -129,7 +137,7 @@ export class IntegrationsController {
 
   /** Build the GET/PATCH response. Secrets are never included. */
   private async snapshot(orgId: string, req: Request): Promise<IntegrationSettings> {
-    const [clientId, googleConfigured, pubsubTopic, metaAppId, metaConfigured, metaConfigId, storage, smtp] =
+    const [clientId, googleConfigured, pubsubTopic, metaAppId, metaConfigured, metaConfigId, storage, smtp, resend] =
       await Promise.all([
         this.google.clientId(orgId),
         this.google.configured(orgId),
@@ -139,6 +147,7 @@ export class IntegrationsController {
         this.meta.configId(orgId),
         r2PublicSettings(this.store, orgId),
         smtpPublicSettings(this.store, orgId),
+        resendPublicSettings(this.store, orgId),
       ]);
     return {
       google: {
@@ -156,6 +165,7 @@ export class IntegrationsController {
       },
       storage,
       smtp,
+      resend,
     };
   }
 
