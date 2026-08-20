@@ -1389,6 +1389,20 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     return () => vv.removeEventListener("resize", onResize);
   }, []);
 
+  // Auto-grow the plain (WhatsApp / note) textarea upward as lines are added, up
+  // to the CSS max-height, after which it scrolls internally — like WhatsApp. The
+  // composer is a fixed-size flex child, so as it grows the message list gives up
+  // the space and the input stays anchored above the keyboard. When the email
+  // (rich) editor is active the textarea isn't mounted, so taRef is null and this
+  // no-ops — that editor grows on its own via contentEditable. Kept above the
+  // early returns below so the hook order never changes between renders.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
+  }, [text]);
+
   // Close the image lightbox on Esc while it's open.
   useEffect(() => {
     if (!lightbox) return;
@@ -1727,18 +1741,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Free-form replies are blocked when the window is closed — but internal notes
   // bypass the window, so the composer only locks in Reply mode.
   const composeLocked = windowClosed && !internal;
-
-  // Auto-grow the plain (WhatsApp / note) textarea upward as lines are added, up
-  // to the CSS max-height, after which it scrolls internally — like WhatsApp.
-  // The composer is a fixed-size flex child, so as it grows the message list
-  // gives up the space and the input stays anchored above the keyboard. The rich
-  // (email) editor already grows on its own via contentEditable.
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!ta || isRich) return;
-    ta.style.height = "auto";
-    ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
-  }, [text, isRich]);
 
   const clearStaged = () => {
     setStaged((cur) => {
