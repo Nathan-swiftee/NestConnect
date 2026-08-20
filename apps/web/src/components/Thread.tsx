@@ -1251,9 +1251,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Scroll-to-latest button: shown once the thread is scrolled up off the bottom.
   const msgsRef = useRef<HTMLDivElement>(null);
   const [showJump, setShowJump] = useState(false);
+  // Whether the reader is essentially at the latest message. Read the instant
+  // the keyboard starts to open, to decide whether to keep the newest bubble
+  // pinned above it (WhatsApp) — never yank someone who's scrolled up reading.
+  const nearBottomRef = useRef(true);
   const onMsgsScroll = () => {
     const el = msgsRef.current;
-    if (el) setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 260);
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowJump(dist > 260);
+    nearBottomRef.current = dist < 120;
   };
   const jumpToBottom = () => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -1359,6 +1366,28 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       window.clearTimeout(correct);
     };
   }, [conv, conversationId]);
+
+  // Keyboard open/close (mobile): the shell shrinks to sit above the keyboard, so
+  // the message scroller shrinks with it. If the reader was already at the latest
+  // message, keep it pinned to the bottom (above the keyboard) as WhatsApp does;
+  // if they'd scrolled up, leave them exactly where they were. We read
+  // nearBottom *synchronously* when the resize fires — before the shrink clamps
+  // scrollTop — then re-pin after layout. Message scroller only; never the window.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      if (!window.matchMedia("(max-width:820px)").matches) return; // desktop untouched
+      if (!nearBottomRef.current) return;
+      const el = msgsRef.current;
+      if (!el) return;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight; // instant, so the latest stays glued to the keyboard
+      });
+    };
+    vv.addEventListener("resize", onResize);
+    return () => vv.removeEventListener("resize", onResize);
+  }, []);
 
   // Close the image lightbox on Esc while it's open.
   useEffect(() => {
@@ -1698,6 +1727,18 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Free-form replies are blocked when the window is closed — but internal notes
   // bypass the window, so the composer only locks in Reply mode.
   const composeLocked = windowClosed && !internal;
+
+  // Auto-grow the plain (WhatsApp / note) textarea upward as lines are added, up
+  // to the CSS max-height, after which it scrolls internally — like WhatsApp.
+  // The composer is a fixed-size flex child, so as it grows the message list
+  // gives up the space and the input stays anchored above the keyboard. The rich
+  // (email) editor already grows on its own via contentEditable.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta || isRich) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
+  }, [text, isRich]);
 
   const clearStaged = () => {
     setStaged((cur) => {
