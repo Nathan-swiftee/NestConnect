@@ -312,11 +312,23 @@ input,textarea{font:inherit}
 /* overflow-x:hidden (clip computes to hidden while overflow-y is auto) so a
    sent bubble sliding right during swipe-to-reply can't open a horizontal
    scroll region for iOS to hijack — which cancelled the outbound gesture. */
+/* Wraps the scroll area so the floating "scroll to latest" button can anchor to
+   the bottom-right of the message viewport (just above the composer). */
+.msgs-wrap{flex:1 1 auto;min-height:0;position:relative;display:flex;flex-direction:column}
 .msgs{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;
   padding:16px 8% 20px;display:flex;flex-direction:column;gap:var(--sp-2);min-height:0;
   background-color:var(--surface-2);
   background-image:radial-gradient(color-mix(in srgb,var(--text) 4%,transparent) 1px,transparent 0);
   background-size:22px 22px}
+/* WhatsApp-style scroll-to-latest button, shown when scrolled up off the bottom. */
+.jumpbtn{position:absolute;right:18px;bottom:16px;z-index:8;width:42px;height:42px;border-radius:var(--r-full);
+  display:grid;place-items:center;color:var(--text);background:var(--elevated);
+  box-shadow:0 5px 16px -4px rgba(13,21,18,.32),0 0 0 1px var(--border);
+  animation:jumpIn .16s var(--ease);transition:transform .1s var(--ease),background .12s}
+.jumpbtn svg{width:20px;height:20px}
+.jumpbtn:hover{background:var(--surface-2)}
+.jumpbtn:active{transform:scale(.9)}
+@keyframes jumpIn{from{opacity:0;transform:translateY(10px) scale(.9)}to{opacity:1;transform:none}}
 .daygroup{display:flex;flex-direction:column;gap:8px}
 .daysep{align-self:center;font-size:var(--fs-2xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);
   background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
@@ -760,6 +772,18 @@ input,textarea{font:inherit}
 .emailhtml__imgbar svg{width:15px;height:15px;flex:0 0 auto;color:#8a8a8a}
 .emailhtml__imgtxt{flex:1 1 auto;text-align:left}
 .emailhtml__show{color:#0a7c66;font-weight:700}
+/* Long email preview clamp + "Read more" (keeps tall messages from forcing endless scroll). */
+.emailhtml__clip{position:relative;overflow:hidden;border-radius:var(--r-4)}
+.emailhtml__clip.is-clamped{
+  -webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 60px),transparent);
+  mask-image:linear-gradient(180deg,#000 calc(100% - 60px),transparent)}
+.emailhtml__more{display:inline-flex;align-items:center;gap:5px;margin-top:7px;padding:5px 13px;
+  border-radius:var(--r-full);font-size:var(--fs-xs);font-weight:750;color:var(--brand-strong);
+  background:color-mix(in srgb,var(--brand) 13%,transparent);transition:background .12s}
+.emailhtml__more:hover{background:color-mix(in srgb,var(--brand) 22%,transparent)}
+.emailhtml__more:active{transform:scale(.96)}
+.emailhtml__more svg{width:13px;height:13px;transition:transform .18s var(--ease)}
+.emailhtml__more.is-open svg{transform:rotate(180deg)}
 
 /* ─── Rich-text email composer ────────────────────────────────────────
    A formatting toolbar sits above the input; the input itself becomes a

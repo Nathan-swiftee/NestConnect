@@ -293,6 +293,9 @@ function StatusTick({ status }: { status: MessageStatus }) {
   );
 }
 
+/** Collapsed preview height for a long email body before "Read more". */
+const EMAIL_COLLAPSED_MAX = 360;
+
 /** Renders a sanitized email HTML body inside a locked-down iframe. There is no
  *  `allow-scripts`, so nothing in the message can execute; a strict CSP blocks
  *  remote resources, and remote images stay hidden until the agent reveals them.
@@ -303,6 +306,11 @@ function EmailHtml({ html }: { html: string }) {
   const [height, setHeight] = useState(80);
   // Remote images show by default; the bar below lets you hide them per message.
   const [showImages, setShowImages] = useState(true);
+  // Long emails are clamped to a preview height with a "Read more" toggle, so a
+  // tall message doesn't force endless scrolling (WhatsApp-style).
+  const [expanded, setExpanded] = useState(false);
+  const overflows = height > EMAIL_COLLAPSED_MAX + 48;
+  const collapsed = overflows && !expanded;
   const hasBlocked = html.includes("data-blocked-src");
 
   const srcDoc = useMemo(() => {
@@ -405,15 +413,27 @@ function EmailHtml({ html }: { html: string }) {
           <span className="emailhtml__show">{showImages ? "Hide" : "Show images"}</span>
         </button>
       )}
-      <iframe
-        ref={ref}
-        className="emailhtml__frame"
-        title="Email message"
-        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-        srcDoc={srcDoc}
-        style={{ height }}
-        onLoad={measure}
-      />
+      <div className={"emailhtml__clip" + (collapsed ? " is-clamped" : "")} style={collapsed ? { maxHeight: EMAIL_COLLAPSED_MAX } : undefined}>
+        <iframe
+          ref={ref}
+          className="emailhtml__frame"
+          title="Email message"
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          srcDoc={srcDoc}
+          style={{ height }}
+          onLoad={measure}
+        />
+      </div>
+      {overflows && (
+        <button
+          type="button"
+          className={"emailhtml__more" + (expanded ? " is-open" : "")}
+          onClick={() => setExpanded((e) => !e)}
+        >
+          <span>{expanded ? "Show less" : "Read more"}</span>
+          <ChevronDown />
+        </button>
+      )}
     </div>
   );
 }
@@ -1228,6 +1248,17 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Ticks so the WhatsApp 24-hour window countdown stays live without a reload.
   const [now, setNow] = useState(() => Date.now());
   const endRef = useRef<HTMLDivElement>(null);
+  // Scroll-to-latest button: shown once the thread is scrolled up off the bottom.
+  const msgsRef = useRef<HTMLDivElement>(null);
+  const [showJump, setShowJump] = useState(false);
+  const onMsgsScroll = () => {
+    const el = msgsRef.current;
+    if (el) setShowJump(el.scrollHeight - el.scrollTop - el.clientHeight > 260);
+  };
+  const jumpToBottom = () => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    setShowJump(false);
+  };
   // ─── Read receipts + typing indicator bookkeeping ───
   // Track the last-seen (conversation, message-count) so we can mark-read exactly
   // once on open and again only when a *new inbound* message lands while open.
@@ -2469,7 +2500,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         </>
       )}
 
-      <div className={"msgs" + (isClosed ? " is-closed" : "")}>
+      <div className="msgs-wrap">
+      <div className={"msgs" + (isClosed ? " is-closed" : "")} ref={msgsRef} onScroll={onMsgsScroll}>
         {conv.hasMoreMessages && (
           <div className="loadolder">
             <button className="loadolder__btn" onClick={() => void loadOlder()} disabled={loadingOlder}>
@@ -2546,6 +2578,18 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </div>
         )}
         <div ref={endRef} />
+      </div>
+      {showJump && (
+        <button
+          type="button"
+          className="jumpbtn"
+          onClick={jumpToBottom}
+          aria-label="Scroll to latest messages"
+          title="Scroll to latest"
+        >
+          <ChevronDown />
+        </button>
+      )}
       </div>
 
       {isClosed ? (
