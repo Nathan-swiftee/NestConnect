@@ -786,7 +786,7 @@ function MessageBubble({
 
   return (
     <div
-      className={"msg " + (out ? "out" : "in") + (actions ? " msg--gesture" : "")}
+      className={"msg " + (out ? "out" : "in") + (actions ? " msg--gesture" : "") + (isMailMsg ? " msg--mail" : "")}
       data-mid={m.id}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

@@ -696,6 +696,12 @@ input,textarea{font:inherit}
      bubble, whose iframe swallows the long-press + swipe gestures. */
   .msg__menubtn{opacity:1;pointer-events:auto;width:30px;height:26px}
   .msg__menubtn svg{width:16px;height:16px}
+  /* …but only on email bubbles. WhatsApp (and notes) use swipe-to-reply +
+     hold-to-react on touch, so the chevron there is redundant clutter; email
+     keeps it because its iframe swallows those gestures and it also carries
+     Forward / Read-receipts. Desktop (hover:hover) is unaffected — the chevron
+     stays on every channel there. */
+  .msg:not(.msg--mail) .msg__menubtn{display:none}
   /* React joins Reply/Forward in that menu (long-press can't reach the iframe). */
   .msg__menuitem--touch{display:flex}
   .msg__menuitem{padding:11px 12px}
