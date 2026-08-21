@@ -2246,8 +2246,11 @@ button.tpl-row:active{transform:scale(.99)}
   body::before{content:"";position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--surface);z-index:100;pointer-events:none}
   body::after{content:"";position:fixed;bottom:0;left:0;right:0;height:env(safe-area-inset-bottom);background:var(--surface);z-index:100;pointer-events:none}
   /* 16px inputs stop iOS from auto-zooming (and shifting/cutting off) on focus;
-     !important beats the more-specific per-field sizes */
-  input,textarea,select{font-size:var(--fs-lg)!important}
+     !important beats the more-specific per-field sizes. contenteditable is
+     included so the email composer's rich editor (.richedit — a contentEditable
+     div, not a textarea) gets the same anti-zoom treatment as the WhatsApp/note
+     textareas; without it iOS zoomed the page in when the email body was focused. */
+  input,textarea,select,[contenteditable="true"]{font-size:var(--fs-lg)!important}
   .side__head{padding-top:calc(16px + env(safe-area-inset-top))}
   .side__foot{display:flex;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
   .list{width:100%;flex:1 1 auto;border-right:0}
