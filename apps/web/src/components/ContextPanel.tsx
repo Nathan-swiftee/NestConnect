@@ -36,7 +36,7 @@ interface Props {
 /** Section header used across the panel blocks. */
 function Block({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
-    <div className="block">
+    <div className="psec">
       <div className="t">
         {title}
         {count != null && count > 0 && <span className="count">{count}</span>}
@@ -576,7 +576,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
                 <p className="capnote">No invite link yet.</p>
               )}
             </Block>
-            <div className="block">
+            <div className="psec">
               <div className="t">
                 Members <span className="count">{memberCount} / {GROUP_MAX_MEMBERS}</span>
               </div>

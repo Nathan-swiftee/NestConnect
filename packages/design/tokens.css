@@ -6,10 +6,15 @@
  * Editing a token here moves every surface that references it. */
 
 :root{
-  /* green-biased neutrals — light */
-  --bg:#F5F8F6; --surface:#FFFFFF; --surface-2:#F3F6F4; --elevated:#FFFFFF;
-  --border:#E4EBE7; --border-strong:#D3DDD8;
-  --text:#0D1512; --text-muted:#586762; --text-faint:#8A968F;
+  /* Neutrals — light. Deliberately NEUTRAL, with only a whisper of warmth (R≥G>B
+     by a point or two). The old ramp was green-biased (#F5F8F6 / #E4EBE7 /
+     #586762), which mixed brand green into every surface, hairline and piece of
+     secondary text — that single decision is what made the workspace read as a
+     themed helpdesk. Warm-neutral rather than cool-grey keeps this feeling like
+     a communication product instead of a developer tool. */
+  --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F5F5F3; --elevated:#FFFFFF;
+  --border:#E8E7E4; --border-strong:#D8D7D3;
+  --text:#1A1A18; --text-muted:#6B6B67; --text-faint:#9A9A95;
   /* brand + accents */
   --brand:#0FA47A; --brand-strong:#0B7E5E; --brand-tint:#E4F5EE; --brand-ring:rgba(15,164,122,.35);
   --amber:#E68A00; --amber-tint:#FBEFD9;
@@ -25,9 +30,9 @@
 }
 @media (prefers-color-scheme:dark){
   :root{
-    --bg:#080D0B; --surface:#0E1512; --surface-2:#121A16; --elevated:#141D19;
-    --border:#1E2925; --border-strong:#2A3832;
-    --text:#E9F0EC; --text-muted:#93A29B; --text-faint:#697872;
+    --bg:#0D0D0C; --surface:#151514; --surface-2:#1C1C1A; --elevated:#1F1F1D;
+    --border:#282826; --border-strong:#383835;
+    --text:#ECECEA; --text-muted:#9A9A94; --text-faint:#6E6E69;
     --brand:#28C795; --brand-strong:#1DA47A; --brand-tint:#0F241D; --brand-ring:rgba(40,199,149,.4);
     --amber:#F2A73C; --amber-tint:#2A2012;
     --danger:#F0716B; --danger-tint:#2B1615;
@@ -38,9 +43,9 @@
   }
 }
 :root[data-theme="light"]{
-  --bg:#F5F8F6; --surface:#FFFFFF; --surface-2:#F3F6F4; --elevated:#FFFFFF;
-  --border:#E4EBE7; --border-strong:#D3DDD8;
-  --text:#0D1512; --text-muted:#586762; --text-faint:#8A968F;
+  --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F5F5F3; --elevated:#FFFFFF;
+  --border:#E8E7E4; --border-strong:#D8D7D3;
+  --text:#1A1A18; --text-muted:#6B6B67; --text-faint:#9A9A95;
   --brand:#0FA47A; --brand-strong:#0B7E5E; --brand-tint:#E4F5EE; --brand-ring:rgba(15,164,122,.35);
   --amber:#E68A00; --amber-tint:#FBEFD9; --danger:#E0544D; --danger-tint:#FBE7E5;
   --wa:#1FBE5B; --email:#5B8DEF; --group:#A06CF2;
@@ -49,9 +54,9 @@
   --shadow-pop:0 2px 8px -3px rgba(13,21,18,.09),0 18px 44px -20px rgba(13,21,18,.20);
 }
 :root[data-theme="dark"]{
-  --bg:#080D0B; --surface:#0E1512; --surface-2:#121A16; --elevated:#141D19;
-  --border:#1E2925; --border-strong:#2A3832;
-  --text:#E9F0EC; --text-muted:#93A29B; --text-faint:#697872;
+  --bg:#0D0D0C; --surface:#151514; --surface-2:#1C1C1A; --elevated:#1F1F1D;
+  --border:#282826; --border-strong:#383835;
+  --text:#ECECEA; --text-muted:#9A9A94; --text-faint:#6E6E69;
   --brand:#28C795; --brand-strong:#1DA47A; --brand-tint:#0F241D; --brand-ring:rgba(40,199,149,.4);
   --amber:#F2A73C; --amber-tint:#2A2012; --danger:#F0716B; --danger-tint:#2B1615;
   --wa:#33D06B; --email:#78A0F5; --group:#B98BF6;
@@ -69,9 +74,27 @@
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px;
   --sp-6:24px; --sp-8:32px; --sp-10:40px; --sp-12:48px; --sp-16:64px;
   /* Type scale — one source of truth for font sizes (7 steps, no sub-pixel
-     drift). Named --fs-* so it never collides with the --text* colour tokens. */
+     drift). Named --fs-* so it never collides with the --text* colour tokens.
+     --fs-lg MUST stay ≥16px: the ≤820px rule sizes every input/textarea/
+     contenteditable to it, which is what stops iOS zooming the composer. */
   --fs-2xs:11px; --fs-xs:12px; --fs-sm:13px; --fs-md:14px;
   --fs-lg:16px; --fs-xl:18px; --fs-2xl:24px;
+  /* Weight scale — THREE weights, plus 700 reserved for numerals that must
+     punch (unread counts). The sheet previously used eight (400/500/550/600/
+     650/700/750/800); 600–750 are optically indistinguishable, so nothing could
+     read as hierarchy. Hierarchy now comes from size + colour + leading. */
+  --fw-regular:400; --fw-medium:500; --fw-semibold:600; --fw-bold:700;
+  /* Leading — vertical rhythm was accidental (39 line-height rules in 2,500
+     lines). Tight for headings/names, snug for UI rows, body for prose. */
+  --lh-tight:1.25; --lh-snug:1.4; --lh-body:1.5;
+  /* Tracking — negative on large type (optical correction), positive on the
+     small uppercase eyebrows that label sections. */
+  --ls-tight:-.02em; --ls-snug:-.01em; --ls-caps:.06em;
+  /* Neutral interaction tints. Selection and hover must NOT be brand-tinted:
+     green is reserved for actions and live state, so a selected row reads as
+     "here" via a neutral lift, not a green block. */
+  --hover:color-mix(in srgb,var(--text) 4%,transparent);
+  --sel:color-mix(in srgb,var(--text) 6.5%,transparent);
   /* easing — objects have mass: they settle, they don't snap or bounce */
   --ease:cubic-bezier(.32,.72,0,1);
 }
