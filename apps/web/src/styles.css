@@ -382,7 +382,15 @@ input,textarea{font:inherit}
 .daygroup > *:not(.msg--cont):not(:first-child){margin-top:13px}
 /* only the message that starts a group wears the tail — and only it names the
    sender; repeating the name on every message broke the grouping visually. */
-.msg--cont .bubble::before,.msg--cont .bubble::after{display:none}
+/* The tail hangs off the BOTTOM outer corner, so within a run of messages from
+   one sender it belongs to the LAST bubble — a downward beak on a bubble that
+   still has another below it is what made the rest look detached. Every
+   message that is followed by one from the same sender drops its beak and
+   gets its square corner rounded back. */
+.msg--midgroup .bubble::before,.msg--midgroup .bubble::after{display:none}
+.msg.in.msg--midgroup .bubble{border-bottom-left-radius:var(--r-12)}
+.msg.out.msg--midgroup .bubble{border-bottom-right-radius:var(--r-12)}
+/* the sender is still named once, on the message that OPENS the run */
 .msg--cont .sender{display:none}
 .daysep{align-self:center;font-size:var(--fs-2xs);font-weight:500;letter-spacing:var(--ls-caps);text-transform:uppercase;color:var(--text-faint);
   background:var(--bg);padding:4px var(--sp-3);border-radius:var(--r-full);margin:16px 0 4px;

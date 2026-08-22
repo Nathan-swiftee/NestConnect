@@ -664,6 +664,7 @@ function MessageBubble({
   convChannel,
   onRetry,
   cont,
+  midGroup,
 }: {
   m: Message;
   quoted?: Message;
@@ -675,8 +676,11 @@ function MessageBubble({
   /** Re-attempt delivery of this message (shown only on a failed outbound send). */
   onRetry?: (messageId: string) => void;
   /** True when the message above is from the same sender — tightens the gap and
-   *  drops the tail so a burst reads as one group. Presentation only. */
+   *  suppresses the repeated sender name. Presentation only. */
   cont?: boolean;
+  /** True when the message BELOW is from the same sender, i.e. this is not the
+   *  last of the run, so it drops its tail. Presentation only. */
+  midGroup?: boolean;
 }) {
   const out = m.direction === "out";
 
@@ -790,7 +794,7 @@ function MessageBubble({
 
   return (
     <div
-      className={"msg " + (out ? "out" : "in") + (actions ? " msg--gesture" : "") + (isMailMsg ? " msg--mail" : "") + (cont ? " msg--cont" : "")}
+      className={"msg " + (out ? "out" : "in") + (actions ? " msg--gesture" : "") + (isMailMsg ? " msg--mail" : "") + (cont ? " msg--cont" : "") + (midGroup ? " msg--midgroup" : "")}
       data-mid={m.id}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -2563,8 +2567,12 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               // Same speaker as the message directly above? (direction, note-ness
               // and author must all match.) Purely visual grouping.
               const prev = group.items[mi - 1];
+              const next = group.items[mi + 1];
               const who = (x: Message) => `${x.direction}|${x.internal ? "n" : "m"}|${x.authorUserId ?? x.authorName ?? ""}`;
               const cont = !!prev && who(prev) === who(m);
+              // Followed by the same sender => not the last of the run, so this
+              // bubble gives up its tail (the tail sits on the bottom corner).
+              const midGroup = !!next && who(next) === who(m);
               return m.internal ? (
                 <div
                   key={m.id}
@@ -2612,6 +2620,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     onJump: jumpToMessage,
                   }}
                   cont={cont}
+                  midGroup={midGroup}
                 />
               );
             })}
