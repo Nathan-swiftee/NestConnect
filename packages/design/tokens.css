@@ -97,6 +97,10 @@
   --sel:color-mix(in srgb,var(--text) 6.5%,transparent);
   /* easing — objects have mass: they settle, they don't snap or bounce */
   --ease:cubic-bezier(.32,.72,0,1);
+  /* Motion durations. The sheet had fifteen (.08s–.5s) doing three jobs; these
+     are the three. Fast = colour/opacity on small controls, base = the default
+     state change, slow = something that actually travels. */
+  --t-fast:120ms; --t-base:160ms; --t-slow:240ms;
 }
 
 /* ─── Liquid Glass material ─────────────────────────────────────────
