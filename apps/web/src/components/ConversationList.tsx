@@ -224,7 +224,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             <ComposeIcon />
           </button>
         </div>
-        <div className="mt-[11px] flex items-center gap-2 bg-surface-2 rounded-full py-2 px-4 text-faint [&>svg]:w-[15px] [&>svg]:h-[15px]">
+        <div className="mt-[11px] flex items-center gap-2 bg-surface-2 rounded-8 py-2 px-4 text-faint [&>svg]:w-[15px] [&>svg]:h-[15px]">
           <SearchIcon />
           <input
             className="border-0 bg-transparent [outline:none] text-fg w-full text-sm"
@@ -315,14 +315,16 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                     className={"conv group" + (c.unread ? " unread" : "") + (selectedId === c.id ? " active" : "")}
                     onClick={() => onSelect(c.id)}
                   >
-              <Avatar name={c.contact.displayName} email={c.contact.email} color={c.contact.avatarColor} className="av" size={50} fontSize={18} />
+              <Avatar name={c.contact.displayName} email={c.contact.email} color={c.contact.avatarColor} className="av" size={44} fontSize={16} />
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className={"text-md whitespace-nowrap overflow-hidden text-ellipsis flex-initial min-w-0 " + (c.unread ? "font-[750]" : "font-[650]")}>{c.contact.displayName}</span>
+                  <span className={"text-md whitespace-nowrap overflow-hidden text-ellipsis flex-initial min-w-0 " + (c.unread ? "font-semibold" : "font-medium")}>{c.contact.displayName}</span>
                   {/* Channel glyph sits after the name (like the thread header),
-                      not as a badge on the avatar. One channel per row. */}
+                      not as a badge on the avatar. One channel per row. The
+                      capsule behind it was decoration — the glyph's own colour
+                      already identifies the channel. */}
                   <span
-                    className="inline-flex items-center py-[2px] px-[7px] rounded-full bg-surface-2 flex-none self-center [&>svg]:w-3 [&>svg]:h-3"
+                    className="inline-flex items-center flex-none self-center [&>svg]:w-[13px] [&>svg]:h-[13px]"
                     style={{ color: cm.color }}
                     title={cm.label}
                     aria-label={cm.label}
@@ -356,15 +358,20 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                       />
                     ))}
                 </div>
-                <div className="flex items-center flex-wrap gap-x-1.5 gap-y-[5px] mt-1.5">
+                {/* Operational metadata — ownership, routing and urgency stay on
+                    the row (agents scan these constantly), but as one quiet line
+                    of text instead of four tinted capsules. Colour is spent only
+                    where it means "act on this": brand for yours, amber for
+                    waking/at-risk, red for breached. Everything else is muted. */}
+                <div className="convmeta">
                   {c.status === "snoozed" && c.snoozedUntil ? (
                     new Date(c.snoozedUntil).getTime() <= Date.now() ? (
-                      <span className="inline-flex items-center gap-[5px] text-2xs font-bold py-[3px] px-2 rounded-full whitespace-nowrap tabular-nums bg-amber text-white shadow-[0_2px_8px_-3px_color-mix(in_srgb,var(--amber)_70%,transparent)] [&>svg]:w-3 [&>svg]:h-3" title={`Due since ${new Date(c.snoozedUntil).toLocaleString()}`}>
+                      <span className="convmeta__i is-due" title={`Due since ${new Date(c.snoozedUntil).toLocaleString()}`}>
                         <SnoozeIcon />
                         Due now
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-[5px] text-2xs font-bold py-[3px] px-2 rounded-full bg-amber-tint text-amber whitespace-nowrap tabular-nums [&>svg]:w-3 [&>svg]:h-3" title={`Wakes ${new Date(c.snoozedUntil).toLocaleString()}`}>
+                      <span className="convmeta__i is-warn" title={`Wakes ${new Date(c.snoozedUntil).toLocaleString()}`}>
                         <SnoozeIcon />
                         Snoozed · {timeUntil(c.snoozedUntil)} left
                       </span>
@@ -373,7 +380,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                     <>
                       {c.snoozedUntil && new Date(c.snoozedUntil).getTime() <= Date.now() && (
                         <span
-                          className="inline-flex items-center gap-[5px] text-2xs font-bold py-[3px] px-2 rounded-full bg-amber-tint text-amber whitespace-nowrap [&>svg]:w-3 [&>svg]:h-3"
+                          className="convmeta__i is-warn"
                           title={`Back from Later — was snoozed until ${new Date(c.snoozedUntil).toLocaleString()}`}
                         >
                           <SnoozeIcon />
@@ -381,32 +388,26 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                         </span>
                       )}
                       <span
-                        className={
-                          "text-2xs py-[3px] px-2 rounded-full tracking-[.02em] min-[821px]:group-[.active]:bg-surface " +
-                          (mine
-                            ? "bg-brand-tint text-brand-strong font-bold"
-                            : assignedOther
-                              ? "bg-[color-mix(in_srgb,var(--text)_8%,transparent)] text-fg font-[650]"
-                              : "bg-surface-2 text-muted font-bold")
-                        }
+                        className={"convmeta__own " + (mine ? "is-mine" : assignedOther ? "is-other" : "is-queue")}
                         title={assignedOther && c.assigneeName ? `Assigned to ${c.assigneeName}` : undefined}
                       >
+                        <span className="convmeta__dot" aria-hidden="true" />
                         {mine ? "Yours" : assignedOther ? c.assigneeName?.split(" ")[0] ?? "Assigned" : "Queue"}
                       </span>
                       {showTeamTag && teamName(c.assignedTeamId) && (
-                        <span className="text-2xs font-[650] py-0.5 px-2 rounded-full bg-[color-mix(in_srgb,var(--text)_6%,transparent)] text-muted whitespace-nowrap max-w-[130px] overflow-hidden text-ellipsis" title={`Routed to ${teamName(c.assignedTeamId)}`}>
+                        <span className="convmeta__team" title={`Routed to ${teamName(c.assignedTeamId)}`}>
                           {teamName(c.assignedTeamId)}
                         </span>
                       )}
                       {c.slaDueAt &&
                         (new Date(c.slaDueAt).getTime() <= Date.now() ? (
-                          <span className="inline-flex items-center gap-1 text-2xs font-bold tabular-nums text-danger bg-danger-tint py-0.5 px-2 rounded-full" title="First-response SLA breached">
-                            <span className="w-1.5 h-1.5 rounded-full bg-danger [animation:duePulse_1.6s_ease-in-out_infinite]" />
+                          <span className="convmeta__i is-over" title="First-response SLA breached">
+                            <span className="convmeta__pulse" />
                             Overdue
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-2xs font-bold text-amber tabular-nums" title="Time left to first response">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber" />
+                          <span className="convmeta__i is-warn tabular-nums" title="Time left to first response">
+                            <span className="convmeta__pulse is-static" />
                             {slaCountdown(c.slaDueAt)}
                           </span>
                         ))}
