@@ -36,7 +36,7 @@ export function LabelPicker({ conversationId, current }: { conversationId: strin
               aria-checked={on}
               className={
                 "relative z-[1] flex items-center gap-2 w-full py-[7px] px-2 rounded-8 text-left text-sm text-fg" +
-                (on ? " font-[650]" : "")
+                (on ? " font-semibold" : "")
               }
               onClick={() => toggle(l.id)}
             >

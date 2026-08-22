@@ -2453,7 +2453,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             {labelMenu && (
               <>
                 <div className="menu-backdrop" onClick={() => setLabelMenu(false)} />
-                <div className="menu labelmenu" role="menu">
+                <div className="menu labelmenu has-glide" role="menu">
                   <div className="menu__hd">Labels</div>
                   <LabelPicker conversationId={conv.id} current={conv.labels} />
                 </div>
