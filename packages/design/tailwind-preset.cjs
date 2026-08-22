@@ -38,7 +38,8 @@ module.exports = {
         wa: v("wa"),
         email: v("email"),
         group: v("group"),
-        glass: { DEFAULT: v("glass"), 2: v("glass-2"), brd: v("glass-brd"), line: v("glass-line"), hi: v("glass-hi") },
+        glass: { DEFAULT: v("glass"), brd: v("glass-brd"), line: v("glass-line"), hi: v("glass-hi") },
+        scrim: v("scrim"),
       },
       borderRadius: {
         none: "0px",

@@ -78,9 +78,10 @@ input,textarea{font:inherit}
 .addmember input:focus,.memrow input:focus,.connect__creds input:focus,.routesel select:focus{
   border-color:var(--brand);background-color:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
 
-/* the shared floating-glass recipe — identical for every temporary surface */
+/* the shared floating-surface recipe — identical for every temporary surface.
+   Opaque, hairline edge, real shadow. No backdrop-filter: see tokens.css. */
 .menu,.rail-menu,.cmdk__box,.modal__box,.notif__panel{
-  background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+  background:var(--glass);
   border:1px solid var(--glass-brd);box-shadow:var(--shadow-lg),inset 0 1px 0 var(--glass-hi)}
 
 /* icon rail — matte structural surface, circular controls */
@@ -522,7 +523,7 @@ input,textarea{font:inherit}
 
 /* timestamp: floating chip over a lone photo/video … */
 .msg .bubble .stamp.stamp--over{right:9px;bottom:9px;padding:2px var(--sp-2);border-radius:var(--r-full);pointer-events:none;
-  color:#fff;background:rgba(11,20,17,.55);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+  color:#fff;background:rgba(11,20,17,.62)}
 .msg.out .bubble .stamp.stamp--over{color:#fff}
 .stamp--over .tick{color:#fff}
 .stamp--over .tick.read{color:#7fd0ff}
@@ -638,7 +639,7 @@ input,textarea{font:inherit}
 .msg--gesture{touch-action:pan-y}
 
 .msg__react{position:absolute;z-index:20;display:flex;align-items:center;gap:2px;padding:4px;
-  border-radius:var(--r-full);background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
+  border-radius:var(--r-full);background:var(--glass);
   border:1px solid var(--glass-brd);box-shadow:var(--shadow-lg),inset 0 1px 0 var(--glass-hi);
   opacity:0;pointer-events:none;transition:opacity var(--t-fast) var(--ease)}
 /* Compact on desktop (tidy hover picker); bigger touch targets on mobile
@@ -651,8 +652,7 @@ input,textarea{font:inherit}
 .msg__react-e.sel{background:color-mix(in srgb,var(--brand) 22%,transparent)}
 
 .msg__menubtn{position:absolute;top:2px;z-index:19;width:24px;height:22px;display:grid;place-items:center;
-  border-radius:var(--r-8);color:var(--text-muted);background:color-mix(in srgb,var(--surface) 80%,transparent);
-  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);
+  border-radius:var(--r-8);color:var(--text-muted);background:var(--surface);
   opacity:0;pointer-events:none;transition:opacity var(--t-fast),background var(--t-fast),color var(--t-fast)}
 .msg.in .msg__menubtn{right:3px}
 .msg.out .msg__menubtn{right:3px}
@@ -1016,7 +1016,7 @@ input,textarea{font:inherit}
 
 /* full-screen image lightbox */
 .lightbox{position:fixed;inset:0;z-index:70;display:grid;place-items:center;padding:var(--sp-6);cursor:zoom-out;
-  background:rgba(6,10,9,.9);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);animation:overlayIn .2s ease}
+  background:rgba(6,10,9,.92);animation:overlayIn .2s ease}
 .lightbox__img{max-width:min(1100px,94vw);max-height:92vh;object-fit:contain;border-radius:var(--r-12);box-shadow:var(--shadow-lg)}
 .lightbox__close{position:fixed;top:16px;right:16px;width:42px;height:42px;border-radius:var(--r-full);
   display:grid;place-items:center;color:#fff;background:rgba(255,255,255,.14);transition:background var(--t-base),transform var(--t-fast) var(--ease)}
@@ -1245,10 +1245,8 @@ input,textarea{font:inherit}
 .xthread .m small{font-size:var(--fs-2xs);color:var(--text-muted)}
 .xthread .n{font-size:var(--fs-2xs);font-weight:600;color:var(--text-faint)}
 
-/* command palette — floating polished glass */
-/* Only a whisper of scrim so the palette's glass refracts the live app behind it
-   (like the assign dropdown), instead of sitting on a flat grey wash. */
-.cmdk{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 30%,transparent);backdrop-filter:saturate(120%) blur(2px);-webkit-backdrop-filter:saturate(120%) blur(2px);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;touch-action:none;animation:overlayIn .2s ease}
+/* command palette — an opaque sheet over an ink scrim */
+.cmdk{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;touch-action:none;animation:overlayIn .2s ease}
 /* Cap the box to the viewport and let the list be the flex scroll region, so it
    scrolls within the popup on every screen (incl. mobile) instead of overflowing. */
 .cmdk__box{margin-top:12vh;width:min(560px,92vw);max-height:76vh;display:flex;flex-direction:column;border-radius:var(--r-16);overflow:hidden;animation:sheetIn .26s var(--ease)}
@@ -1408,10 +1406,8 @@ input,textarea{font:inherit}
 .rail-menu button.danger{color:var(--danger)}
 .rail-menu button.danger:hover{background:var(--danger-tint)}
 
-/* modal — a sheet of thick polished glass, floating forward */
-/* Light, bg-tinted frosted scrim (not a dark wash) so the glass box on top reads
-   like the app's dropdowns/menus rather than a muddy dark panel. */
-.modal{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 45%,transparent);backdrop-filter:saturate(120%) blur(4px);-webkit-backdrop-filter:saturate(120%) blur(4px);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;touch-action:none;animation:overlayIn .2s ease}
+/* modal — an opaque sheet floating forward over an ink scrim */
+.modal{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:flex-start;justify-content:center;z-index:50;overscroll-behavior:contain;touch-action:none;animation:overlayIn .2s ease}
 .modal__box{margin-top:9vh;width:min(460px,94vw);border-radius:var(--r-16);overflow:hidden;display:flex;flex-direction:column;animation:sheetIn .26s var(--ease)}
 .modal__head{display:flex;align-items:center;justify-content:space-between;padding:var(--sp-4) var(--sp-4);border-bottom:1px solid var(--glass-line)}
 .modal__head h2{margin:0;font-size:var(--fs-lg);font-weight:600}
@@ -2271,22 +2267,20 @@ button.tpl-row:active{transform:scale(.97)}
 .side__signout:active{transform:scale(.92)}
 .panel__mhead{display:none;align-items:center;justify-content:space-between;padding:var(--sp-3) var(--sp-4);border-bottom:1px solid var(--border);font-weight:600;font-size:var(--fs-lg)}
 .panel__mhead button{width:34px;height:34px;color:var(--text-muted);font-size:var(--fs-sm)}
-/* Opening the drawer / details panel softly BLURS the rest of the screen rather
-   than laying a dark scrim over it — a grey wash covered the white header and
-   composer too, so the app read as two colours (grey behind, white drawer).
-   A near-clear blur keeps those white toolbars white and just defocuses the
-   content behind the drawer. The drawer's own shadow provides the separation. */
-.drawer-backdrop,.panel-backdrop{position:fixed;inset:0;background:transparent;
-  backdrop-filter:blur(8px) saturate(1.08);-webkit-backdrop-filter:blur(8px) saturate(1.08);z-index:44}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  /* No blur support → fall back to a very light veil (still not a heavy grey). */
-  .drawer-backdrop,.panel-backdrop{background:color-mix(in srgb,var(--text) 10%,transparent)}
-}
+/* The drawer / details panel sits over the same ink scrim as every other
+   overlay, at ~2/3 strength: it covers a column, not the whole screen, so it
+   needs less push-back than a centred modal. (It used to blur the whole
+   viewport instead — see tokens.css for why every backdrop-filter is gone.) */
+.drawer-backdrop,.panel-backdrop{position:fixed;inset:0;
+  background:color-mix(in srgb,var(--scrim) 65%,transparent);z-index:44}
 
 /* ─── Motion primitives ─────────────────────────────────────────────
    Floating surfaces settle into place; overlays fade. Nothing snaps. */
 @keyframes popIn{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
 @keyframes sheetIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+/* full-screen mobile sheets rise from below; they must NOT scale — a scaled
+   full-bleed surface shows the scrim through its edges as it settles. */
+@keyframes sheetUp{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:none}}
 @keyframes overlayIn{from{opacity:0}to{opacity:1}}
 
 /* ≤1399: details panel floats in as a right-side overlay instead of a column,
@@ -2368,8 +2362,41 @@ button.tpl-row:active{transform:scale(.97)}
   /* the snooze menu drops from the top like the others (its desktop top:100%
      would sit below the viewport once the menu is position:fixed) */
   .menu.snoozemenu{position:fixed;top:calc(58px + env(safe-area-inset-top));right:12px;left:12px;min-width:0}
-  /* command palette fits the phone viewport; its list scrolls inside the box */
-  .cmdk__box{margin-top:calc(8px + env(safe-area-inset-top));width:calc(100vw - 16px);max-height:calc(var(--app-h,100dvh) - 16px - env(safe-area-inset-top))}
+  /* ── Content modals become full-screen sheets on a phone ──────────
+     A 460px card floating in the middle of a 390px screen is a desktop
+     idiom; anything with a search field, a list or a multi-field form
+     wants the whole screen (the Front / iOS pattern).
+
+     They pin to --app-top / --app-h — the SAME vars the app shell uses,
+     written by initViewport() from window.visualViewport — NOT inset:0.
+     Every one of these sheets contains an input that summons the
+     keyboard, so `inset:0` (the layout viewport) would leave the footer
+     buried under it. Reusing the shell's own mechanism means there is
+     still exactly one viewport strategy in this app.
+
+     Short read-only dialogs opt out with .modal--dialog and stay centred
+     cards — a two-line confirmation does not deserve a whole screen. */
+  .modal .modal__box:not(.modal--dialog),
+  .cmdk .cmdk__box{
+    position:fixed;top:var(--app-top,0);left:0;right:0;height:var(--app-h,100dvh);
+    width:auto;max-width:none;max-height:none;margin:0;
+    border:0;border-radius:0;box-shadow:none;animation:sheetUp var(--t-slow) var(--ease)}
+  /* head and foot carry the safe-area insets, as the app shell's do */
+  .modal .modal__box:not(.modal--dialog) .modal__head,
+  .cmdk .cmdk__box .cmdk__in{padding-top:calc(var(--sp-4) + env(safe-area-inset-top))}
+  /* the body is the flex scroll region: it takes the leftover height rather
+     than the desktop 70vh cap, so the footer stays pinned to the bottom */
+  .modal .modal__box:not(.modal--dialog) .modal__body,
+  .cmdk .cmdk__box .cmdk__list{flex:1;min-height:0;max-height:none}
+  .modal .modal__box:not(.modal--dialog) .modal__foot{padding-bottom:calc(var(--sp-3) + env(safe-area-inset-bottom))}
+  /* nothing below the footer, so the last row needs the inset itself */
+  .modal .modal__box:not(.modal--dialog):not(:has(.modal__foot)) .modal__body,
+  .cmdk .cmdk__box .cmdk__list{padding-bottom:calc(var(--sp-4) + env(safe-area-inset-bottom))}
+  /* the short dialogs that stay cards still shouldn't crowd the notch */
+  .modal__box.modal--dialog{margin-top:calc(9vh + env(safe-area-inset-top))}
+  /* the compose recipient list is capped on desktop so the card stays a card;
+     in a full-screen sheet it should just fill what's left */
+  .compose__list{max-height:none;flex:1;min-height:0}
   /* the notification panel drops from the bell, pinned to the viewport so a
      340px panel never spills off the left edge on a narrow phone (its desktop
      right:0 anchor would push it past the screen). */
@@ -2428,13 +2455,13 @@ button.tpl-row:active{transform:scale(.97)}
 /* "Load earlier messages" control at the top of a paginated thread. */
 .loadolder { display: flex; justify-content: center; padding: 12px 0 4px; }
 .loadolder__btn {
-  font: inherit; font-size:var(--fs-sm); color: var(--text-soft, #667);
-  background: var(--glass, rgba(120,130,150,0.10));
-  border: 1px solid var(--border, rgba(120,130,150,0.18));
+  font: inherit; font-size:var(--fs-sm); color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius:var(--r-full); padding:6px var(--sp-3); cursor: pointer;
   transition: background var(--t-base) ease;
 }
-.loadolder__btn:hover:not(:disabled) { background: var(--glass-strong, rgba(120,130,150,0.18)); }
+.loadolder__btn:hover:not(:disabled) { background: var(--surface-2); }
 .loadolder__btn:disabled { opacity: 0.6; cursor: default; }
 
 /* Tiptap email editor: EditorContent's wrapper is the composer's flex child;

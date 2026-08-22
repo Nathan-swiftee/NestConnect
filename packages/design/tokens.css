@@ -103,18 +103,30 @@
   --t-fast:120ms; --t-base:160ms; --t-slow:240ms;
 }
 
-/* ─── Liquid Glass material ─────────────────────────────────────────
-   ONLY for floating, temporary surfaces (menus, modals, popovers, the
-   drawer, the day pill). Thick and clear — polished crystal, not a
-   washed-out translucent film — with a hairline edge that catches light. */
+/* ─── Floating-surface material ─────────────────────────────────────
+   The material for floating, temporary surfaces (menus, modals, popovers,
+   the drawer, the day pill). It used to be translucent + backdrop-filter;
+   it is now OPAQUE.
+
+   Why: backdrop-filter's cost scales with the filtered area, and a
+   full-viewport overlay re-blurs the entire live app on every repaint
+   behind it. Measured with a modal open, the app ran at a 66.7ms median
+   frame (~15fps); removing the one property restored a locked 16.7ms —
+   identical to no-modal baseline. Translucency also fought the design
+   direction: a premium surface reads through hierarchy — elevation,
+   a hairline edge, a real shadow — not through frosting.
+
+   Names kept so every call site stays put; only the material changed. */
 :root{
-  --glass:color-mix(in srgb,var(--elevated) 82%,transparent);
-  --glass-2:color-mix(in srgb,var(--elevated) 70%,transparent);
+  --glass:var(--elevated);                                             /* opaque floating surface */
   --glass-brd:color-mix(in srgb,var(--text) 8%,transparent);           /* hairline edge */
   --glass-line:color-mix(in srgb,var(--text) 7%,transparent);          /* internal divider */
   --glass-hi:color-mix(in srgb,#fff 62%,transparent);                  /* top-edge light */
-  --blur:saturate(180%) blur(26px);
+  /* Overlay scrim. With no blur to separate the layers, the scrim is what
+     pushes the app back — an ink wash, not a tint of --bg (which was near
+     invisible against a light workspace). */
+  --scrim:rgba(24,24,22,.30);
 }
-@media (prefers-color-scheme:dark){:root{--glass-hi:color-mix(in srgb,#fff 11%,transparent)}}
-:root[data-theme="light"]{--glass-hi:color-mix(in srgb,#fff 62%,transparent)}
-:root[data-theme="dark"]{--glass-hi:color-mix(in srgb,#fff 11%,transparent)}
+@media (prefers-color-scheme:dark){:root{--glass-hi:color-mix(in srgb,#fff 11%,transparent);--scrim:rgba(0,0,0,.58)}}
+:root[data-theme="light"]{--glass-hi:color-mix(in srgb,#fff 62%,transparent);--scrim:rgba(24,24,22,.30)}
+:root[data-theme="dark"]{--glass-hi:color-mix(in srgb,#fff 11%,transparent);--scrim:rgba(0,0,0,.58)}

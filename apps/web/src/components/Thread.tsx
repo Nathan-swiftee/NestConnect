@@ -633,7 +633,9 @@ function ReceiptsModal({
 }) {
   return (
     <div className="modal" onClick={onClose}>
-      <div className="modal__box rcptmodal" onClick={(e) => e.stopPropagation()}>
+      {/* modal--dialog: short, read-only — stays a centred card on mobile
+          rather than becoming a full-screen sheet. */}
+      <div className="modal__box modal--dialog rcptmodal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <h2>Read receipts</h2>
           <button type="button" className="modal__x" onClick={onClose} aria-label="Close">
