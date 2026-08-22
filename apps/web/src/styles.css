@@ -316,9 +316,9 @@ input,textarea{font:inherit}
    Tailwind utilities inline in Thread.tsx. The name ellipsis-clips; the pill
    (flex-none) keeps its size to the right. .thread__id + .av stay as CSS. */
 .thread__actions{margin-left:auto;display:flex;align-items:center;gap:6px;position:relative;flex-shrink:0}
-.assignbtn{display:flex;align-items:center;gap:var(--sp-2);background:var(--brand-tint);color:var(--brand-strong);font-weight:600;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-full);font-size:var(--fs-xs);white-space:nowrap;flex-shrink:0;
-  box-shadow:inset 0 1px 0 var(--glass-hi);transition:background .15s,color .15s,transform .12s var(--ease)}
-.assignbtn:hover{background:var(--brand);color:#fff}
+.assignbtn{display:flex;align-items:center;gap:var(--sp-2);background:var(--surface-2);color:var(--text);font-weight:500;padding:6px var(--sp-2) 6px 6px;border-radius:var(--r-8);font-size:var(--fs-xs);white-space:nowrap;flex-shrink:0;
+  box-shadow:none;transition:background .15s,color .15s,transform .12s var(--ease)}
+.assignbtn:hover{background:var(--sel);color:var(--text)}
 .assignbtn:active{transform:scale(.97)}
 .assignbtn .mini{width:20px;height:20px;border-radius:50%;color:#fff;display:grid;place-items:center;font-size:var(--fs-2xs);font-weight:600}
 .assignbtn svg{width:14px;height:14px}
@@ -352,9 +352,7 @@ input,textarea{font:inherit}
 .msgs-wrap{flex:1 1 auto;min-height:0;position:relative;display:flex;flex-direction:column}
 .msgs{flex:1 1 auto;overflow-y:auto;overflow-x:hidden;overscroll-behavior-x:none;
   padding:16px 8% 20px;display:flex;flex-direction:column;gap:var(--sp-2);min-height:0;
-  background-color:var(--surface-2);
-  background-image:radial-gradient(color-mix(in srgb,var(--text) 4%,transparent) 1px,transparent 0);
-  background-size:22px 22px}
+  background-color:var(--bg)}
 /* WhatsApp-style scroll-to-latest button, shown when scrolled up off the bottom. */
 .jumpbtn{position:absolute;right:18px;bottom:16px;z-index:8;width:42px;height:42px;border-radius:var(--r-full);
   display:grid;place-items:center;color:var(--text);background:var(--elevated);
@@ -364,11 +362,17 @@ input,textarea{font:inherit}
 .jumpbtn:hover{background:var(--surface-2)}
 .jumpbtn:active{transform:scale(.9)}
 @keyframes jumpIn{from{opacity:0;transform:translateY(10px) scale(.9)}to{opacity:1;transform:none}}
-.daygroup{display:flex;flex-direction:column;gap:8px}
-.daysep{align-self:center;font-size:var(--fs-2xs);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);
-  background:var(--glass);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
-  border:1px solid var(--glass-brd);padding:5px var(--sp-3);border-radius:var(--r-full);margin:18px 0 2px;
-  box-shadow:var(--shadow),inset 0 1px 0 var(--glass-hi);position:sticky;top:6px;z-index:2}
+/* Messages sit tight by default; a CHANGE of speaker opens real air. A burst
+   from one person now reads as one block instead of N equal rows. */
+.daygroup{display:flex;flex-direction:column;gap:2px}
+.daygroup > *:not(.msg--cont):not(:first-child){margin-top:13px}
+/* only the message that starts a group wears the tail — and only it names the
+   sender; repeating the name on every message broke the grouping visually. */
+.msg--cont .bubble::before,.msg--cont .bubble::after{display:none}
+.msg--cont .sender{display:none}
+.daysep{align-self:center;font-size:var(--fs-2xs);font-weight:500;letter-spacing:var(--ls-caps);text-transform:uppercase;color:var(--text-faint);
+  background:var(--bg);padding:4px var(--sp-3);border-radius:var(--r-full);margin:16px 0 4px;
+  position:sticky;top:4px;z-index:2}
 /* The very first date needs no big gap above it (nothing older precedes it). */
 .daygroup:first-child .daysep{margin-top:2px}
 /* Full-width row so the whole horizontal band is a gesture surface (swipe-to-reply
@@ -410,7 +414,7 @@ input,textarea{font:inherit}
   :root:not([data-theme="light"]) .msg.out .bubble .stamp{color:rgba(233,237,239,.6)}
   :root:not([data-theme="light"]) .compmode .seg-thumb{background:color-mix(in srgb,var(--elevated),#fff 7%);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 2px 10px -3px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06)}
 }
-.msg .sender{font-size:var(--fs-2xs);font-weight:600;color:var(--brand-strong);padding:0 4px 1px}
+.msg .sender{font-size:var(--fs-2xs);font-weight:500;color:var(--text-muted);padding:0 4px 1px}
 .thread-empty{align-self:center;margin:auto;color:var(--text-faint);font-size:var(--fs-sm)}
 @keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 /* Internal note — team-only, never sent to the customer. Sits left (a teammate
@@ -431,7 +435,7 @@ input,textarea{font:inherit}
 .note__who{font-size:var(--fs-xs);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
 .note__tag{font-size:var(--fs-2xs);font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent);border-radius:var(--r-full);padding:1px 6px;flex:0 0 auto}
 .note__t{margin-left:auto;font-size:var(--fs-2xs);color:var(--text-faint);font-weight:500;padding-left:6px;flex:0 0 auto}
-.note__body{font-size:var(--fs-md);line-height:1.42;white-space:pre-wrap;word-break:break-word;color:var(--text)}
+.note__body{font-size:var(--fs-lg);line-height:1.42;white-space:pre-wrap;word-break:break-word;color:var(--text)}
 .note__body .men{color:var(--brand-strong);font-weight:600}
 
 /* ─── Message media (attachments) ───────────────────────────────────
@@ -999,10 +1003,10 @@ input,textarea{font:inherit}
 .lightbox__close svg{width:20px;height:20px}
 
 .composer{flex:0 0 auto;position:relative;z-index:6;padding:var(--sp-3) var(--sp-4) var(--sp-4);
-  background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -6px 16px -20px rgba(13,21,18,.5)}
+  background:var(--surface);border-top:1px solid var(--border)}
 .compbar{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:9px}
-.compmode{position:relative;display:inline-flex;padding:3px;gap:var(--sp-1);flex:0 0 auto;background:var(--surface-2);border-radius:var(--r-full)}
-.modebtn{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:600;color:var(--text-muted);padding:6px var(--sp-3);border-radius:var(--r-full);transition:color .15s ease .08s}
+.compmode{position:relative;display:inline-flex;padding:0;gap:var(--sp-1);flex:0 0 auto;background:none;border-radius:var(--r-8)}
+.modebtn{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:500;color:var(--text-muted);padding:6px var(--sp-3);border-radius:var(--r-8);transition:color .15s ease .08s}
 .modebtn__ic{display:inline-grid;place-items:center}
 .modebtn__ic svg{width:14px;height:14px;display:block}
 .modebtn:hover{color:var(--text)}
@@ -1011,7 +1015,7 @@ input,textarea{font:inherit}
 /* shared sliding thumb for segmented toggles (Reply|Note, filter chips) —
    a physical capsule with a top-edge light */
 .seg-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-full);z-index:0;pointer-events:none;will-change:transform,width;transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1)}
-.compmode .seg-thumb{background:var(--surface);box-shadow:inset 0 1px 0 var(--glass-hi),0 2px 8px -3px rgba(13,21,18,.28),0 0 0 1px var(--glass-brd)}
+.compmode .seg-thumb{background:var(--sel);box-shadow:none;border-radius:var(--r-8)}
 .chips .seg-thumb{background:var(--brand-tint);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 1px color-mix(in srgb,var(--brand) 20%,transparent)}
 /* subtle capsule that glides under the pointer on hover (behind the selected thumb) */
 .seg-hover{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-full);z-index:0;pointer-events:none;opacity:0;
@@ -1025,16 +1029,21 @@ input,textarea{font:inherit}
 /* Flat grey pill, matching the list search bar — no inset "well", no focus ring.
    Single-line message field centres its text; only the taller rich (email)
    editor keeps its buttons bottom-aligned as the body grows. */
-.compinput{display:flex;align-items:center;gap:var(--sp-2);background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-24);padding:4px 6px 4px var(--sp-4)}
+.compinput{display:flex;align-items:center;gap:var(--sp-2);background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-12);padding:4px 6px 4px var(--sp-4)}
 /* Inherit the pill's align-items:center (same as the plain composer) so the
    editor text lines up with the emoji/attach/send buttons; just a touch more
    vertical padding for the taller formatting context. */
 .compinput--rich{padding-top:6px;padding-bottom:6px}
 .compinput textarea{flex:1;min-height:24px;max-height:140px;overflow-y:auto;padding:4px 0;color:var(--text);outline:none;font-size:var(--fs-md);border:0;background:none;resize:none;line-height:1.4}
+/* A long contact name made the one-row placeholder wrap to two lines inside a
+   single-line box, so it rendered clipped ("Message Northside" cut off). Keep
+   it on one line and let it truncate. Placeholder only — the field's own
+   min/max-height and auto-grow behaviour are untouched. */
+.compinput textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .compinput .tool{width:34px;height:34px;color:var(--text-muted);flex:0 0 34px}
 .compinput .tool svg{width:18px;height:18px}
 .send{width:38px;height:38px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;flex:0 0 38px;
-  box-shadow:0 6px 16px -6px var(--brand-ring);transition:filter .15s,transform .12s var(--ease);animation:sendSwap .14s var(--ease)}
+  transition:filter .15s,transform .12s var(--ease);animation:sendSwap .14s var(--ease)}
 .send:hover{filter:brightness(1.06)}
 .send:active{transform:scale(.92)}
 .send:disabled{opacity:.5;cursor:default;box-shadow:none}
@@ -2032,11 +2041,11 @@ input,textarea{font:inherit}
 .addrow:hover{text-decoration:underline}
 
 /* resolve / close conversation — soft secondary control on the matte header */
-.resolvebtn{display:inline-flex;align-items:center;gap:6px;padding:var(--sp-2) var(--sp-3);border-radius:var(--r-full);font-weight:600;font-size:var(--fs-xs);background:var(--surface-2);color:var(--text-muted);white-space:nowrap;flex-shrink:0;transition:background .15s,color .15s,transform .12s var(--ease)}
-.resolvebtn:hover{background:var(--brand);color:#fff}
+.resolvebtn{display:inline-flex;align-items:center;gap:6px;padding:7px var(--sp-3);border-radius:var(--r-8);font-weight:600;font-size:var(--fs-xs);background:var(--brand);color:#fff;white-space:nowrap;flex-shrink:0;transition:background .15s,color .15s,transform .12s var(--ease)}
+.resolvebtn:hover{background:var(--brand-strong);color:#fff}
 .resolvebtn:active{transform:scale(.97)}
 .resolvebtn svg{width:16px;height:16px}
-.resolvebtn.reopened{background:var(--amber-tint);color:var(--amber)}
+.resolvebtn.reopened{background:var(--surface-2);color:var(--amber)}
 .resolvebtn.reopened:hover{background:var(--amber);color:#fff}
 .assignbtn .lbl,.resolvebtn .lbl{white-space:nowrap}
 .assignbtn__ic{display:inline-grid;place-items:center}
@@ -2078,7 +2087,7 @@ input,textarea{font:inherit}
 /* ─── WhatsApp 24-hour window ───────────────────────────────────────
    A subtle live countdown chip in the composer context line; it warms to
    amber under an hour, and greys out once the window has closed. */
-.wawin{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-2xs);font-weight:600;padding:3px var(--sp-2);border-radius:var(--r-full);
+.wawin{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-2xs);font-weight:500;padding:3px var(--sp-2);border-radius:var(--r-full);
   background:color-mix(in srgb,var(--wa) 15%,transparent);color:var(--wa)}
 .wawin__dot{width:7px;height:7px;border-radius:50%;background:currentColor;
   box-shadow:0 0 0 3px color-mix(in srgb,currentColor 22%,transparent)}
@@ -2095,7 +2104,7 @@ input,textarea{font:inherit}
 .wa-closed__btn{flex:0 0 auto;display:inline-flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-4);border-radius:var(--r-12);
   color:#fff;font-weight:600;font-size:var(--fs-sm);
   background:var(--brand);
-  box-shadow:0 6px 16px -6px var(--brand-ring);transition:filter .15s,transform .12s var(--ease)}
+  transition:filter .15s,transform .12s var(--ease)}
 .wa-closed__btn svg{width:16px;height:16px}
 .wa-closed__btn:hover{filter:brightness(1.05)}
 .wa-closed__btn:active{transform:scale(.97)}

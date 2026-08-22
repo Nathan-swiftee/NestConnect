@@ -663,6 +663,7 @@ function MessageBubble({
   actions,
   convChannel,
   onRetry,
+  cont,
 }: {
   m: Message;
   quoted?: Message;
@@ -673,6 +674,9 @@ function MessageBubble({
   convChannel: ChannelType;
   /** Re-attempt delivery of this message (shown only on a failed outbound send). */
   onRetry?: (messageId: string) => void;
+  /** True when the message above is from the same sender — tightens the gap and
+   *  drops the tail so a burst reads as one group. Presentation only. */
+  cont?: boolean;
 }) {
   const out = m.direction === "out";
 
@@ -786,7 +790,7 @@ function MessageBubble({
 
   return (
     <div
-      className={"msg " + (out ? "out" : "in") + (actions ? " msg--gesture" : "") + (isMailMsg ? " msg--mail" : "")}
+      className={"msg " + (out ? "out" : "in") + (actions ? " msg--gesture" : "") + (isMailMsg ? " msg--mail" : "") + (cont ? " msg--cont" : "")}
       data-mid={m.id}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -2348,7 +2352,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               <h2 className="min-w-0 flex-initial m-0 text-lg font-bold whitespace-nowrap overflow-hidden text-ellipsis max-[820px]:text-md">{conv.contact.displayName}</h2>
               {/* Channel pill sits inline to the right of the name (fills the
                   header's empty space); the presence line drops below it. */}
-              <span className="inline-flex items-center gap-[5px] text-2xs font-[650] py-[3px] px-2 rounded-full bg-surface-2 text-muted flex-none" aria-label={threadChannels.map((ch) => channelMeta(ch).label).join(" + ")}>
+              <span className="inline-flex items-center gap-[5px] text-2xs font-medium text-faint flex-none" aria-label={threadChannels.map((ch) => channelMeta(ch).label).join(" + ")}>
                 {threadChannels.map((ch) => {
                   const m = channelMeta(ch);
                   const G = m.Glyph;
@@ -2555,11 +2559,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         {groupMessagesByDay(conv.messages).map((group) => (
           <section className="daygroup" key={group.key}>
             <div className="daysep">{group.label}</div>
-            {group.items.map((m) =>
-              m.internal ? (
+            {group.items.map((m, mi) => {
+              // Same speaker as the message directly above? (direction, note-ness
+              // and author must all match.) Purely visual grouping.
+              const prev = group.items[mi - 1];
+              const who = (x: Message) => `${x.direction}|${x.internal ? "n" : "m"}|${x.authorUserId ?? x.authorName ?? ""}`;
+              const cont = !!prev && who(prev) === who(m);
+              return m.internal ? (
                 <div
                   key={m.id}
-                  className={"note" + (m.authorUserId === me?.user.id ? " note--out" : " note--in")}
+                  className={"note" + (m.authorUserId === me?.user.id ? " note--out" : " note--in") + (cont ? " msg--cont" : "")}
                 >
                   <div className="note__bubble">
                     <div className="note__head">
@@ -2602,9 +2611,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                         : undefined,
                     onJump: jumpToMessage,
                   }}
+                  cont={cont}
                 />
-              ),
-            )}
+              );
+            })}
           </section>
         ))}
         {conv.messages.length === 0 && (
