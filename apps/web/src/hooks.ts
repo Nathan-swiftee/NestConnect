@@ -676,6 +676,17 @@ export function useDeleteTemplate() {
   });
 }
 
+export function useSetDefaultTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (templateId: string | null) => api.setDefaultTemplate(templateId),
+    onSuccess: (data) => {
+      qc.setQueryData(["templates"], data);
+      qc.invalidateQueries({ queryKey: ["templates"] });
+    },
+  });
+}
+
 export function useSyncTemplates() {
   const qc = useQueryClient();
   return useMutation({

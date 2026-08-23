@@ -11,8 +11,10 @@ import {
 } from "@nestjs/common";
 import {
   createTemplateInputSchema,
+  setDefaultTemplateInputSchema,
   updateTemplateInputSchema,
   type CreateTemplateInput,
+  type SetDefaultTemplateInput,
   type Template,
   type UpdateTemplateInput,
 } from "@ding/schemas";
@@ -62,6 +64,17 @@ export class TemplatesController {
     await this.requireManager(userId);
     await this.templates.remove(id);
     return { ok: true };
+  }
+
+  /** Choose the workspace's default template (or clear it with null). Declared
+   *  before the ":id" routes so "default" isn't swallowed as an id. */
+  @Post("default")
+  async setDefault(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(setDefaultTemplateInputSchema)) body: SetDefaultTemplateInput,
+  ): Promise<Template[]> {
+    await this.requireManager(userId);
+    return this.templates.setDefault(body.templateId);
   }
 
   @Post("sync")

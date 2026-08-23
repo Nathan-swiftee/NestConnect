@@ -436,8 +436,18 @@ export const templateSchema = z.object({
   approvalStatus: templateApprovalSchema,
   /** How many {{n}} variables the body has (derived; drives the fill form). */
   variableCount: z.number().int().nonnegative().default(0),
+  /** The workspace's default template — the one the composer sends behind the
+   *  scenes once a 24-hour window has closed. Derived from an org setting, so
+   *  exactly one template carries it. */
+  isDefault: z.boolean().default(false),
 });
 export type Template = z.infer<typeof templateSchema>;
+
+/** Set (or clear, with null) the workspace's default WhatsApp template. */
+export const setDefaultTemplateInputSchema = z.object({
+  templateId: z.string().nullable(),
+});
+export type SetDefaultTemplateInput = z.infer<typeof setDefaultTemplateInputSchema>;
 
 export const createTemplateInputSchema = z.object({
   name: z

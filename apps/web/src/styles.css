@@ -2201,6 +2201,23 @@ button.tpl-row:active{transform:scale(.97)}
 /* The Polish instruction: a long, hand-edited block of prose. Monospace and a
    step down in size so line breaks and rule lists stay legible while editing. */
 .prompttext{font-family:var(--mono);font-size:var(--fs-xs);line-height:1.55;min-height:200px}
+/* "Default" marker on the templates table — the template the composer falls
+   back to once a WhatsApp window has closed. */
+.tpl-default{margin-left:var(--sp-2);font-size:var(--fs-2xs);font-weight:600;letter-spacing:var(--ls-caps);
+  text-transform:uppercase;color:var(--brand-strong);background:var(--brand-tint);
+  padding:2px var(--sp-2);border-radius:var(--r-full);vertical-align:middle}
+/* Closed-window notice above the composer. Deliberately quiet: the composer
+   below it still behaves normally, so this explains rather than blocks. */
+.tplfallback{display:flex;align-items:flex-start;gap:var(--sp-2);padding:0 var(--sp-1) var(--sp-2);
+  font-size:var(--fs-2xs);line-height:var(--lh-snug);color:var(--text-muted);animation:paneIn .2s var(--ease)}
+.tplfallback svg{width:13px;height:13px;flex:0 0 auto;margin-top:1px;color:var(--amber)}
+.tplfallback__txt{min-width:0;display:flex;flex-direction:column;gap:1px}
+.tplfallback__txt b{font-weight:600;color:var(--text)}
+.tplfallback__txt em{font-style:normal;color:var(--text-faint);overflow:hidden;text-overflow:ellipsis;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.tplfallback__btn{margin-left:auto;flex:0 0 auto;font-size:var(--fs-2xs);font-weight:600;color:var(--brand-strong);
+  padding:2px var(--sp-2);border-radius:var(--r-8);transition:background var(--t-fast)}
+.tplfallback__btn:hover{background:var(--hover)}
 
 /* ─── Settings › Templates ────────────────────────────────────────── */
 .setpane__headacts{display:flex;align-items:center;gap:var(--sp-2);flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}

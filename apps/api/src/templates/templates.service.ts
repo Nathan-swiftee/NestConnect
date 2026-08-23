@@ -10,6 +10,9 @@ import { env } from "../config/env";
 import { ORG_ID } from "../data/fixtures";
 import { Store } from "../data/store";
 
+/* The org setting holding the default template's id. Empty string = none. */
+const DEFAULT_TEMPLATE_KEY = "wa_default_template_id";
+
 /** The subset of Meta's message-template payload we read when syncing. */
 interface MetaTemplate {
   name: string;
@@ -30,8 +33,25 @@ export class TemplatesService {
 
   constructor(private readonly store: Store) {}
 
-  list(): Promise<Template[]> {
-    return this.store.listTemplates(ORG_ID);
+  /** Templates, with the workspace default flagged. The default is an org
+   *  setting rather than a column on the row: it's one value for the whole
+   *  workspace, and keeping it here means only one template can ever hold it. */
+  async list(): Promise<Template[]> {
+    const [templates, defaultId] = await Promise.all([
+      this.store.listTemplates(ORG_ID),
+      this.store.getAppSetting(ORG_ID, DEFAULT_TEMPLATE_KEY),
+    ]);
+    return templates.map((t) => ({ ...t, isDefault: t.id === defaultId }));
+  }
+
+  /** Point the default at a template, or clear it with null. */
+  async setDefault(templateId: string | null): Promise<Template[]> {
+    if (templateId) {
+      const exists = (await this.store.listTemplates(ORG_ID)).some((t) => t.id === templateId);
+      if (!exists) throw new NotFoundException("Template not found");
+    }
+    await this.store.setAppSetting(ORG_ID, DEFAULT_TEMPLATE_KEY, templateId ?? "");
+    return this.list();
   }
 
   create(input: CreateTemplateInput): Promise<Template> {

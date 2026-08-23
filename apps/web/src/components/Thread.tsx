@@ -7,7 +7,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
@@ -1242,6 +1242,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [html, setHtml] = useState("");
   // Drives whether the Polish button exists at all: no Claude key, no button.
   const aiConfigured = Boolean(useIntegrations().data?.anthropic?.configured);
+  // Needed for the closed-window fallback below (react-query caches it, so this
+  // is one shared fetch, not one per thread).
+  const templates = useTemplates().data;
   // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [showCc, setShowCc] = useState(false);
@@ -1818,9 +1821,17 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const msLeft = waWindow?.expiresAt ? new Date(waWindow.expiresAt).getTime() - now : null;
   const showCountdown = isWhatsApp && waWindow?.open === true && msLeft != null;
   const closingSoon = msLeft != null && msLeft < 60 * 60 * 1000;
+  // Once the window closes, only a template can reach the customer. Rather than
+  // shutting the composer and making the agent go and fill a form, we keep it
+  // open and send the workspace's default template with what they typed as its
+  // variable — the same keystrokes, the same Send. That only works when the
+  // default takes exactly one {{1}}; anything else can't be filled from one box.
+  const defaultTemplate = templates?.find((t) => t.isDefault && t.variableCount === 1) ?? null;
+  const templateFallback = windowClosed && !internal && !!defaultTemplate;
   // Free-form replies are blocked when the window is closed — but internal notes
-  // bypass the window, so the composer only locks in Reply mode.
-  const composeLocked = windowClosed && !internal;
+  // bypass the window, and the template fallback keeps the composer usable, so
+  // it only truly locks when there's no default to fall back on.
+  const composeLocked = windowClosed && !internal && !defaultTemplate;
 
   const clearStaged = () => {
     setStaged((cur) => {
@@ -2031,6 +2042,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     send.mutate(
       {
         id: conv.id,
+        // The window is shut: this goes as the default template, with the
+        // agent's text as {{1}}. The server renders the body from the template,
+        // so `body` is ignored on this path.
+        ...(templateFallback ? { template: { id: defaultTemplate!.id, params: [body] } } : {}),
         body,
         internal,
         attachmentIds: attachmentIds.length ? attachmentIds : undefined,
@@ -2973,6 +2988,20 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             </div>
           ) : (
             <>
+            {/* Window shut, but a default template is standing in: say so, show
+                what will actually be sent, and keep the picker one tap away. */}
+            {templateFallback && (
+              <div className="tplfallback" role="note">
+                <ClockIcon />
+                <span className="tplfallback__txt">
+                  Window closed — sending as <b>{defaultTemplate!.name}</b>
+                  <em>{defaultTemplate!.body.replace("{{1}}", text.trim() || "your message")}</em>
+                </span>
+                <button type="button" className="tplfallback__btn" onClick={() => setPicker(true)}>
+                  Change
+                </button>
+              </div>
+            )}
             {canUndoPolish && (
               <div className="polishbar" role="status">
                 <SparkleIcon />

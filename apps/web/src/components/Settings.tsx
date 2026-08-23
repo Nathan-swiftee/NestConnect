@@ -36,6 +36,7 @@ import {
   usePeople,
   useReorderTeams,
   useRerouteInbox,
+  useSetDefaultTemplate,
   useSyncTemplates,
   useTeams,
   useTemplates,
@@ -65,6 +66,7 @@ import {
   RefreshIcon,
   SearchIcon,
   SparkleIcon,
+  StarIcon,
   StorageIcon,
   TeamGlyph,
   TEAM_ICON_KEYS,
@@ -1344,6 +1346,7 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
   const templates = useTemplates();
   const del = useDeleteTemplate();
   const sync = useSyncTemplates();
+  const setDefault = useSetDefaultTemplate();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -1373,6 +1376,9 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
           <p>
             Pre-approved WhatsApp messages used to re-open a chat once its 24-hour window has
             closed. Variables like <code>{"{{1}}"}</code> are filled in when you send.
+            {" "}Star one to make it the <b>default</b>: agents then keep typing normally in a closed
+            chat and what they write becomes its <code>{"{{1}}"}</code>. Pick a template whose single
+            variable is the message itself, not a name.
           </p>
         </div>
         <div className="setpane__headacts">
@@ -1404,12 +1410,33 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
             const ap = approvalMeta(t.approvalStatus);
             return (
               <div className="dtable__row dtable__row--static" key={t.id}>
-                <span className="dcell dcell__t">{t.name}</span>
+                <span className="dcell dcell__t">
+                  {t.name}
+                  {t.isDefault && <span className="tpl-default">Default</span>}
+                </span>
                 <span className="dcell"><span className={"tpl-cat tpl-cat--" + t.category}>{t.category}</span></span>
                 <span className="dcell dcell--muted">{t.language}</span>
                 <span className="dcell"><span className={"tpl-appr " + ap.cls}><span className="tpl-appr__dot" />{ap.label}</span></span>
                 <span className="dcell dcell--muted" title={t.body}>{t.body}</span>
                 <span className="dcell dacts">
+                  {/* The default is what the composer sends once a 24-hour
+                      window has closed, with the agent's typed text filling its
+                      variable — so only a one-variable template can carry it. */}
+                  <button
+                    className={"iconbtn" + (t.isDefault ? " on" : "")}
+                    title={
+                      t.isDefault
+                        ? "Default template — click to unset"
+                        : t.variableCount === 1
+                          ? "Use as the default for closed windows"
+                          : `Needs exactly one {{1}} variable to be the default (this has ${t.variableCount})`
+                    }
+                    aria-pressed={t.isDefault}
+                    disabled={!t.isDefault && t.variableCount !== 1}
+                    onClick={() => setDefault.mutate(t.isDefault ? null : t.id)}
+                  >
+                    <StarIcon filled={t.isDefault} />
+                  </button>
                   <button className="iconbtn" title="Edit template" onClick={() => { setOpen(false); setEditingId(t.id); }}><EditIcon /></button>
                   <button className="iconbtn danger" title="Delete template" onClick={() => remove(t)}><TrashIcon /></button>
                 </span>
