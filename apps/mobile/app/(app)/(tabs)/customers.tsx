@@ -37,7 +37,9 @@ export default function Customers() {
   return (
     <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1">
       <View className="px-4 pb-2 pt-2">
-        <Text className="text-2xl font-semibold tracking-tight text-fg">Customers</Text>
+        <Text accessibilityRole="header" className="text-2xl font-semibold tracking-tight text-fg">
+          Customers
+        </Text>
         <Text className="text-sm text-muted">
           {data ? `${data.length} in the directory` : ""}
         </Text>
@@ -160,7 +162,9 @@ function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void
           ListHeaderComponent={
             <View className="items-center px-6 py-6">
               <Avatar name={data.displayName} color={data.avatarColor} size={72} />
-              <Text className="mt-3 text-xl font-semibold text-fg">{data.displayName}</Text>
+              <Text accessibilityRole="header" className="mt-3 text-xl font-semibold text-fg">
+                {data.displayName}
+              </Text>
               {data.company ? (
                 <Text className="text-md text-muted">{data.company}</Text>
               ) : null}

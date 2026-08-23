@@ -106,7 +106,7 @@ export default function Thread() {
     return (
       <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1 justify-center">
         <ErrorState error={conv.error} what="this conversation" onRetry={() => void conv.refetch()} />
-        <Pressable onPress={() => router.back()} className="items-center py-2 active:opacity-60">
+        <Pressable onPress={() => router.back()} accessibilityRole="button" className="items-center py-2 active:opacity-60">
           <Text style={{ color: c.brand }} className="text-md font-medium">
             Back to inbox
           </Text>
@@ -121,7 +121,7 @@ export default function Thread() {
         <Text className="mt-1 text-center text-md text-muted">
           It may have been merged into another thread, or you no longer have access to it.
         </Text>
-        <Pressable onPress={() => router.back()} className="mt-4 active:opacity-60">
+        <Pressable onPress={() => router.back()} accessibilityRole="button" className="mt-4 active:opacity-60">
           <Text style={{ color: c.brand }} className="text-lg font-medium">
             Back to inbox
           </Text>
@@ -323,10 +323,10 @@ function Header({
           {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
         </Text>
       </View>
-      <Pressable onPress={onDetails} accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={8} className="px-1.5 active:opacity-60">
+      <Pressable onPress={onDetails} accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={12} className="px-1.5 active:opacity-60">
         <DetailsIcon size={20} color={c.textMuted} />
       </Pressable>
-      <Pressable onPress={onMore} accessibilityRole="button" accessibilityLabel="More actions" hitSlop={8} className="px-1.5 active:opacity-60">
+      <Pressable onPress={onMore} accessibilityRole="button" accessibilityLabel="More actions" hitSlop={12} className="px-1.5 active:opacity-60">
         <MoreIcon size={20} color={c.textMuted} />
       </Pressable>
     </View>
@@ -340,7 +340,13 @@ function LoadOlder({ conv }: { conv: ConversationWithMessages }) {
   const { loadOlder, loading } = useLoadOlderMessages(conv.id);
   if (!conv.hasMoreMessages) return null;
   return (
-    <Pressable disabled={loading} onPress={() => void loadOlder()} className="items-center py-2 active:opacity-60">
+    <Pressable
+      disabled={loading}
+      onPress={() => void loadOlder()}
+      accessibilityRole="button"
+      accessibilityState={{ busy: loading }}
+      className="items-center py-2 active:opacity-60"
+    >
       <Text style={{ color: c.brand }} className="text-sm font-medium">
         {loading ? "Loading…" : "Load earlier messages"}
       </Text>

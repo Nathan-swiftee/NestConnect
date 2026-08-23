@@ -50,15 +50,21 @@ export function MessageActions({
   const ours = message.reactions?.filter((r) => r.by === "user").map((r) => r.emoji) ?? [];
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible transparent animationType="fade" accessibilityViewIsModal onRequestClose={onClose}>
       <Pressable
         onPress={onClose}
+        accessibilityRole="button"
         accessibilityLabel="Close"
         style={[themeVars, { backgroundColor: c.scrim }]}
         className="flex-1 justify-end"
       >
         <Pressable
           onPress={() => {}}
+          // A sink, not a control: it exists so a tap on the sheet
+          // doesn't reach the scrim behind it. Left accessible, a
+          // screen reader announces the whole sheet as one button and
+          // can skip everything inside it.
+          accessible={false}
           style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 }}
           className="rounded-t-24 px-4 pt-4"
         >
@@ -73,27 +79,27 @@ export function MessageActions({
               agent reacting to an email needs to know the customer won't see
               it. */}
           <View className="flex-row justify-between pb-1">
-              {QUICK_REACTIONS.map((e) => {
-                // A reaction already left is a toggle — sending the same emoji
-                // again clears it, which is what the server does.
-                const on = ours.includes(e);
-                return (
-                  <Pressable
-                    key={e}
-                    onPress={() => {
-                      onReact(e);
-                      onClose();
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={on ? `Remove ${e} reaction` : `React with ${e}`}
-                    accessibilityState={{ selected: on }}
-                    style={{ backgroundColor: on ? c.brandTint : c.surface2 }}
-                    className="h-12 w-12 items-center justify-center rounded-full active:opacity-60"
-                  >
-                    <Text className="text-2xl">{e}</Text>
-                  </Pressable>
-                );
-              })}
+            {QUICK_REACTIONS.map((e) => {
+              // A reaction already left is a toggle — sending the same emoji
+              // again clears it, which is what the server does.
+              const on = ours.includes(e);
+              return (
+                <Pressable
+                  key={e}
+                  onPress={() => {
+                    onReact(e);
+                    onClose();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={on ? `Remove ${e} reaction` : `React with ${e}`}
+                  accessibilityState={{ selected: on }}
+                  style={{ backgroundColor: on ? c.brandTint : c.surface2 }}
+                  className="h-12 w-12 items-center justify-center rounded-full active:opacity-60"
+                >
+                  <Text className="text-2xl">{e}</Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           {!isWhatsApp ? (

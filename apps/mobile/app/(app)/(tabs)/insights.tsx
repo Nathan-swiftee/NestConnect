@@ -55,7 +55,9 @@ export default function Insights() {
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 32 }}
     >
-      <Text className="px-4 pb-2 text-2xl font-semibold tracking-tight text-fg">Insights</Text>
+      <Text accessibilityRole="header" className="px-4 pb-2 text-2xl font-semibold tracking-tight text-fg">
+        Insights
+      </Text>
 
       <View className="flex-row gap-2 px-4 pb-3">
         {RANGES.map((r) => {

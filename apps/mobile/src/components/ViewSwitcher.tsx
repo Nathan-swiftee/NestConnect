@@ -106,23 +106,32 @@ export function ViewSwitcher({
   const subs = (data?.my ?? []).filter((v) => v.key !== "inbound");
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent accessibilityViewIsModal onRequestClose={onClose}>
       {/* A Modal renders outside the root that publishes the palette, so the
           scheme's variables have to be re-applied here or every colour utility
           inside resolves against nothing. */}
       <Pressable
         onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
         style={[themeVars, { backgroundColor: "rgba(13,21,18,0.4)" }]}
         className="flex-1 justify-end"
       >
         {/* Stop taps inside the sheet from closing it. */}
         <Pressable
           onPress={() => {}}
+          // A sink, not a control: it exists so a tap on the sheet
+          // doesn't reach the scrim behind it. Left accessible, a
+          // screen reader announces the whole sheet as one button and
+          // can skip everything inside it.
+          accessible={false}
           style={{ backgroundColor: c.surface, maxHeight: "85%", paddingBottom: insets.bottom + 8 }}
           className="rounded-t-24"
         >
           <View className="flex-row items-center justify-between px-4 pb-1 pt-4">
-            <Text className="text-xl font-semibold text-fg">Inboxes</Text>
+            <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
+              Inboxes
+            </Text>
             <Pressable
               onPress={onClose}
               accessibilityRole="button"

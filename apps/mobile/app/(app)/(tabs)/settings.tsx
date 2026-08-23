@@ -63,7 +63,9 @@ export default function Settings() {
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 32 }}
     >
-      <Text className="px-4 pb-4 text-2xl font-semibold tracking-tight text-fg">Settings</Text>
+      <Text accessibilityRole="header" className="px-4 pb-4 text-2xl font-semibold tracking-tight text-fg">
+        Settings
+      </Text>
 
       {/* Who you are */}
       <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 rounded-16 border p-4">

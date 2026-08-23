@@ -325,12 +325,50 @@ Reactions are offered on every channel, matching the web. On WhatsApp the emoji
 is delivered to the customer; anywhere else the server stores it and skips
 dispatch, so the sheet says out loud that only the team will see it.
 
-**Still to do.** Quick reply from the notification (iOS
-`UNTextInputNotificationAction`, Android `RemoteInput` — the categories are
-registered but the actions do nothing yet), haptics through the rest of the app,
-empty and error states, accessibility (Dynamic Type, VoiceOver/TalkBack labels),
-list performance on a long thread, Sentry, device E2E (Maestro), EAS Submit to
-TestFlight and Play internal testing.
+**Acting from the banner — done.** Quick reply and mark read now work, on both
+platforms, without opening the app. The detail is in [§5.2b](#52b-acting-from-the-banner--the-parts-that-are-easy-to-get-wrong).
+
+**Empty and error states — done.** Every list had a spinner and some had an
+empty state, but none had an error state, so a failed request rendered "Nothing
+here" — which tells someone their inbox is clear when in fact nobody knows.
+There is now one component that puts the three states in the order that matters
+(error before empty, because a failed request has no items either), used by the
+inbox, customers, insights, push settings and the thread. The error says what
+failed, surfaces the server's own message when there is one, and offers a
+retry; the empty states say *why* they're empty, because a filter that matched
+nothing reads differently from an inbox that is genuinely clear.
+
+**Haptics — done.** Five named moments (`tap`, `select`, `success`, `warning`,
+`error`) behind one wrapper, so call sites read as intent rather than
+intensity, and every call is swallowed — haptics are unavailable on plenty of
+real devices and a nice touch must never take a send down with it.
+
+**Accessibility — done, except one thing that needs a device.**
+
+- Every interactive control has a name: 66 Pressables audited, all either
+  labelled or carrying visible text, verified against the rendered
+  accessibility tree on three screens.
+- **Sheets no longer swallow their own contents.** Each bottom sheet has a
+  Pressable behind it whose only job is to stop a tap reaching the scrim.
+  Left accessible, a screen reader announces the whole sheet as one button and
+  can skip everything inside it; they are `accessible={false}` now, and every
+  Modal is marked `accessibilityViewIsModal` so the reader stays inside it.
+- **Every touch target reaches 44pt.** Thirteen controls render smaller than
+  that — deliberately, because a 44pt filter chip would dominate the row it
+  sits in — and each now carries enough `hitSlop` to close the gap. Checked by
+  pairing the box measured in the running app with the slop read from source,
+  since `hitSlop` never shows up in a rendered measurement.
+- Screen and sheet titles are headings, so the VoiceOver rotor can jump between
+  them instead of reading every row to find the next section.
+- **Dynamic Type**: nothing in the app disables font scaling, so text scales by
+  default. The tab bar was the one place a fixed height would crop a scaled
+  label, and it now grows with `fontScale` (capped at 1.6×, past which iOS's
+  large-content viewer is the better answer). **Unverified on device** — React
+  Native Web reports a `fontScale` of 1 regardless of browser text size, so the
+  harness used everywhere else here cannot exercise it.
+
+**Still to do.** List performance on a long thread, Sentry, device E2E
+(Maestro), EAS Submit to TestFlight and Play internal testing.
 
 ---
 

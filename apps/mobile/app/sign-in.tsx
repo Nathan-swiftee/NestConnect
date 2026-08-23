@@ -95,7 +95,9 @@ export default function SignIn() {
         keyboardShouldPersistTaps="handled"
         className="px-6"
       >
-        <Text className="text-2xl font-semibold tracking-tight text-fg">Nest Connect</Text>
+        <Text accessibilityRole="header" className="text-2xl font-semibold tracking-tight text-fg">
+          Nest Connect
+        </Text>
         <Text className="mt-2 text-lg text-muted">
           {challenge ? "Enter your second factor to finish signing in." : "Sign in to your team inbox."}
         </Text>

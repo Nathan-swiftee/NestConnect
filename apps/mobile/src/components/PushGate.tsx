@@ -32,7 +32,7 @@ export function PushGate({
   const [busy, setBusy] = useState(false);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
+    <Modal visible={visible} transparent animationType="fade" accessibilityViewIsModal onRequestClose={onDismiss}>
       <View style={[themeVars, { backgroundColor: c.scrim }]} className="flex-1 justify-end">
         <View
           style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 16 }}
@@ -45,7 +45,9 @@ export function PushGate({
             <BellIcon size={24} color={c.brandStrong} />
           </View>
 
-          <Text className="pt-4 text-xl font-semibold text-fg">Know when a customer replies</Text>
+          <Text accessibilityRole="header" className="pt-4 text-xl font-semibold text-fg">
+            Know when a customer replies
+          </Text>
           <Text className="pt-2 text-md leading-snug text-muted">
             We'll notify you about conversations assigned to you, when someone @mentions you, and
             when something you snoozed comes due. Not every message in the workspace — you choose

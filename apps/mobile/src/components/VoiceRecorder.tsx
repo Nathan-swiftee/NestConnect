@@ -159,6 +159,7 @@ export function VoiceRecorder({
         disabled={!ready || seconds < 0.5}
         accessibilityRole="button"
         accessibilityLabel="Send voice message"
+        hitSlop={4}
         style={{ backgroundColor: c.brand, opacity: ready && seconds >= 0.5 ? 1 : 0.35 }}
         className="h-10 w-10 items-center justify-center rounded-full active:opacity-80"
       >

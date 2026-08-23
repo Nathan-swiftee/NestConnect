@@ -168,7 +168,11 @@ export default function Inbox() {
         >
           <View className="flex-shrink">
             <View className="flex-row items-center gap-1.5">
-              <Text numberOfLines={1} className="text-2xl font-semibold tracking-tight text-fg">
+              <Text
+                numberOfLines={1}
+                accessibilityRole="header"
+                className="text-2xl font-semibold tracking-tight text-fg"
+              >
                 {viewTitle}
               </Text>
               <View style={{ transform: [{ rotate: "90deg" }] }}>
@@ -314,6 +318,10 @@ function Chip({
       onPress={onPress}
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
+      // A chip is 26pt tall on purpose — it's a narrow row under the search
+      // field, and a 44pt pill would dominate it. The slop makes the *target*
+      // 44 without making the chip look like a button.
+      hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
       style={{ backgroundColor: active ? c.brandTint : c.surface2 }}
       className={`flex-row items-center gap-1.5 rounded-full px-3.5 ${subtle ? "py-1.5" : "py-2"} active:opacity-70`}
     >

@@ -1,3 +1,4 @@
+import { useWindowDimensions } from "react-native";
 import { Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMe } from "@ding/client";
@@ -20,7 +21,22 @@ import { useTheme } from "../../../src/theme";
 export default function TabsLayout() {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const { data: me } = useMe();
+
+  // Dynamic Type: the bar grows with the label instead of cropping it.
+  //
+  // A fixed-height bar sized for an 11pt label crops the descenders the moment
+  // someone turns text size up — and the people most likely to do that are the
+  // least able to guess what the cropped word said. Most apps sidestep this by
+  // pinning the label at one size (React Navigation does exactly that on iOS
+  // 13+, leaning on the long-press large-content overlay); we can afford to do
+  // the honest thing instead and give the text the room it asks for.
+  //
+  // Capped at 1.6×: past that the bar starts eating the inbox it's meant to
+  // navigate, and the large-content viewer — which stays on — is the better
+  // answer at accessibility sizes.
+  const labelHeight = Math.ceil(11 * Math.min(fontScale, 1.6) * 1.35);
   const elevated = me?.user?.role === "admin" || me?.user?.role === "manager";
 
   return (
@@ -31,18 +47,19 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: c.textFaint,
         // Height and padding are set rather than left to the default: on a
         // device with no home indicator the inset is 0 and the labels sit hard
-        // against the screen edge with their descenders clipped. 68 leaves ~50
-        // of content for a 24px icon plus an 11px label and the gap between —
-        // measured, because a tighter box silently crops the labels instead of
-        // overflowing visibly.
+        // against the screen edge with their descenders clipped. The 43 is the
+        // measured chrome — 8 top padding, a 25pt icon box, the 4pt gap, and
+        // 6pt of slack — so at the default text size this comes to the same 68
+        // it always was, and only grows from there.
         tabBarStyle: {
           backgroundColor: c.surface,
           borderTopColor: c.border,
-          height: 68 + insets.bottom,
+          height: 43 + labelHeight + (insets.bottom > 0 ? insets.bottom : 10),
           paddingTop: 8,
           paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        tabBarAllowFontScaling: true,
         sceneStyle: { backgroundColor: c.bg },
       }}
     >

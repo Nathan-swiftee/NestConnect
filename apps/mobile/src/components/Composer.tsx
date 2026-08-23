@@ -239,6 +239,7 @@ export function Composer({
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
         accessibilityLabel={label}
+        hitSlop={{ top: 9, bottom: 9, left: 2, right: 2 }}
         // The thumb: the active tab carries the raised surface, the rest are
         // bare. Same read as the web's sliding seg-thumb without animating a
         // measured offset on every layout.
@@ -417,6 +418,7 @@ export function Composer({
           }}
           accessibilityRole="button"
           accessibilityLabel="Emoji"
+          hitSlop={6}
           className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
         >
           <EmojiIcon size={21} color={emojiOpen ? c.brandStrong : c.textMuted} />
@@ -448,7 +450,8 @@ export function Composer({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Templates"
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+            hitSlop={6}
+          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
           >
             <BoltIcon size={19} color={c.textMuted} />
           </Pressable>
@@ -458,6 +461,7 @@ export function Composer({
           onPress={() => setAttachSheet(true)}
           accessibilityRole="button"
           accessibilityLabel="Attach files"
+          hitSlop={6}
           className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
         >
           <AttachIcon size={20} color={c.textMuted} />
@@ -468,6 +472,7 @@ export function Composer({
           disabled={!showMic && !canSend}
           accessibilityRole="button"
           accessibilityLabel={showMic ? "Record voice message" : internal ? "Add note" : "Send reply"}
+          hitSlop={4}
           // Keep the send button the same shape and colour whether or not it can
           // fire — a disabled white disc on the grey field reads as a hole. It
           // dims instead, which says "not yet" without disappearing.

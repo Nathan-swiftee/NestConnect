@@ -46,21 +46,29 @@ export function ReadLog({
   const seen = recipients.filter((r) => r.openedAt);
 
   return (
-    <Modal visible={visible && !!message} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible && !!message} transparent animationType="slide" accessibilityViewIsModal onRequestClose={onClose}>
       <Pressable
         onPress={onClose}
+        accessibilityRole="button"
         accessibilityLabel="Close"
         style={[themeVars, { backgroundColor: c.scrim }]}
         className="flex-1 justify-end"
       >
         <Pressable
           onPress={() => {}}
+          // A sink, not a control: it exists so a tap on the sheet
+          // doesn't reach the scrim behind it. Left accessible, a
+          // screen reader announces the whole sheet as one button and
+          // can skip everything inside it.
+          accessible={false}
           style={{ backgroundColor: c.surface, maxHeight: "80%", paddingBottom: insets.bottom + 8 }}
           className="rounded-t-24"
         >
           <View className="flex-row items-center justify-between px-4 pb-1 pt-4">
             <View className="flex-1">
-              <Text className="text-xl font-semibold text-fg">Read receipts</Text>
+              <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
+                Read receipts
+              </Text>
               <Text className="text-sm text-muted">
                 {seen.length} of {recipients.length} opened
               </Text>
