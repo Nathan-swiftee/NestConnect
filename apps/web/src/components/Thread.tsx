@@ -2355,7 +2355,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           <Avatar name={conv.contact.displayName} email={conv.contact.email} color={conv.contact.avatarColor} className="av" size={40} fontSize={14} />
           <div className="min-w-0">
             <div className="flex items-center gap-2 min-w-0">
-              <h2 className="min-w-0 flex-initial m-0 text-lg font-bold whitespace-nowrap overflow-hidden text-ellipsis max-[820px]:text-md">{conv.contact.displayName}</h2>
+              {/* leading-tight (1.25 = --lh-tight): the default 1.5 leaves ~4px of
+                  dead space under the name that reads as a gap above the presence
+                  line. */}
+              <h2 className="min-w-0 flex-initial m-0 text-lg font-bold leading-tight whitespace-nowrap overflow-hidden text-ellipsis max-[820px]:text-md">{conv.contact.displayName}</h2>
               {/* Channel pill sits inline to the right of the name (fills the
                   header's empty space); the presence line drops below it. */}
               <span className="inline-flex items-center gap-[5px] text-2xs font-medium text-faint flex-none" aria-label={threadChannels.map((ch) => channelMeta(ch).label).join(" + ")}>
@@ -2373,8 +2376,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             {conv.subject && conv.subject !== conv.contact.displayName && (
               <div className="text-xs text-fg font-semibold whitespace-nowrap overflow-hidden text-ellipsis max-w-[420px]">{conv.subject}</div>
             )}
+            {/* Presence/contact line: secondary to the name, so it sits a step
+                down the type scale (11px) and a step lighter (faint) — it's
+                context, not content. */}
             {sub && (
-              <div className="flex items-center gap-2 text-xs text-muted mt-px min-w-0">
+              <div className="flex items-center gap-2 text-2xs leading-snug text-faint min-w-0">
                 <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{sub}</span>
               </div>
             )}
