@@ -2,12 +2,19 @@
   "expo": {
     "name": "Nest Connect",
     "slug": "nest-connect",
+    "owner": "swiftee",
     "scheme": "nestconnect",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "backgroundColor": "#FAFAF9",
+    "updates": {
+      "url": "https://u.expo.dev/4a369ffe-af17-43ee-8304-f3ddf47565a0"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "bundleIdentifier": "co.uk.swiftee.nestconnect",
       "supportsTablet": true,
@@ -72,6 +79,11 @@
     "web": {
       "bundler": "metro",
       "output": "single"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4a369ffe-af17-43ee-8304-f3ddf47565a0"
+      }
     }
   }
 }
