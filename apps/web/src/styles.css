@@ -193,7 +193,9 @@ input,textarea{font:inherit}
 .list__resizer:hover .list__resizer-bar,
 .list__resizer.active .list__resizer-bar,
 .list__resizer:focus-visible .list__resizer-bar{opacity:1}
-.list__head{flex:0 0 auto;padding:var(--sp-4) var(--sp-4) var(--sp-3);border-bottom:1px solid var(--border);background:var(--surface)}
+/* No rule beneath: the filter chips already read as their own band, and a
+   hairline under them cut the list off from its own header. */
+.list__head{flex:0 0 auto;padding:var(--sp-4) var(--sp-4) var(--sp-3);background:var(--surface)}
 /* .list__title container + its h1/count-badge → Tailwind utilities, inlined on
    the ConversationList header. The unique .kbd / .list__compose descendants are
    de-scoped below (they only ever live in this header). */
@@ -219,14 +221,20 @@ input,textarea{font:inherit}
    (container + input); .search__clear keeps its own class (already unscoped). */
 /* filter chips — full-bleed horizontal scroller (bleeds past the header's 16px
    padding so chips scroll flush to the edges), tightly spaced */
-.chips{margin:11px -16px 0;display:flex;position:relative;gap:2px;padding:3px var(--sp-4);overflow-x:auto;scrollbar-width:none;scroll-padding-inline:16px}
+.chips{margin:11px -16px 0;display:flex;position:relative;gap:6px;padding:3px var(--sp-4);overflow-x:auto;scrollbar-width:none;scroll-padding-inline:16px}
 .chips::-webkit-scrollbar{display:none}
-.chip{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:500;padding:6px var(--sp-3);border-radius:var(--r-full);color:var(--text-muted);background:transparent;border:0;white-space:nowrap;transition:color var(--t-base) ease var(--t-fast)}
-.chip.active{color:var(--brand-strong)}
+/* Each chip carries its own pill — a resting grey, brand tint when selected.
+   No sliding thumb here any more: a thumb travels BEHIND the chips, so it can't
+   be seen once they have backgrounds of their own. The composer's Reply|Note
+   switcher still uses one; there the segments are transparent. */
+.chip{position:relative;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);font-weight:500;
+  padding:6px var(--sp-3);border-radius:var(--r-full);color:var(--text-muted);background:var(--surface-2);border:0;
+  white-space:nowrap;transition:background var(--t-base),color var(--t-base)}
+.chip.active{background:var(--brand-tint);color:var(--brand-strong);font-weight:600}
 /* per-filter count, WhatsApp-style; the active filter's count is highlighted */
-.chipcount{min-width:17px;height:17px;padding:0 5px;border-radius:var(--r-full);background:color-mix(in srgb,var(--text) 10%,transparent);color:var(--text-muted);font-size:var(--fs-2xs);font-weight:600;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums;line-height:1}
-.chip.active .chipcount{background:color-mix(in srgb,var(--brand) 16%,transparent);color:var(--brand-strong)}
-.chip:hover:not(.active){color:var(--text)}
+.chipcount{min-width:17px;height:17px;padding:0 5px;border-radius:var(--r-full);background:var(--brand);color:#fff;
+  font-size:var(--fs-2xs);font-weight:600;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums;line-height:1}
+.chip:hover:not(.active){background:var(--border);color:var(--text)}
 .convs{overflow-y:auto;flex:1;min-height:0;animation:listIn .28s var(--ease)}
 /* pull-to-refresh indicator (mobile) — grows with the pull, spins while loading */
 .ptr{overflow:hidden;display:flex;align-items:flex-end;justify-content:center;pointer-events:none}
@@ -1039,7 +1047,6 @@ input,textarea{font:inherit}
 .seg-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-full);z-index:0;pointer-events:none;will-change:transform,width;transition:transform var(--t-slow) cubic-bezier(.4,0,.2,1),width var(--t-slow) cubic-bezier(.4,0,.2,1)}
 .compmode .seg-thumb{background:var(--sel);box-shadow:none;border-radius:var(--r-8)}
 .compmode .seg-hover{border-radius:var(--r-8)}
-.chips .seg-thumb{background:var(--brand-tint);box-shadow:inset 0 1px 0 var(--glass-hi),inset 0 0 0 1px color-mix(in srgb,var(--brand) 20%,transparent)}
 /* subtle capsule that glides under the pointer on hover (behind the selected thumb) */
 .seg-hover{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-full);z-index:0;pointer-events:none;opacity:0;
   background:color-mix(in srgb,var(--text) 7%,transparent);will-change:transform,width;

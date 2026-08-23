@@ -2733,7 +2733,12 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               // and author must all match.) Purely visual grouping.
               const prev = group.items[mi - 1];
               const next = group.items[mi + 1];
-              const who = (x: Message) => `${x.direction}|${x.internal ? "n" : "m"}|${x.authorUserId ?? x.authorName ?? ""}`;
+              // The grouping key. Channel is part of it: a WhatsApp message and
+              // an email are different conversations to the eye even when the
+              // same agent sent them back to back, so they must not collapse
+              // into one run — each keeps its own spacing, name and tail.
+              const who = (x: Message) =>
+                `${x.direction}|${x.internal ? "n" : "m"}|${x.channel ?? conv.channel}|${x.authorUserId ?? x.authorName ?? ""}`;
               const cont = !!prev && who(prev) === who(m);
               // Followed by the same sender => not the last of the run, so this
               // bubble gives up its tail (the tail sits on the bottom corner).
