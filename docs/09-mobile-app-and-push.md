@@ -205,7 +205,7 @@ and realtime. It does **not** prove native gesture handling, keyboard behaviour,
 list performance or anything touching a native module. Those need a real device,
 which is the first thing to do with a dev-client build.
 
-### Phase 2 — The inbox 🟡 mostly done
+### Phase 2 — The inbox ✅
 
 Parity against the web app, feature by feature:
 
@@ -218,19 +218,19 @@ Parity against the web app, feature by feature:
 | Infinite scroll | ✅ | |
 | Grouped bubbles + day dividers | ✅ | `groupMessagesByDay` / `speakerKey` shared with web |
 | Status ticks, failed + retry | ✅ | |
-| Quoted replies | ✅ | Rendered; *composing* one is not wired yet |
-| Reactions | 🟡 | Displayed, not addable |
-| Attachments | 🟡 | Images inline, everything else opens externally; no upload |
+| Quoted replies | ✅ | Long-press a bubble → Reply; cue above the composer |
+| Reactions | ✅ | Long-press → the web's six; tapping yours again clears it |
+| Attachments | ✅ | Camera, library and files; staged with progress + retry |
 | Internal notes | ✅ | Distinct mode, distinct bubble |
 | Composer + optimistic send | ✅ | Shared `useSendMessage` |
 | WhatsApp 24-hour window | ✅ | Countdown, template fallback, locked state |
 | Assign / resolve / reopen / snooze | ✅ | Bottom sheet |
 | Load earlier messages | ✅ | |
 | Mark read on open | ✅ | Sends the WhatsApp read receipt too |
-| Labels | 🟡 | Shown as dots in the list; not editable |
-| Details panel | ❌ | Phase 2 remainder |
-| Attachment upload, voice notes | ❌ | Needs expo-image-picker / expo-av |
-| Offline retry queue | ❌ | Optimistic send exists; a durable queue does not |
+| Labels | ✅ | Dots in the list; editable in the details panel |
+| Details panel | ✅ | Sheet off the thread header |
+| Voice notes | ✅ | expo-audio; record, pause, discard, send |
+| Offline retry queue | ✅ | AsyncStorage-backed; flushes on reconnect + foreground |
 
 **Verified** against a real API: sign in → list → filter → search → open a
 thread → send a reply → add an internal note → assign to a teammate → resolve →
@@ -239,9 +239,24 @@ explanation when closed, countdown and live composer when open), a live inbound
 landing in the open thread, and bubble grouping measured at 10px between runs
 against 2px within one.
 
-**Still open before "an agent can run a shift from the phone":** attachment
-upload and voice notes, the details panel, per-conversation labels, adding
-reactions, and a durable offline send queue.
+**The remainder, since:** reactions and quoted replies behind a long-press; a
+details panel carrying the customer, the conversation's state and *editable*
+labels; attachment upload from camera, library or files, staged with progress
+and per-file retry; voice notes on expo-audio; and a durable send queue.
+
+The queue is the one worth explaining. Optimistic send already made a reply
+appear instantly, but it lived in React state — kill the app and the reply was
+gone. Now a send that fails on the network is written to AsyncStorage and
+flushed when the radio comes back or the app is foregrounded, in order, one at a
+time, so two replies in a thread can't arrive swapped. A 4xx is treated
+differently from an outage: the server has looked at it and refused, so it's
+marked dead, shown in the thread with the reason, and offered a retry or a
+discard rather than being retried forever.
+
+**Not done, deliberately:** the details panel doesn't edit customer tags or
+routing rules, and Settings doesn't manage channels, teams, people or templates.
+Those are administration — long forms done sitting down — and a phone-sized
+version would be worse than sending someone to the web.
 
 ### Phase 3 — Push, properly
 Section 5 below is the whole of this phase.

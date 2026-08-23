@@ -127,6 +127,20 @@ const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
+/**
+ * A file as React Native describes one: a local URI plus the name and MIME type
+ * the multipart part should carry. RN's FormData understands this object
+ * directly; a browser's does not, which is what {@link isUploadFile} separates.
+ */
+export interface UploadFile {
+  uri: string;
+  name: string;
+  type: string;
+}
+
+const isUploadFile = (f: unknown): f is UploadFile =>
+  typeof f === "object" && f !== null && typeof (f as UploadFile).uri === "string";
+
 export const api = {
   // auth
   session: () => get<MeResponse>("/auth/session"),
@@ -257,12 +271,23 @@ export const api = {
   olderMessages: (id: string, before?: string) =>
     get<MessagePage>(`/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`),
   // Stage a composer upload; the returned attachment id is referenced on send.
+  //
+  // Two shapes because the two platforms disagree about what a file is. A
+  // browser has Blob/File and wants the filename as append()'s third argument.
+  // React Native has no Blob worth uploading — it hands you a `file://` URI and
+  // its FormData expects `{ uri, name, type }` as the value, with no third
+  // argument at all. Passing the wrong one uploads zero bytes silently, so the
+  // branch is explicit rather than clever.
   uploadMedia: (
-    file: File | Blob,
+    file: File | Blob | UploadFile,
     meta?: { filename?: string; kind?: string; durationMs?: number; width?: number; height?: number; waveform?: number[] },
   ) => {
     const form = new FormData();
-    form.append("file", file, meta?.filename ?? (file instanceof File ? file.name : "file"));
+    if (isUploadFile(file)) {
+      form.append("file", file as unknown as Blob);
+    } else {
+      form.append("file", file, meta?.filename ?? (file instanceof File ? file.name : "file"));
+    }
     if (meta?.kind) form.append("kind", meta.kind);
     if (meta?.durationMs != null) form.append("durationMs", String(Math.round(meta.durationMs)));
     if (meta?.width != null) form.append("width", String(Math.round(meta.width)));

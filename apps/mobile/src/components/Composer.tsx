@@ -1,13 +1,20 @@
 import { useMemo, useRef, useState } from "react";
 import { ActivityIndicator, LayoutAnimation, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import type { ChannelType, ConversationWithMessages } from "@ding/schemas";
-import { useSendMessage, useTemplates, windowLeft } from "@ding/client";
+import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
+import { api, useSendMessage, useTemplates, windowLeft } from "@ding/client";
+import { useStagedAttachments } from "../attachments";
+import { enqueue } from "../send-queue";
+import { StagedAttachments } from "./StagedAttachments";
+import { AttachSheet } from "./AttachSheet";
+import { VoiceRecorder, type RecordedVoice } from "./VoiceRecorder";
 import { useTheme } from "../theme";
 import {
   AttachIcon,
   BoltIcon,
   ClockIcon,
   EmojiIcon,
+  ReplyIcon,
+  XIcon,
   MicIcon,
   NoteIcon,
   SendIcon,
@@ -37,14 +44,13 @@ const COMPOSER_EMOJIS = ["👍", "🙏", "😀", "😅", "🎉", "❤️", "✅"
  */
 export function Composer({
   conv,
-  onAttach,
-  onRecord,
+  replyTo,
+  onClearReply,
 }: {
   conv: ConversationWithMessages;
-  /** Opens the file picker. Absent until attachment upload lands. */
-  onAttach?: () => void;
-  /** Starts a voice note. Absent until recording lands. */
-  onRecord?: () => void;
+  /** The message this reply quotes, chosen by long-pressing a bubble. */
+  replyTo?: Message | null;
+  onClearReply?: () => void;
 }) {
   const { c } = useTheme();
   const send = useSendMessage();
@@ -55,6 +61,9 @@ export function Composer({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickedChannel, setPickedChannel] = useState<ChannelType | null>(null);
+  const [attachSheet, setAttachSheet] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const files = useStagedAttachments();
 
   // Which channels this customer is reachable on inside this thread. Mirrors the
   // web: a group can only be answered in the group; a 1:1 lists every channel we
@@ -90,14 +99,16 @@ export function Composer({
   const templateFallback = windowClosed && !internal && !!defaultTemplate;
   const locked = windowClosed && !internal && !defaultTemplate;
 
-  const canSend = body.trim().length > 0 && !send.isPending && !locked;
+  // An attachment on its own is a message — "here's the invoice" needs no words.
+  const hasContent = body.trim().length > 0 || files.readyIds.length > 0;
+  const canSend = hasContent && !send.isPending && !locked && !files.uploading;
   // The mic stands in for send while there's nothing to send — WhatsApp's own
   // arrangement. Only on a voice-capable WhatsApp reply, and only once wired.
-  const showMic = isWhatsApp && !internal && !canSend && !!onRecord;
+  const showMic = isWhatsApp && !internal && !hasContent;
 
   async function submit() {
     const text = body.trim();
-    if (!text || locked) return;
+    if ((!text && !files.readyIds.length) || locked) return;
     setError(null);
     setEmojiOpen(false);
     // Clear optimistically — the message is already on screen via useSendMessage,
@@ -109,11 +120,61 @@ export function Composer({
         body: text,
         internal,
         ...(internal ? {} : { channel }),
-        ...(templateFallback ? { template: { id: defaultTemplate!.id, params: [text] } } : {}),
+        ...(templateFallback ? { template: { id: defaultTemplate!.id, params: [text || "(attachment)"] } } : {}),
+        // A note goes to the team, so it can't quote a customer message out.
+        ...(replyTo && !internal ? { quotedMsgId: replyTo.id } : {}),
+        ...(files.readyIds.length ? { attachmentIds: files.readyIds } : {}),
       });
+      files.clear();
+      onClearReply?.();
     } catch (err) {
-      setBody(text);
-      setError(err instanceof Error ? err.message : "Couldn't send — try again.");
+      // A 4xx means the server looked at it and refused — the agent needs to see
+      // that and change something, so the text goes back in the box. Anything
+      // else is the network, and a reply written on the Tube should not be lost
+      // because the tunnel was long: it goes on the durable queue instead, and
+      // leaves the box empty because it is genuinely going to be sent.
+      const status = (err as { status?: number }).status;
+      if (status && status >= 400 && status < 500) {
+        setBody(text);
+        setError(err instanceof Error ? err.message : "Couldn't send — try again.");
+        return;
+      }
+      await enqueue({
+        conversationId: conv.id,
+        body: text,
+        internal,
+        ...(internal ? {} : { channel }),
+        ...(templateFallback ? { template: { id: defaultTemplate!.id, params: [text || "(attachment)"] } } : {}),
+        ...(replyTo && !internal ? { quotedMsgId: replyTo.id } : {}),
+        ...(files.readyIds.length ? { attachmentIds: files.readyIds } : {}),
+      });
+      files.clear();
+      onClearReply?.();
+    }
+  }
+
+  /** A finished voice note: stage it, wait for the upload, then send it on its
+   *  own. Unlike a picked file it isn't left in the tray — you recorded it to
+   *  say something now, not to attach it to a sentence you haven't written. */
+  async function sendVoice(v: RecordedVoice) {
+    setRecording(false);
+    setError(null);
+    try {
+      const attachment = await api.uploadMedia(
+        { uri: v.uri, name: `voice-${Date.now()}.m4a`, type: "audio/m4a" },
+        { kind: "voice", durationMs: v.durationMs, filename: `voice-${Date.now()}.m4a` },
+      );
+      await send.mutateAsync({
+        id: conv.id,
+        body: "",
+        internal: false,
+        channel,
+        attachmentIds: [attachment.id],
+        ...(replyTo ? { quotedMsgId: replyTo.id } : {}),
+      });
+      onClearReply?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't send the voice note.");
     }
   }
 
@@ -267,6 +328,35 @@ export function Composer({
         </View>
       ) : null}
 
+      {/* What you're quoting, with a way out of it. Without this the quote is
+          invisible until after you've sent, which is the wrong moment to find
+          out you were replying to the wrong message. */}
+      {replyTo && !internal ? (
+        <View
+          style={{ backgroundColor: c.surface2, borderLeftColor: c.brand }}
+          className="mb-2 flex-row items-center gap-2 rounded-8 border-l-2 px-2.5 py-1.5"
+        >
+          <ReplyIcon size={14} color={c.brandStrong} />
+          <View className="flex-1">
+            <Text style={{ color: c.brandStrong }} className="text-2xs font-semibold">
+              Replying to {replyTo.direction === "out" ? "yourself" : conv.contact.displayName}
+            </Text>
+            <Text numberOfLines={1} className="text-2xs text-muted">
+              {replyTo.body?.trim() || "Attachment"}
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClearReply}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel reply"
+            hitSlop={10}
+            className="p-1 active:opacity-60"
+          >
+            <XIcon size={13} color={c.textMuted} />
+          </Pressable>
+        </View>
+      ) : null}
+
       {error ? <Text className="pb-1.5 text-sm text-danger">{error}</Text> : null}
 
       {emojiOpen ? (
@@ -294,6 +384,14 @@ export function Composer({
         </ScrollView>
       ) : null}
 
+      {/* While recording there is nothing else to do, so the recorder takes the
+          input row's place rather than floating over it. */}
+      {recording ? (
+        <VoiceRecorder onSend={(v) => void sendVoice(v)} onCancel={() => setRecording(false)} />
+      ) : (
+      <>
+      <StagedAttachments items={files.staged} onRemove={files.remove} onRetry={files.retry} />
+
       {/* compinput: tools left, field centre, one trailing action. */}
       <View
         style={{ backgroundColor: c.surface2 }}
@@ -317,12 +415,16 @@ export function Composer({
           onChangeText={setBody}
           multiline
           editable={!locked}
+          // Not "Message {name}…": with emoji, template, attach and send in the
+          // row there isn't width for it, and it wrapped to a second line. The
+          // header names the customer two lines above, so the name here was
+          // costing a line to repeat something already on screen.
           placeholder={
             locked
               ? "Set a default template to reply"
               : internal
                 ? "Note for the team…"
-                : `Message ${conv.contact.displayName}…`
+                : "Message…"
           }
           placeholderTextColor={c.textFaint}
           style={{ color: c.text, maxHeight: 132 }}
@@ -339,19 +441,17 @@ export function Composer({
           </Pressable>
         ) : null}
 
-        {onAttach ? (
-          <Pressable
-            onPress={onAttach}
-            accessibilityRole="button"
-            accessibilityLabel="Attach files"
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
-          >
-            <AttachIcon size={20} color={c.textMuted} />
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={() => setAttachSheet(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Attach files"
+          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+        >
+          <AttachIcon size={20} color={c.textMuted} />
+        </Pressable>
 
         <Pressable
-          onPress={showMic ? onRecord : submit}
+          onPress={showMic ? () => setRecording(true) : submit}
           disabled={!showMic && !canSend}
           accessibilityRole="button"
           accessibilityLabel={showMic ? "Record voice message" : internal ? "Add note" : "Send reply"}
@@ -373,6 +473,16 @@ export function Composer({
           )}
         </Pressable>
       </View>
+      </>
+      )}
+
+      <AttachSheet
+        visible={attachSheet}
+        onClose={() => setAttachSheet(false)}
+        onCamera={() => void files.takePhoto()}
+        onPhotos={() => void files.pickImages()}
+        onFiles={() => void files.pickFiles()}
+      />
     </View>
   );
 }

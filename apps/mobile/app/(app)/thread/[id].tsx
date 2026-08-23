@@ -19,6 +19,7 @@ import {
   useLoadOlderMessages,
   useMarkRead,
   usePeople,
+  useReact,
   useRealtime,
   useRetryMessage,
   useSession,
@@ -30,8 +31,12 @@ import { ActionSheet, type SheetAction } from "../../../src/components/ActionShe
 import { Attachments } from "../../../src/components/Attachments";
 import { Avatar } from "../../../src/components/Avatar";
 import { Composer } from "../../../src/components/Composer";
+import { useSendQueue } from "../../../src/send-queue";
+import { DetailsPanel } from "../../../src/components/DetailsPanel";
+import { QueuedBubble } from "../../../src/components/QueuedBubble";
+import { MessageActions } from "../../../src/components/MessageActions";
 import { Ticks } from "../../../src/components/Ticks";
-import { BackIcon, MoreIcon, ProfileIcon, channelColor, channelMeta } from "../../../src/icons";
+import { BackIcon, DetailsIcon, MoreIcon, channelColor, channelMeta } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
@@ -63,7 +68,13 @@ export default function Thread() {
   const snooze = useSnooze();
   const markRead = useMarkRead();
   const retry = useRetryMessage();
-  const [sheet, setSheet] = useState<null | "assign" | "snooze" | "more">(null);
+  const react = useReact();
+  const queue = useSendQueue();
+  const [sheet, setSheet] = useState<null | "assign" | "snooze" | "more" | "details">(null);
+  // The message a long-press opened the action sheet for, and the one the
+  // composer is quoting. Separate: acting on a message doesn't quote it.
+  const [acting, setActing] = useState<Message | null>(null);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
   const scroller = useRef<ScrollView>(null);
   const marked = useRef(false);
 
@@ -150,7 +161,7 @@ export default function Thread() {
       style={{ backgroundColor: c.bg, paddingTop: insets.top }}
       className="flex-1"
     >
-      <Header conv={data} onAssign={() => setSheet("assign")} onMore={() => setSheet("more")} />
+      <Header conv={data} onDetails={() => setSheet("details")} onMore={() => setSheet("more")} />
 
       <ScrollView
         ref={scroller}
@@ -174,6 +185,7 @@ export default function Thread() {
                 key={m.id}
                 message={m}
                 conv={data}
+                onLongPress={() => setActing(m)}
                 meId={me?.id}
                 // Same speaker as the one above? Then it's part of a run, and
                 // loses the name and most of the gap above it.
@@ -182,6 +194,17 @@ export default function Thread() {
               />
             ))}
           </View>
+        ))}
+
+        {/* Written but not yet accepted by the server — shown in place so a
+            reply composed offline doesn't look like it vanished. */}
+        {queue.forConversation(id).map((q) => (
+          <QueuedBubble
+            key={q.id}
+            item={q}
+            onRetry={() => void queue.retry(q.id)}
+            onDiscard={() => void queue.discard(q.id)}
+          />
         ))}
       </ScrollView>
 
@@ -200,12 +223,27 @@ export default function Thread() {
           </Text>
         </View>
       ) : (
-        <Composer conv={data} />
+        <Composer conv={data} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
       )}
       <View style={{ height: insets.bottom, backgroundColor: c.surface }} />
 
       <ActionSheet visible={sheet === "assign"} title="Assign this conversation" actions={assignActions} onClose={() => setSheet(null)} />
       <ActionSheet visible={sheet === "snooze"} title="Snooze until…" actions={snoozeActions} onClose={() => setSheet(null)} />
+      <DetailsPanel
+        conv={data}
+        visible={sheet === "details"}
+        onClose={() => setSheet(null)}
+        onOpenConversation={(id) => router.replace({ pathname: "/(app)/thread/[id]", params: { id } })}
+      />
+      <MessageActions
+        message={acting}
+        conv={data}
+        onReact={(emoji) =>
+          react.mutate({ conversationId: data.id, messageId: acting!.id, emoji })
+        }
+        onReply={() => setReplyTo(acting)}
+        onClose={() => setActing(null)}
+      />
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
     </KeyboardAvoidingView>
   );
@@ -213,11 +251,11 @@ export default function Thread() {
 
 function Header({
   conv,
-  onAssign,
+  onDetails,
   onMore,
 }: {
   conv: ConversationWithMessages;
-  onAssign: () => void;
+  onDetails: () => void;
   onMore: () => void;
 }) {
   const { c } = useTheme();
@@ -242,8 +280,8 @@ function Header({
           {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
         </Text>
       </View>
-      <Pressable onPress={onAssign} accessibilityRole="button" accessibilityLabel="Assign" hitSlop={8} className="px-1.5 active:opacity-60">
-        <ProfileIcon size={20} color={c.textMuted} />
+      <Pressable onPress={onDetails} accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={8} className="px-1.5 active:opacity-60">
+        <DetailsIcon size={20} color={c.textMuted} />
       </Pressable>
       <Pressable onPress={onMore} accessibilityRole="button" accessibilityLabel="More actions" hitSlop={8} className="px-1.5 active:opacity-60">
         <MoreIcon size={20} color={c.textMuted} />
@@ -273,12 +311,14 @@ function Bubble({
   meId,
   continues,
   onRetry,
+  onLongPress,
 }: {
   message: Message;
   conv: ConversationWithMessages;
   meId?: string;
   continues: boolean;
   onRetry: () => void;
+  onLongPress: () => void;
 }) {
   const { c } = useTheme();
   const mine = message.direction === "out";
@@ -314,7 +354,11 @@ function Bubble({
       className={mine ? "items-end" : "items-start"}
       style={{ marginTop: continues ? 2 : 10 }}
     >
-      <View
+      <Pressable
+        onLongPress={onLongPress}
+        delayLongPress={280}
+        accessibilityRole="button"
+        accessibilityLabel={`Message: ${message.body || "attachment"}. Long press for actions.`}
         style={{
           backgroundColor: mine ? c.brandTint : c.surface,
           borderColor: mine ? c.brandTint : c.border,
@@ -357,7 +401,7 @@ function Bubble({
           <Text className="text-2xs text-faint">{clockTime(message.createdAt)}</Text>
           {mine ? <Ticks status={message.status} /> : null}
         </View>
-      </View>
+      </Pressable>
 
       {mine && message.status === "failed" ? (
         <Pressable onPress={onRetry} accessibilityRole="button" className="px-1 pt-1 active:opacity-60">

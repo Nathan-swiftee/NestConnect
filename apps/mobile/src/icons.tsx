@@ -82,6 +82,13 @@ export const SettingsIcon = ({ size = 22, color = "currentColor", ...rest }: P) 
   </Svg>
 );
 export const BellIcon = stroke("M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0");
+/** Panel with a right-hand column — the web's "show details" affordance. */
+export const DetailsIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
+    <Rect x="3" y="4" width="18" height="16" rx="2" stroke={color} strokeWidth={1.8} />
+    <Path d="M15 4v16" stroke={color} strokeWidth={1.8} />
+  </Svg>
+);
 export const SearchIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
     <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth={1.9} />
@@ -128,6 +135,17 @@ export const MicIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
   </Svg>
 );
 export const BoltIcon = solid("M13 2 4 14h6l-1 8 9-12h-6l1-8Z");
+export const CameraIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
+    <Path
+      d="M4 8h3l1.5-2.5h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinejoin="round"
+    />
+    <Circle cx="12" cy="13" r="3.6" stroke={color} strokeWidth={1.8} />
+  </Svg>
+);
 export const SparkleIcon = stroke(
   "M12 3.5c.7 3.4 1.9 4.6 5.3 5.3-3.4.7-4.6 1.9-5.3 5.3-.7-3.4-1.9-4.6-5.3-5.3 3.4-.7 4.6-1.9 5.3-5.3ZM18 15.2c.35 1.7.95 2.3 2.65 2.65-1.7.35-2.3.95-2.65 2.65-.35-1.7-.95-2.3-2.65-2.65 1.7-.35 2.3-.95 2.65-2.65Z",
   1.7,

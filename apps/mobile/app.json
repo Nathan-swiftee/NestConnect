@@ -24,12 +24,26 @@
         "backgroundColor": "#0FA47A"
       },
       "permissions": [
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "RECORD_AUDIO"
       ]
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Nest Connect uses your photos so you can send one to a customer.",
+          "cameraPermission": "Nest Connect uses the camera so you can photograph something for a customer."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Nest Connect uses the microphone so you can reply with a voice note."
+        }
+      ],
       [
         "expo-build-properties",
         {
