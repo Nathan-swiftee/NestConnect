@@ -105,6 +105,12 @@ export class ChannelDispatcher {
       // References / Gmail threadId, so it never lands in the customer's thread.
       context = { subject: forwardSubject(conversation.subject), toName: undefined };
     } else if (channel === "email") {
+      // See the threadId note below: only an email-primary conversation being
+      // answered from its own inbox has a Gmail thread id we can safely reuse.
+      const threadIdForSend =
+        conversation.channel === "email" && sendingInboxId === conversation.inboxId
+          ? conversation.channelRef ?? undefined
+          : undefined;
       // Prior EMAIL messages in this thread that carry a Message-ID, oldest→newest
       // (a WhatsApp wamid is not an email Message-ID, so other channels are out).
       const priorEmail = conversation.messages.filter(
@@ -124,7 +130,19 @@ export class ChannelDispatcher {
         // For a Gmail-connected inbox the thread's Gmail id is kept on channelRef;
         // passing it keeps the reply in the same server-side thread. Undefined for
         // Postmark threads, which rely solely on the In-Reply-To/References headers.
-        threadId: conversation.channelRef ?? undefined,
+        //
+        // Only pass it when it is actually THIS mailbox's Gmail thread id:
+        //  - channelRef is overloaded — a Gmail thread id on an email thread, but
+        //    a WhatsApp group id on a group, and on a WhatsApp thread that later
+        //    received an email it holds that email's thread id;
+        //  - Gmail thread ids are per-mailbox, and a cross-channel send resolves
+        //    its own email inbox (firstInboxOfType), which needn't be the mailbox
+        //    that owns the id.
+        // Passing an id the sending mailbox can't see makes Gmail reject the send
+        // with 404 ("Email: rejected (404)" in the thread). Omitting it costs
+        // nothing: In-Reply-To/References above still thread it for the recipient,
+        // it just starts a new server-side thread in our own mailbox.
+        threadId: threadIdForSend,
       };
     }
 
