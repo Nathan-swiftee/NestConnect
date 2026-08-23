@@ -1,10 +1,12 @@
 import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post } from "@nestjs/common";
 import {
   registerDeviceInputSchema,
+  setConversationMutedInputSchema,
   updatePushPreferencesInputSchema,
   type DeviceInfo,
   type PushPreferences,
   type RegisterDeviceInput,
+  type SetConversationMutedInput,
   type UpdatePushPreferencesInput,
 } from "@ding/schemas";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -79,6 +81,22 @@ export class DevicesController {
     @Body(new ZodValidationPipe(updatePushPreferencesInputSchema)) body: UpdatePushPreferencesInput,
   ): Promise<PushPreferences> {
     return this.push.updatePreferences(userId, body);
+  }
+
+  /**
+   * Silence one conversation for the person asking.
+   *
+   * A dedicated route rather than a field on the preferences PATCH: the stored
+   * value is a list, and two devices each sending a whole list built from their
+   * own stale copy would lose one of the mutes.
+   */
+  @Patch("mute/:conversationId")
+  setMuted(
+    @CurrentUserId() userId: string,
+    @Param("conversationId") conversationId: string,
+    @Body(new ZodValidationPipe(setConversationMutedInputSchema)) body: SetConversationMutedInput,
+  ): Promise<PushPreferences> {
+    return this.push.setConversationMuted(userId, conversationId, body.muted);
   }
 
   /** Send a real push to this person's own devices, and say what happened.

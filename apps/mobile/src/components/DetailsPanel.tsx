@@ -1,17 +1,19 @@
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   relativeTime,
   slaCountdown,
   useContact,
   useLabels,
+  usePushPreferences,
   useSetConversationLabels,
+  useSetConversationMuted,
   windowLeft,
 } from "@ding/client";
 import type { ConversationWithMessages } from "@ding/schemas";
 import { Avatar } from "./Avatar";
 import { ChannelDot } from "./ChannelDot";
-import { CheckIcon, ChevronRight, XIcon, channelMeta } from "../icons";
+import { BellIcon, CheckIcon, ChevronRight, XIcon, channelMeta } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
 
 /**
@@ -42,6 +44,8 @@ export function DetailsPanel({
   const themeVars = useThemeVars();
   const { data: catalog } = useLabels();
   const setLabels = useSetConversationLabels();
+  const { data: pushPrefs } = usePushPreferences();
+  const setMuted = useSetConversationMuted();
   // Only fetched while the sheet is open — the thread doesn't need it.
   const { data: contact } = useContact(visible ? conv.contact.id : null);
 
@@ -57,6 +61,7 @@ export function DetailsPanel({
   }
 
   const others = (contact?.conversations ?? []).filter((x) => x.id !== conv.id);
+  const muted = pushPrefs?.mutedConversationIds.includes(conv.id) ?? false;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -156,6 +161,29 @@ export function DetailsPanel({
                 />
               ) : null}
               <Field label="Last activity" value={`${relativeTime(conv.lastActivityAt)} ago`} last />
+            </Card>
+
+            {/* Notifications for this one thread */}
+            <Section>Notifications</Section>
+            <Card>
+              <View className="flex-row items-center gap-3 px-4 py-3">
+                <BellIcon size={17} color={muted ? c.textFaint : c.textMuted} />
+                <View className="flex-1">
+                  <Text className="text-md font-medium text-fg">{muted ? "Muted" : "Notifications on"}</Text>
+                  <Text className="text-2xs text-muted">
+                    {muted
+                      ? "No pushes from this thread — snooze reminders still arrive"
+                      : "You'll be pushed about this thread as usual"}
+                  </Text>
+                </View>
+                <Switch
+                  value={!muted}
+                  onValueChange={(on) => setMuted.mutate({ conversationId: conv.id, muted: !on })}
+                  disabled={setMuted.isPending}
+                  trackColor={{ true: c.brand, false: c.surface2 }}
+                  thumbColor="#fff"
+                />
+              </View>
             </Card>
 
             {/* Labels — the editable one */}

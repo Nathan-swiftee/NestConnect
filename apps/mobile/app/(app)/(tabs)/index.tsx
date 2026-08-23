@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,6 +14,8 @@ import type { Conversation } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
 import { ViewSwitcher } from "../../../src/components/ViewSwitcher";
+import { PushGate, useDelayedPrompt } from "../../../src/components/PushGate";
+import { clearBadge, usePushRegistration } from "../../../src/push";
 import { ChevronRight, SearchIcon } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 
@@ -103,6 +105,27 @@ export default function Inbox() {
   const list = useConversations(view);
   const found = useSearchConversations(search, searching);
   const { refresh, refreshing } = useRefresh();
+
+  // Push: register on every start, and ask once the inbox has something on it.
+  const push = usePushRegistration(!!session.data?.user);
+  const [askedThisRun, setAskedThisRun] = useState(false);
+  const [showGate, setShowGate] = useState(false);
+  const promptDue = useDelayedPrompt(!list.isLoading && !!session.data?.user);
+
+  useEffect(() => {
+    if (!promptDue || askedThisRun || push.granted || push.status === null) return;
+    // Only ever put our own sheet up once per install; after that the answer
+    // lives in OS settings, where nagging can't reach it anyway.
+    void push.hasAsked().then((asked) => {
+      if (!asked) setShowGate(true);
+    });
+  }, [promptDue, askedThisRun, push]);
+
+  // The badge counts what's waiting in this list. Looking at the list is
+  // reading it, so the icon shouldn't keep claiming otherwise.
+  useEffect(() => {
+    if (!list.isLoading) void clearBadge();
+  }, [list.isLoading, view]);
 
   // The chosen view's own name and count, for the header. Looked up across every
   // section because the switcher can select a team, a channel or a label — not
@@ -225,6 +248,19 @@ export default function Inbox() {
             </View>
           )
         }
+      />
+
+      <PushGate
+        visible={showGate}
+        onAllow={() => {
+          setShowGate(false);
+          setAskedThisRun(true);
+          void push.requestPermission();
+        }}
+        onDismiss={() => {
+          setShowGate(false);
+          setAskedThisRun(true);
+        }}
       />
 
       <ViewSwitcher

@@ -60,6 +60,9 @@ export class ExpoPushProvider extends PushProvider {
       ...(m.channelId ? { channelId: m.channelId } : {}),
       // Expo maps this onto Android's collapse key and iOS's apns-collapse-id.
       ...(m.collapseKey ? { collapseId: m.collapseKey } : {}),
+      ...(m.threadId ? { threadId: m.threadId } : {}),
+      ...(m.categoryId ? { categoryId: m.categoryId } : {}),
+      ...(m.interruptionLevel ? { interruptionLevel: m.interruptionLevel } : {}),
       priority: m.priority ?? "high",
       ...(m.ttlSeconds === undefined ? {} : { ttl: m.ttlSeconds }),
       sound: "default" as const,

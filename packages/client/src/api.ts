@@ -193,6 +193,8 @@ export const api = {
   updatePushPreferences: (input: UpdatePushPreferencesInput) =>
     patch<PushPreferences>("/devices/preferences", input),
   testPush: () => post<{ devices: number; sent: number; failed: number }>("/devices/test", {}),
+  setConversationMuted: (conversationId: string, muted: boolean) =>
+    patch<PushPreferences>(`/devices/mute/${conversationId}`, { muted }),
   // Bell notifications.
   notifications: () => get<Notification[]>("/notifications"),
   markNotificationsRead: (ids?: string[]) => post<{ ok: boolean }>("/notifications/read", ids ? { ids } : {}),

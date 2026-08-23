@@ -897,6 +897,24 @@ export class PrismaStore extends Store {
     };
   }
 
+  async unreadConversationCount(userId: string): Promise<number> {
+    const userTeams = await this.teamsForUser(userId);
+    const token = await this.mentionToken(userId);
+    return this.prisma.conversation.count({
+      where: {
+        // AND, not a spread: buildWhere("inbound") is itself `{ OR: [mine,
+        // grabs] }`, so spreading it beside a second `OR` would overwrite the
+        // visibility scope and count the whole workspace.
+        AND: [
+          this.buildWhere("inbound", userId, userTeams, token, true),
+          // Two shapes count as unread: a real backlog of new messages, and an
+          // agent's manual "mark unread", which carries no count.
+          { OR: [{ unread: true }, { unreadCount: { gt: 0 } }] },
+        ],
+      },
+    });
+  }
+
   async views(userId: string): Promise<SidebarViews> {
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);

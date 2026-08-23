@@ -426,6 +426,15 @@ export abstract class Store {
   /** Mark one recovery code spent so it can't be reused. */
   abstract markRecoveryCodeUsed(id: string): Promise<void>;
   abstract views(userId: string): Promise<SidebarViews>;
+  /**
+   * How many conversations in this person's own inbound queue are unread — the
+   * number that goes on the app icon.
+   *
+   * Scoped to "inbound" rather than the whole workspace on purpose: a badge is a
+   * count of things waiting for *you*, and an admin who can see every team's
+   * inbox would otherwise wear the workspace's entire backlog on their phone.
+   */
+  abstract unreadConversationCount(userId: string): Promise<number>;
   /** A cursor page of conversations for a view (most-recent first). */
   abstract listConversations(
     view: string,

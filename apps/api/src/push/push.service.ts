@@ -26,6 +26,10 @@ export interface PushRequest {
   actorUserId?: string;
 }
 
+/** Matches the schema's cap on the stored array — kept as a named constant so
+ *  the trim here and the validation there can't drift apart. */
+const MAX_MUTED = 200;
+
 /** Android channels, one per class, so a person can silence "every message" and
  *  still be reachable for a direct mention. Mandatory on Android 8+. */
 const ANDROID_CHANNEL: Record<PushKind, string> = {
@@ -35,6 +39,15 @@ const ANDROID_CHANNEL: Record<PushKind, string> = {
   assignment: "assignments",
   reminder: "reminders",
   test: "messages",
+};
+
+/** iOS notification categories — which quick actions the pulled-down banner
+ *  offers. A message can be replied to; an assignment or a reminder can only be
+ *  opened, so they get no category rather than a dead button. */
+const IOS_CATEGORY: Partial<Record<PushKind, string>> = {
+  message: "message",
+  team_message: "message",
+  mention: "message",
 };
 
 /** Which preference each kind answers to. */
@@ -132,6 +145,29 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     return next;
   }
 
+  /**
+   * Silence, or un-silence, one conversation for one person.
+   *
+   * A dedicated call rather than letting the client PATCH the array: two phones
+   * muting two different threads would otherwise each send a whole list built
+   * from stale state, and one would erase the other's mute.
+   */
+  async setConversationMuted(userId: string, conversationId: string, muted: boolean): Promise<PushPreferences> {
+    const prefs = await this.preferences(userId);
+    const current = prefs.mutedConversationIds;
+    if (muted === current.includes(conversationId)) return prefs;
+    const next = muted
+      ? // Newest last, oldest dropped first once the cap is reached.
+        [...current, conversationId].slice(-MAX_MUTED)
+      : current.filter((id) => id !== conversationId);
+    return this.updatePreferences(userId, { mutedConversationIds: next });
+  }
+
+  /** Whether this person has silenced this thread. */
+  async isConversationMuted(userId: string, conversationId: string): Promise<boolean> {
+    return (await this.preferences(userId)).mutedConversationIds.includes(conversationId);
+  }
+
   /* ---- sending ---- */
 
   /** Queue a notification. Returns immediately; delivery happens off the caller's
@@ -160,6 +196,21 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     const devices = await this.store.devicesForUsers(recipients);
     if (!devices.length) return { sent: 0, failed: 0 };
 
+    // The badge is a count of what's waiting for *this* person, so it has to be
+    // resolved per recipient rather than once for the batch. Counted only for
+    // the users who actually have a device, and never allowed to fail the
+    // send — a wrong number on an icon is not worth losing the notification for.
+    const badges = new Map<string, number>();
+    await Promise.all(
+      [...new Set(devices.map((d) => d.userId))].map(async (userId) => {
+        try {
+          badges.set(userId, await this.store.unreadConversationCount(userId));
+        } catch (err) {
+          this.logger.debug(`Badge count failed for ${userId}: ${String(err)}`);
+        }
+      }),
+    );
+
     const messages: PushMessage[] = devices.map((d) => ({
       to: d.pushToken,
       title: req.title,
@@ -168,10 +219,21 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
         kind: req.kind,
         ...(req.conversationId ? { conversationId: req.conversationId } : {}),
       },
+      ...(badges.has(d.userId) ? { badge: badges.get(d.userId) } : {}),
       channelId: ANDROID_CHANNEL[req.kind],
+      ...(IOS_CATEGORY[req.kind] ? { categoryId: IOS_CATEGORY[req.kind] } : {}),
       // One key per conversation: five messages in a chat become one entry in the
-      // tray rather than five banners.
-      ...(req.conversationId ? { collapseKey: `conversation:${req.conversationId}` } : {}),
+      // tray rather than five banners. `threadId` is the iOS half of the same
+      // idea — collapse replaces, thread groups.
+      ...(req.conversationId
+        ? {
+            collapseKey: `conversation:${req.conversationId}`,
+            threadId: `conversation:${req.conversationId}`,
+          }
+        : {}),
+      // Only a reminder earns the right to break through Focus: it's the one
+      // kind the person asked to be interrupted by, at a time they chose.
+      ...(req.kind === "reminder" ? { interruptionLevel: "time-sensitive" as const } : {}),
       priority: "high" as const,
       ttlSeconds: TTL_SECONDS,
     }));
@@ -201,6 +263,18 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
 
     const pref = PREFERENCE[req.kind];
     if (pref && !prefs[pref]) return false;
+
+    // A muted thread is silent whatever the class — muting is the strongest
+    // thing a person can say about one conversation, so it outranks "notify me
+    // about mentions". A reminder still gets through: they asked for that one,
+    // at a time they chose, about this specific thread.
+    if (
+      req.conversationId &&
+      req.kind !== "reminder" &&
+      prefs.mutedConversationIds.includes(req.conversationId)
+    ) {
+      return false;
+    }
 
     if (!IGNORES_QUIET_HOURS.has(req.kind) && this.inQuietHours(prefs)) return false;
 

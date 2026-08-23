@@ -934,8 +934,22 @@ export const pushPreferencesSchema = z.object({
   quietHours: z.object({ start: timeOfDay, end: timeOfDay }).nullable().default(null),
   /** IANA zone the quiet hours are read in; the workspace's default when unset. */
   timezone: z.string().max(64).optional(),
+  /**
+   * Conversations this person has silenced.
+   *
+   * Kept here rather than in its own table because a mute belongs to a person,
+   * not to the thread — two agents on the same busy group should be able to
+   * disagree about whether it buzzes. Capped so a long career of muting can't
+   * grow the row without bound; the oldest fall off first, which is the right
+   * end to lose since a thread muted a year ago is almost certainly resolved.
+   */
+  mutedConversationIds: z.array(z.string()).max(200).default([]),
 });
 export type PushPreferences = z.infer<typeof pushPreferencesSchema>;
+
+/** Body for PATCH /devices/mute/:conversationId. */
+export const setConversationMutedInputSchema = z.object({ muted: z.boolean() });
+export type SetConversationMutedInput = z.infer<typeof setConversationMutedInputSchema>;
 
 /** Every field optional — the client sends only what changed. */
 export const updatePushPreferencesInputSchema = pushPreferencesSchema.partial();

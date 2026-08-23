@@ -11,6 +11,7 @@ import {
 import type { PushPreferences } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { BellIcon, LogoutIcon } from "../../../src/icons";
+import { usePushRegistration } from "../../../src/push";
 import { useTheme } from "../../../src/theme";
 
 /**
@@ -33,9 +34,12 @@ export default function Settings() {
   const { data } = useMe();
   const me = data?.user;
   const prefs = useUpdateMyPreferences();
-  const push = usePushPreferences();
+  const pushPrefs = usePushPreferences();
   const updatePush = useUpdatePushPreferences();
   const logout = useLogout();
+  // The account's preferences and this phone's OS permission are two different
+  // things, and a toggle means nothing while the second is off — hence both.
+  const push = usePushRegistration(!!me);
 
   // Availability is tracked locally for an instant toggle, then synced — the
   // same arrangement the web's rail menu uses.
@@ -50,7 +54,7 @@ export default function Settings() {
     prefs.mutate({ available: next }, { onError: () => setAvailable(!next) });
   }
 
-  const p = push.data;
+  const p = pushPrefs.data;
   const setPush = (key: keyof PushPreferences, value: boolean) => updatePush.mutate({ [key]: value });
 
   return (
@@ -112,8 +116,24 @@ export default function Settings() {
         </Text>
       </View>
 
+      {push.status && !push.granted ? (
+        <Pressable
+          onPress={() => void push.requestPermission()}
+          accessibilityRole="button"
+          style={{ backgroundColor: c.amberTint, borderColor: c.amber }}
+          className="mx-4 mb-2 rounded-16 border px-4 py-3 active:opacity-70"
+        >
+          <Text style={{ color: c.amber }} className="text-md font-semibold">
+            Notifications are off for this phone
+          </Text>
+          <Text style={{ color: c.amber }} className="text-2xs">
+            These settings have no effect until you allow them. Tap to turn them on.
+          </Text>
+        </Pressable>
+      ) : null}
+
       <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 rounded-16 border">
-        {push.isLoading || !p ? (
+        {pushPrefs.isLoading || !p ? (
           <ActivityIndicator color={c.brand} className="py-8" />
         ) : (
           <>
@@ -160,7 +180,13 @@ export default function Settings() {
       ) : null}
 
       <Pressable
-        onPress={() => logout.mutate()}
+        onPress={async () => {
+          // Delete the device row *before* the session goes: the call needs the
+          // token that logging out throws away. A phone that keeps buzzing
+          // after sign-out is a bug people report as a security problem.
+          await push.unregister();
+          logout.mutate();
+        }}
         accessibilityRole="button"
         style={{ backgroundColor: c.surface, borderColor: c.border }}
         className="mx-4 mt-6 flex-row items-center justify-center gap-2 rounded-16 border py-3.5 active:opacity-70"

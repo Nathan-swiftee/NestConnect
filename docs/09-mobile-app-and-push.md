@@ -258,8 +258,43 @@ routing rules, and Settings doesn't manage channels, teams, people or templates.
 Those are administration — long forms done sitting down — and a phone-sized
 version would be worse than sending someone to the web.
 
-### Phase 3 — Push, properly
-Section 5 below is the whole of this phase.
+### Phase 3 — Push, properly ✅
+Section 5 below is the whole of this phase. Where it stands:
+
+| | State | Note |
+|---|---|---|
+| Ask at a moment that earns it | ✅ | Our own sheet first, after the inbox has loaded; iOS's one prompt is spent only on a yes |
+| Android 13+ runtime permission | ✅ | `POST_NOTIFICATIONS` declared and requested |
+| Register after login, re-register on start | ✅ | Reconciled on every foreground — tokens rotate |
+| Delete the device row on sign-out | ✅ | Before the session goes, since the call needs it |
+| Detect revocation in OS settings | ✅ | Re-read on foreground; a revoked permission deletes the row |
+| Never notify the actor | ✅ | Phase 0 |
+| Suppress for the open thread | ✅ | Phase 0, via the socket room (`isViewing`) |
+| Collapse + group per conversation | ✅ | `collapseKey` and iOS `threadId` |
+| Deep link into the thread | ✅ | Cold start, background and foreground all land in the same place |
+| Badge = unread conversations | ✅ | Computed per recipient server-side; cleared when the inbox is read |
+| Android channels | ✅ | `messages` / `mentions` / `assignments` / `reminders` |
+| iOS categories | ✅ | Reply + Mark read registered; only messages get them |
+| `interruption-level` | ✅ | `time-sensitive` on snooze reminders only |
+| Receipts + `DeviceNotRegistered` | ✅ | Phase 0 |
+| Off the request path, rate-limited, logged | ✅ | Phase 0 |
+| Per-conversation mute | ✅ | Outranks every class except a snooze reminder |
+| Quiet hours, "assigned to me" default | ✅ | Phase 0 |
+
+**Verified** by running `PushService.deliver()` against a stub provider and
+reading the payload it produces: the badge is the recipient's own unread count
+(3 of 6 in the fixtures, and 0 for a different user), the Android channel and
+iOS category match the kind, collapse and thread keys are both the conversation,
+a reminder is `time-sensitive` and a message is not, the actor is never
+notified, and mute silences a thread — including a mention — while still letting
+that thread's snooze reminder through, without touching any other thread.
+
+**Not done:** the Reply and Mark-read *actions* are registered as iOS categories
+but do nothing yet — handling them is Phase 4's "quick reply from the
+notification". Working hours are not honoured because the workspace doesn't
+model them yet. And none of this has run on a physical device: FCM credentials
+and the APNs `.p8` still have to be uploaded to EAS, and the simulator does not
+receive real pushes.
 
 ### Phase 4 — Quality and release
 Quick reply from the notification (iOS `UNTextInputNotificationAction`, Android

@@ -30,6 +30,17 @@ export interface PushMessage {
   /** Seconds the provider may keep retrying. A chat notification is worthless
    *  an hour late, so this is deliberately short. */
   ttlSeconds?: number;
+  /** iOS `thread-id`: groups the tray by conversation, so one chat is one
+   *  expandable stack rather than scattered banners. The Android equivalent is
+   *  the collapse key, which is why both carry the conversation id. */
+  threadId?: string;
+  /** iOS notification category — which set of quick actions the banner offers
+   *  when pulled down. Registered by the app at startup. */
+  categoryId?: string;
+  /** iOS interruption level. `time-sensitive` is allowed to break through
+   *  Focus, which is right for an SLA about to breach and wrong for everything
+   *  else — misusing it is how an app gets muted permanently. */
+  interruptionLevel?: "passive" | "active" | "time-sensitive" | "critical";
 }
 
 /** What happened to one message at the point of *acceptance*, not delivery.

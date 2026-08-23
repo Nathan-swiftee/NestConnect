@@ -206,6 +206,17 @@ export function useUpdateMyPreferences() {
 export const usePushPreferences = () =>
   useQuery({ queryKey: ["push-prefs"], queryFn: api.pushPreferences });
 
+/** Silence, or un-silence, one thread for this person. The server returns the
+ *  merged preferences, so the cache is seeded rather than refetched. */
+export function useSetConversationMuted() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { conversationId: string; muted: boolean }) =>
+      api.setConversationMuted(v.conversationId, v.muted),
+    onSuccess: (next) => qc.setQueryData(["push-prefs"], next),
+  });
+}
+
 export function useUpdatePushPreferences() {
   const qc = useQueryClient();
   return useMutation({

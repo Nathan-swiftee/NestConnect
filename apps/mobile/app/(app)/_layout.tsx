@@ -1,5 +1,6 @@
 import { Stack } from "expo-router";
 import { useRealtime } from "@ding/client";
+import { useNotificationRouting } from "../../src/notification-routing";
 import { useTheme } from "../../src/theme";
 
 /**
@@ -14,6 +15,9 @@ import { useTheme } from "../../src/theme";
 export default function AppLayout() {
   const { c } = useTheme();
   useRealtime(null);
+  // Mounted here rather than per-screen so a tap resolves the same way whether
+  // the app was cold, backgrounded or already open.
+  useNotificationRouting(true);
 
   return (
     <Stack

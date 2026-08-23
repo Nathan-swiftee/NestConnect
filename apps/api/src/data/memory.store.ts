@@ -842,6 +842,15 @@ export class MemoryStore extends Store {
     };
   }
 
+  async unreadConversationCount(userId: string): Promise<number> {
+    const userTeams = this.membership[userId] ?? [];
+    return this.conversations.filter(
+      (r) =>
+        this.matchesView(r, "inbound", userId, userTeams, true) &&
+        (r.unread || (r.unreadCount ?? 0) > 0),
+    ).length;
+  }
+
   async views(userId: string): Promise<SidebarViews> {
     const userTeams = this.membership[userId] ?? [];
     // Admins & managers oversee the whole workspace: they see every team and
