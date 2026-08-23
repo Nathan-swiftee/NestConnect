@@ -81,11 +81,33 @@ effect. Treat domain changes as dashboard-only.
   at a dead host, the read log silently stops recording opens.
 - ✅ **Mobile API URL** → `https://nestconnect.io` in
   `apps/mobile/src/api-config.ts` and both `env` blocks in `eas.json`.
-- ⬜ **Meta / Google** → the WhatsApp callback URL and Gmail's Pub/Sub push
-  endpoint still carry the old host, and Gmail's OAuth redirect URI is derived
-  from the request host, so `https://nestconnect.io/...` needs adding to the
-  authorised redirect URIs in Google Cloud Console. **Inbound breaks until these
-  are updated.**
+- ⬜ **Google Cloud OAuth client** → add
+  `https://nestconnect.io/api/channels/google/oauth/callback` to the authorised
+  redirect URIs. This is the **only** thing the domain move actually broke:
+  `googleRedirectUri()` builds the URI from the request's `Host` header
+  (`redirect-uri.ts`), so connecting a *new* Gmail inbox while browsing
+  nestconnect.io sends a URI Google has never seen and it returns
+  `redirect_uri_mismatch`. Existing connections are unaffected — they run on
+  stored refresh tokens with no redirect in the loop.
+- ⬜ **Meta / Google webhooks** → the WhatsApp callback and the Gmail Pub/Sub
+  push subscription still name the railway.app host. **This is not broken and
+  is not urgent.** Both are static configuration on the provider's side, and
+  `ding-app-production.up.railway.app` is still a live domain on the same
+  service, so their POSTs arrive and are handled identically. (Note the app
+  only hands Gmail a `topicName`; the push endpoint lives on the Pub/Sub
+  subscription, so nothing here moved when `CORS_ORIGIN` did.)
+
+  What it *is* is a dependency: **do not remove the railway.app domain until
+  these are moved.** If it disappears first, inbound stops silently — Meta
+  retries and then disables the webhook, Pub/Sub piles up undelivered messages,
+  and nothing surfaces in the app. Migrate in this order:
+
+  1. Meta app → Webhooks → callback →
+     `https://nestconnect.io/api/channels/whatsapp/webhook` (same verify token)
+  2. Google Cloud → Pub/Sub → subscription → push endpoint →
+     `https://nestconnect.io/api/channels/google/push`
+  3. Confirm a real inbound message arrives on each channel
+  4. *Then* remove the railway.app domain
 
 ### Cloudflare sits in the path now — three settings that matter
 
@@ -196,7 +218,8 @@ maestro test -e EMAIL=… -e PASSWORD=… apps/mobile/.maestro/smoke.yaml
 
 1. Push → server deploys. ✅ continuous
 2. ✅ Attach the domain, verify it serves over HTTPS.
-3. ✅ `CORS_ORIGIN` and the mobile API URL. ⬜ Meta/Google webhook + redirect URLs.
+3. ✅ `CORS_ORIGIN` and the mobile API URL. ⬜ Google OAuth redirect URI (the one
+   real breakage); webhooks are fine where they are until you retire the old host.
 4. `eas init` → credentials → secrets.
 5. `preview` build → device checks → Maestro.
 6. `production` build → submit.
