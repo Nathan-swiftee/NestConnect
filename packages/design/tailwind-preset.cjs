@@ -40,6 +40,7 @@ module.exports = {
         group: v("group"),
         glass: { DEFAULT: v("glass"), brd: v("glass-brd"), line: v("glass-line"), hi: v("glass-hi") },
         scrim: v("scrim"),
+        ai: v("ai"),
       },
       borderRadius: {
         none: "0px",

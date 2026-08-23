@@ -30,6 +30,8 @@ import type {
   UpdateContactInput,
   UpdateInboxInput,
   UpdateIntegrationSettingsInput,
+  PolishDraftInput,
+  PolishDraftResult,
   UpdateTeamInput,
   Notification,
   UpdateMyPreferencesInput,
@@ -182,6 +184,8 @@ export const api = {
     patch<IntegrationSettings>("/settings/integrations", input),
   // Send a test email to yourself to verify the SMTP/Postmark connection.
   testSmtp: () => post<{ sent: boolean; via?: string; error?: string }>("/settings/integrations/smtp/test", {}),
+  // AI assist — polish a draft reply (Settings › Integrations › AI)
+  polishDraft: (input: PolishDraftInput) => post<PolishDraftResult>("/ai/polish", input),
   // pull-to-refresh: fetch any new Gmail on demand
   syncGmail: () => post<{ ok: boolean; synced: number }>("/channels/google/sync", {}),
   // customers (CRM)

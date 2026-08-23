@@ -21,6 +21,8 @@
   --danger:#E0544D; --danger-tint:#FBE7E5;
   /* channels */
   --wa:#1FBE5B; --email:#5B8DEF; --group:#A06CF2;
+  /* AI assist (Claude) — its own accent, so it never reads as a brand action. */
+  --ai:#C15F3C;
   /* near-invisible, layered depth — "depth, not darkness" */
   --shadow:0 1px 2px rgba(13,21,18,.05),0 6px 16px -10px rgba(13,21,18,.12);
   --shadow-lg:0 4px 14px -6px rgba(13,21,18,.10),0 40px 80px -30px rgba(13,21,18,.26);
@@ -37,6 +39,7 @@
     --amber:#F2A73C; --amber-tint:#2A2012;
     --danger:#F0716B; --danger-tint:#2B1615;
     --wa:#33D06B; --email:#78A0F5; --group:#B98BF6;
+    --ai:#E08159;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px -12px rgba(0,0,0,.55);
     --shadow-lg:0 8px 24px -10px rgba(0,0,0,.5),0 48px 90px -30px rgba(0,0,0,.72);
     --shadow-pop:0 4px 14px -6px rgba(0,0,0,.5),0 22px 50px -22px rgba(0,0,0,.62);
@@ -49,6 +52,7 @@
   --brand:#0FA47A; --brand-strong:#0B7E5E; --brand-tint:#E4F5EE; --brand-ring:rgba(15,164,122,.35);
   --amber:#E68A00; --amber-tint:#FBEFD9; --danger:#E0544D; --danger-tint:#FBE7E5;
   --wa:#1FBE5B; --email:#5B8DEF; --group:#A06CF2;
+  --ai:#C15F3C;
   --shadow:0 1px 2px rgba(13,21,18,.05),0 6px 16px -10px rgba(13,21,18,.12);
   --shadow-lg:0 4px 14px -6px rgba(13,21,18,.10),0 40px 80px -30px rgba(13,21,18,.26);
   --shadow-pop:0 2px 8px -3px rgba(13,21,18,.09),0 18px 44px -20px rgba(13,21,18,.20);
@@ -60,6 +64,7 @@
   --brand:#28C795; --brand-strong:#1DA47A; --brand-tint:#0F241D; --brand-ring:rgba(40,199,149,.4);
   --amber:#F2A73C; --amber-tint:#2A2012; --danger:#F0716B; --danger-tint:#2B1615;
   --wa:#33D06B; --email:#78A0F5; --group:#B98BF6;
+  --ai:#E08159;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 22px -12px rgba(0,0,0,.55);
   --shadow-lg:0 8px 24px -10px rgba(0,0,0,.5),0 48px 90px -30px rgba(0,0,0,.72);
   --shadow-pop:0 4px 14px -6px rgba(0,0,0,.5),0 22px 50px -22px rgba(0,0,0,.62);

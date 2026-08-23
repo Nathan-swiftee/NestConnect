@@ -23,6 +23,7 @@ import { TemplatesModule } from "./templates/templates.module";
 import { WhatsAppManagementModule } from "./whatsapp-management/whatsapp-management.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
 import { TrackingModule } from "./tracking/tracking.module";
+import { AiModule } from "./ai/ai.module";
 import { HealthController } from "./health/health.controller";
 
 const imports: ModuleMetadata["imports"] = [
@@ -46,6 +47,7 @@ const imports: ModuleMetadata["imports"] = [
   WhatsAppManagementModule,
   AnalyticsModule,
   TrackingModule,
+  AiModule,
 ];
 
 // In production the API serves the built SPA (apps/api/dist/main.js → ../../web/dist),

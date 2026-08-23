@@ -1065,6 +1065,22 @@ input,textarea{font:inherit}
 .compinput textarea::placeholder{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .compinput .tool{width:34px;height:34px;color:var(--text-muted);flex:0 0 34px}
 .compinput .tool svg{width:18px;height:18px}
+/* AI assist. The sparkle takes the Claude accent so it reads as the one
+   AI affordance in the composer, and dims to a normal tool when there's no
+   draft to work on. While it runs it pulses rather than spinning — the button
+   stays in place, which keeps the tool row from reflowing mid-tap. */
+.compinput .tool--polish{color:var(--ai)}
+.compinput .tool--polish:hover:not(:disabled){background:color-mix(in srgb,var(--ai) 12%,transparent);color:var(--ai)}
+.compinput .tool--polish:disabled{color:var(--text-faint);cursor:default}
+.compinput .tool--polish.is-busy{color:var(--ai);animation:polishPulse 1s ease-in-out infinite}
+@keyframes polishPulse{0%,100%{opacity:1}50%{opacity:.45}}
+/* The post-polish receipt: says what happened and offers the one-tap way back. */
+.polishbar{display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-1) var(--sp-2);
+  font-size:var(--fs-2xs);line-height:var(--lh-snug);color:var(--text-muted);animation:paneIn .2s var(--ease)}
+.polishbar svg{width:13px;height:13px;color:var(--ai);flex:0 0 auto}
+.polishbar__undo{margin-left:auto;font-size:var(--fs-2xs);font-weight:600;color:var(--brand-strong);
+  padding:2px var(--sp-2);border-radius:var(--r-8);transition:background var(--t-fast)}
+.polishbar__undo:hover{background:var(--hover)}
 .send{width:38px;height:38px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;flex:0 0 38px;
   transition:filter var(--t-base),transform var(--t-fast) var(--ease);animation:sendSwap .14s var(--ease)}
 .send:hover{filter:brightness(1.06)}
@@ -2182,6 +2198,9 @@ button.tpl-row:active{transform:scale(.97)}
   box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow var(--t-base),background var(--t-base),border-color var(--t-base)}
 .field textarea{resize:vertical;min-height:96px;line-height:1.5;font-family:inherit}
 .field textarea:focus,.tpl-var input:focus{border-color:var(--brand);background-color:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
+/* The Polish instruction: a long, hand-edited block of prose. Monospace and a
+   step down in size so line breaks and rule lists stay legible while editing. */
+.prompttext{font-family:var(--mono);font-size:var(--fs-xs);line-height:1.55;min-height:200px}
 
 /* ─── Settings › Templates ────────────────────────────────────────── */
 .setpane__headacts{display:flex;align-items:center;gap:var(--sp-2);flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}

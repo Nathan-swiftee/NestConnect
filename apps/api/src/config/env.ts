@@ -79,6 +79,12 @@ export const env = {
     apiKey: process.env.RESEND_API_KEY ?? "",
     from: process.env.RESEND_FROM ?? process.env.EMAIL_FROM ?? "support@swiftee.co.uk",
   },
+  // Claude (Anthropic) for AI assist — the composer's one-tap Polish. An org's
+  // saved Settings values override these, so it can be enabled from the UI.
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+    model: process.env.ANTHROPIC_MODEL ?? "",
+  },
   gmail: {
     // Inbound polling cadence in seconds; 0 disables the poller (push-only).
     pollSeconds: Number(process.env.GMAIL_POLL_SECONDS ?? 60),

@@ -52,6 +52,12 @@ import {
   SMTP_USERNAME_KEY,
 } from "../mail/smtp-config";
 import { Mailer } from "../mail/mailer.service";
+import {
+  anthropicPublicSettings,
+  ANTHROPIC_API_KEY_KEY,
+  ANTHROPIC_MODEL_KEY,
+  ANTHROPIC_POLISH_PROMPT_KEY,
+} from "../ai/anthropic-config";
 
 /** App-level integration settings (Settings › Setup). Currently: the org's
  *  Google OAuth app credentials that power the "Connect with Google" flow. */
@@ -124,6 +130,17 @@ export class IntegrationsController {
     if (body.resendFrom !== undefined) await this.store.setAppSetting(me.orgId, RESEND_FROM_KEY, body.resendFrom.trim());
     const resendApiKey = body.resendApiKey?.trim();
     if (resendApiKey) await this.store.setAppSetting(me.orgId, RESEND_API_KEY_KEY, resendApiKey);
+    // Claude (AI assist). Model + polish prompt write on any change — empty
+    // clears the override, so the built-in default applies again; the API key
+    // writes only when supplied, so it can be left blank to keep the stored one.
+    if (body.anthropicModel !== undefined) {
+      await this.store.setAppSetting(me.orgId, ANTHROPIC_MODEL_KEY, body.anthropicModel.trim());
+    }
+    if (body.anthropicPolishPrompt !== undefined) {
+      await this.store.setAppSetting(me.orgId, ANTHROPIC_POLISH_PROMPT_KEY, body.anthropicPolishPrompt.trim());
+    }
+    const anthropicApiKey = body.anthropicApiKey?.trim();
+    if (anthropicApiKey) await this.store.setAppSetting(me.orgId, ANTHROPIC_API_KEY_KEY, anthropicApiKey);
     return this.snapshot(me.orgId, req);
   }
 
@@ -137,8 +154,18 @@ export class IntegrationsController {
 
   /** Build the GET/PATCH response. Secrets are never included. */
   private async snapshot(orgId: string, req: Request): Promise<IntegrationSettings> {
-    const [clientId, googleConfigured, pubsubTopic, metaAppId, metaConfigured, metaConfigId, storage, smtp, resend] =
-      await Promise.all([
+    const [
+      clientId,
+      googleConfigured,
+      pubsubTopic,
+      metaAppId,
+      metaConfigured,
+      metaConfigId,
+      storage,
+      smtp,
+      resend,
+      anthropic,
+    ] = await Promise.all([
         this.google.clientId(orgId),
         this.google.configured(orgId),
         this.store.getAppSetting(orgId, GOOGLE_PUBSUB_TOPIC_KEY),
@@ -148,6 +175,7 @@ export class IntegrationsController {
         r2PublicSettings(this.store, orgId),
         smtpPublicSettings(this.store, orgId),
         resendPublicSettings(this.store, orgId),
+        anthropicPublicSettings(this.store, orgId),
       ]);
     return {
       google: {
@@ -166,6 +194,7 @@ export class IntegrationsController {
       storage,
       smtp,
       resend,
+      anthropic,
     };
   }
 

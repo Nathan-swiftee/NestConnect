@@ -64,6 +64,7 @@ import {
   PlusIcon,
   RefreshIcon,
   SearchIcon,
+  SparkleIcon,
   StorageIcon,
   TeamGlyph,
   TEAM_ICON_KEYS,
@@ -84,10 +85,11 @@ type Leaf =
   | "labels"
   | "connections"
   | "storage"
-  | "email";
-type SetupSub = "connections" | "storage" | "email";
+  | "email"
+  | "ai";
+type SetupSub = "connections" | "storage" | "email" | "ai";
 /** The integrations that open a credential sheet from their card. */
-type SetupKey = "google" | "meta" | "storage" | "resend" | "smtp";
+type SetupKey = "google" | "meta" | "storage" | "resend" | "smtp" | "anthropic";
 
 interface Props {
   onClose: () => void;
@@ -133,11 +135,12 @@ const NAV: NavSection[] = [
       { key: "connections", label: "Connections" },
       { key: "storage", label: "Storage" },
       { key: "email", label: "Email" },
+      { key: "ai", label: "AI" },
     ],
   },
 ];
 
-/** Per-sub heading + blurb for the Integrations panes (one component, three sub-tabs). */
+/** Per-sub heading + blurb for the Integrations panes (one component, four sub-tabs). */
 const SETUP_HEAD: Record<SetupSub, { h: string; p: string }> = {
   connections: {
     h: "Connections",
@@ -150,6 +153,10 @@ const SETUP_HEAD: Record<SetupSub, { h: string; p: string }> = {
   email: {
     h: "Email",
     p: "The app’s own transactional email: invites, password resets and the test send.",
+  },
+  ai: {
+    h: "AI assist",
+    p: "Claude writes nothing on its own — it polishes what an agent has already drafted, on request.",
   },
 };
 
@@ -234,7 +241,7 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "teams" && <TeamsPane onToast={onToast} />}
             {active === "people" && <PeoplePane onToast={onToast} />}
             {active === "labels" && <LabelsPane onToast={onToast} />}
-            {(active === "connections" || active === "storage" || active === "email") && (
+            {(active === "connections" || active === "storage" || active === "email" || active === "ai") && (
               <SetupPane sub={active} onToast={onToast} />
             )}
           </div>
@@ -2213,6 +2220,8 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const smtpConfigured = Boolean(smtp?.configured);
   const resend = integrations.data?.resend;
   const resendConfigured = Boolean(resend?.configured);
+  const anthropic = integrations.data?.anthropic;
+  const anthropicConfigured = Boolean(anthropic?.configured);
   // A test send goes via whichever transport is configured (Mailer tries Resend
   // first, then Gmail/SMTP), so enable the test whenever either is set up.
   const emailConfigured = resendConfigured || smtpConfigured;
@@ -2234,6 +2243,9 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const [smtpFrom, setSmtpFrom] = useState("");
   const [resendApiKey, setResendApiKey] = useState("");
   const [resendFrom, setResendFrom] = useState("");
+  const [anthropicApiKey, setAnthropicApiKey] = useState("");
+  const [anthropicModel, setAnthropicModel] = useState("");
+  const [polishPrompt, setPolishPrompt] = useState("");
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -2265,6 +2277,14 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   useEffect(() => {
     if (smtp?.username !== undefined) setSmtpUsername(smtp.username);
   }, [smtp?.username]);
+  useEffect(() => {
+    if (anthropic?.model !== undefined) setAnthropicModel(anthropic.model);
+  }, [anthropic?.model]);
+  // The prompt is long and hand-edited, so it prefills from the server (which
+  // seeds it with DEFAULT_POLISH_PROMPT) rather than starting blank.
+  useEffect(() => {
+    if (anthropic?.polishPrompt !== undefined) setPolishPrompt(anthropic.polishPrompt);
+  }, [anthropic?.polishPrompt]);
   useEffect(() => {
     if (smtp?.from !== undefined) setSmtpFrom(smtp.from);
   }, [smtp?.from]);
@@ -2402,6 +2422,28 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
     });
   };
 
+  const saveAnthropic = () => {
+    const input: { anthropicApiKey?: string; anthropicModel?: string; anthropicPolishPrompt?: string } = {};
+    // Model + prompt are non-secret — send when changed (empty resets to the
+    // built-in default). The API key is write-only — send only when entered.
+    if (anthropicModel.trim() !== (anthropic?.model ?? "")) input.anthropicModel = anthropicModel.trim();
+    if (polishPrompt.trim() !== (anthropic?.polishPrompt ?? "")) input.anthropicPolishPrompt = polishPrompt.trim();
+    const key = anthropicApiKey.trim();
+    if (key) input.anthropicApiKey = key;
+    if (Object.keys(input).length === 0) {
+      onToast("Enter your Claude API key to save");
+      return;
+    }
+    update.mutate(input, {
+      onSuccess: () => {
+        setAnthropicApiKey("");
+        onToast("AI settings saved");
+        setEditing(null);
+      },
+      onError: () => onToast("Only admins & managers can change setup"),
+    });
+  };
+
   const testSmtp = async () => {
     setSmtpTesting(true);
     try {
@@ -2479,6 +2521,19 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
             on={storageConfigured}
             label={storageConfigured ? "Storing in R2" : "Ephemeral disk"}
             onClick={() => setEditing("storage")}
+          />
+        )}
+
+        {sub === "ai" && (
+          <IntegrationCard
+            color="#D97757"
+            glyph={<SparkleIcon />}
+            name="Claude"
+            blurb="Polishes an agent’s draft on request"
+            summary={anthropicConfigured ? (anthropic?.model ?? "") : "No API key yet"}
+            on={anthropicConfigured}
+            label={anthropicConfigured ? "Connected" : "Not connected"}
+            onClick={() => setEditing("anthropic")}
           />
         )}
 
@@ -2779,6 +2834,72 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
               />
             </label>
           </div>
+        </SetupModal>
+      )}
+
+      {editing === "anthropic" && (
+        <SetupModal
+          title="Claude (Anthropic)"
+          onClose={close}
+          foot={
+            <>
+              <button className="btn-ghost" type="button" onClick={close}>
+                Cancel
+              </button>
+              <button className="btn-primary" type="button" onClick={saveAnthropic} disabled={update.isPending || integrations.isLoading}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <p className="fieldhint">
+            Create a key at <b>console.anthropic.com</b> → API Keys. With one set, a <b>Polish</b> button appears in the
+            composer: one tap tidies the agent’s draft before they send it. Claude never sends anything itself, and
+            never replies on its own — it only rewrites a draft the agent has already written.
+          </p>
+
+          <div className="setform__grid two">
+            <label className="field">
+              <span>API key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={anthropicApiKey}
+                onChange={(e) => setAnthropicApiKey(e.target.value)}
+                placeholder={anthropicConfigured ? "••••• (hidden)" : "sk-ant-…"}
+              />
+            </label>
+            <label className="field">
+              <span>Model</span>
+              <input
+                value={anthropicModel}
+                autoComplete="off"
+                onChange={(e) => setAnthropicModel(e.target.value)}
+                placeholder="claude-sonnet-5"
+              />
+            </label>
+          </div>
+
+          <div className="setform__sub">
+            <b>Polish instruction</b>
+            <small>
+              What Claude is told before it sees a draft. The rules below are what keep Polish safe: it may change
+              how a message reads, never what it says. Edit to match your tone of voice — clear the box and save to
+              restore the default.
+            </small>
+          </div>
+
+          <label className="field">
+            <span>Prompt</span>
+            <textarea
+              className="prompttext"
+              rows={14}
+              spellCheck={false}
+              value={polishPrompt}
+              onChange={(e) => setPolishPrompt(e.target.value)}
+              placeholder="Loading the default instruction…"
+            />
+          </label>
         </SetupModal>
       )}
 

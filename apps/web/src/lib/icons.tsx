@@ -185,6 +185,10 @@ export const MicIcon = () => (
 export const StorageIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M7 18.5a4 4 0 0 1-.6-7.96 5.5 5.5 0 0 1 10.63-1.42A3.75 3.75 0 0 1 17 18.5H7Z" /></svg>
 );
+/** Four-point sparkle — AI assist (the composer's Polish action). */
+export const SparkleIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"><path d="M12 3.5c.7 3.4 1.9 4.6 5.3 5.3-3.4.7-4.6 1.9-5.3 5.3-.7-3.4-1.9-4.6-5.3-5.3 3.4-.7 4.6-1.9 5.3-5.3Z" /><path d="M18 15.2c.35 1.7.95 2.3 2.65 2.65-1.7.35-2.3.95-2.65 2.65-.35-1.7-.95-2.3-2.65-2.65 1.7-.35 2.3-.95 2.65-2.65Z" /></svg>
+);
 export const StopIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>
 );

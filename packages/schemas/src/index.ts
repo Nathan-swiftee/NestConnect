@@ -970,8 +970,37 @@ export const integrationSettingsSchema = z.object({
     /** Non-secret echo — the from-address (the API key is never returned). */
     from: z.string(),
   }),
+  /** Claude (Anthropic) — powers the composer's one-tap Polish. */
+  anthropic: z.object({
+    /** True when an API key is set. */
+    configured: z.boolean(),
+    /** Non-secret echo — the model id (the API key is never returned). */
+    model: z.string(),
+    /** The system prompt Polish runs. Editable; seeded with the default below. */
+    polishPrompt: z.string(),
+  }),
 });
 export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
+
+/** The default Polish instruction, shown pre-filled in Settings so it can be
+ *  tuned per workspace. The constraints are the feature: Polish rewrites HOW
+ *  something is said, never WHAT is said. It must not answer the customer,
+ *  invent facts (dates, prices, promises), or drop anything the agent wrote. */
+export const DEFAULT_POLISH_PROMPT = `You polish a customer-support agent's draft reply before they send it.
+
+Rewrite the draft so it reads as clear, professional and warm, in British English.
+
+Rules — these are absolute:
+- Preserve the meaning exactly. Never add information that isn't in the draft: no facts, names, dates, prices, links, apologies, offers or promises the agent didn't write.
+- Never remove information. Every point the agent made must survive.
+- Never answer the customer or continue the conversation. You are editing one message, not writing one.
+- Keep the agent's intent and level of commitment. Don't soften a "no" into a "maybe", or firm a "maybe" into a "yes".
+- Keep it roughly the same length. Fix grammar, spelling, punctuation and awkward phrasing; make the tone friendly and human, not stiff or corporate.
+- Keep any greeting or sign-off the agent wrote; don't add one they didn't.
+- Leave URLs, order numbers, reference codes, @mentions and emoji exactly as written.
+- If the draft is already well written, return it unchanged.
+
+Reply with the polished message only — no preamble, no explanation, no quotes around it.`;
 
 /** Update the app-level integration credentials. Secrets are written only when
  *  a non-empty value is supplied (so they can be left blank to keep the stored
@@ -1003,8 +1032,36 @@ export const updateIntegrationSettingsInputSchema = z.object({
    *  blank to keep the stored one. */
   resendApiKey: z.string().optional(),
   resendFrom: z.string().optional(),
+  /** Claude (Anthropic). The model and prompt write on any change (empty resets
+   *  to the default); the API key is written only when a non-empty value is
+   *  sent, so it can be left blank to keep the stored one. */
+  anthropicApiKey: z.string().optional(),
+  anthropicModel: z.string().optional(),
+  anthropicPolishPrompt: z.string().optional(),
 });
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
+
+/* ------------------------------------------------------------------ */
+/* AI assist — one-tap Polish on a draft reply.                        */
+/* ------------------------------------------------------------------ */
+
+/** Polish a draft. `channel` only tunes register (a WhatsApp line is shorter
+ *  and less formal than an email); it never changes what the draft says. */
+export const polishDraftInputSchema = z.object({
+  text: z.string().min(1).max(5000),
+  channel: channelTypeSchema.optional(),
+  /** Internal notes are polished for teammates, not customers. */
+  internal: z.boolean().optional(),
+});
+export type PolishDraftInput = z.infer<typeof polishDraftInputSchema>;
+
+export const polishDraftResultSchema = z.object({
+  /** The polished draft. Equal to the input when the model left it alone. */
+  text: z.string(),
+  /** True when the model returned something different from the draft. */
+  changed: z.boolean(),
+});
+export type PolishDraftResult = z.infer<typeof polishDraftResultSchema>;
 
 /** A "forgot my password" request — emails a reset link if the address matches. */
 export const forgotPasswordInputSchema = z.object({ email: z.string().email() });

@@ -7,7 +7,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
@@ -26,6 +26,7 @@ import {
   DetailsIcon,
   MoreIcon,
   SendIcon,
+  SparkleIcon,
   AttachIcon,
   EmojiIcon,
   LinkIcon,
@@ -79,6 +80,16 @@ function escapeHtml(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/** Plain text → the minimal HTML the email editor understands: a paragraph per
+ *  blank-line-separated block, a <br> for a single newline. Escaped first, so a
+ *  draft containing "<" survives as text rather than becoming markup. */
+function textToHtml(text: string): string {
+  return text
+    .split(/\n{2,}/)
+    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, "<br>")}</p>`)
+    .join("");
 }
 
 function renderMention(body: string): JSX.Element[] {
@@ -1229,6 +1240,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [receiptsMsgId, setReceiptsMsgId] = useState<string | null>(null);
   // Rich-text HTML for an email reply (mirrors the Tiptap editor's content).
   const [html, setHtml] = useState("");
+  // Drives whether the Polish button exists at all: no Claude key, no button.
+  const aiConfigured = Boolean(useIntegrations().data?.anthropic?.configured);
   // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [showCc, setShowCc] = useState(false);
@@ -1253,6 +1266,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // conversation's own channel; set (via the channel switcher) to reply on
   // another channel the customer is reachable on, within this one open thread.
   const [composeChannelState, setComposeChannelState] = useState<ChannelType | null>(null);
+  // AI assist. `prePolish` holds the draft as it was before the last polish so
+  // one tap puts it back; it also carries the polished text, so the Undo bar
+  // hides itself the moment the agent edits (undoing would discard that edit).
+  const [polishing, setPolishing] = useState(false);
+  const [prePolish, setPrePolish] = useState<{ text: string; html: string; polished: string } | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [picker, setPicker] = useState(false);
   // Ticks so the WhatsApp 24-hour window countdown stays live without a reload.
@@ -1442,6 +1460,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setCc("");
     setBcc("");
     setComposeChannelState(null);
+    setPrePolish(null);
     editor?.commands.clearContent();
   }, [conversationId, editor]);
 
@@ -1732,6 +1751,46 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       : conv.channel === "whatsapp_group"
         ? "group"
         : (conv.contact.phone ?? "");
+
+  /* ─── AI assist: one-tap Polish ───────────────────────────────────
+     Polish only rewrites the draft the agent has already typed — it never
+     sends, and never composes a reply of its own. The pre-polish draft is
+     kept so Undo restores it byte-for-byte (including the email HTML). */
+  const runPolish = async () => {
+    const draft = text.trim();
+    if (!draft || polishing) return;
+    setPolishing(true);
+    try {
+      const res = await api.polishDraft({ text: draft, channel: composeChannel, internal });
+      if (!res.changed) {
+        onToast("That already reads well — nothing to polish");
+        return;
+      }
+      setPrePolish({ text, html, polished: res.text });
+      // emitUpdate: true — Tiptap's setContent defaults to NOT firing onUpdate,
+      // which would leave `text`/`html` holding the pre-polish draft and send
+      // the unpolished body.
+      if (isRich && editor) editor.commands.setContent(textToHtml(res.text), true);
+      else setText(res.text);
+    } catch (err) {
+      // The API client forwards the server's message, which is written for an
+      // agent to act on ("Claude rejected the API key — check it in Settings").
+      onToast(err instanceof Error && err.message ? err.message : "Couldn't polish that draft");
+    } finally {
+      setPolishing(false);
+    }
+  };
+
+  const undoPolish = () => {
+    if (!prePolish) return;
+    if (isRich && editor) editor.commands.setContent(prePolish.html || textToHtml(prePolish.text), true);
+    else setText(prePolish.text);
+    setPrePolish(null);
+  };
+
+  // Offer Undo only while the draft is still exactly what Polish produced —
+  // once the agent edits, restoring the old draft would throw that edit away.
+  const canUndoPolish = !!prePolish && text.trim() === prePolish.polished.trim();
 
   const readyAtts = staged.filter((s) => s.status === "done" && s.attachment);
   const uploadingAtts = staged.some((s) => s.status === "uploading");
@@ -2913,6 +2972,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </button>
             </div>
           ) : (
+            <>
+            {canUndoPolish && (
+              <div className="polishbar" role="status">
+                <SparkleIcon />
+                <span>Polished by Claude</span>
+                <button type="button" className="polishbar__undo" onClick={undoPolish}>
+                  Undo
+                </button>
+              </div>
+            )}
             <div className={"compinput" + (isRich ? " compinput--rich" : "")}>
               {emojiOpen && (
                 <div className="emojipop" role="menu" aria-label="Insert emoji">
@@ -3038,6 +3107,20 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   <BoltIcon />
                 </button>
               )}
+              {/* AI assist. Present only once Claude is configured, and only
+                  with something to work on — it edits a draft, it can't make one. */}
+              {aiConfigured && (
+                <button
+                  className={"tool tool--polish" + (polishing ? " is-busy" : "")}
+                  title={polishing ? "Polishing…" : "Polish this draft"}
+                  aria-label="Polish this draft with AI"
+                  aria-busy={polishing}
+                  disabled={polishing || !text.trim()}
+                  onClick={runPolish}
+                >
+                  <SparkleIcon />
+                </button>
+              )}
               <button
                 className="tool"
                 title="Attach"
@@ -3072,6 +3155,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 </button>
               )}
             </div>
+            </>
           )}
           {dragging && !composeLocked && (
             <div className="comp-drop" aria-hidden="true">

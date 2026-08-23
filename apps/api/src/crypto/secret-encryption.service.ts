@@ -26,6 +26,7 @@ const SECRET_APP_KEYS = new Set([
   "r2_secret_access_key",
   "smtp_password",
   "resend_api_key",
+  "anthropic_api_key",
 ]);
 
 /**
