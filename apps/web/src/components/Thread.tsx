@@ -304,8 +304,10 @@ function StatusTick({ status }: { status: MessageStatus }) {
   );
 }
 
-/** Collapsed preview height for a long email body before "Read more". */
-const EMAIL_COLLAPSED_MAX = 360;
+/** Collapsed preview height for a long email body before "Read more". Kept
+ *  short deliberately: the preview is there to show what the message is, not to
+ *  read it in place — a tall bubble pushes the rest of the thread off-screen. */
+const EMAIL_COLLAPSED_MAX = 220;
 
 /** Renders a sanitized email HTML body inside a locked-down iframe. There is no
  *  `allow-scripts`, so nothing in the message can execute; a strict CSP blocks
@@ -455,14 +457,60 @@ const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 /** A compact, curated set for the composer's emoji picker (no dependency). */
 /**
  * Where each thread was last left, so re-opening one puts you back where you
- * were rather than at a computed guess. Keyed by conversation id and held for
- * the session (a reload starts fresh, which is the honest default).
+ * were rather than at a computed guess.
  *
  * `atBottom` is stored separately from `top`: someone who was reading the
  * latest message wants the latest message again, even though new ones have
  * arrived since and the old scrollTop now points mid-thread.
+ *
+ * Mirrored into sessionStorage so a reload comes back to the same places. It's
+ * sessionStorage, not localStorage, on purpose: positions stay good for as long
+ * as the tab is open, and a new session starts at the newest message rather
+ * than restoring somewhere from days ago — which would look like the very
+ * randomness this replaced.
  */
-const threadScroll = new Map<string, { top: number; atBottom: boolean }>();
+type ScrollMark = { top: number; atBottom: boolean };
+const SCROLL_KEY = "nest:thread-scroll";
+/** Plenty for a working session; keeps the stored blob small. */
+const SCROLL_MAX_THREADS = 60;
+
+const threadScroll: Map<string, ScrollMark> = (() => {
+  try {
+    const raw = sessionStorage.getItem(SCROLL_KEY);
+    if (raw) return new Map(Object.entries(JSON.parse(raw) as Record<string, ScrollMark>));
+  } catch {
+    // Private mode, disabled storage, or corrupt JSON — fall back to memory.
+  }
+  return new Map();
+})();
+
+function flushScroll() {
+  try {
+    // Map preserves insertion order, so the oldest entries are the ones dropped.
+    while (threadScroll.size > SCROLL_MAX_THREADS) {
+      threadScroll.delete(threadScroll.keys().next().value as string);
+    }
+    sessionStorage.setItem(SCROLL_KEY, JSON.stringify(Object.fromEntries(threadScroll)));
+  } catch {
+    // Storage unavailable or full — the in-memory map still works this session.
+  }
+}
+
+let scrollFlushTimer = 0;
+/** Record a position now; persist it shortly after (scrolling fires a lot). */
+function rememberScroll(id: string, mark: ScrollMark) {
+  // Re-insert so this thread counts as the most recently used for the trim.
+  threadScroll.delete(id);
+  threadScroll.set(id, mark);
+  if (scrollFlushTimer) return;
+  scrollFlushTimer = window.setTimeout(() => {
+    scrollFlushTimer = 0;
+    flushScroll();
+  }, 400);
+}
+
+// A reload can land inside the debounce window, so write on the way out too.
+window.addEventListener("pagehide", flushScroll);
 
 const COMPOSER_EMOJIS = [
   "😀","😄","😁","😅","😂","🙂","😉","😊","😍","😘","😎","🤩","🤗","🤔","😐","😴",
@@ -1310,7 +1358,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     // scroll event of its own, which would overwrite the position we're about
     // to put back.
     if (conversationId && !restoringRef.current) {
-      threadScroll.set(conversationId, { top: el.scrollTop, atBottom: dist < 120 });
+      rememberScroll(conversationId, { top: el.scrollTop, atBottom: dist < 120 });
     }
   };
   const jumpToBottom = () => {
