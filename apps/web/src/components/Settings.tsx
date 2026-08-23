@@ -2247,6 +2247,10 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const [anthropicModel, setAnthropicModel] = useState("");
   const [polishPrompt, setPolishPrompt] = useState("");
   const [aiTesting, setAiTesting] = useState(false);
+  // Models this key can use. Empty + an error => the field degrades to free text.
+  const [aiModels, setAiModels] = useState<{ id: string; name: string }[]>([]);
+  const [aiModelsError, setAiModelsError] = useState("");
+  const [aiModelsLoading, setAiModelsLoading] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -2422,6 +2426,31 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       onError: () => onToast("Only admins & managers can change setup"),
     });
   };
+
+  // Ask the key what it can run, when the sheet opens. Nothing is hardcoded:
+  // available model ids differ per account and change over time.
+  useEffect(() => {
+    if (editing !== "anthropic" || !anthropicConfigured) return;
+    let cancelled = false;
+    setAiModelsLoading(true);
+    setAiModelsError("");
+    api
+      .aiModels()
+      .then((res) => {
+        if (cancelled) return;
+        setAiModels(res.models);
+        setAiModelsError(res.error ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) setAiModelsError("Couldn't reach the server to list models");
+      })
+      .finally(() => {
+        if (!cancelled) setAiModelsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing, anthropicConfigured]);
 
   const saveAnthropic = () => {
     const input: { anthropicApiKey?: string; anthropicModel?: string; anthropicPolishPrompt?: string } = {};
@@ -2872,9 +2901,8 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
             never replies on its own — it only rewrites a draft the agent has already written.
           </p>
           <p className="fieldhint">
-            The model must be one your key can use — the exact id from your Anthropic console, e.g.
-            <b> claude-sonnet-4-5</b>. Hit <b>Test</b> below after saving: it runs one real polish and reports back
-            what Claude said, so a wrong key or model names itself here.
+            Save the key first — the <b>Model</b> list below then fills itself from your own account, so there is no
+            id to look up. Hit <b>Test</b> afterwards: it runs one real polish and reports back what Claude said.
           </p>
 
           <div className="setform__grid two">
@@ -2890,12 +2918,34 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
             </label>
             <label className="field">
               <span>Model</span>
-              <input
-                value={anthropicModel}
-                autoComplete="off"
-                onChange={(e) => setAnthropicModel(e.target.value)}
-                placeholder="claude-sonnet-5"
-              />
+              {aiModels.length > 0 ? (
+                <select value={anthropicModel} onChange={(e) => setAnthropicModel(e.target.value)}>
+                  {/* Keep whatever is saved selectable even if the key no longer
+                      lists it, so opening this sheet never silently changes it. */}
+                  {anthropicModel && !aiModels.some((m) => m.id === anthropicModel) && (
+                    <option value={anthropicModel}>{anthropicModel} (not offered by this key)</option>
+                  )}
+                  {aiModels.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name === m.id ? m.id : `${m.name} — ${m.id}`}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={anthropicModel}
+                  autoComplete="off"
+                  onChange={(e) => setAnthropicModel(e.target.value)}
+                  placeholder="claude-sonnet-4-5"
+                />
+              )}
+              <em>
+                {aiModelsLoading
+                  ? "Loading the models your key can use…"
+                  : aiModels.length > 0
+                    ? `${aiModels.length} models available on this key`
+                    : aiModelsError || "Save an API key, then reopen this to pick from your available models."}
+              </em>
             </label>
           </div>
 

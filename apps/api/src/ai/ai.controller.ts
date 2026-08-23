@@ -1,4 +1,12 @@
-import { BadRequestException, Body, Controller, NotFoundException, Post, ServiceUnavailableException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Post,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { polishDraftInputSchema, type PolishDraftInput, type PolishDraftResult } from "@ding/schemas";
 import { Store } from "../data/store";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -14,6 +22,22 @@ export class AiController {
     private readonly store: Store,
     private readonly ai: AiService,
   ) {}
+
+  /** The models this workspace's key can use, for the Settings picker. Returns
+   *  an error string rather than throwing, so the sheet can fall back to a
+   *  free-text field instead of becoming a dead end. */
+  @Get("models")
+  async models(
+    @CurrentUserId() userId: string,
+  ): Promise<{ models: { id: string; name: string }[]; error?: string }> {
+    const me = await this.store.getUser(userId);
+    if (!me) throw new NotFoundException("Current user not found");
+    try {
+      return { models: await this.ai.listModels(me.orgId) };
+    } catch (err) {
+      return { models: [], error: err instanceof Error ? err.message : "Couldn't list models" };
+    }
+  }
 
   /** Run one real polish against a fixed sample and report what happened.
    *  Settings › Integrations › AI calls this so a misconfigured key or model

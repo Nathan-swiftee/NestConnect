@@ -4,6 +4,7 @@ import { Store } from "../data/store";
 import { resolveAnthropicConfig } from "./anthropic-config";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models";
 const ANTHROPIC_VERSION = "2023-06-01";
 /** A polish returns one message, so the ceiling only needs to clear the draft.
  *  Generous headroom over the 5,000-character input cap the schema enforces. */
@@ -48,6 +49,43 @@ export class AiService {
     return (await resolveAnthropicConfig(this.store, orgId))?.model ?? "";
   }
 
+  /**
+   * The models THIS key can actually use, newest first, so Settings can offer a
+   * list instead of asking someone to type an id from memory. Model ids differ
+   * per account and change over time, so a hardcoded list would go stale — the
+   * key is the only authority on what it may call.
+   */
+  async listModels(orgId: string): Promise<{ id: string; name: string }[]> {
+    const config = await resolveAnthropicConfig(this.store, orgId);
+    if (!config) {
+      throw new PolishUnavailableError("Add a Claude API key in Settings › Integrations › AI", "not_configured");
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(`${ANTHROPIC_MODELS_URL}?limit=100`, {
+        headers: { "x-api-key": config.apiKey, "anthropic-version": ANTHROPIC_VERSION },
+        signal: controller.signal,
+      });
+    } catch {
+      throw new PolishUnavailableError("Couldn't reach Claude to list models", "upstream");
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) {
+      const detail = await this.errorDetail(res);
+      this.logger.warn(`Model list rejected: HTTP ${res.status}${detail ? ` — ${detail}` : ""}`);
+      throw new PolishUnavailableError(this.httpMessage(res.status, detail), "upstream");
+    }
+    const json = (await res.json().catch(() => null)) as {
+      data?: { id?: string; display_name?: string }[];
+    } | null;
+    return (json?.data ?? [])
+      .filter((m): m is { id: string; display_name?: string } => typeof m.id === "string")
+      .map((m) => ({ id: m.id, name: m.display_name?.trim() || m.id }));
+  }
+
   async polish(
     orgId: string,
     text: string,
@@ -59,11 +97,12 @@ export class AiService {
     }
 
     const system = `${config.polishPrompt}\n\n${this.context(opts)}`;
+    // No `temperature`: newer models reject it ("temperature is deprecated for
+    // this model"), which failed every polish. It was only ever a nudge towards
+    // repeatability — the prompt is what actually constrains the rewrite.
     const body = {
       model: config.model,
       max_tokens: MAX_TOKENS,
-      // Deterministic-ish: polishing the same draft twice shouldn't wander.
-      temperature: 0.2,
       system,
       messages: [
         {

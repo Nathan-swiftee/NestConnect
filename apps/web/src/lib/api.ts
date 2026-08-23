@@ -188,6 +188,8 @@ export const api = {
   polishDraft: (input: PolishDraftInput) => post<PolishDraftResult>("/ai/polish", input),
   // One real polish against a sample, so Settings can prove the key + model work.
   testAi: () => post<{ ok: boolean; model: string; sample?: string; error?: string }>("/ai/test", {}),
+  // The models this workspace's Claude key can actually use (Settings picker).
+  aiModels: () => get<{ models: { id: string; name: string }[]; error?: string }>("/ai/models"),
   // pull-to-refresh: fetch any new Gmail on demand
   syncGmail: () => post<{ ok: boolean; synced: number }>("/channels/google/sync", {}),
   // customers (CRM)
