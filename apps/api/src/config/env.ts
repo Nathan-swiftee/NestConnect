@@ -40,6 +40,10 @@ export const env = {
     cookieName: process.env.AUTH_COOKIE_NAME ?? "ding_session",
     // Session lifetime in seconds (default 7 days).
     ttlSeconds: Number(process.env.AUTH_TTL_SECONDS ?? 60 * 60 * 24 * 7),
+    // Native clients get a longer session: re-authenticating a phone weekly is
+    // a real cost, and the session stays revocable either way (Session.revokedAt),
+    // so length trades convenience against nothing but the revocation window.
+    mobileTtlSeconds: Number(process.env.AUTH_MOBILE_TTL_SECONDS ?? 60 * 60 * 24 * 60),
     // Password for all seeded demo users (dev only).
     devPassword: process.env.AUTH_DEV_PASSWORD ?? "ding1234",
   },
@@ -84,6 +88,18 @@ export const env = {
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",
     model: process.env.ANTHROPIC_MODEL ?? "",
+  },
+  push: {
+    // Expo access token. Optional — Expo accepts unauthenticated sends — but with
+    // "enhanced security" enabled it's what stops anyone who learns a device
+    // token from pushing to that phone in our name.
+    expoAccessToken: process.env.EXPO_ACCESS_TOKEN ?? "",
+    // Where the Expo push API lives. Overridable so the delivery path can be
+    // pointed at a stub in tests and in environments with no egress to exp.host.
+    expoBaseUrl: (process.env.EXPO_PUSH_BASE_URL ?? "https://exp.host").replace(/\/+$/, ""),
+    // How long after a send to ask Expo what actually happened. Receipts aren't
+    // ready immediately, and they're the only way DeviceNotRegistered is learned.
+    receiptDelaySeconds: Number(process.env.PUSH_RECEIPT_DELAY_SECONDS ?? 300),
   },
   gmail: {
     // Inbound polling cadence in seconds; 0 disables the poller (push-only).

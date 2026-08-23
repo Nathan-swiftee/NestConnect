@@ -61,13 +61,15 @@ export class AuthService {
     return user;
   }
 
-  /** Sign a session cookie. The session id (when given) rides as the JWT `jti`
-   *  so a revoked session invalidates the cookie server-side. */
-  sign(userId: string, sessionId?: string): string {
+  /** Sign a session token. The session id (when given) rides as the JWT `jti`
+   *  so a revoked session invalidates it server-side — which is what lets a
+   *  long-lived native token stay safe. Same token either way; only the carrier
+   *  (cookie vs Authorization header) and the lifetime differ. */
+  sign(userId: string, sessionId?: string, ttlSeconds = env.auth.ttlSeconds): string {
     return jwt.sign(
       { sub: userId, ...(sessionId ? { jti: sessionId } : {}) },
       env.auth.jwtSecret,
-      { expiresIn: env.auth.ttlSeconds },
+      { expiresIn: ttlSeconds },
     );
   }
 

@@ -33,7 +33,12 @@ export class AuthGuard implements CanActivate {
     const req = ctx
       .switchToHttp()
       .getRequest<Request & { userId?: string; sessionId?: string; cookies?: Record<string, string> }>();
-    const token = req.cookies?.[env.auth.cookieName];
+    // Browsers send the httpOnly cookie; native clients send the same JWT as a
+    // bearer token, because a phone has no cookie jar shared between its HTTP
+    // client, its socket and a background push registration.
+    const header = req.headers.authorization;
+    const bearer = header?.startsWith("Bearer ") ? header.slice(7).trim() : undefined;
+    const token = req.cookies?.[env.auth.cookieName] ?? bearer;
     const claims = token ? this.auth.verify(token) : undefined;
 
     if (claims) {

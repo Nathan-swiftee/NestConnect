@@ -1,10 +1,18 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
-import type { Conversation, Notification } from "@ding/schemas";
+import type { Conversation, Notification, NotificationType } from "@ding/schemas";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { PushService, type PushKind } from "../push/push.service";
 
 /** How often we sweep for snoozed conversations whose wake time has passed. */
 const SNOOZE_SWEEP_MS = 30_000;
+
+/** Bell type → push class, so a mention lands on its own Android channel and
+ *  ignores quiet hours while a routine reminder doesn't. */
+const PUSH_KIND: Record<NotificationType, PushKind> = {
+  mention: "mention",
+  snooze_due: "reminder",
+};
 
 /**
  * The bell's brain. Creates per-user notifications (persisted + pushed live) and
@@ -21,6 +29,7 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
   constructor(
     private readonly store: Store,
     private readonly realtime: RealtimeGateway,
+    private readonly push: PushService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -32,13 +41,39 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
     if (this.timer) clearInterval(this.timer);
   }
 
-  /** Persist a notification and push it to the user's live session(s). */
+  /**
+   * Persist a notification, push it to the user's live session(s), and send it
+   * to their phone.
+   *
+   * The three are one act deliberately: a bell row nobody sees because they're
+   * away from the desk is the failure this exists to prevent. PushService
+   * decides whether it actually goes out — the actor, an open thread, the
+   * person's preferences and quiet hours are all its call, not this one's.
+   */
   async create(
     userId: string,
-    input: { type: Notification["type"]; title: string; body?: string; conversationId?: string | null },
+    input: {
+      type: Notification["type"];
+      title: string;
+      body?: string;
+      conversationId?: string | null;
+      /** Whoever caused this, so they're never notified about their own action. */
+      actorUserId?: string;
+      /** Overrides the kind inferred from `type` (a mention is not a message). */
+      pushKind?: PushKind;
+    },
   ): Promise<void> {
-    const notif = await this.store.createNotification({ userId, ...input });
+    const { actorUserId, pushKind, ...row } = input;
+    const notif = await this.store.createNotification({ userId, ...row });
     this.realtime.emitNotification(userId, notif);
+    this.push.notify({
+      userIds: [userId],
+      kind: pushKind ?? PUSH_KIND[row.type] ?? "message",
+      title: row.title,
+      body: row.body ?? "",
+      conversationId: row.conversationId ?? undefined,
+      actorUserId,
+    });
   }
 
   /** On an internal note, notify every teammate it @-mentions (except the author). */
@@ -56,6 +91,7 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
         title: `${authorName} mentioned you`,
         body: snippet,
         conversationId: conversation.id,
+        actorUserId: authorId,
       });
     }
   }

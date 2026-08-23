@@ -111,6 +111,10 @@ model User {
   // Emailed one-time code for the "email" method / enrolment: hash + expiry.
   twoFactorEmailCodeHash    String?
   twoFactorEmailCodeExpires DateTime?
+  // Which push notifications this person wants, as JSON (see PushPreferences).
+  // Null = the defaults: assigned-to-me, mentions, assignments and reminders on,
+  // all-team-inbound off — the setting that otherwise makes people uninstall.
+  pushPrefs                 String?
   createdAt    DateTime @default(now())
 
   org         Organization   @relation(fields: [orgId], references: [id])
@@ -120,6 +124,7 @@ model User {
   notes       Note[]
   notifications Notification[]
   sessions    Session[]
+  devices     Device[]
   recoveryCodes RecoveryCode[]
 
   @@unique([orgId, email])
@@ -154,9 +159,42 @@ model Session {
   // Set when the session is signed out (here or remotely); nulls = active.
   revokedAt  DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  devices Device[]
 
   @@index([userId])
+}
+
+// A phone (or tablet) that can receive push. Keyed by the push token, because
+// that IS the address we send to — a reinstall produces a new token and so a new
+// row, and the same token can never belong to two people at once.
+//
+// `sessionId` ties the device to the sign-in that registered it, so remote
+// sign-out stops its notifications instead of leaving a signed-out phone still
+// buzzing. `disabledAt` + `disabledReason` record a token the push service told
+// us is dead (`DeviceNotRegistered`) or one whose owner revoked permission in OS
+// settings — without it we'd push at a dead address forever.
+model Device {
+  id             String    @id @default(cuid())
+  userId         String
+  sessionId      String?
+  // The Expo push token ("ExponentPushToken[...]"). Unique: one row per address.
+  pushToken      String    @unique
+  platform       String
+  // App + OS build, for triaging "only broken on iOS 26" reports.
+  appVersion     String?
+  osVersion      String?
+  deviceName     String?
+  createdAt      DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  disabledAt     DateTime?
+  disabledReason String?
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sessionId])
 }
 
 /// A per-user bell notification (a mention, a snooze coming due, …).

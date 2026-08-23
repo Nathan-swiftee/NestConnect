@@ -3,6 +3,7 @@ import { GROUP_MAX_MEMBERS, type Conversation, type MessageType } from "@ding/sc
 import { Store, type AttachmentInput } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { TenantContext } from "../tenancy/tenant-context";
+import { PushService } from "../push/push.service";
 import { RoutingService } from "./routing.service";
 import { sanitizeEmailHtml } from "./email/html-sanitize";
 
@@ -50,7 +51,46 @@ export class IngestService {
     private readonly routing: RoutingService,
     private readonly realtime: RealtimeGateway,
     private readonly tenant: TenantContext,
+    private readonly push: PushService,
   ) {}
+
+  /**
+   * Tell whoever owns this conversation that a customer has written.
+   *
+   * Who "owns" it is the whole question. An assigned conversation notifies its
+   * assignee — that's the notification people actually want. An unassigned one
+   * sitting in a team queue notifies that team, but under a separate preference
+   * that is off by default: a shared inbox that pushes every arrival to everyone
+   * is how an app earns itself a permanently disabled notification setting.
+   *
+   * Fire-and-forget by construction — PushService never blocks ingest, and its
+   * own rules (open thread, quiet hours, rate limit) decide what actually goes.
+   */
+  private async pushInbound(conversationId: string, authorName: string, preview: string): Promise<void> {
+    const conv = await this.store.getConversation(conversationId);
+    if (!conv) return;
+    const body = preview.trim().slice(0, 140) || "Sent an attachment";
+    // In a group, who spoke matters as much as which group — a banner saying
+    // only the sender's name gives no way to tell which chat it came from.
+    const title =
+      conv.channel === "whatsapp_group" ? `${authorName} · ${conv.contact.displayName}` : authorName;
+
+    if (conv.assigneeUserId) {
+      this.push.notify({
+        userIds: [conv.assigneeUserId],
+        kind: "message",
+        title,
+        body,
+        conversationId,
+      });
+      return;
+    }
+    if (!conv.assignedTeamId) return;
+    const members = await this.store.listMembers();
+    const teamMembers = members.filter((m) => m.teamIds.includes(conv.assignedTeamId!)).map((m) => m.user.id);
+    if (!teamMembers.length) return;
+    this.push.notify({ userIds: teamMembers, kind: "team_message", title, body, conversationId });
+  }
 
   async ingestWhatsApp(input: WhatsAppInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
     // Idempotency: Meta retries any webhook it doesn't get a fast 2xx for, so a
@@ -115,7 +155,10 @@ export class IngestService {
       attachments: input.attachments,
       quotedMsgId: input.quotedMsgId,
     });
-    if (message) this.realtime.emitMessageCreated(conv.id, message, inbox.orgId);
+    if (message) {
+      this.realtime.emitMessageCreated(conv.id, message, inbox.orgId);
+      void this.pushInbound(conv.id, contact.displayName, input.text);
+    }
 
     return { conversationId: conv.id, created };
   }
@@ -171,7 +214,10 @@ export class IngestService {
       attachments: input.attachments,
       quotedMsgId: input.quotedMsgId,
     });
-    if (message) this.realtime.emitMessageCreated(conversationId, message, orgId);
+    if (message) {
+      this.realtime.emitMessageCreated(conversationId, message, orgId);
+      void this.pushInbound(conversationId, contact.displayName, input.text);
+    }
     return { conversationId, created: false };
   }
 
@@ -254,7 +300,10 @@ export class IngestService {
       messageType: input.messageType,
       attachments: input.attachments,
     });
-    if (message) this.realtime.emitMessageCreated(conversationId, message, inbox.orgId);
+    if (message) {
+      this.realtime.emitMessageCreated(conversationId, message, inbox.orgId);
+      void this.pushInbound(conversationId, contact.displayName, input.text);
+    }
 
     return { conversationId, created };
   }

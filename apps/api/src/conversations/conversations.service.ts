@@ -18,6 +18,7 @@ import { ChannelDispatcher } from "../channels/channel-dispatcher";
 import type { OutboundTemplate } from "../channels/channel-provider";
 import { OutboundQueue } from "../queue/outbound-queue";
 import { NotificationsService } from "../notifications/notifications.service";
+import { PushService } from "../push/push.service";
 import { sanitizeOutboundHtml, htmlToText } from "../channels/email/html-sanitize";
 import { forwardSubject } from "../channels/email/email.provider";
 
@@ -65,6 +66,7 @@ export class ConversationsService {
     private readonly dispatcher: ChannelDispatcher,
     private readonly queue: OutboundQueue,
     private readonly notifications: NotificationsService,
+    private readonly push: PushService,
   ) {}
 
   list(view: string, userId: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
@@ -247,6 +249,19 @@ export class ConversationsService {
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     const by = (await this.store.getUser(byUserId))?.name;
     this.realtime.emitConversationAssigned(conv, by);
+    // Handing someone a conversation is work they've just been given — worth a
+    // banner. `actorUserId` keeps the common case (an agent replying, which
+    // auto-assigns to them) from notifying them about themselves.
+    if (conv.assigneeUserId) {
+      this.push.notify({
+        userIds: [conv.assigneeUserId],
+        kind: "assignment",
+        title: by ? `${by} assigned you a chat` : "You've been assigned a chat",
+        body: conv.contact.displayName,
+        conversationId: conv.id,
+        actorUserId: byUserId,
+      });
+    }
     return conv;
   }
 

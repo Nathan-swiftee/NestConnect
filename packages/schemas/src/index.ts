@@ -848,8 +848,21 @@ export type Member = z.infer<typeof memberSchema>;
 export const loginInputSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  /** Native clients ask for the session as a bearer token instead of a cookie:
+   *  a phone has no shared cookie jar between its HTTP client, its socket and a
+   *  background push registration. Browsers omit this and keep the httpOnly
+   *  cookie, which is a real defence there and doesn't change. */
+  tokenAuth: z.boolean().optional(),
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
+
+/** What a tokenAuth login returns once the session is real. `token` is absent
+ *  for cookie clients. */
+export interface SessionGrant {
+  token?: string;
+  /** Seconds until the token expires, so a client can refresh ahead of it. */
+  expiresIn?: number;
+}
 
 /** A signed-in device/browser shown in "Where you're signed in" (personal
  *  settings). `current` marks the session making the request. */
@@ -863,6 +876,75 @@ export interface SessionInfo {
   lastSeenAt: string;
 }
 
+/* ---- Push devices ---- */
+
+/** Register this install for push. Sent after sign-in and on every app start,
+ *  because push tokens rotate — re-registering the same token is a no-op that
+ *  just refreshes `lastSeenAt`. */
+export const registerDeviceInputSchema = z.object({
+  /** The Expo push token: "ExponentPushToken[…]". */
+  pushToken: z.string().min(10).max(256),
+  platform: z.enum(["ios", "android"]),
+  appVersion: z.string().max(32).optional(),
+  osVersion: z.string().max(32).optional(),
+  /** What the person would call this phone ("Nathan's iPhone"), for the
+   *  signed-in-devices list. */
+  deviceName: z.string().max(120).optional(),
+});
+export type RegisterDeviceInput = z.infer<typeof registerDeviceInputSchema>;
+
+/** A registered device, as its owner sees it. The push token never leaves the
+ *  server — it's an address someone else could send to. */
+export interface DeviceInfo {
+  id: string;
+  platform: string;
+  deviceName?: string | null;
+  appVersion?: string | null;
+  osVersion?: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  /** Set when we've stopped pushing here — a dead token, or permission revoked. */
+  disabledReason?: string | null;
+}
+
+/** "HH:MM", 24-hour. */
+const timeOfDay = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM");
+
+/**
+ * What a person wants pushed to their phone.
+ *
+ * The defaults are the point of this shape: everything about *me* is on, and
+ * all-team-inbound is off. A busy shared inbox that pushes every arrival is the
+ * setting that makes people turn notifications off entirely — at which point
+ * they miss the ones that mattered.
+ */
+export const pushPreferencesSchema = z.object({
+  /** A new message in a conversation assigned to me. */
+  assigned: z.boolean().default(true),
+  /** An @mention of me in an internal note. */
+  mentions: z.boolean().default(true),
+  /** Someone assigned a conversation to me. */
+  assignments: z.boolean().default(true),
+  /** A conversation I snoozed has come due. */
+  reminders: z.boolean().default(true),
+  /** Any new inbound in an inbox my team owns. Off by default, deliberately. */
+  teamInbound: z.boolean().default(false),
+  /** Silence non-urgent pushes between these times. `end` before `start` means
+   *  the window crosses midnight (22:00 → 07:00), which is the usual case. */
+  quietHours: z.object({ start: timeOfDay, end: timeOfDay }).nullable().default(null),
+  /** IANA zone the quiet hours are read in; the workspace's default when unset. */
+  timezone: z.string().max(64).optional(),
+});
+export type PushPreferences = z.infer<typeof pushPreferencesSchema>;
+
+/** Every field optional — the client sends only what changed. */
+export const updatePushPreferencesInputSchema = pushPreferencesSchema.partial();
+export type UpdatePushPreferencesInput = z.infer<typeof updatePushPreferencesInputSchema>;
+
+/** The defaults, as a value. Parsing `{}` applies every `.default()` above, so
+ *  this can't drift from the schema. */
+export const DEFAULT_PUSH_PREFERENCES: PushPreferences = pushPreferencesSchema.parse({});
+
 /** Set an initial password from an emailed invite link (token → new password). */
 export const setPasswordInputSchema = z.object({
   token: z.string().min(10),
@@ -873,7 +955,13 @@ export type SetPasswordInput = z.infer<typeof setPasswordInputSchema>;
 /* ---- Two-factor auth ---- */
 
 /** A 6-digit authenticator/email code — or a one-time recovery code. */
-export const twoFactorCodeInputSchema = z.object({ code: z.string().trim().min(4).max(32) });
+export const twoFactorCodeInputSchema = z.object({
+  code: z.string().trim().min(4).max(32),
+  /** The half-authenticated token from a tokenAuth login, when there's no
+   *  cookie to carry it. */
+  pendingToken: z.string().optional(),
+  tokenAuth: z.boolean().optional(),
+});
 export type TwoFactorCodeInput = z.infer<typeof twoFactorCodeInputSchema>;
 
 /** Starting authenticator setup: the secret to store + a QR to scan. */

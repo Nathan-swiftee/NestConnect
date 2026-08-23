@@ -16,6 +16,7 @@ import { ChannelsModule } from "./channels/channels.module";
 import { QueueModule } from "./queue/queue.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { PushModule } from "./push/push.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { ContactsModule } from "./contacts/contacts.module";
 import { StorageModule } from "./storage/storage.module";
@@ -41,6 +42,7 @@ const imports: ModuleMetadata["imports"] = [
   QueueModule,
   ConversationsModule,
   NotificationsModule,
+  PushModule,
   WorkspaceModule,
   ContactsModule,
   TemplatesModule,

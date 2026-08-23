@@ -121,17 +121,45 @@ Formatters (`initials`, `avatarBg`, `listTime`, `relativeTime`) move with them.
 
 Each phase ends in something demonstrable on a real device.
 
-### Phase 0 — Backend prerequisites
-1. Bearer auth in `AuthGuard` + socket handshake (cookie path untouched).
-2. Refresh-token rotation, revocable via `Session`.
-3. `Device` model + `POST /devices` (register), `DELETE /devices/:id`.
-4. `PushProvider` interface + `ExpoPushProvider`; credentials as AppSettings, in
-   the pattern Settings › Integrations already uses.
-5. Notification policy + per-user preferences.
+### Phase 0 — Backend prerequisites ✅ done
 
-**Done when:** a `curl` with a bearer token reaches the API; a socket connects
-with `auth.token`; a device row is created; a test push arrives on a physical
-phone.
+1. **Bearer auth.** `AuthGuard` accepts `Authorization: Bearer <jwt>` alongside
+   the cookie; the socket handshake accepts `auth.token`. The cookie path is
+   untouched. `POST /auth/login` with `tokenAuth: true` returns
+   `{ token, expiresIn }` instead of setting a cookie, and the 2FA step carries
+   its half-authenticated token in the body (`pendingToken`) rather than a
+   second cookie. Native sessions last 60 days (`AUTH_MOBILE_TTL_SECONDS`).
+2. **Session lifetime.** `POST /auth/refresh` re-issues a token on the *same*
+   `Session`, so a phone in daily use never gets signed out and one that goes
+   quiet still expires. Deliberately not a second refresh-token family: the JWT
+   carries its session as `jti` and the guard checks that row on every request,
+   so revoking a session kills the token within seconds — which is the property
+   a refresh scheme exists to provide. The socket checks revocation too, since
+   a socket is opened once and then lives for hours.
+3. **`Device` model** + `POST /devices` (register / re-register — the push token
+   is the row's identity), `GET /devices`, `DELETE /devices/:id`. Signing a
+   session out — locally or remotely — deletes the devices it registered, so a
+   phone someone signed out stops buzzing rather than merely failing to open.
+4. **`PushProvider` interface + `ExpoPushProvider`**, bound by token exactly as
+   `Store` and `OutboundQueue` are. The Expo access token is an AppSetting,
+   encrypted at rest, in the pattern Settings › Integrations already uses.
+   Receipts are polled on a sweep — `DeviceNotRegistered` disables the device.
+5. **Notification policy** (`PushService`) + per-user preferences on
+   `GET`/`PATCH /devices/preferences`. Rules, in order: never the actor; never
+   for a thread open in front of them; only what they asked for; quiet hours
+   except for a direct mention; rate-limited (5/min) and collapsed per
+   conversation. Defaults: assigned-to-me, mentions, assignments and reminders
+   on; all-team-inbound off.
+
+**Verified:** bearer `curl` reaches the API and a revoked token gets a 401; a
+socket connects with `auth.token` and a revoked one is rejected; devices
+register, re-register idempotently, and disappear on remote sign-out; the whole
+delivery path (send → tickets → receipts → disable) runs against a stub Expo
+(`EXPO_PUSH_BASE_URL`), and every policy rule above was measured end to end.
+
+**Still needs a physical device:** a real push through Expo's servers. That is
+Phase 3's first task and can't be done from CI — nor from this sandbox, whose
+egress proxy blocks `exp.host`.
 
 ### Phase 1 — App shell
 1. `apps/mobile`, Expo SDK (latest stable), TypeScript, EAS project, dev client.
@@ -227,10 +255,16 @@ separate that from something people trust.
 2. **Google Play Developer account** ($25 once).
 3. **Expo/EAS account** — free tier is fine to start.
 4. **Bundle identifiers**, e.g. `co.uk.swiftee.nestconnect`.
-5. **Decision: Expo Push or direct FCM/APNs.** My recommendation is Expo Push
-   behind the provider seam; say if you'd rather own the pipe from day one.
-6. **Decision: which events push by default** (§2.3). My recommendation:
-   assigned-to-me, mentions, and snooze reminders on; all-team-inbound off.
+5. ~~Decision: Expo Push or direct FCM/APNs.~~ Built on Expo Push, behind the
+   `PushProvider` seam — swapping to direct FCM/APNs later is a new class.
+6. ~~Decision: which events push by default.~~ Shipped as recommended:
+   assigned-to-me, mentions, assignments and snooze reminders on;
+   all-team-inbound off.
+
+Still outstanding from this list: the Apple and Google accounts are in place, so
+what's left is **an Expo/EAS account**, **bundle identifiers**, and — when we
+reach Phase 3 — the **APNs `.p8` key** and **FCM service-account JSON** uploaded
+to EAS.
 
 ---
 

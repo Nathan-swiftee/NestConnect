@@ -51,6 +51,7 @@ import {
   type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
+  type StoredDevice,
   type StoredSession,
   type TwoFactorState,
   type ViewItem,
@@ -126,6 +127,8 @@ export class MemoryStore extends Store {
   private emailTokenIndex = new Map<string, { messageId: string; address: string; sentAt: number }>();
   private idSeq = 10_000;
   private sessions: StoredSession[] = [];
+  private devices: StoredDevice[] = [];
+  private pushPrefs = new Map<string, string>();
   private twoFactor = new Map<string, TwoFactorState>();
   private recoveryCodes: Array<{ id: string; userId: string; codeHash: string; usedAt: string | null }> = [];
 
@@ -481,6 +484,8 @@ export class MemoryStore extends Store {
     delete this.membership[id];
     this.passwords.delete(id);
     this.sessions = this.sessions.filter((s) => s.userId !== id);
+    this.devices = this.devices.filter((d) => d.userId !== id);
+    this.pushPrefs.delete(id);
     this.twoFactor.delete(id);
     this.recoveryCodes = this.recoveryCodes.filter((c) => c.userId !== id);
     for (const c of this.conversations) if (c.assigneeUserId === id) c.assigneeUserId = null;
@@ -521,19 +526,116 @@ export class MemoryStore extends Store {
     const s = this.sessions.find((x) => x.id === id && x.userId === userId);
     if (!s) return false;
     if (!s.revokedAt) s.revokedAt = new Date().toISOString();
+    await this.deleteDevicesForSessions([id]);
     return true;
   }
 
   async revokeOtherSessions(userId: string, keepId: string): Promise<number> {
     let n = 0;
     const now = new Date().toISOString();
+    const revoked: string[] = [];
     for (const s of this.sessions) {
       if (s.userId === userId && s.id !== keepId && !s.revokedAt) {
         s.revokedAt = now;
+        revoked.push(s.id);
         n++;
       }
     }
+    await this.deleteDevicesForSessions(revoked);
     return n;
+  }
+
+  /* ---- push devices ---- */
+
+  async upsertDevice(params: {
+    userId: string;
+    sessionId?: string;
+    pushToken: string;
+    platform: string;
+    appVersion?: string;
+    osVersion?: string;
+    deviceName?: string;
+  }): Promise<StoredDevice> {
+    const now = new Date().toISOString();
+    const existing = this.devices.find((d) => d.pushToken === params.pushToken);
+    if (existing) {
+      // A re-registration proves the token is live and says who holds it now —
+      // so it moves to this user/session and clears any earlier disable.
+      Object.assign(existing, {
+        userId: params.userId,
+        sessionId: params.sessionId ?? null,
+        platform: params.platform,
+        appVersion: params.appVersion ?? existing.appVersion,
+        osVersion: params.osVersion ?? existing.osVersion,
+        deviceName: params.deviceName ?? existing.deviceName,
+        lastSeenAt: now,
+        disabledAt: null,
+        disabledReason: null,
+      });
+      return existing;
+    }
+    const d: StoredDevice = {
+      id: `dev_${++this.idSeq}`,
+      userId: params.userId,
+      sessionId: params.sessionId ?? null,
+      pushToken: params.pushToken,
+      platform: params.platform,
+      appVersion: params.appVersion ?? null,
+      osVersion: params.osVersion ?? null,
+      deviceName: params.deviceName ?? null,
+      createdAt: now,
+      lastSeenAt: now,
+      disabledAt: null,
+      disabledReason: null,
+    };
+    this.devices.push(d);
+    return d;
+  }
+
+  async listDevices(userId: string): Promise<StoredDevice[]> {
+    return this.devices
+      .filter((d) => d.userId === userId)
+      .sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt));
+  }
+
+  async devicesForUsers(userIds: string[]): Promise<StoredDevice[]> {
+    const wanted = new Set(userIds);
+    return this.devices.filter((d) => {
+      if (!wanted.has(d.userId) || d.disabledAt) return false;
+      if (!d.sessionId) return true;
+      const s = this.sessions.find((x) => x.id === d.sessionId);
+      return !!s && !s.revokedAt;
+    });
+  }
+
+  async deleteDevice(userId: string, id: string): Promise<boolean> {
+    const i = this.devices.findIndex((d) => d.id === id && d.userId === userId);
+    if (i === -1) return false;
+    this.devices.splice(i, 1);
+    return true;
+  }
+
+  async deleteDevicesForSessions(sessionIds: string[]): Promise<number> {
+    if (!sessionIds.length) return 0;
+    const ids = new Set(sessionIds);
+    const before = this.devices.length;
+    this.devices = this.devices.filter((d) => !d.sessionId || !ids.has(d.sessionId));
+    return before - this.devices.length;
+  }
+
+  async disableDevice(pushToken: string, reason: string): Promise<void> {
+    const d = this.devices.find((x) => x.pushToken === pushToken);
+    if (!d || d.disabledAt) return;
+    d.disabledAt = new Date().toISOString();
+    d.disabledReason = reason;
+  }
+
+  async getPushPrefs(userId: string): Promise<string | undefined> {
+    return this.pushPrefs.get(userId);
+  }
+
+  async setPushPrefs(userId: string, json: string): Promise<void> {
+    this.pushPrefs.set(userId, json);
   }
 
   private emptyTwoFactor(): TwoFactorState {

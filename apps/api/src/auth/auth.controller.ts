@@ -22,6 +22,7 @@ import {
   type ForgotPasswordInput,
   type LoginInput,
   type SetPasswordInput,
+  type SessionGrant,
   type TwoFactorCodeInput,
   type User,
 } from "@ding/schemas";
@@ -62,6 +63,12 @@ function readCookie(req: Request, name: string): string | undefined {
   return (req as Request & { cookies?: Record<string, string> }).cookies?.[name];
 }
 
+/** The session token as a native client sends it — `Authorization: Bearer <jwt>`. */
+function readBearer(req: Request): string | undefined {
+  const header = req.headers.authorization;
+  return header?.startsWith("Bearer ") ? header.slice(7).trim() : undefined;
+}
+
 @Controller("auth")
 export class AuthController {
   constructor(
@@ -72,11 +79,27 @@ export class AuthController {
     private readonly mailer: Mailer,
   ) {}
 
-  /** Start a real session for a fully-authenticated user and set the cookie. */
-  private async grantSession(userId: string, req: Request, res: Response) {
+  /**
+   * Start a real session for a fully-authenticated user.
+   *
+   * Browsers get the httpOnly cookie — unchanged, and the right defence there.
+   * Native clients ask for `tokenAuth` and get the same JWT in the body instead,
+   * to keep in the Keychain: a phone has no cookie jar shared between its HTTP
+   * client, its socket and a background push registration. Those tokens live
+   * longer (re-authenticating a phone weekly is a real cost) and stay revocable
+   * through the same `Session` row either way.
+   */
+  private async grantSession(userId: string, req: Request, res: Response, tokenAuth = false) {
     const sessionId = await this.sessions.create(userId, clientMeta(req));
-    res.cookie(env.auth.cookieName, this.auth.sign(userId, sessionId), cookieOptions());
-    return this.store.me(userId);
+    const ttl = tokenAuth ? env.auth.mobileTtlSeconds : env.auth.ttlSeconds;
+    const token = this.auth.sign(userId, sessionId, ttl);
+    const me = await this.store.me(userId);
+    if (!tokenAuth) {
+      res.cookie(env.auth.cookieName, token, cookieOptions());
+      return me;
+    }
+    const grant: SessionGrant = { token, expiresIn: ttl };
+    return { ...me, ...grant };
   }
 
   private async requireUser(userId: string): Promise<User> {
@@ -98,11 +121,15 @@ export class AuthController {
 
     // 2FA on → stop at a half-authenticated state; the client posts the code next.
     if (user.twoFactorEnabled) {
-      res.cookie(PENDING_COOKIE, this.auth.signPending(user.id), { ...cookieOptions(), maxAge: 5 * 60 * 1000 });
+      const pending = this.auth.signPending(user.id);
       if (user.twoFactorMethod === "email") await this.twoFactor.sendEmailCode(user);
-      return { twoFactorRequired: true as const, method: user.twoFactorMethod ?? "totp" };
+      const challenge = { twoFactorRequired: true as const, method: user.twoFactorMethod ?? "totp" };
+      // Token clients carry the pending token themselves and post it back.
+      if (body.tokenAuth) return { ...challenge, pendingToken: pending };
+      res.cookie(PENDING_COOKIE, pending, { ...cookieOptions(), maxAge: 5 * 60 * 1000 });
+      return challenge;
     }
-    return this.grantSession(user.id, req, res);
+    return this.grantSession(user.id, req, res, body.tokenAuth);
   }
 
   /** Second login step: verify the 2FA code (or a recovery code) → real session. */
@@ -113,20 +140,20 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const userId = this.auth.verifyPending(readCookie(req, PENDING_COOKIE) ?? "");
+    const userId = this.auth.verifyPending(body.pendingToken ?? readCookie(req, PENDING_COOKIE) ?? "");
     if (!userId) throw new UnauthorizedException("Your sign-in expired — please start again.");
     if (!(await this.twoFactor.verifyChallenge(userId, body.code))) {
       throw new UnauthorizedException("That code isn't right.");
     }
     res.clearCookie(PENDING_COOKIE, { path: "/" });
-    return this.grantSession(userId, req, res);
+    return this.grantSession(userId, req, res, body.tokenAuth);
   }
 
   /** Email-method only: resend the code during the login challenge. */
   @Public()
   @Post("login/2fa/resend")
-  async resendLoginCode(@Req() req: Request) {
-    const userId = this.auth.verifyPending(readCookie(req, PENDING_COOKIE) ?? "");
+  async resendLoginCode(@Req() req: Request, @Body() body: { pendingToken?: string } = {}) {
+    const userId = this.auth.verifyPending(body?.pendingToken ?? readCookie(req, PENDING_COOKIE) ?? "");
     if (!userId) throw new UnauthorizedException("Your sign-in expired — please start again.");
     const user = await this.requireUser(userId);
     if (user.twoFactorMethod === "email") await this.twoFactor.sendEmailCode(user);
@@ -164,7 +191,9 @@ export class AuthController {
   @Public()
   @Post("logout")
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const claims = this.auth.verify(readCookie(req, env.auth.cookieName) ?? "");
+    // Revoking the session is what actually signs a token client out — it has no
+    // cookie to clear, and its stored JWT is dead the moment the row is revoked.
+    const claims = this.auth.verify(readCookie(req, env.auth.cookieName) ?? readBearer(req) ?? "");
     if (claims?.sessionId) await this.sessions.revoke(claims.userId, claims.sessionId).catch(() => {});
     res.clearCookie(env.auth.cookieName, { path: "/" });
     res.clearCookie(PENDING_COOKIE, { path: "/" });
@@ -174,6 +203,31 @@ export class AuthController {
   @Get("session")
   session(@CurrentUserId() userId: string) {
     return this.store.me(userId);
+  }
+
+  /**
+   * Roll a native client's token forward on the *same* session, so a phone in
+   * daily use never gets signed out while one that goes quiet still expires.
+   *
+   * This is deliberately a re-issue rather than a separate refresh-token family
+   * with reuse detection. The token is bound to its `Session` by the JWT `jti`
+   * and the guard checks that row on every request, so revoking the session
+   * kills the token within seconds — which is the property a refresh scheme
+   * exists to provide. A second credential to store, rotate and leak would add
+   * surface, not safety.
+   *
+   * The guard has already verified the caller, so reaching here means the
+   * session is live; an expired or revoked token gets a 401 and the app sends
+   * the person back to sign-in.
+   */
+  @Post("refresh")
+  async refresh(
+    @CurrentUserId() userId: string,
+    @CurrentSessionId() sessionId?: string,
+  ): Promise<SessionGrant> {
+    if (!sessionId) throw new UnauthorizedException("This session can't be refreshed — sign in again.");
+    const ttl = env.auth.mobileTtlSeconds;
+    return { token: this.auth.sign(userId, sessionId, ttl), expiresIn: ttl };
   }
 
   /** Change your own password — the current one is re-verified server-side. */

@@ -42,6 +42,7 @@ import {
   mapAttachment,
   mapContact,
   mapConversation,
+  mapDevice,
   mapInbox,
   mapMessage,
   mapNotification,
@@ -72,6 +73,7 @@ import {
   type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
+  type StoredDevice,
   type StoredSession,
   type TwoFactorState,
   type ViewItem,
@@ -591,17 +593,103 @@ export class PrismaStore extends Store {
       where: { id, userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
-    if (res.count > 0) return true;
+    // Signing a device out has to stop its notifications too, or a phone someone
+    // deliberately signed out keeps buzzing at them.
+    if (res.count > 0) {
+      await this.deleteDevicesForSessions([id]);
+      return true;
+    }
     // It may exist but already be revoked — still "theirs", so report success.
     return (await this.prisma.session.count({ where: { id, userId } })) > 0;
   }
 
   async revokeOtherSessions(userId: string, keepId: string): Promise<number> {
+    const doomed = await this.prisma.session.findMany({
+      where: { userId, id: { not: keepId }, revokedAt: null },
+      select: { id: true },
+    });
     const res = await this.prisma.session.updateMany({
       where: { userId, id: { not: keepId }, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    await this.deleteDevicesForSessions(doomed.map((s) => s.id));
     return res.count;
+  }
+
+  /* ---- push devices ---- */
+
+  async upsertDevice(params: {
+    userId: string;
+    sessionId?: string;
+    pushToken: string;
+    platform: string;
+    appVersion?: string;
+    osVersion?: string;
+    deviceName?: string;
+  }): Promise<StoredDevice> {
+    // The push token is the row's identity, so a reinstall or a different
+    // account on the same handset resolves to one row. A re-registration also
+    // proves the token is live, which is why it clears any earlier disable.
+    const common = {
+      userId: params.userId,
+      sessionId: params.sessionId ?? null,
+      platform: params.platform,
+      appVersion: params.appVersion ?? null,
+      osVersion: params.osVersion ?? null,
+      deviceName: params.deviceName ?? null,
+    };
+    const row = await this.prisma.device.upsert({
+      where: { pushToken: params.pushToken },
+      create: { ...common, pushToken: params.pushToken },
+      update: { ...common, lastSeenAt: new Date(), disabledAt: null, disabledReason: null },
+    });
+    return mapDevice(row);
+  }
+
+  async listDevices(userId: string): Promise<StoredDevice[]> {
+    const rows = await this.prisma.device.findMany({ where: { userId }, orderBy: { lastSeenAt: "desc" } });
+    return rows.map(mapDevice);
+  }
+
+  async devicesForUsers(userIds: string[]): Promise<StoredDevice[]> {
+    if (!userIds.length) return [];
+    const rows = await this.prisma.device.findMany({
+      where: {
+        userId: { in: userIds },
+        disabledAt: null,
+        // A device registered by a session that has since been revoked must not
+        // be pushed to; one with no session (legacy) is left addressable.
+        OR: [{ sessionId: null }, { session: { is: { revokedAt: null } } }],
+      },
+    });
+    return rows.map(mapDevice);
+  }
+
+  async deleteDevice(userId: string, id: string): Promise<boolean> {
+    const res = await this.prisma.device.deleteMany({ where: { id, userId } });
+    return res.count > 0;
+  }
+
+  async deleteDevicesForSessions(sessionIds: string[]): Promise<number> {
+    if (!sessionIds.length) return 0;
+    const res = await this.prisma.device.deleteMany({ where: { sessionId: { in: sessionIds } } });
+    return res.count;
+  }
+
+  async disableDevice(pushToken: string, reason: string): Promise<void> {
+    await this.prisma.device.updateMany({
+      where: { pushToken, disabledAt: null },
+      data: { disabledAt: new Date(), disabledReason: reason },
+    });
+  }
+
+  async getPushPrefs(userId: string): Promise<string | undefined> {
+    const row = await this.prisma.user.findUnique({ where: { id: userId }, select: { pushPrefs: true } });
+    return row?.pushPrefs ?? undefined;
+  }
+
+  async setPushPrefs(userId: string, json: string): Promise<void> {
+    await this.prisma.user.update({ where: { id: userId }, data: { pushPrefs: json } });
   }
 
   async getTwoFactor(userId: string): Promise<TwoFactorState | undefined> {

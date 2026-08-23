@@ -72,20 +72,32 @@ export class RealtimeGateway
   }
 
   async handleConnection(client: DingSocket): Promise<void> {
-    // Authenticate the handshake with the same session cookie the REST API uses:
+    // Authenticate the handshake with the same session token the REST API uses:
     // an unauthenticated socket would otherwise stream every conversation to
     // anyone who can reach the endpoint. Identity (and the org room) come from
     // the verified token, never from the client.
-    const token = readCookie(client.handshake.headers.cookie, env.auth.cookieName);
-    let userId: string | undefined;
+    //
+    // Browsers carry it in the httpOnly cookie. Native clients pass it in the
+    // socket.io handshake `auth` payload, because a phone's socket doesn't share
+    // a cookie jar with its HTTP client.
+    const handshakeAuth = client.handshake.auth as { token?: unknown } | undefined;
+    const bearer = typeof handshakeAuth?.token === "string" ? handshakeAuth.token : undefined;
+    const token = readCookie(client.handshake.headers.cookie, env.auth.cookieName) ?? bearer;
+    let claims: { sub?: string; jti?: string; twofa?: string } | undefined;
     if (token) {
       try {
-        userId = (jwt.verify(token, env.auth.jwtSecret) as { sub?: string }).sub;
+        claims = jwt.verify(token, env.auth.jwtSecret) as typeof claims;
       } catch {
-        userId = undefined;
+        claims = undefined;
       }
     }
-    const user = userId ? await this.store.getUser(userId) : undefined;
+    // A half-authenticated "2FA pending" token is never a session.
+    const userId = claims?.twofa ? undefined : claims?.sub;
+    // Honour remote sign-out here too. It matters more on a socket than on a
+    // request: a socket is opened once and then lives for hours, so without this
+    // a revoked device would keep receiving the org's traffic until it reconnects.
+    const revoked = claims?.jti ? await this.store.getSession(claims.jti).then((s) => !s || !!s.revokedAt) : false;
+    const user = userId && !revoked ? await this.store.getUser(userId) : undefined;
     if (!user) {
       this.logger.debug(`socket rejected (no valid session): ${client.id}`);
       client.disconnect();
@@ -100,6 +112,28 @@ export class RealtimeGateway
 
   handleDisconnect(client: DingSocket) {
     this.logger.debug(`socket disconnected: ${client.id}`);
+  }
+
+  /**
+   * Is this person looking at this conversation right now?
+   *
+   * Push asks before it sends: a banner for the thread that's already open and
+   * updating in front of you is the single most obvious sign an app wasn't
+   * thought through. Joining the conversation room is exactly "has it open", and
+   * it's true for the web app as well — if they're reading it on a desktop, the
+   * phone doesn't need to buzz either.
+   *
+   * Best-effort: a failure here must never stop a notification being sent, so it
+   * answers "no" and the push goes out.
+   */
+  async isViewing(userId: string, conversationId: string): Promise<boolean> {
+    try {
+      const sockets = await this.server.in(convRoom(conversationId)).fetchSockets();
+      return sockets.some((s) => (s.data as { userId?: string }).userId === userId);
+    } catch (err) {
+      this.logger.debug(`isViewing check failed: ${String(err)}`);
+      return false;
+    }
   }
 
   @SubscribeMessage(ClientEvent.JoinConversation)

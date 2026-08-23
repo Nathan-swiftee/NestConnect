@@ -59,6 +59,24 @@ export interface StoredSession {
   revokedAt: string | null;
 }
 
+/** A phone registered for push. `pushToken` is the address we send to and the
+ *  row's real identity; `disabledAt` marks a token the push service told us is
+ *  dead, or one whose owner revoked notification permission. */
+export interface StoredDevice {
+  id: string;
+  userId: string;
+  sessionId: string | null;
+  pushToken: string;
+  platform: string;
+  appVersion: string | null;
+  osVersion: string | null;
+  deviceName: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  disabledAt: string | null;
+  disabledReason: string | null;
+}
+
 /** A user's two-factor state (the TOTP secret is encrypted at rest). */
 export interface TwoFactorState {
   enabled: boolean;
@@ -361,6 +379,39 @@ export abstract class Store {
   abstract revokeSession(userId: string, id: string): Promise<boolean>;
   /** Revoke all of a user's sessions except `keepId`; returns the count revoked. */
   abstract revokeOtherSessions(userId: string, keepId: string): Promise<number>;
+
+  /* ---- push devices ---- */
+
+  /** Register (or re-register) a device by its push token. The token is the
+   *  identity: the same one always maps to the same row, and re-registering
+   *  re-enables a row that was disabled, since the token proves it's alive. */
+  abstract upsertDevice(params: {
+    userId: string;
+    sessionId?: string;
+    pushToken: string;
+    platform: string;
+    appVersion?: string;
+    osVersion?: string;
+    deviceName?: string;
+  }): Promise<StoredDevice>;
+  /** A user's own devices (for a "signed-in devices" view and for sign-out). */
+  abstract listDevices(userId: string): Promise<StoredDevice[]>;
+  /** Every device that should receive a push for these users — enabled only, and
+   *  skipping any whose session has been revoked. */
+  abstract devicesForUsers(userIds: string[]): Promise<StoredDevice[]>;
+  /** Remove a device the user signed out (returns false if it isn't theirs). */
+  abstract deleteDevice(userId: string, id: string): Promise<boolean>;
+  /** Delete every device registered by a session — called on remote sign-out, so
+   *  a signed-out phone stops buzzing rather than being merely unable to open. */
+  abstract deleteDevicesForSessions(sessionIds: string[]): Promise<number>;
+  /** Stop pushing at a token the push service reported dead, or whose owner
+   *  turned notifications off. Keyed by token because that's what receipts carry. */
+  abstract disableDevice(pushToken: string, reason: string): Promise<void>;
+
+  /** A user's push preferences as stored (raw JSON, or undefined for defaults). */
+  abstract getPushPrefs(userId: string): Promise<string | undefined>;
+  /** Replace a user's push preferences with this JSON blob. */
+  abstract setPushPrefs(userId: string, json: string): Promise<void>;
 
   /* ---- two-factor auth ---- */
 
