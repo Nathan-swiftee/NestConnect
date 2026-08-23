@@ -12,7 +12,11 @@
      secondary text — that single decision is what made the workspace read as a
      themed helpdesk. Warm-neutral rather than cool-grey keeps this feeling like
      a communication product instead of a developer tool. */
-  --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F5F5F3; --elevated:#FFFFFF;
+  /* --surface-2 is the recessed surface: search fields, the composer input,
+     unselected filter chips, badges, key hints. It sits a step cooler than the
+     rest of the ramp on purpose — a neutral grey reads as an input well against
+     the warm white surfaces around it. */
+  --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F1F3F5; --elevated:#FFFFFF;
   --border:#E8E7E4; --border-strong:#D8D7D3;
   --text:#1A1A18; --text-muted:#6B6B67; --text-faint:#9A9A95;
   /* brand + accents */
@@ -46,7 +50,7 @@
   }
 }
 :root[data-theme="light"]{
-  --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F5F5F3; --elevated:#FFFFFF;
+  --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F1F3F5; --elevated:#FFFFFF;
   --border:#E8E7E4; --border-strong:#D8D7D3;
   --text:#1A1A18; --text-muted:#6B6B67; --text-faint:#9A9A95;
   --brand:#0FA47A; --brand-strong:#0B7E5E; --brand-tint:#E4F5EE; --brand-ring:rgba(15,164,122,.35);
