@@ -19,7 +19,6 @@
     },
     "android": {
       "package": "co.uk.swiftee.nestconnect",
-      "edgeToEdgeEnabled": true,
       "adaptiveIcon": {
         "backgroundColor": "#0FA47A"
       },
