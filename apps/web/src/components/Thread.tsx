@@ -453,6 +453,17 @@ function EmailHtml({ html }: { html: string }) {
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 /** A compact, curated set for the composer's emoji picker (no dependency). */
+/**
+ * Where each thread was last left, so re-opening one puts you back where you
+ * were rather than at a computed guess. Keyed by conversation id and held for
+ * the session (a reload starts fresh, which is the honest default).
+ *
+ * `atBottom` is stored separately from `top`: someone who was reading the
+ * latest message wants the latest message again, even though new ones have
+ * arrived since and the old scrollTop now points mid-thread.
+ */
+const threadScroll = new Map<string, { top: number; atBottom: boolean }>();
+
 const COMPOSER_EMOJIS = [
   "😀","😄","😁","😅","😂","🙂","😉","😊","😍","😘","😎","🤩","🤗","🤔","😐","😴",
   "😌","🙃","😇","🥳","😢","😭","😤","😡","😱","🤯","🥺","😬","👍","👎","👏","🙏",
@@ -1286,12 +1297,21 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // the keyboard starts to open, to decide whether to keep the newest bubble
   // pinned above it (WhatsApp) — never yank someone who's scrolled up reading.
   const nearBottomRef = useRef(true);
+  // True from opening a thread until the restore has settled; see onMsgsScroll.
+  const restoringRef = useRef(false);
   const onMsgsScroll = () => {
     const el = msgsRef.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     setShowJump(dist > 260);
     nearBottomRef.current = dist < 120;
+    // Remember the spot so coming back lands here (see threadScroll) — but not
+    // while we're restoring: a freshly mounted scroller sits at 0 and fires a
+    // scroll event of its own, which would overwrite the position we're about
+    // to put back.
+    if (conversationId && !restoringRef.current) {
+      threadScroll.set(conversationId, { top: el.scrollTop, atBottom: dist < 120 });
+    }
   };
   const jumpToBottom = () => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -1355,10 +1375,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const recSendRef = useRef(false); // send the clip the instant it finalizes
 
   // Scroll behaviour:
-  //  • Opening a thread → jump to the OLDEST UNREAD message (top-aligned), so you
-  //    start reading where you left off — not at a smooth-scrolled guess that
-  //    lands mid-reflow as images / email frames size up. Instant, and corrected
-  //    once after late reflow. Falls back to the newest when nothing's unread.
+  //  • Opening a thread → back to exactly where you left it, WhatsApp-style.
+  //    If you were at the latest message (or have never opened this thread), it
+  //    goes to the bottom. Instant, and re-applied once after late reflow —
+  //    images and email frames size up after first paint, and anything smooth
+  //    or single-shot lands somewhere arbitrary when they do.
   //  • A new message in the already-open thread → smooth-scroll to the bottom.
   const openedRef = useRef<string | null>(null);
   const lastLenRef = useRef(0);
@@ -1373,28 +1394,31 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     }
     openedRef.current = conversationId ?? null;
     lastLenRef.current = len;
-    // Oldest unread = the first of the last `unreadCount` inbound messages.
-    let targetId: string | null = null;
-    let remaining = conv.unreadCount ?? 0;
-    if (remaining > 0) {
-      for (let i = len - 1; i >= 0; i--) {
-        const m = conv.messages[i];
-        if (m.direction === "in" && !m.internal && --remaining === 0) {
-          targetId = m.id;
-          break;
-        }
-      }
-    }
+    const saved = conversationId ? threadScroll.get(conversationId) : undefined;
     const jump = () => {
-      const el = targetId && document.querySelector<HTMLElement>(`[data-mid="${targetId}"]`);
-      if (el) el.scrollIntoView({ block: "start", behavior: "auto" });
-      else endRef.current?.scrollIntoView({ behavior: "auto" });
+      const el = msgsRef.current;
+      // No memory of this thread, or you were at the latest when you left:
+      // show the latest. Otherwise put the scroller back where it was.
+      if (!saved || saved.atBottom || !el) {
+        endRef.current?.scrollIntoView({ behavior: "auto" });
+        return;
+      }
+      // Clamp: the thread may have grown or shrunk since.
+      el.scrollTop = Math.min(saved.top, el.scrollHeight - el.clientHeight);
     };
+    restoringRef.current = true;
     const raf = requestAnimationFrame(jump);
     const correct = window.setTimeout(jump, 220); // re-settle after late reflow
+    // Hand scroll-tracking back a beat after the last correction, so the
+    // position we record from here on is the reader's, not ours.
+    const settled = window.setTimeout(() => {
+      restoringRef.current = false;
+    }, 300);
     return () => {
       cancelAnimationFrame(raf);
       window.clearTimeout(correct);
+      window.clearTimeout(settled);
+      restoringRef.current = false;
     };
   }, [conv, conversationId]);
 
