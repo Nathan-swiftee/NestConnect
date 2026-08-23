@@ -442,7 +442,9 @@ phone.
 
 **Unverified in this environment, and needs a device build:** the native half
 of Sentry, the notification actions, and Dynamic Type. All three are code and
-configuration a device build exercises and a web export cannot.
+configuration a device build exercises and a web export cannot. The steps for
+each — and the whole release order — are in
+[`docs/10-release.md`](10-release.md).
 
 ---
 
