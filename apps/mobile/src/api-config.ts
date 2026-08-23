@@ -19,6 +19,21 @@ export const API_URL =
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
   "https://nest.swiftee.co.uk";
 
+/**
+ * An attachment URL the way React Native needs it: absolute, and carrying the
+ * session.
+ *
+ * The API returns media as a same-origin path (`/api/media/…`), which the web
+ * resolves for free. A phone has no origin to resolve against, and
+ * `/api/media/:id` sits behind the auth guard — an `<Image>` fetch carries no
+ * cookie and no header of its own — so both have to be supplied here.
+ */
+export function mediaSource(url: string): { uri: string; headers?: Record<string, string> } {
+  const uri = /^https?:\/\//.test(url) ? url : `${API_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+  const token = sessionToken();
+  return token ? { uri, headers: { authorization: `Bearer ${token}` } } : { uri };
+}
+
 let onSignedOut: () => void = () => {};
 
 /** Let the root layout say what "back to sign-in" means, once the router exists. */

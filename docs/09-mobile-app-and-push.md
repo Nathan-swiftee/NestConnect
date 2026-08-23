@@ -205,14 +205,43 @@ and realtime. It does **not** prove native gesture handling, keyboard behaviour,
 list performance or anything touching a native module. Those need a real device,
 which is the first thing to do with a dev-client build.
 
-### Phase 2 — The inbox
-Conversation list (filters, search, virtualised), thread (grouped bubbles,
-media, status ticks, reactions, quoted replies), composer (text, attachments,
-voice notes), optimistic send with a retry queue, assign / resolve / snooze /
-labels, the details panel.
+### Phase 2 — The inbox 🟡 mostly done
 
-**Done when:** an agent can run a shift from the phone without opening the web
-app. Explicit parity checklist against the web app, feature by feature.
+Parity against the web app, feature by feature:
+
+| | Mobile | Note |
+|---|---|---|
+| Views (Inbound / Queue / Mine / Later) | ✅ | Server's own view keys; web also has mentions, labels, per-team |
+| Filters (all / unread / unassigned) | ✅ | Client-side on top of the view |
+| Search across conversations + messages | ✅ | Same endpoint, deferred input |
+| Pull to refresh (incl. Gmail fetch) | ✅ | `useRefresh`, so it means "check now" |
+| Infinite scroll | ✅ | |
+| Grouped bubbles + day dividers | ✅ | `groupMessagesByDay` / `speakerKey` shared with web |
+| Status ticks, failed + retry | ✅ | |
+| Quoted replies | ✅ | Rendered; *composing* one is not wired yet |
+| Reactions | 🟡 | Displayed, not addable |
+| Attachments | 🟡 | Images inline, everything else opens externally; no upload |
+| Internal notes | ✅ | Distinct mode, distinct bubble |
+| Composer + optimistic send | ✅ | Shared `useSendMessage` |
+| WhatsApp 24-hour window | ✅ | Countdown, template fallback, locked state |
+| Assign / resolve / reopen / snooze | ✅ | Bottom sheet |
+| Load earlier messages | ✅ | |
+| Mark read on open | ✅ | Sends the WhatsApp read receipt too |
+| Labels | 🟡 | Shown as dots in the list; not editable |
+| Details panel | ❌ | Phase 2 remainder |
+| Attachment upload, voice notes | ❌ | Needs expo-image-picker / expo-av |
+| Offline retry queue | ❌ | Optimistic send exists; a durable queue does not |
+
+**Verified** against a real API: sign in → list → filter → search → open a
+thread → send a reply → add an internal note → assign to a teammate → resolve →
+reopen → snooze, plus the WhatsApp window in both states (locked with an
+explanation when closed, countdown and live composer when open), a live inbound
+landing in the open thread, and bubble grouping measured at 10px between runs
+against 2px within one.
+
+**Still open before "an agent can run a shift from the phone":** attachment
+upload and voice notes, the details panel, per-conversation labels, adding
+reactions, and a durable offline send queue.
 
 ### Phase 3 — Push, properly
 Section 5 below is the whole of this phase.

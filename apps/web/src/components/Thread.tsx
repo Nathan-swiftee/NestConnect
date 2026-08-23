@@ -12,7 +12,7 @@ import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
 import { getSocket } from "../lib/socket";
-import { relativeTime, seenAt, lastActive, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg } from "../lib/format";
+import { relativeTime, seenAt, lastActive, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg, groupMessagesByDay, speakerKey } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { unlock } from "../lib/sound";
@@ -1068,29 +1068,9 @@ function MessageBubble({
   );
 }
 
-function dayLabel(iso?: string): string {
-  if (!iso) return "Today";
-  const d = new Date(iso);
-  const now = new Date();
-  if (d.toDateString() === now.toDateString()) return "Today";
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
-  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
-}
-
-/** Split messages into consecutive same-day groups so each day's sticky pill
- *  lives in its own section and gets pushed out by the next day's pill. */
-function groupMessagesByDay(messages: Message[]): { key: string; label: string; items: Message[] }[] {
-  const groups: { key: string; label: string; items: Message[] }[] = [];
-  for (const m of messages) {
-    const key = new Date(m.createdAt).toDateString();
-    const last = groups[groups.length - 1];
-    if (last && last.key === key) last.items.push(m);
-    else groups.push({ key, label: dayLabel(m.createdAt), items: [m] });
-  }
-  return groups;
-}
+/* dayLabel + groupMessagesByDay moved to @ding/client — the native thread has
+   to break days on exactly the same boundaries, and two copies of that rule
+   would drift. Imported at the top of this file. */
 
 /* ─── Composer media staging ────────────────────────────────────────────
    Files picked / dropped / pasted and voice recordings are staged locally,
@@ -2737,8 +2717,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               // an email are different conversations to the eye even when the
               // same agent sent them back to back, so they must not collapse
               // into one run — each keeps its own spacing, name and tail.
-              const who = (x: Message) =>
-                `${x.direction}|${x.internal ? "n" : "m"}|${x.channel ?? conv.channel}|${x.authorUserId ?? x.authorName ?? ""}`;
+              const who = (x: Message) => speakerKey(x, conv.channel);
               const cont = !!prev && who(prev) === who(m);
               // Followed by the same sender => not the last of the run, so this
               // bubble gives up its tail (the tail sits on the bottom corner).

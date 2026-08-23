@@ -1,3 +1,5 @@
+import type { Message } from "@ding/schemas";
+
 export function relativeTime(iso: string): string {
   const then = new Date(iso).getTime();
   const diff = Date.now() - then;
@@ -150,4 +152,48 @@ export function slaCountdown(dueIso: string, nowMs: number = Date.now()): string
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
   return (h > 0 ? `${h}h ` : "") + `${m}m ` + `${s < 10 ? "0" : ""}${s}s`;
+}
+
+/* ─── Thread grouping ──────────────────────────────────────────────────
+   Shared with native: how a thread breaks into days, and when consecutive
+   messages read as one run. Both apps must agree — a bubble that groups on
+   one platform and not the other is the same conversation looking wrong on
+   a phone. */
+
+/** The pill above each day's messages: "Today", "Yesterday", "Tue 12 Aug". */
+export function dayLabel(iso?: string): string {
+  if (!iso) return "Today";
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return "Today";
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+}
+
+/** Split messages into consecutive same-day groups, each with its own label. */
+export function groupMessagesByDay<T extends { createdAt: string }>(
+  messages: T[],
+): { key: string; label: string; items: T[] }[] {
+  const groups: { key: string; label: string; items: T[] }[] = [];
+  for (const m of messages) {
+    const key = new Date(m.createdAt).toDateString();
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.items.push(m);
+    else groups.push({ key, label: dayLabel(m.createdAt), items: [m] });
+  }
+  return groups;
+}
+
+/**
+ * The identity two messages must share to read as one run — direction, whether
+ * it's an internal note, the channel, and the author.
+ *
+ * Channel is part of it deliberately: a WhatsApp message and an email are
+ * different conversations to the eye even when the same agent sent them back to
+ * back, so they keep their own spacing, name and tail rather than collapsing.
+ */
+export function speakerKey(m: Message, fallbackChannel: string): string {
+  return `${m.direction}|${m.internal ? "n" : "m"}|${m.channel ?? fallbackChannel}|${m.authorUserId ?? m.authorName ?? ""}`;
 }
