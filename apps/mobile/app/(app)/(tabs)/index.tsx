@@ -1,5 +1,15 @@
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -19,22 +29,35 @@ import { EmptyState, QueryState } from "../../../src/components/States";
 import { clearBadge, usePushRegistration } from "../../../src/push";
 import { haptics } from "../../../src/haptics";
 import { ChevronRight, SearchIcon } from "../../../src/icons";
+import { rowIn, spring, springTo } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
 
-/** Narrowing applied on top of the chosen view, client-side — the same three
- *  the web offers, and the ones you actually reach for mid-shift. These are
- *  filters, not navigation: they narrow whatever view you're in. The views
- *  themselves live in the switcher, reached from the title. */
-const FILTERS = [
-  { key: "all", label: "All" },
-  { key: "unread", label: "Unread" },
-  { key: "unassigned", label: "Unassigned" },
-] as const;
-type FilterKey = (typeof FILTERS)[number]["key"];
+/**
+ * Narrowing applied on top of the chosen view, client-side — the web's set,
+ * exactly. These are filters, not navigation: they narrow whatever view you're
+ * in. The views themselves live in the switcher, reached from the title.
+ *
+ * Two of the six are conditional, for the same reason they are on the web: a
+ * filter that can only ever return everything or nothing is noise. "Yours" only
+ * means something in a shared inbox where several agents' conversations sit
+ * together; in "Mine" it is the whole view, and in "Queue" it is empty by
+ * definition. "Groups" appears only once there is a group to filter to.
+ *
+ * Closed is the odd one out and has to be. A resolved conversation is excluded
+ * from every other filter — including All, which means "all the live ones",
+ * because a shift's worth of resolved threads at the top of the inbox is how
+ * you lose the one that still needs you.
+ */
+type FilterKey = "all" | "unread" | "mine" | "unassigned" | "groups" | "closed";
 
-function matchesFilter(c: Conversation, f: FilterKey): boolean {
+function matchesFilter(c: Conversation, f: FilterKey, myId?: string): boolean {
+  const closed = c.status === "closed";
+  if (f === "closed") return closed;
+  if (closed) return false;
   if (f === "unread") return c.unreadCount > 0 || c.unread;
+  if (f === "mine") return c.assigneeUserId === myId;
   if (f === "unassigned") return !c.assigneeUserId;
+  if (f === "groups") return c.channel === "whatsapp_group";
   return true;
 }
 
@@ -161,10 +184,52 @@ export default function Inbox() {
   );
 
   const active = searching ? found : list;
+  const myId = session.data?.user?.id;
   const items = useMemo(
-    () => (active.data ?? []).filter((conv) => (searching ? true : matchesFilter(conv, filter))),
-    [active.data, filter, searching],
+    () => (active.data ?? []).filter((conv) => (searching ? true : matchesFilter(conv, filter, myId))),
+    [active.data, filter, searching, myId],
   );
+
+  /**
+   * The filter row, and the number on each chip.
+   *
+   * The counts are the point — without them the chips are guesses, and you tap
+   * through all of them to find out which one has anything in it. They're
+   * computed from the view's loaded rows rather than asked of the server, which
+   * is honest as far as it goes: it's the same data the list is showing, so the
+   * number always matches what tapping the chip produces.
+   */
+  const filters = useMemo(() => {
+    const all = list.data ?? [];
+    // Everything except Closed counts live conversations only, matching what
+    // the filters actually return.
+    const live = all.filter((x) => x.status !== "closed");
+    const hasGroups = live.some((x) => x.channel === "whatsapp_group");
+    const showMine = view.startsWith("team:") || view.startsWith("inbox:");
+    const showUnassigned = view !== "mine" && view !== "grabs";
+
+    const defs: { key: FilterKey; label: string; on: boolean }[] = [
+      { key: "all", label: "All", on: true },
+      { key: "unread", label: "Unread", on: true },
+      { key: "mine", label: "Yours", on: showMine },
+      { key: "unassigned", label: "Unassigned", on: showUnassigned },
+      { key: "groups", label: "Groups", on: hasGroups },
+      { key: "closed", label: "Closed", on: true },
+    ];
+    return defs
+      .filter((d) => d.on)
+      .map((d) => ({
+        ...d,
+        count: (d.key === "closed" ? all : live).filter((x) => matchesFilter(x, d.key, myId)).length,
+      }));
+  }, [list.data, view, myId]);
+
+  // A filter that's just disappeared — the last group closed, or you switched to
+  // a view where "Yours" is meaningless — would otherwise leave the list stuck
+  // on a chip that's no longer on screen.
+  useEffect(() => {
+    if (!filters.some((f) => f.key === filter)) setFilter("all");
+  }, [filters, filter]);
 
   return (
     <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1">
@@ -227,11 +292,21 @@ export default function Inbox() {
       </View>
 
       {searching ? null : (
-        <View className="flex-row gap-2 px-4 pb-2">
-          {FILTERS.map((f) => (
+        // Six chips with counts don't fit across a phone, and dropping some to
+        // make them fit is how the row stopped matching the web in the first
+        // place. It scrolls instead — the first two are the ones reached for
+        // most, so nothing important starts off-screen.
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+          className="max-h-11 pb-2"
+        >
+          {filters.map((f) => (
             <Chip
               key={f.key}
               label={f.label}
+              count={f.count}
               active={f.key === filter}
               onPress={() => {
                 haptics.select();
@@ -240,13 +315,25 @@ export default function Inbox() {
               subtle
             />
           ))}
-        </View>
+        </ScrollView>
       )}
 
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <Row conv={item} onPress={openThread} />}
+        // Only the first screenful cascades in. Rows past it mount as you
+        // scroll, and animating those means every flick brings a wave of
+        // fading rows — which reads as the list struggling to keep up rather
+        // than as polish.
+        renderItem={({ item, index }) =>
+          index < 8 ? (
+            <Animated.View entering={rowIn(index)}>
+              <Row conv={item} onPress={openThread} />
+            </Animated.View>
+          ) : (
+            <Row conv={item} onPress={openThread} />
+          )
+        }
         ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-[80px] h-px" />}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardDismissMode="on-drag"
@@ -327,29 +414,43 @@ function Chip({
   onPress: () => void;
 }) {
   const { c } = useTheme();
+  // Pressing gives under the finger and springs back. On a control this small
+  // it's most of what tells you the tap registered — the colour change lands
+  // afterwards, once the list has re-filtered.
+  const press = useSharedValue(1);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: press.value }] }));
+
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="tab"
-      accessibilityState={{ selected: active }}
-      // A chip is 26pt tall on purpose — it's a narrow row under the search
-      // field, and a 44pt pill would dominate it. The slop makes the *target*
-      // 44 without making the chip look like a button.
-      hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
-      style={{ backgroundColor: active ? c.brandTint : c.surface2 }}
-      className={`flex-row items-center gap-1.5 rounded-full px-3.5 ${subtle ? "py-1.5" : "py-2"} active:opacity-70`}
-    >
-      <Text
-        style={{ color: active ? c.brandStrong : c.textMuted }}
-        className={`${subtle ? "text-xs" : "text-sm"} ${active ? "font-semibold" : "font-medium"}`}
+    <Animated.View style={style}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          press.value = springTo(0.94, spring.quick);
+        }}
+        onPressOut={() => {
+          press.value = springTo(1, spring.base);
+        }}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        // A chip is 26pt tall on purpose — it's a narrow row under the search
+        // field, and a 44pt pill would dominate it. The slop makes the *target*
+        // 44 without making the chip look like a button.
+        hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
+        style={{ backgroundColor: active ? c.brandTint : c.surface2 }}
+        className={`flex-row items-center gap-1.5 rounded-full px-3.5 ${subtle ? "py-1.5" : "py-2"}`}
       >
-        {label}
-      </Text>
-      {count ? (
-        <Text style={{ color: active ? c.brandStrong : c.textFaint }} className="text-2xs font-semibold">
-          {count}
+        <Text
+          style={{ color: active ? c.brandStrong : c.textMuted }}
+          className={`${subtle ? "text-xs" : "text-sm"} ${active ? "font-semibold" : "font-medium"}`}
+        >
+          {label}
         </Text>
-      ) : null}
-    </Pressable>
+        {count ? (
+          <Text style={{ color: active ? c.brandStrong : c.textFaint }} className="text-2xs font-semibold">
+            {count}
+          </Text>
+        ) : null}
+      </Pressable>
+    </Animated.View>
   );
 }

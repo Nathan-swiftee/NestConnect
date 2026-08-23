@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, TextInput, useWindowDimensions } from "react-native";
+import Animated, { FadeIn, ReduceMotion, ZoomIn } from "react-native-reanimated";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
@@ -7,6 +9,8 @@ import { api, type MeResponse } from "@ding/client";
 import type { TwoFactorChallenge } from "@ding/schemas";
 import { Button } from "../src/components/Button";
 import { Field } from "../src/components/Field";
+import { AuthGlow, NestMark } from "../src/components/NestMark";
+import { rowIn } from "../src/motion";
 import { saveSession } from "../src/session";
 import { useTheme } from "../src/theme";
 
@@ -25,6 +29,7 @@ import { useTheme } from "../src/theme";
 export default function SignIn() {
   const qc = useQueryClient();
   const insets = useSafeAreaInsets();
+  const win = useWindowDimensions();
   const { c } = useTheme();
   const passwordRef = useRef<TextInput>(null);
   const codeRef = useRef<TextInput>(null);
@@ -84,25 +89,74 @@ export default function SignIn() {
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={{ backgroundColor: c.bg }}
-      className="flex-1"
-    >
+    <KeyboardAvoidingView behavior="padding" style={{ backgroundColor: c.bg }} className="flex-1">
+      <AuthGlow width={win.width} height={win.height * 0.62} brand={c.brand} warm={c.amber} />
+
       <ScrollView
-        contentContainerStyle={{ paddingTop: insets.top + 64, paddingBottom: insets.bottom + 32 }}
+        contentContainerStyle={{
+          paddingTop: insets.top + 24,
+          paddingBottom: insets.bottom + 24,
+          // Centred in whatever space is left, and free to scroll when there
+          // isn't enough — so it sits in the middle of a big phone rather than
+          // stranded at the top with a screen of nothing under it, and still
+          // reaches the password field on a small one with the keyboard up.
+          flexGrow: 1,
+          justifyContent: "center",
+        }}
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         className="px-6"
       >
-        <Text accessibilityRole="header" className="text-2xl font-semibold tracking-tight text-fg">
-          Nest Connect
-        </Text>
-        <Text className="mt-2 text-lg text-muted">
-          {challenge ? "Enter your second factor to finish signing in." : "Sign in to your team inbox."}
-        </Text>
+        {/* The mark lands first and the rest follows it up the screen. It's the
+            one moment in the app with nothing else to look at, so it's worth
+            the half-second — and it covers the gap while the stored session is
+            being checked. */}
+        <Animated.View
+          entering={ZoomIn.springify().damping(16).stiffness(220).mass(0.8).reduceMotion(ReduceMotion.System)}
+          style={{
+            backgroundColor: c.brand,
+            shadowColor: c.brand,
+            shadowOpacity: 0.32,
+            shadowRadius: 20,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 8,
+          }}
+          className="h-16 w-16 items-center justify-center rounded-20"
+        >
+          <NestMark size={34} />
+        </Animated.View>
 
-        <View className="mt-8 gap-5">
+        <Animated.View entering={rowIn(1)}>
+          <Text
+            accessibilityRole="header"
+            style={{ fontSize: 34, lineHeight: 38, letterSpacing: -0.8 }}
+            className="mt-5 font-semibold text-fg"
+          >
+            {challenge ? "Almost there" : "Nest Connect"}
+          </Text>
+          <Text className="mt-2 text-lg leading-snug text-muted">
+            {challenge
+              ? "Enter your second factor to finish signing in."
+              : "Every conversation your team is having, in one place."}
+          </Text>
+        </Animated.View>
+
+        {/* The form is a card rather than fields on the ground: it gives the
+            inputs an edge to sit inside, which is what stops a stack of rounded
+            grey boxes on a grey background from reading as a list of nothing. */}
+        <Animated.View
+          entering={rowIn(2)}
+          style={{
+            backgroundColor: c.elevated,
+            borderColor: c.border,
+            shadowColor: "#000",
+            shadowOpacity: 0.06,
+            shadowRadius: 24,
+            shadowOffset: { width: 0, height: 8 },
+            elevation: 3,
+          }}
+          className="mt-8 gap-5 rounded-24 border p-5"
+        >
           {challenge ? (
             <>
               <Field
@@ -167,7 +221,13 @@ export default function SignIn() {
               />
             </>
           )}
-        </View>
+        </Animated.View>
+
+        <Animated.View entering={FadeIn.delay(260).duration(320).reduceMotion(ReduceMotion.System)}>
+          <Text className="mt-6 text-center text-2xs leading-snug text-faint">
+            WhatsApp, email and group chats — answered from one inbox.
+          </Text>
+        </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
   );

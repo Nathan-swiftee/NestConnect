@@ -4,15 +4,20 @@ import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { colors } from "@ding/design/tokens";
 import { useColorScheme } from "react-native";
 import { configureMobileClient, setSignOutHandler } from "../src/api-config";
 import { ErrorBoundary } from "../src/components/ErrorBoundary";
+import { ToastProvider } from "../src/components/Toast";
 import { loadSession } from "../src/session";
 import { initTelemetry } from "../src/telemetry";
 import { paletteVars } from "../src/theme";
 import "../src/global.css";
+// Side effect only: registers className support on Reanimated's views. Must run
+// before any of them render, or their utility classes are silently dropped.
+import "../src/animated";
 
 // Both before anything renders: the client so no hook can fire an
 // unconfigured request, and telemetry so a crash during the first paint is
@@ -53,34 +58,47 @@ export default function RootLayout() {
       {/* Outside the providers on purpose: a boundary that needs a working
           provider to draw its own fallback has misunderstood its job. */}
       <ErrorBoundary onReset={() => router.replace("/")}>
-        <SafeAreaProvider>
-          {/* The palette for this scheme, published as CSS variables to everything
-              below. Every colour utility (`text-fg`, `bg-surface`, …) resolves
-              through these, so switching the phone to dark switches the whole app
-              rather than only the places that read useTheme() directly. */}
-          <View style={paletteVars[scheme]} className="flex-1">
-            <QueryClientProvider client={queryClient}>
-              <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-              {ready ? (
-                <Stack
-                  screenOptions={{
-                    headerShown: false,
-                    contentStyle: { backgroundColor: c.bg },
-                    animation: "slide_from_right",
-                  }}
-                >
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
-                  <Stack.Screen name="(app)" />
-                </Stack>
-              ) : (
-                <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
-                  <ActivityIndicator color={c.brand} />
-                </View>
-              )}
-            </QueryClientProvider>
-          </View>
-        </SafeAreaProvider>
+        {/* Android draws edge-to-edge from SDK 54 on, and there is no opting out.
+            That breaks the platform's own `adjustResize`: the window no longer
+            shrinks when the keyboard opens, so anything anchored to the bottom —
+            the composer — ends up underneath it. This provider is what restores
+            it, reading the real keyboard frame and publishing it as animated
+            values. Reanimated's useAnimatedKeyboard is deprecated in favour of
+            exactly this. */}
+        <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
+          <SafeAreaProvider>
+            {/* The palette for this scheme, published as CSS variables to everything
+                below. Every colour utility (`text-fg`, `bg-surface`, …) resolves
+                through these, so switching the phone to dark switches the whole app
+                rather than only the places that read useTheme() directly. */}
+            <View style={paletteVars[scheme]} className="flex-1">
+              <QueryClientProvider client={queryClient}>
+                {/* Inside the query provider so a mutation can raise a toast, and
+                    above the navigator so one survives a screen change. */}
+                <ToastProvider>
+                  <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+                  {ready ? (
+                    <Stack
+                      screenOptions={{
+                        headerShown: false,
+                        contentStyle: { backgroundColor: c.bg },
+                        animation: "slide_from_right",
+                      }}
+                    >
+                      <Stack.Screen name="index" />
+                      <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
+                      <Stack.Screen name="(app)" />
+                    </Stack>
+                  ) : (
+                    <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
+                      <ActivityIndicator color={c.brand} />
+                    </View>
+                  )}
+                </ToastProvider>
+              </QueryClientProvider>
+            </View>
+          </SafeAreaProvider>
+        </KeyboardProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>
   );

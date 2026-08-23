@@ -1,12 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import {
   KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+  useReanimatedKeyboardAnimation,
+} from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
@@ -38,9 +36,13 @@ import { ReadLog, readSummary } from "../../../src/components/ReadLog";
 import { Reactions } from "../../../src/components/Reactions";
 import { SwipeToReply } from "../../../src/components/SwipeToReply";
 import { ErrorState, Loading } from "../../../src/components/States";
+import { Tail, tailCorner } from "../../../src/components/Tail";
+import { EmailBody } from "../../../src/components/EmailBody";
 import { Ticks } from "../../../src/components/Ticks";
+import { useToast } from "../../../src/components/Toast";
 import { BackIcon, DetailsIcon, EyeIcon, MoreIcon, channelColor, channelMeta } from "../../../src/icons";
 import { haptics } from "../../../src/haptics";
+import { enter } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
@@ -53,11 +55,14 @@ const tomorrow9am = () => {
   return d.toISOString();
 };
 const SNOOZE = [
-  { label: "10 minutes", until: () => inMin(10) },
-  { label: "30 minutes", until: () => inMin(30) },
-  { label: "1 hour", until: () => inMin(60) },
-  { label: "Tomorrow, 9 AM", until: tomorrow9am },
-  { label: "Next week", until: () => inMin(60 * 24 * 7) },
+  // `said` is what the confirmation reads afterwards. "Snoozed until 10 minutes"
+  // is not a sentence, so the preposition belongs to the preset rather than to
+  // the toast that reports it.
+  { label: "10 minutes", said: "Snoozed for 10 minutes", until: () => inMin(10) },
+  { label: "30 minutes", said: "Snoozed for 30 minutes", until: () => inMin(30) },
+  { label: "1 hour", said: "Snoozed for an hour", until: () => inMin(60) },
+  { label: "Tomorrow, 9 AM", said: "Snoozed until tomorrow, 9 AM", until: tomorrow9am },
+  { label: "Next week", said: "Snoozed until next week", until: () => inMin(60 * 24 * 7) },
 ];
 
 export default function Thread() {
@@ -74,6 +79,7 @@ export default function Thread() {
   const retry = useRetryMessage();
   const react = useReact();
   const queue = useSendQueue();
+  const toast = useToast();
   const [sheet, setSheet] = useState<null | "assign" | "snooze" | "more" | "details">(null);
   // The message a long-press opened the action sheet for, and the one the
   // composer is quoting. Separate: acting on a message doesn't quote it.
@@ -181,12 +187,33 @@ export default function Thread() {
   const me = session.data?.user;
   const closed = data.status === "closed";
 
+  /**
+   * Every action below reports itself and offers a way back.
+   *
+   * These all happen inside a sheet, and when the sheet closes the thread looks
+   * identical — the only change is a word in the subtitle. Without a toast the
+   * honest reading of the screen is "nothing happened", and the natural next
+   * move is to do it again. The undo matters as much: assigning to the wrong
+   * person is one mis-tap in a list of names, and this is the only moment the
+   * previous assignee is still known without a round trip.
+   */
+  const restoreAssignee = () => {
+    const previous = data.assigneeUserId ?? null;
+    return () => assign.mutate({ id: data.id, input: { assigneeUserId: previous } });
+  };
+  const doAssign = (assigneeUserId: string | null, said: string) => {
+    const undo = restoreAssignee();
+    haptics.success();
+    assign.mutate({ id: data.id, input: { assigneeUserId } });
+    toast({ text: said, undo });
+  };
+
   const assignActions: SheetAction[] = [
     {
       key: "me",
       label: "Assign to me",
       selected: data.assigneeUserId === me?.id,
-      onPress: () => assign.mutate({ id: data.id, input: { assigneeUserId: me?.id ?? null } }),
+      onPress: () => doAssign(me?.id ?? null, "Assigned to you"),
     },
     ...(people ?? [])
       .filter((m) => m.user.id !== me?.id)
@@ -195,21 +222,27 @@ export default function Thread() {
         label: m.user.name,
         detail: m.user.available ? undefined : "Not accepting work",
         selected: data.assigneeUserId === m.user.id,
-        onPress: () => assign.mutate({ id: data.id, input: { assigneeUserId: m.user.id } }),
+        onPress: () => doAssign(m.user.id, `Assigned to ${m.user.name}`),
       })),
     {
       key: "queue",
       label: "Back to the queue",
       detail: "Unassign, leave it for the team",
       selected: !data.assigneeUserId,
-      onPress: () => assign.mutate({ id: data.id, input: { assigneeUserId: null } }),
+      onPress: () => doAssign(null, "Back in the queue"),
     },
   ];
 
   const snoozeActions: SheetAction[] = SNOOZE.map((s) => ({
     key: s.label,
     label: s.label,
-    onPress: () => snooze.mutate({ id: data.id, until: s.until() }),
+    onPress: () => {
+      haptics.success();
+      snooze.mutate({ id: data.id, until: s.until() });
+      // Un-snoozing is reopening: there is no "previous snooze" to restore, and
+      // the thing the agent wants back is the conversation in the inbox.
+      toast({ text: s.said, undo: () => setStatus.mutate({ id: data.id, status: "open" }) });
+    },
   }));
 
   const moreActions: SheetAction[] = [
@@ -218,10 +251,12 @@ export default function Thread() {
       label: closed ? "Reopen conversation" : "Resolve conversation",
       detail: closed ? "Move it back into the inbox" : "Close it — a new message reopens it",
       onPress: () => {
-        // Resolving is the one action in here that finishes something, and the
-        // screen barely changes when it lands. The buzz is the confirmation.
         haptics.success();
         setStatus.mutate({ id: data.id, status: closed ? "open" : "closed" });
+        toast({
+          text: closed ? "Reopened" : "Resolved",
+          undo: () => setStatus.mutate({ id: data.id, status: closed ? "closed" : "open" }),
+        });
       },
     },
     { key: "snooze", label: "Snooze…", detail: "Hide it until later", onPress: () => setSheet("snooze") },
@@ -229,8 +264,14 @@ export default function Thread() {
   ];
 
   return (
+    // One behaviour for both platforms, from the keyboard-controller rather than
+    // React Native's own view. RN's version does nothing on Android without a
+    // behaviour, and the obvious behaviours don't work there either now that
+    // edge-to-edge is mandatory: the window no longer resizes when the keyboard
+    // opens, so a bottom-anchored composer ends up underneath it and you can't
+    // see what you're typing. This reads the real keyboard frame and pads by it.
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding"
       keyboardVerticalOffset={0}
       style={{ backgroundColor: c.bg, paddingTop: insets.top }}
       className="flex-1"
@@ -307,7 +348,7 @@ export default function Thread() {
       ) : (
         <Composer conv={data} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
       )}
-      <View style={{ height: insets.bottom, backgroundColor: c.surface }} />
+      <BottomInset />
 
       <ActionSheet visible={sheet === "assign"} title="Assign this conversation" actions={assignActions} onClose={() => setSheet(null)} />
       <ActionSheet visible={sheet === "snooze"} title="Snooze until…" actions={snoozeActions} onClose={() => setSheet(null)} />
@@ -332,6 +373,24 @@ export default function Thread() {
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
     </KeyboardAvoidingView>
   );
+}
+
+/**
+ * The strip of colour behind the home indicator / nav bar, which collapses as
+ * the keyboard rises.
+ *
+ * It has to move because the keyboard covers that area: the avoiding view above
+ * already pads by the full keyboard height, and a fixed inset underneath would
+ * add a second gap the keyboard is already occupying. Driven off the same
+ * animated progress the keyboard itself is on, so the two travel together
+ * instead of one snapping after the other.
+ */
+function BottomInset() {
+  const insets = useSafeAreaInsets();
+  const { c } = useTheme();
+  const { progress } = useReanimatedKeyboardAnimation();
+  const style = useAnimatedStyle(() => ({ height: insets.bottom * (1 - progress.value) }));
+  return <Animated.View style={[{ backgroundColor: c.surface }, style]} />;
 }
 
 function Header({
@@ -437,8 +496,9 @@ const Bubble = memo(function Bubble({
   if (message.internal) {
     const byMe = message.authorUserId === meId;
     return (
-      <View
+      <Animated.View
         testID={`msg-${message.id}`}
+        entering={enter.row}
         className={byMe ? "items-end" : "items-start"}
         style={{ marginTop: continues ? 2 : 10 }}
       >
@@ -452,7 +512,7 @@ const Bubble = memo(function Bubble({
           <Attachments items={message.attachments ?? []} />
           <Text className="pt-1 text-right text-2xs text-faint">{clockTime(message.createdAt)}</Text>
         </View>
-      </View>
+      </Animated.View>
     );
   }
 
@@ -465,10 +525,27 @@ const Bubble = memo(function Bubble({
   // Only an outbound email has tracked recipients.
   const read = mine && !message.internal ? readSummary(message) : null;
 
+  const on = message.channel ?? channel;
+  const isEmail = on === "email";
+  const fill = mine ? c.brandTint : c.surface;
+  const line = mine ? c.brandTint : c.border;
+  /**
+   * A tail marks speech, so only conversation gets one — and only where a turn
+   * starts, which is what makes a run of five messages read as one person
+   * talking rather than five separate cards.
+   *
+   * Email is deliberately excluded. An email isn't an utterance, it's a
+   * document: it has a subject, recipients and a signature, and drawing it as a
+   * speech bubble makes a mixed thread lie about which of the two you're
+   * looking at. It gets width instead, since that's what its content needs.
+   */
+  const tailed = !continues && !isEmail;
+
   return (
     <SwipeToReply onReply={() => onReply(message)} mine={mine} enabled={canSwipe}>
-    <View
+    <Animated.View
       testID={`msg-${message.id}`}
+      entering={enter.row}
       className={mine ? "items-end" : "items-start"}
       style={{ marginTop: continues ? 2 : 10 }}
     >
@@ -478,12 +555,18 @@ const Bubble = memo(function Bubble({
         accessibilityRole="button"
         accessibilityLabel={`Message: ${message.body || "attachment"}. Long press for actions.`}
         style={{
-          backgroundColor: mine ? c.brandTint : c.surface,
-          borderColor: mine ? c.brandTint : c.border,
-          maxWidth: "86%",
+          backgroundColor: fill,
+          borderColor: line,
+          maxWidth: isEmail ? "94%" : "86%",
+          // The tailed corner squares off. A tail growing out of a 16pt curve
+          // leaves a visible sliver of background between the two shapes; at 5pt
+          // they read as one outline.
+          ...(tailed ? (mine ? { borderTopRightRadius: tailCorner } : { borderTopLeftRadius: tailCorner }) : null),
         }}
         className="rounded-16 border px-3.5 py-2.5"
       >
+        {tailed ? <Tail mine={mine} fill={fill} stroke={line} /> : null}
+
         {/* In a group, who spoke matters as much as what they said. */}
         {!continues && !mine && channel === "whatsapp_group" ? (
           <Text style={{ color: c.group }} className="pb-0.5 text-2xs font-semibold">
@@ -502,7 +585,15 @@ const Bubble = memo(function Bubble({
           </View>
         ) : null}
 
-        {message.body ? <Text className="text-lg leading-snug text-fg">{message.body}</Text> : null}
+        {/* Email carries structure worth keeping — headings, lists, links, a
+            subject, and usually the whole thread quoted underneath. Rendering
+            it as one run of plain text throws all of that away and produces a
+            wall nobody reads. */}
+        {isEmail ? (
+          <EmailBody message={message} mine={mine} />
+        ) : message.body ? (
+          <Text className="text-lg leading-snug text-fg">{message.body}</Text>
+        ) : null}
         <Attachments items={message.attachments ?? []} />
 
         <View className="flex-row items-center justify-end gap-1.5 pt-1">
@@ -549,7 +640,7 @@ const Bubble = memo(function Bubble({
           </Text>
         </Pressable>
       ) : null}
-    </View>
+    </Animated.View>
     </SwipeToReply>
   );
 });
