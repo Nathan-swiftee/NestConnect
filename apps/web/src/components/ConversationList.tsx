@@ -274,7 +274,10 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                     className={"conv group" + (c.unread ? " unread" : "") + (selectedId === c.id ? " active" : "")}
                     onClick={() => onSelect(c.id)}
                   >
-              <Avatar name={c.contact.displayName} email={c.contact.email} color={c.contact.avatarColor} className="av" size={44} fontSize={16} />
+              {/* No size/fontSize props: the base .av is already 44/16, and leaving it
+                  to CSS is what lets the ≤820px rule grow it for touch — an inline
+                  style would win over the media query. */}
+              <Avatar name={c.contact.displayName} email={c.contact.email} color={c.contact.avatarColor} className="av" />
               <div className="min-w-0">
                 <div className="flex items-baseline gap-2">
                   <span className={"text-md whitespace-nowrap overflow-hidden text-ellipsis flex-initial min-w-0 " + (c.unread ? "font-semibold" : "font-medium")}>{c.contact.displayName}</span>

@@ -256,6 +256,18 @@ input,textarea{font:inherit}
 .conv{width:100%;display:grid;grid-template-columns:44px 1fr;gap:var(--sp-3);padding:10px var(--sp-4);text-align:left;position:relative;transition:background var(--t-base)}
 /* WhatsApp-style divider: indented past the avatar, never running edge-to-edge */
 .conv::after{content:"";position:absolute;left:72px;right:16px;bottom:0;height:1px;background:var(--border)}
+/* Phones: a bigger avatar and roomier chips — the same row reads as cramped at
+   arm's length on a handset. The three numbers move together: the grid column,
+   the avatar itself, and the divider's indent, which is
+   padding(16) + avatar + gap(12) and would otherwise stop short of the text. */
+@media (max-width:820px){
+  .conv{grid-template-columns:52px 1fr}
+  .conv .av{width:52px;height:52px;font-size:var(--fs-xl)}
+  .conv .av .ch{width:19px;height:19px}
+  .conv::after{left:80px}
+  .chip{font-size:var(--fs-sm);padding:8px var(--sp-4)}
+  .chipcount{min-width:19px;height:19px;font-size:var(--fs-xs)}
+}
 /* Five row states that must never be confused with one another:
    hover  → neutral wash, nothing else
    active → the same wash PLUS a brand edge (the wash alone was too close to
