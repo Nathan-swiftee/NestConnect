@@ -1,5 +1,6 @@
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { CheckIcon } from "../icons";
 import { useTheme } from "../theme";
 
 export interface SheetAction {
@@ -73,11 +74,7 @@ export function ActionSheet({
                   </Text>
                   {a.detail ? <Text className="text-sm text-muted">{a.detail}</Text> : null}
                 </View>
-                {a.selected ? (
-                  <Text style={{ color: c.brand }} className="text-lg font-semibold">
-                    ✓
-                  </Text>
-                ) : null}
+                {a.selected ? <CheckIcon size={19} color={c.brand} /> : null}
               </Pressable>
             ))}
           </ScrollView>

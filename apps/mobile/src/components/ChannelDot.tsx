@@ -1,31 +1,23 @@
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import type { ChannelType } from "@ding/schemas";
+import { channelColor, channelMeta } from "../icons";
 import { useTheme } from "../theme";
 
-/** One glyph per channel. Kept to text rather than an icon set: it's legible at
- *  11px, needs no asset pipeline, and matches what the web badge shows. */
-const GLYPH: Record<string, string> = { whatsapp: "✆", whatsapp_group: "⚇", email: "✉" };
-
 /**
- * The small channel badge that sits on the corner of a conversation avatar —
- * how you tell a WhatsApp thread from an email at a glance in a mixed inbox.
+ * The channel mark on a conversation row — the same bare, coloured glyph the web
+ * shows beside the customer's name.
+ *
+ * No capsule and no avatar-corner badge on purpose: the web tried the badge and
+ * dropped it, because the glyph's own colour already identifies the channel and
+ * the disc behind it was decoration. Green bubble = WhatsApp, purple figures =
+ * group, blue envelope = email.
  */
-export function ChannelDot({ channel, size = 19 }: { channel: ChannelType; size?: number }) {
+export function ChannelDot({ channel, size = 13 }: { channel: ChannelType; size?: number }) {
   const { c } = useTheme();
-  const bg = channel === "email" ? c.email : channel === "whatsapp_group" ? c.group : c.wa;
+  const Glyph = channelMeta(channel).Glyph;
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: bg,
-        borderWidth: 2,
-        borderColor: c.surface,
-      }}
-      className="items-center justify-center"
-    >
-      <Text style={{ fontSize: size * 0.5, lineHeight: size * 0.66, color: "#fff" }}>{GLYPH[channel] ?? "•"}</Text>
+    <View accessibilityLabel={channelMeta(channel).label} className="flex-none self-center">
+      <Glyph size={size} color={channelColor(channel, c)} />
     </View>
   );
 }

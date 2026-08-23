@@ -1,49 +1,88 @@
 import { useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, LayoutAnimation, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { ChannelType, ConversationWithMessages } from "@ding/schemas";
 import { useSendMessage, useTemplates, windowLeft } from "@ding/client";
 import { useTheme } from "../theme";
+import {
+  AttachIcon,
+  BoltIcon,
+  ClockIcon,
+  EmojiIcon,
+  MicIcon,
+  NoteIcon,
+  SendIcon,
+  channelMeta,
+} from "../icons";
 
-/** Reply on the channel the customer last used, not the one the conversation
- *  was opened on — a thread can span WhatsApp and email, and the last inbound
- *  is the address they're actually watching. */
-function defaultChannel(conv: ConversationWithMessages): ChannelType {
-  const lastInbound = [...conv.messages].reverse().find((m) => m.direction === "in" && !m.internal);
-  return (lastInbound?.channel ?? conv.lastChannel ?? conv.channel) as ChannelType;
-}
-
-const CHANNEL_LABEL: Record<string, string> = {
-  whatsapp: "WhatsApp",
-  whatsapp_group: "Group",
-  email: "Email",
-};
+/** The composer's own emoji row — the same curated set the web uses, so the two
+ *  offer the same shortcuts. Deliberately not a picker dependency. */
+const COMPOSER_EMOJIS = ["👍", "🙏", "😀", "😅", "🎉", "❤️", "✅", "👀", "🔥", "😬", "🤝", "📎"];
 
 /**
- * The reply box.
+ * The reply box — the mobile reading of the web's `.composer`.
  *
- * Two modes, because they are two different acts: a reply goes to the customer,
- * a note goes to the team. They look different and the send button says which
- * one you're about to do, so the mistake that matters — a note reaching the
- * customer — is hard to make by accident.
+ * Structure is deliberately the web's, not a fresh idea:
  *
- * The 24-hour WhatsApp window is enforced here the way the web does it: once
- * it's closed only an approved template can go out, and the workspace's default
- * template takes the typed text as its variable so the composer still behaves
- * like a composer instead of becoming a dead end.
+ *  - a `compmode` segmented control with one tab per channel the customer is
+ *    reachable on, each carrying its own channel glyph, then a Note tab;
+ *  - a context line that says where this is going and, on WhatsApp, how long
+ *    the 24-hour window has left;
+ *  - an input row with the same tools in the same order — emoji, template,
+ *    attach — and one trailing button that is a mic until there's something to
+ *    send, then becomes the send arrow.
+ *
+ * Reply and Note stay visibly different because they are two different acts: one
+ * goes to the customer, the other to the team. The mistake that matters — a note
+ * reaching the customer — should be hard to make by accident.
  */
-export function Composer({ conv }: { conv: ConversationWithMessages }) {
+export function Composer({
+  conv,
+  onAttach,
+  onRecord,
+}: {
+  conv: ConversationWithMessages;
+  /** Opens the file picker. Absent until attachment upload lands. */
+  onAttach?: () => void;
+  /** Starts a voice note. Absent until recording lands. */
+  onRecord?: () => void;
+}) {
   const { c } = useTheme();
   const send = useSendMessage();
   const { data: templates } = useTemplates();
   const inputRef = useRef<TextInput>(null);
   const [body, setBody] = useState("");
   const [internal, setInternal] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pickedChannel, setPickedChannel] = useState<ChannelType | null>(null);
 
-  const channel = useMemo(() => defaultChannel(conv), [conv]);
+  // Which channels this customer is reachable on inside this thread. Mirrors the
+  // web: a group can only be answered in the group; a 1:1 lists every channel we
+  // hold an address for, falling back to the thread's own.
+  const isGroup = conv.channel === "whatsapp_group";
+  const replyTargets = useMemo<ChannelType[]>(() => {
+    if (isGroup) return [conv.channel];
+    const out: ChannelType[] = [];
+    if (conv.contact.phone) out.push("whatsapp");
+    if (conv.contact.email) out.push("email");
+    return out.length ? out : [conv.channel];
+  }, [isGroup, conv.channel, conv.contact.phone, conv.contact.email]);
+
+  // Default to the channel the customer last used, not the one the thread was
+  // opened on — that's the address they're actually watching.
+  const lastUsed = useMemo(() => {
+    const m = [...conv.messages].reverse().find((x) => x.direction === "in" && !x.internal);
+    return (m?.channel ?? conv.lastChannel ?? conv.channel) as ChannelType;
+  }, [conv.messages, conv.lastChannel, conv.channel]);
+  const defaultChannel = !isGroup && replyTargets.includes(lastUsed) ? lastUsed : conv.channel;
+  const channel = (!isGroup && pickedChannel) || defaultChannel;
+
   const isWhatsApp = channel === "whatsapp" || channel === "whatsapp_group";
+  const isEmail = channel === "email";
   const windowOpen = conv.waWindow?.open ?? false;
   const windowClosed = isWhatsApp && !windowOpen;
+  const msLeft = conv.waWindow?.expiresAt ? new Date(conv.waWindow.expiresAt).getTime() - Date.now() : null;
+  const closingSoon = msLeft != null && msLeft < 60 * 60 * 1000;
 
   // Closed window: fall back to the workspace's default single-variable
   // template, so what the agent typed still goes out as the message body.
@@ -52,11 +91,15 @@ export function Composer({ conv }: { conv: ConversationWithMessages }) {
   const locked = windowClosed && !internal && !defaultTemplate;
 
   const canSend = body.trim().length > 0 && !send.isPending && !locked;
+  // The mic stands in for send while there's nothing to send — WhatsApp's own
+  // arrangement. Only on a voice-capable WhatsApp reply, and only once wired.
+  const showMic = isWhatsApp && !internal && !canSend && !!onRecord;
 
   async function submit() {
     const text = body.trim();
     if (!text || locked) return;
     setError(null);
+    setEmojiOpen(false);
     // Clear optimistically — the message is already on screen via useSendMessage,
     // and leaving the text behind invites an accidental double-send.
     setBody("");
@@ -74,48 +117,200 @@ export function Composer({ conv }: { conv: ConversationWithMessages }) {
     }
   }
 
-  return (
-    <View style={{ backgroundColor: c.surface, borderTopColor: c.border }} className="border-t px-3 pb-2 pt-2.5">
-      <View className="flex-row items-center gap-2 pb-2">
-        {(["reply", "note"] as const).map((mode) => {
-          const active = (mode === "note") === internal;
-          return (
-            <Pressable
-              key={mode}
-              onPress={() => setInternal(mode === "note")}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              style={{
-                backgroundColor: active ? (mode === "note" ? c.amberTint : c.brandTint) : c.surface2,
-              }}
-              className="rounded-full px-3.5 py-1.5 active:opacity-70"
-            >
-              <Text
-                style={{ color: active ? (mode === "note" ? c.amber : c.brandStrong) : c.textMuted }}
-                className={`text-sm ${active ? "font-semibold" : "font-medium"}`}
-              >
-                {mode === "reply" ? CHANNEL_LABEL[channel] ?? "Reply" : "Note"}
-              </Text>
-            </Pressable>
-          );
-        })}
+  /** The context line: who this reaches, or the live window state. */
+  function ctx() {
+    if (internal) return { text: "Only your team can see this", tone: c.textMuted, dot: false };
+    if (isEmail) return { text: `Email · ${conv.contact.displayName}`, tone: c.textMuted, dot: false };
+    if (isWhatsApp && windowOpen && msLeft != null)
+      return {
+        text: `${closingSoon ? "Window closing" : "Window open"} · ${windowLeft(msLeft)} left`,
+        tone: closingSoon ? c.amber : c.brandStrong,
+        dot: true,
+      };
+    if (isWhatsApp && windowClosed)
+      return { text: "24-hour window closed", tone: c.amber, dot: true };
+    return {
+      text: `${isGroup ? "Group" : "WhatsApp"} · ${conv.contact.displayName}`,
+      tone: c.textMuted,
+      dot: false,
+    };
+  }
+  const ctxLine = ctx();
 
-        <View className="flex-1" />
-
-        {!internal && isWhatsApp ? (
-          <Text style={{ color: windowOpen ? c.brandStrong : c.amber }} className="text-2xs font-medium">
-            {windowOpen
-              ? `Window open · ${windowLeft(new Date(conv.waWindow?.expiresAt ?? 0).getTime() - Date.now())} left`
-              : templateFallback
-                ? "Window closed · sends as a template"
-                : "Window closed"}
+  /**
+   * One tab of the mode switcher.
+   *
+   * Only the selected tab spells out its name. Three labelled tabs plus the
+   * window countdown do not fit across a phone — something has to give, and a
+   * label you can't read is worth less than a glyph you can. The glyphs are the
+   * channels' own marks, so an unlabelled tab still says which channel it is,
+   * and the label appears the moment you select it.
+   */
+  function ModeTab({
+    active,
+    label,
+    tint,
+    children,
+    onPress,
+  }: {
+    active: boolean;
+    label: string;
+    tint: string;
+    children: React.ReactNode;
+    onPress: () => void;
+  }) {
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={label}
+        // The thumb: the active tab carries the raised surface, the rest are
+        // bare. Same read as the web's sliding seg-thumb without animating a
+        // measured offset on every layout.
+        style={{ backgroundColor: active ? c.surface : "transparent" }}
+        className={`flex-row items-center gap-1.5 rounded-full py-1.5 ${active ? "px-3" : "px-2.5"} ${active ? "" : "active:opacity-60"}`}
+      >
+        {children}
+        {active ? (
+          <Text style={{ color: tint }} className="text-sm font-semibold">
+            {label}
           </Text>
         ) : null}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View style={{ backgroundColor: c.surface, borderTopColor: c.border }} className="border-t px-3 pb-2 pt-2.5">
+      {/* compbar: the mode switcher, then the context line. */}
+      <View className="flex-row items-center gap-2 pb-2">
+        <View style={{ backgroundColor: c.surface2 }} className="flex-row items-center rounded-full p-0.5">
+          {replyTargets.map((ch) => {
+            const meta = channelMeta(ch);
+            const Glyph = meta.Glyph;
+            const active = !internal && channel === ch;
+            const tint = c[meta.colorKey];
+            return (
+              <ModeTab
+                key={ch}
+                active={active}
+                tint={tint}
+                label={replyTargets.length > 1 ? meta.label.replace("WhatsApp group", "Group") : "Reply"}
+                onPress={() => {
+                  setInternal(false);
+                  setPickedChannel(ch);
+                }}
+              >
+                <Glyph size={15} color={active ? tint : c.textFaint} />
+              </ModeTab>
+            );
+          })}
+          <ModeTab
+            active={internal}
+            tint={c.amber}
+            label="Note"
+            onPress={() => {
+              setInternal(true);
+              setEmojiOpen(false);
+            }}
+          >
+            <NoteIcon size={15} color={internal ? c.amber : c.textFaint} />
+          </ModeTab>
+        </View>
+
+        <View className="min-w-0 flex-1 flex-row items-center justify-end gap-1">
+          {ctxLine.dot ? (
+            <View
+              style={{ backgroundColor: ctxLine.tone }}
+              className="h-1.5 w-1.5 flex-none rounded-full"
+            />
+          ) : null}
+          {/* Truncating this line loses the number, which is the only part that
+              matters — so it shrinks to fit rather than being cut off. */}
+          <Text
+            style={{ color: ctxLine.tone }}
+            className="shrink text-2xs font-medium"
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+          >
+            {ctxLine.text}
+          </Text>
+        </View>
       </View>
+
+      {/* Window shut with a default template standing in: say what will actually
+          be sent, rather than silently rewriting the agent's message. */}
+      {templateFallback ? (
+        <View
+          style={{ backgroundColor: c.amberTint }}
+          className="mb-2 flex-row items-center gap-2 rounded-12 px-3 py-2"
+        >
+          <ClockIcon size={15} color={c.amber} />
+          <Text style={{ color: c.amber }} className="flex-1 text-2xs" numberOfLines={2}>
+            Window closed — sending as{" "}
+            <Text className="font-semibold">{defaultTemplate!.name}</Text>
+          </Text>
+        </View>
+      ) : null}
+
+      {locked ? (
+        <View
+          style={{ backgroundColor: c.amberTint }}
+          className="mb-2 flex-row items-center gap-2 rounded-12 px-3 py-2.5"
+        >
+          <ClockIcon size={16} color={c.amber} />
+          <Text style={{ color: c.amber }} className="flex-1 text-2xs">
+            The 24-hour window has closed. Send an approved template to re-open the conversation.
+          </Text>
+        </View>
+      ) : null}
 
       {error ? <Text className="pb-1.5 text-sm text-danger">{error}</Text> : null}
 
-      <View className="flex-row items-end gap-2">
+      {emojiOpen ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ backgroundColor: c.surface2 }}
+          contentContainerStyle={{ paddingHorizontal: 6 }}
+          className="mb-2 rounded-16 py-1.5"
+        >
+          {COMPOSER_EMOJIS.map((e) => (
+            <Pressable
+              key={e}
+              onPress={() => {
+                setBody((b) => b + e);
+                inputRef.current?.focus();
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Insert ${e}`}
+              className="px-2 py-1 active:opacity-60"
+            >
+              <Text className="text-xl">{e}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
+
+      {/* compinput: tools left, field centre, one trailing action. */}
+      <View
+        style={{ backgroundColor: c.surface2 }}
+        className="flex-row items-end gap-1 rounded-24 px-1.5 py-1"
+      >
+        <Pressable
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setEmojiOpen((v) => !v);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Emoji"
+          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+        >
+          <EmojiIcon size={21} color={emojiOpen ? c.brandStrong : c.textMuted} />
+        </Pressable>
+
         <TextInput
           ref={inputRef}
           value={body}
@@ -124,29 +319,57 @@ export function Composer({ conv }: { conv: ConversationWithMessages }) {
           editable={!locked}
           placeholder={
             locked
-              ? "This WhatsApp window has closed — set a default template to reply"
+              ? "Set a default template to reply"
               : internal
                 ? "Note for the team…"
                 : `Message ${conv.contact.displayName}…`
           }
           placeholderTextColor={c.textFaint}
-          style={{ color: c.text, backgroundColor: c.surface2, maxHeight: 132 }}
-          className="flex-1 rounded-20 px-4 py-2.5 text-lg"
+          style={{ color: c.text, maxHeight: 132 }}
+          className="flex-1 px-1 py-2 text-lg"
         />
+
+        {isWhatsApp && !internal ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Templates"
+            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          >
+            <BoltIcon size={19} color={c.textMuted} />
+          </Pressable>
+        ) : null}
+
+        {onAttach ? (
+          <Pressable
+            onPress={onAttach}
+            accessibilityRole="button"
+            accessibilityLabel="Attach files"
+            className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          >
+            <AttachIcon size={20} color={c.textMuted} />
+          </Pressable>
+        ) : null}
+
         <Pressable
-          onPress={submit}
-          disabled={!canSend}
+          onPress={showMic ? onRecord : submit}
+          disabled={!showMic && !canSend}
           accessibilityRole="button"
-          accessibilityLabel={internal ? "Add note" : "Send reply"}
-          style={{ backgroundColor: canSend ? (internal ? c.amber : c.brand) : c.surface2 }}
-          className="h-11 w-11 items-center justify-center rounded-full active:opacity-80"
+          accessibilityLabel={showMic ? "Record voice message" : internal ? "Add note" : "Send reply"}
+          // Keep the send button the same shape and colour whether or not it can
+          // fire — a disabled white disc on the grey field reads as a hole. It
+          // dims instead, which says "not yet" without disappearing.
+          style={{
+            backgroundColor: internal ? c.amber : c.brand,
+            opacity: showMic || canSend ? 1 : 0.35,
+          }}
+          className="h-10 w-10 items-center justify-center rounded-full active:opacity-80"
         >
           {send.isPending ? (
             <ActivityIndicator color="#fff" size="small" />
+          ) : showMic ? (
+            <MicIcon size={19} color="#fff" />
           ) : (
-            <Text style={{ color: canSend ? "#fff" : c.textFaint }} className="text-lg font-semibold">
-              ↑
-            </Text>
+            <SendIcon size={19} color="#fff" />
           )}
         </Pressable>
       </View>

@@ -14,6 +14,7 @@ import {
 import type { Conversation } from "@ding/schemas";
 import { Avatar } from "../../src/components/Avatar";
 import { ChannelDot } from "../../src/components/ChannelDot";
+import { LogoutIcon, SearchIcon } from "../../src/icons";
 import { useTheme } from "../../src/theme";
 
 /**
@@ -58,19 +59,17 @@ function Row({ conv, onPress }: { conv: Conversation; onPress: () => void }) {
       accessibilityLabel={`${conv.contact.displayName}. ${conv.preview ?? ""}`}
       className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
     >
-      <View>
-        <Avatar name={conv.contact.displayName} color={conv.contact.avatarColor} size={52} />
-        <View className="absolute -bottom-0.5 -right-0.5">
-          <ChannelDot channel={conv.lastChannel ?? conv.channel} />
-        </View>
-      </View>
+      <Avatar name={conv.contact.displayName} color={conv.contact.avatarColor} size={52} />
 
       <View className="flex-1 gap-1">
-        <View className="flex-row items-baseline gap-2">
-          <Text numberOfLines={1} className={`flex-1 text-lg ${unread ? "font-semibold text-fg" : "font-medium text-fg"}`}>
+        {/* Name, then the channel glyph, then the time — the web's order. The
+            glyph sits with the name because it says what this thread *is*. */}
+        <View className="flex-row items-center gap-1.5">
+          <Text numberOfLines={1} className={`flex-shrink text-lg ${unread ? "font-semibold text-fg" : "font-medium text-fg"}`}>
             {conv.contact.displayName}
           </Text>
-          <Text className={`text-xs ${unread ? "font-semibold text-brand" : "text-faint"}`}>
+          <ChannelDot channel={conv.lastChannel ?? conv.channel} />
+          <Text className={`ml-auto text-xs ${unread ? "font-semibold text-brand" : "text-faint"}`}>
             {listTime(conv.lastActivityAt)}
           </Text>
         </View>
@@ -141,25 +140,35 @@ export default function Inbox() {
           onPress={() => logout.mutate()}
           accessibilityRole="button"
           accessibilityLabel="Sign out"
-          className="rounded-full px-3 py-2 active:opacity-60"
+          hitSlop={8}
+          style={{ backgroundColor: c.surface2 }}
+          className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
         >
-          <Text className="text-md font-medium text-muted">Sign out</Text>
+          <LogoutIcon size={19} color={c.textMuted} />
         </Pressable>
       </View>
 
+      {/* Search carries its glyph inside the field, as on the web — the icon is
+          what makes it read as search before you've typed anything. */}
       <View className="px-4 pb-2">
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search conversations & messages"
-          placeholderTextColor={c.textFaint}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-          style={{ color: c.text, backgroundColor: c.surface2 }}
-          className="rounded-full px-4 py-2.5 text-lg"
-        />
+        <View
+          style={{ backgroundColor: c.surface2 }}
+          className="flex-row items-center gap-2 rounded-full px-3.5"
+        >
+          <SearchIcon size={17} color={c.textFaint} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search conversations & messages"
+            placeholderTextColor={c.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            style={{ color: c.text }}
+            className="flex-1 py-2.5 text-lg"
+          />
+        </View>
       </View>
 
       {searching ? null : (

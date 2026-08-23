@@ -31,6 +31,7 @@ import { Attachments } from "../../../src/components/Attachments";
 import { Avatar } from "../../../src/components/Avatar";
 import { Composer } from "../../../src/components/Composer";
 import { Ticks } from "../../../src/components/Ticks";
+import { BackIcon, MoreIcon, ProfileIcon, channelColor, channelMeta } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
@@ -220,26 +221,32 @@ function Header({
   onMore: () => void;
 }) {
   const { c } = useTheme();
+  const ChannelGlyph = channelMeta(conv.channel).Glyph;
   return (
     <View style={{ borderBottomColor: c.border, backgroundColor: c.surface }} className="flex-row items-center gap-2.5 border-b px-2 py-2">
-      <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back to inbox" hitSlop={12} className="px-1.5 active:opacity-60">
-        <Text style={{ color: c.brand }} className="text-2xl leading-7">‹</Text>
+      <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back to inbox" hitSlop={12} className="px-1 active:opacity-60">
+        <BackIcon size={24} color={c.brand} />
       </Pressable>
       <Avatar name={conv.contact.displayName} color={conv.contact.avatarColor} size={38} />
       <View className="flex-1">
-        <Text numberOfLines={1} className="text-lg font-semibold leading-tight text-fg">
-          {conv.contact.displayName}
-        </Text>
+        {/* Name and channel sit on one line, as on the web: the glyph is the
+            thread's identity, so it belongs beside the name, not below it. */}
+        <View className="flex-row items-center gap-1.5">
+          <Text numberOfLines={1} className="flex-shrink text-lg font-semibold leading-tight text-fg">
+            {conv.contact.displayName}
+          </Text>
+          <ChannelGlyph size={13} color={channelColor(conv.channel, c)} />
+        </View>
         <Text numberOfLines={1} className="text-2xs leading-snug text-faint">
           {conv.status === "snoozed" ? "Snoozed · " : conv.status === "closed" ? "Resolved · " : ""}
           {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
         </Text>
       </View>
-      <Pressable onPress={onAssign} accessibilityRole="button" accessibilityLabel="Assign" hitSlop={8} className="px-2 active:opacity-60">
-        <Text style={{ color: c.textMuted }} className="text-lg">⇄</Text>
+      <Pressable onPress={onAssign} accessibilityRole="button" accessibilityLabel="Assign" hitSlop={8} className="px-1.5 active:opacity-60">
+        <ProfileIcon size={20} color={c.textMuted} />
       </Pressable>
-      <Pressable onPress={onMore} accessibilityRole="button" accessibilityLabel="More actions" hitSlop={8} className="px-2 active:opacity-60">
-        <Text style={{ color: c.textMuted }} className="text-lg">⋯</Text>
+      <Pressable onPress={onMore} accessibilityRole="button" accessibilityLabel="More actions" hitSlop={8} className="px-1.5 active:opacity-60">
+        <MoreIcon size={20} color={c.textMuted} />
       </Pressable>
     </View>
   );
