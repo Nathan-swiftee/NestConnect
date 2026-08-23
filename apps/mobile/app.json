@@ -58,6 +58,13 @@
             "deploymentTarget": "16.4"
           }
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "organization": "$SENTRY_ORG",
+          "project": "$SENTRY_PROJECT"
+        }
       ]
     ],
     "experiments": {

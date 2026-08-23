@@ -8,12 +8,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { colors } from "@ding/design/tokens";
 import { useColorScheme } from "react-native";
 import { configureMobileClient, setSignOutHandler } from "../src/api-config";
+import { ErrorBoundary } from "../src/components/ErrorBoundary";
 import { loadSession } from "../src/session";
+import { initTelemetry } from "../src/telemetry";
 import { paletteVars } from "../src/theme";
 import "../src/global.css";
 
-// Point the shared client at this app before any hook can fire a request.
+// Both before anything renders: the client so no hook can fire an
+// unconfigured request, and telemetry so a crash during the first paint is
+// still reported. Telemetry is a no-op unless a DSN was baked into the build.
 configureMobileClient();
+initTelemetry();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,34 +50,38 @@ export default function RootLayout() {
     // Gesture handler needs its own root above everything, or pan gestures
     // (swipe-to-reply) silently never fire on Android.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        {/* The palette for this scheme, published as CSS variables to everything
-            below. Every colour utility (`text-fg`, `bg-surface`, …) resolves
-            through these, so switching the phone to dark switches the whole app
-            rather than only the places that read useTheme() directly. */}
-        <View style={paletteVars[scheme]} className="flex-1">
-          <QueryClientProvider client={queryClient}>
-            <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-            {ready ? (
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: c.bg },
-                  animation: "slide_from_right",
-                }}
-              >
-                <Stack.Screen name="index" />
-                <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
-                <Stack.Screen name="(app)" />
-              </Stack>
-            ) : (
-              <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
-                <ActivityIndicator color={c.brand} />
-              </View>
-            )}
-          </QueryClientProvider>
-        </View>
-      </SafeAreaProvider>
+      {/* Outside the providers on purpose: a boundary that needs a working
+          provider to draw its own fallback has misunderstood its job. */}
+      <ErrorBoundary onReset={() => router.replace("/")}>
+        <SafeAreaProvider>
+          {/* The palette for this scheme, published as CSS variables to everything
+              below. Every colour utility (`text-fg`, `bg-surface`, …) resolves
+              through these, so switching the phone to dark switches the whole app
+              rather than only the places that read useTheme() directly. */}
+          <View style={paletteVars[scheme]} className="flex-1">
+            <QueryClientProvider client={queryClient}>
+              <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+              {ready ? (
+                <Stack
+                  screenOptions={{
+                    headerShown: false,
+                    contentStyle: { backgroundColor: c.bg },
+                    animation: "slide_from_right",
+                  }}
+                >
+                  <Stack.Screen name="index" />
+                  <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
+                  <Stack.Screen name="(app)" />
+                </Stack>
+              ) : (
+                <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
+                  <ActivityIndicator color={c.brand} />
+                </View>
+              )}
+            </QueryClientProvider>
+          </View>
+        </SafeAreaProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }

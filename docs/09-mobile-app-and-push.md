@@ -403,8 +403,46 @@ of "Load earlier messages" to reach. The default 40-message thread scrolls
 cleanly (0.7%). If long threads become a real complaint, virtualising is the
 answer and it should be done as its own change with the composer re-verified.
 
-**Still to do.** Sentry, device E2E (Maestro), EAS Submit to TestFlight and
-Play internal testing.
+**Release plumbing — wired, and what it needs from you.**
+
+*Crash reporting.* `@sentry/react-native`, initialised in `src/telemetry.ts`
+and **off unless `EXPO_PUBLIC_SENTRY_DSN` is set** — that value is inlined at
+bundle time, so a build without one never initialises Sentry at all rather than
+initialising a disabled one. What it sends is decided there rather than left to
+defaults, because this app's entire content is other people's private
+conversations: no message bodies (`beforeSend` strips request bodies and
+breadcrumb payloads), no session replay, no screenshots, no view hierarchy,
+traces sampled at 10%. To turn it on: set the DSN in the EAS build profile, and
+`SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` as build secrets so the
+Expo plugin can upload source maps — without those, a native stack trace
+arrives minified and unreadable.
+
+*Error boundary.* Until now an uncaught render error left Expo Router's own
+error page: a black screen and a raw stack, right for a developer and useless
+to an agent mid-shift with no way back into the app. There is now a boundary
+above the providers (deliberately — a fallback that needs a working provider to
+draw itself has misunderstood its job) that says what happened, says that
+nothing sent has been lost, offers a way back to the inbox, and reports the
+crash.
+
+*EAS Submit.* The production submit profile is filled in for TestFlight and
+Play internal testing, reading every account-specific value from the
+environment so nothing identifying is committed: `EXPO_APPLE_ID`,
+`EXPO_ASC_APP_ID`, `EXPO_APPLE_TEAM_ID`, and
+`EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH`. Android goes to the `internal` track as
+a `draft` release, so a submission is never one command away from being live.
+
+*Device E2E.* `apps/mobile/.maestro/smoke.yaml` — sign in, inbox loads with
+conversations (asserted against the empty *and* error states, either of which
+would otherwise pass a naive "did it render" check), open a thread, reply,
+react via long-press, and the tab bar still navigates. Deliberately not a
+regression suite: everything below that level is checked faster elsewhere. What
+nothing else can do is prove the app installs, signs in and sends on a real
+phone.
+
+**Unverified in this environment, and needs a device build:** the native half
+of Sentry, the notification actions, and Dynamic Type. All three are code and
+configuration a device build exercises and a web export cannot.
 
 ---
 

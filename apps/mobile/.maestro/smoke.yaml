@@ -1,0 +1,69 @@
+# The five things that must work, on a real device, before a build ships.
+#
+# Deliberately not a full regression suite. Everything below this file's level
+# is checked faster and more precisely elsewhere — types by tsc, push policy and
+# payloads by the API verifiers, layout and accessibility by the browser
+# harness. What none of those can do is prove the app installs, signs in and
+# sends a message on an actual phone, which is exactly the failure a release
+# needs to catch and exactly what this covers.
+#
+#   maestro test apps/mobile/.maestro/smoke.yaml
+#
+# Needs a device or simulator with the build installed, and an API reachable
+# from it. `EMAIL` and `PASSWORD` come from the environment so no credential
+# lands in the repo:
+#
+#   maestro test -e EMAIL=... -e PASSWORD=... apps/mobile/.maestro/smoke.yaml
+appId: co.uk.swiftee.nestconnect
+---
+- launchApp:
+    clearState: true
+
+# ── 1. Sign in.
+- assertVisible: "Nest Connect"
+- tapOn: "Work email"
+- inputText: ${EMAIL}
+- tapOn: "Password"
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn: "Sign in"
+
+# ── 2. The inbox loads, and loads *conversations* — not the empty state, which
+#      would pass a naive "did the screen render" check while telling us the
+#      list is broken.
+- assertVisible:
+    text: ".*open.*"
+    timeout: 20000
+- assertNotVisible: "Couldn't load your inbox"
+
+# ── 3. Open a thread and reply.
+- tapOn:
+    point: "50%,35%"
+- assertVisible:
+    id: "msg-.*"
+    timeout: 15000
+- tapOn: "Message…"
+- inputText: "Maestro smoke test reply"
+- hideKeyboard
+- tapOn: "Send reply"
+# The reply appears in the thread. Queued counts: an offline send is still a
+# successful send from where the agent is standing.
+- assertVisible:
+    text: "Maestro smoke test reply"
+    timeout: 15000
+
+# ── 4. React to a message, which is the long-press path.
+- longPressOn:
+    id: "msg-.*"
+- assertVisible: "React with 👍"
+- tapOn: "React with 👍"
+- assertNotVisible: "React with 👍"
+
+# ── 5. Back out, and the tab bar still navigates.
+- tapOn: "Back to inbox"
+- tapOn: "Customers"
+- assertVisible:
+    text: ".*in the directory"
+    timeout: 15000
+- tapOn: "Settings"
+- assertVisible: "Notifications"
