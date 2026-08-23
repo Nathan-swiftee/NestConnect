@@ -86,6 +86,8 @@ type Leaf =
   | "storage"
   | "email";
 type SetupSub = "connections" | "storage" | "email";
+/** The integrations that open a credential sheet from their card. */
+type SetupKey = "google" | "meta" | "storage" | "resend" | "smtp";
 
 interface Props {
   onClose: () => void;
@@ -2120,9 +2122,87 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
 /* Setup — app-level integration credentials                          */
 /* ------------------------------------------------------------------ */
 
+/** One integration, as a card in the grid — the same shape a channel, label or
+ *  team uses: identity on top, state along the bottom, click to edit. The
+ *  credentials themselves live in a modal, so the pane stays scannable instead
+ *  of being five stacked forms. */
+function IntegrationCard({
+  color,
+  glyph,
+  name,
+  blurb,
+  summary,
+  on,
+  label,
+  onClick,
+}: {
+  color: string;
+  glyph: React.ReactNode;
+  name: string;
+  blurb: string;
+  summary: string;
+  on: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className="chcard" type="button" onClick={onClick}>
+      <div className="chcard__top">
+        <span className="chcard__ic" style={{ color }}>
+          {glyph}
+        </span>
+        <span className="chcard__name">
+          <b>{name}</b>
+          <small>{blurb}</small>
+        </span>
+      </div>
+      <div className="chcard__foot">
+        <span className="chcard__route chcard__route--plain" title={summary}>
+          {summary}
+        </span>
+        <span className={"connpill " + (on ? "on" : "off")}>
+          <span className="connpill__dot" />
+          {label}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+/** The credential sheet behind a card. Plain .modal/.modal--form so it inherits
+ *  every other settings dialog's chrome, scroll behaviour and mobile sheet. */
+function SetupModal({
+  title,
+  onClose,
+  foot,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  foot: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="modal" onClick={onClose}>
+      <div className="modal__box modal--form" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="modal__head">
+          <h2>{title}</h2>
+          <button type="button" className="modal__x" onClick={onClose} aria-label="Close">
+            <XIcon />
+          </button>
+        </div>
+        <div className="modal__body">{children}</div>
+        <div className="modal__foot">{foot}</div>
+      </div>
+    </div>
+  );
+}
+
 function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => void }) {
   const integrations = useIntegrations();
   const update = useUpdateIntegrations();
+  // Which credential sheet is open, if any.
+  const [editing, setEditing] = useState<SetupKey | null>(null);
   const google = integrations.data?.google;
   const configured = Boolean(google?.configured);
   const meta = integrations.data?.meta;
@@ -2214,6 +2294,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       onSuccess: () => {
         setClientSecret("");
         onToast("Google settings saved");
+        setEditing(null);
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
@@ -2234,6 +2315,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       onSuccess: () => {
         setMetaAppSecret("");
         onToast("Meta settings saved");
+        setEditing(null);
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
@@ -2263,6 +2345,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
         setR2AccessKeyId("");
         setR2SecretAccessKey("");
         onToast("Storage settings saved");
+        setEditing(null);
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
@@ -2292,6 +2375,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       onSuccess: () => {
         setSmtpPassword("");
         onToast("Email settings saved");
+        setEditing(null);
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
@@ -2312,6 +2396,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       onSuccess: () => {
         setResendApiKey("");
         onToast("Resend settings saved");
+        setEditing(null);
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
@@ -2341,8 +2426,13 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
     }
   };
 
+
+  // Close the sheet once a save lands, so the card's summary + status pill are
+  // the confirmation — the same rhythm as editing a channel, label or team.
+  const close = () => setEditing(null);
+
   return (
-    <div className="setpane">
+    <div className="setpane setpane--wide">
       <div className="setpane__head">
         <div>
           <h2>{SETUP_HEAD[sub].h}</h2>
@@ -2350,391 +2440,404 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
         </div>
       </div>
 
-      {sub === "connections" && (
-      <>
-      <div className="setupcard">
-        <div className="setupcard__head">
-          <span className="setrow__ic" style={{ color: "#EA4335" }}>
-            <GmailGlyph />
-          </span>
-          <div className="setrow__main">
-            <b>Google / Gmail</b>
-            <small>The OAuth 2.0 client behind “Connect with Google”.</small>
-          </div>
-          <span className={"connpill " + (configured ? "on" : "off")} title={configured ? "Ready to connect Gmail accounts" : "Add a Client ID and Secret to enable"}>
-            <span className="connpill__dot" />
-            {configured ? "Connected app configured" : "Not configured"}
-          </span>
-        </div>
-
-        <p className="fieldhint">
-          These are the app-level Google OAuth credentials from your Google Cloud project’s OAuth 2.0 Client ID. People then connect their own Gmail with one click.
-        </p>
-
-        <div className="setform__grid two">
-          <label className="field">
-            <span>Client ID</span>
-            <input
-              value={clientId}
-              autoComplete="off"
-              onChange={(e) => setClientId(e.target.value)}
-              placeholder="1029384756-abc123.apps.googleusercontent.com"
+      <div className="cardgrid">
+        {sub === "connections" && (
+          <>
+            <IntegrationCard
+              color="#EA4335"
+              glyph={<GmailGlyph />}
+              name="Google / Gmail"
+              blurb="One-click Gmail connect"
+              summary={google?.clientId || "No client ID yet"}
+              on={configured}
+              label={configured ? "Configured" : "Not configured"}
+              onClick={() => setEditing("google")}
             />
-          </label>
-          <label className="field">
-            <span>Client Secret</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              placeholder={configured ? "••••• (hidden)" : "GOCSPX-…"}
+            <IntegrationCard
+              color={channelMeta("whatsapp").color}
+              glyph={(() => {
+                const G = channelMeta("whatsapp").Glyph;
+                return <G />;
+              })()}
+              name="Meta / WhatsApp"
+              blurb="One-click WhatsApp connect"
+              summary={meta?.appId ? `App ID ${meta.appId}` : "No app ID yet"}
+              on={metaConfigured}
+              label={metaConfigured ? "Configured" : "Not configured"}
+              onClick={() => setEditing("meta")}
             />
-          </label>
-        </div>
+          </>
+        )}
 
-        <div className="field">
-          <span>Redirect URI</span>
-          <div className="copyrow">
-            <input readOnly value={google?.redirectUri ?? ""} onFocus={(e) => e.target.select()} />
-            <button className="btn-ghost" type="button" onClick={() => copy(google?.redirectUri, "redirect", "Redirect URI")}>
-              {copiedKey === "redirect" ? "Copied" : "Copy"}
-            </button>
-          </div>
-          <small className="fieldhint">Add this exact URL to your Google Cloud OAuth client’s Authorized redirect URIs.</small>
-        </div>
-
-        <div className="setupcard__sub">
-          <b>Real-time delivery (optional)</b>
-          <small>
-            Gmail is checked every minute by default. For near-instant delivery, create a Google Cloud Pub/Sub
-            topic, add the push endpoint below as its subscription, then paste the topic name here. Leave blank to
-            keep polling.
-          </small>
-        </div>
-
-        <div className="field">
-          <span>Pub/Sub topic</span>
-          <input
-            value={pubsubTopic}
-            autoComplete="off"
-            onChange={(e) => setPubsubTopic(e.target.value)}
-            placeholder="projects/your-project/topics/gmail-push"
+        {sub === "storage" && (
+          <IntegrationCard
+            color="#F6821F"
+            glyph={<StorageIcon />}
+            name="Cloudflare R2"
+            blurb="Media storage bucket"
+            summary={storage?.bucket ? `Bucket ${storage.bucket}` : "Local disk — wiped on redeploy"}
+            on={storageConfigured}
+            label={storageConfigured ? "Storing in R2" : "Ephemeral disk"}
+            onClick={() => setEditing("storage")}
           />
-        </div>
+        )}
 
-        <div className="field">
-          <span>Push endpoint</span>
-          <div className="copyrow">
-            <input readOnly value={google?.pushEndpoint ?? ""} onFocus={(e) => e.target.select()} />
-            <button className="btn-ghost" type="button" onClick={() => copy(google?.pushEndpoint, "push", "Push endpoint")}>
-              {copiedKey === "push" ? "Copied" : "Copy"}
-            </button>
-          </div>
-          <small className="fieldhint">Register this as your Pub/Sub push subscription’s endpoint URL.</small>
-        </div>
-
-        <div className="setform__foot">
-          <button className="btn-primary" type="button" onClick={saveGoogle} disabled={update.isPending || integrations.isLoading}>
-            Save
-          </button>
-        </div>
+        {sub === "email" && (
+          <>
+            <IntegrationCard
+              color="#5B8DEF"
+              glyph={<MailIcon />}
+              name="Resend"
+              blurb="Recommended sender"
+              summary={resend?.from || "No sender set"}
+              on={resendConfigured}
+              label={resendConfigured ? "Connected" : "Not connected"}
+              onClick={() => setEditing("resend")}
+            />
+            <IntegrationCard
+              color="#EA4335"
+              glyph={<MailIcon />}
+              name="SMTP"
+              blurb="Fallback sender"
+              summary={smtp?.host ? `${smtp.host}:${smtp.port ?? 587}` : "No server set"}
+              on={smtpConfigured}
+              label={smtpConfigured ? "Connected" : "Not connected"}
+              onClick={() => setEditing("smtp")}
+            />
+          </>
+        )}
       </div>
 
-      <div className="setupcard">
-        <div className="setupcard__head">
-          <span className="setrow__ic" style={{ color: channelMeta("whatsapp").color }}>
-            {(() => {
-              const G = channelMeta("whatsapp").Glyph;
-              return <G />;
-            })()}
-          </span>
-          <div className="setrow__main">
-            <b>Meta / WhatsApp</b>
-            <small>The Meta app behind “Connect with Facebook” for WhatsApp.</small>
+      {editing === "google" && (
+        <SetupModal
+          title="Google / Gmail"
+          onClose={close}
+          foot={
+            <>
+              <button className="btn-ghost" type="button" onClick={close}>
+                Cancel
+              </button>
+              <button className="btn-primary" type="button" onClick={saveGoogle} disabled={update.isPending || integrations.isLoading}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <p className="fieldhint">
+            These are the app-level Google OAuth credentials from your Google Cloud project’s OAuth 2.0 Client ID. People then connect their own Gmail with one click.
+          </p>
+
+          <div className="setform__grid two">
+            <label className="field">
+              <span>Client ID</span>
+              <input
+                value={clientId}
+                autoComplete="off"
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="1029384756-abc123.apps.googleusercontent.com"
+              />
+            </label>
+            <label className="field">
+              <span>Client Secret</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                placeholder={configured ? "••••• (hidden)" : "GOCSPX-…"}
+              />
+            </label>
           </div>
-          <span
-            className={"connpill " + (metaConfigured ? "on" : "off")}
-            title={metaConfigured ? "Ready to connect WhatsApp numbers" : "Add an App ID and Secret to enable"}
-          >
-            <span className="connpill__dot" />
-            {metaConfigured ? "Connected app configured" : "Not configured"}
-          </span>
-        </div>
 
-        <p className="fieldhint">
-          These are the app-level credentials from your Meta app (App ID + Secret). People then connect their
-          WhatsApp Business number with one click via Meta Business Suite.
-        </p>
-
-        <div className="setform__grid two">
-          <label className="field">
-            <span>App ID</span>
-            <input
-              value={metaAppId}
-              autoComplete="off"
-              onChange={(e) => setMetaAppId(e.target.value)}
-              placeholder="1234567890123456"
-            />
-          </label>
-          <label className="field">
-            <span>App Secret</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={metaAppSecret}
-              onChange={(e) => setMetaAppSecret(e.target.value)}
-              placeholder={metaConfigured ? "••••• (hidden)" : "app secret"}
-            />
-          </label>
-        </div>
-
-        <div className="field">
-          <span>Redirect URI</span>
-          <div className="copyrow">
-            <input readOnly value={meta?.redirectUri ?? ""} onFocus={(e) => e.target.select()} />
-            <button className="btn-ghost" type="button" onClick={() => copy(meta?.redirectUri, "meta-redirect", "Redirect URI")}>
-              {copiedKey === "meta-redirect" ? "Copied" : "Copy"}
-            </button>
+          <div className="field">
+            <span>Redirect URI</span>
+            <div className="copyrow">
+              <input readOnly value={google?.redirectUri ?? ""} onFocus={(e) => e.target.select()} />
+              <button className="btn-ghost" type="button" onClick={() => copy(google?.redirectUri, "redirect", "Redirect URI")}>
+                {copiedKey === "redirect" ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <small className="fieldhint">Add this exact URL to your Google Cloud OAuth client’s Authorized redirect URIs.</small>
           </div>
-          <small className="fieldhint">Add this exact URL under Facebook Login → Valid OAuth Redirect URIs.</small>
-        </div>
 
-        <div className="setupcard__sub">
-          <b>Guided onboarding (optional)</b>
-          <small>
-            Paste your WhatsApp Embedded Signup configuration id to turn the popup into Meta’s guided number
-            onboarding. Leave blank to connect an existing number via standard login.
-          </small>
-        </div>
+          <div className="setform__sub">
+            <b>Real-time delivery (optional)</b>
+            <small>
+              Gmail is checked every minute by default. For near-instant delivery, create a Google Cloud Pub/Sub
+              topic, add the push endpoint below as its subscription, then paste the topic name here. Leave blank to
+              keep polling.
+            </small>
+          </div>
 
-        <div className="field">
-          <span>Embedded Signup config id</span>
-          <input
-            value={metaConfigId}
-            autoComplete="off"
-            onChange={(e) => setMetaConfigId(e.target.value)}
-            placeholder="Optional — e.g. 987654321098765"
-          />
-        </div>
+          <div className="field">
+            <span>Pub/Sub topic</span>
+            <input
+              value={pubsubTopic}
+              autoComplete="off"
+              onChange={(e) => setPubsubTopic(e.target.value)}
+              placeholder="projects/your-project/topics/gmail-push"
+            />
+          </div>
 
-        <div className="setform__foot">
-          <button className="btn-primary" type="button" onClick={saveMeta} disabled={update.isPending || integrations.isLoading}>
-            Save
-          </button>
-        </div>
-      </div>
-      </>
+          <div className="field">
+            <span>Push endpoint</span>
+            <div className="copyrow">
+              <input readOnly value={google?.pushEndpoint ?? ""} onFocus={(e) => e.target.select()} />
+              <button className="btn-ghost" type="button" onClick={() => copy(google?.pushEndpoint, "push", "Push endpoint")}>
+                {copiedKey === "push" ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <small className="fieldhint">Register this as your Pub/Sub push subscription’s endpoint URL.</small>
+          </div>
+        </SetupModal>
       )}
 
-      {sub === "storage" && (
-      <div className="setupcard">
-        <div className="setupcard__head">
-          <span className="setrow__ic" style={{ color: "#F6821F" }}>
-            <StorageIcon />
-          </span>
-          <div className="setrow__main">
-            <b>Cloud storage · Cloudflare R2</b>
-            <small>Where sent &amp; received media (photos, files, voice notes) is stored.</small>
+      {editing === "meta" && (
+        <SetupModal
+          title="Meta / WhatsApp"
+          onClose={close}
+          foot={
+            <>
+              <button className="btn-ghost" type="button" onClick={close}>
+                Cancel
+              </button>
+              <button className="btn-primary" type="button" onClick={saveMeta} disabled={update.isPending || integrations.isLoading}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <p className="fieldhint">
+            These are the app-level credentials from your Meta app (App ID + Secret). People then connect their
+            WhatsApp Business number with one click via Meta Business Suite.
+          </p>
+
+          <div className="setform__grid two">
+            <label className="field">
+              <span>App ID</span>
+              <input
+                value={metaAppId}
+                autoComplete="off"
+                onChange={(e) => setMetaAppId(e.target.value)}
+                placeholder="1234567890123456"
+              />
+            </label>
+            <label className="field">
+              <span>App Secret</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={metaAppSecret}
+                onChange={(e) => setMetaAppSecret(e.target.value)}
+                placeholder={metaConfigured ? "••••• (hidden)" : "app secret"}
+              />
+            </label>
           </div>
-          <span
-            className={"connpill " + (storageConfigured ? "on" : "off")}
-            title={storageConfigured ? "Media is stored durably in R2" : "Using local disk — files are lost on redeploy"}
-          >
-            <span className="connpill__dot" />
-            {storageConfigured ? "Storing in R2" : "Using ephemeral disk"}
-          </span>
-        </div>
 
-        <p className="fieldhint">
-          Without R2, uploaded media lives on the server’s local disk, which is wiped on every redeploy. Add a
-          Cloudflare R2 bucket and an <b>Object Read &amp; Write</b> API token to keep media permanently. Takes effect
-          within a few seconds of saving — no redeploy needed.
-        </p>
+          <div className="field">
+            <span>Redirect URI</span>
+            <div className="copyrow">
+              <input readOnly value={meta?.redirectUri ?? ""} onFocus={(e) => e.target.select()} />
+              <button className="btn-ghost" type="button" onClick={() => copy(meta?.redirectUri, "meta-redirect", "Redirect URI")}>
+                {copiedKey === "meta-redirect" ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <small className="fieldhint">Add this exact URL under Facebook Login → Valid OAuth Redirect URIs.</small>
+          </div>
 
-        <div className="setform__grid two">
-          <label className="field">
-            <span>Account ID</span>
+          <div className="setform__sub">
+            <b>Guided onboarding (optional)</b>
+            <small>
+              Paste your WhatsApp Embedded Signup configuration id to turn the popup into Meta’s guided number
+              onboarding. Leave blank to connect an existing number via standard login.
+            </small>
+          </div>
+
+          <div className="field">
+            <span>Embedded Signup config id</span>
             <input
-              value={r2AccountId}
+              value={metaConfigId}
               autoComplete="off"
-              onChange={(e) => setR2AccountId(e.target.value)}
-              placeholder="e.g. 8f2a…c1 (Cloudflare account id)"
+              onChange={(e) => setMetaConfigId(e.target.value)}
+              placeholder="Optional — e.g. 987654321098765"
             />
-          </label>
-          <label className="field">
-            <span>Bucket</span>
-            <input
-              value={r2Bucket}
-              autoComplete="off"
-              onChange={(e) => setR2Bucket(e.target.value)}
-              placeholder="e.g. nest-media"
-            />
-          </label>
-        </div>
-
-        <div className="setform__grid two">
-          <label className="field">
-            <span>Access Key ID</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={r2AccessKeyId}
-              onChange={(e) => setR2AccessKeyId(e.target.value)}
-              placeholder={storageConfigured ? "••••• (hidden)" : "R2 token access key id"}
-            />
-          </label>
-          <label className="field">
-            <span>Secret Access Key</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={r2SecretAccessKey}
-              onChange={(e) => setR2SecretAccessKey(e.target.value)}
-              placeholder={storageConfigured ? "••••• (hidden)" : "R2 token secret"}
-            />
-          </label>
-        </div>
-
-        <p className="fieldhint">
-          In Cloudflare → R2: create a bucket, then under <b>Manage R2 API Tokens</b> create a token with
-          Object Read &amp; Write permission. Copy the Account ID, Access Key ID and Secret here. Clear the bucket to
-          switch back to disk.
-        </p>
-
-        <div className="setform__foot">
-          <button className="btn-primary" type="button" onClick={saveStorage} disabled={update.isPending || integrations.isLoading}>
-            Save
-          </button>
-        </div>
-      </div>
+          </div>
+        </SetupModal>
       )}
 
-      {sub === "email" && (
-      <>
-      <div className="setupcard">
-        <div className="setupcard__head">
-          <span className="setrow__ic" style={{ color: "#5B8DEF" }}>
-            <MailIcon />
-          </span>
-          <div className="setrow__main">
-            <b>Email sending · Resend</b>
-            <small>Recommended for system email — sends over HTTPS, so it works even where SMTP is blocked.</small>
+      {editing === "storage" && (
+        <SetupModal
+          title="Cloudflare R2"
+          onClose={close}
+          foot={
+            <>
+              <button className="btn-ghost" type="button" onClick={close}>
+                Cancel
+              </button>
+              <button className="btn-primary" type="button" onClick={saveStorage} disabled={update.isPending || integrations.isLoading}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <p className="fieldhint">
+            Without R2, uploaded media lives on the server’s local disk, which is wiped on every redeploy. Add a
+            Cloudflare R2 bucket and an <b>Object Read &amp; Write</b> API token to keep media permanently. Takes effect
+            within a few seconds of saving — no redeploy needed.
+          </p>
+
+          <div className="setform__grid two">
+            <label className="field">
+              <span>Account ID</span>
+              <input
+                value={r2AccountId}
+                autoComplete="off"
+                onChange={(e) => setR2AccountId(e.target.value)}
+                placeholder="e.g. 8f2a…c1 (Cloudflare account id)"
+              />
+            </label>
+            <label className="field">
+              <span>Bucket</span>
+              <input
+                value={r2Bucket}
+                autoComplete="off"
+                onChange={(e) => setR2Bucket(e.target.value)}
+                placeholder="e.g. nest-media"
+              />
+            </label>
           </div>
-          <span
-            className={"connpill " + (resendConfigured ? "on" : "off")}
-            title={resendConfigured ? "Resend is configured" : "No Resend API key set"}
-          >
-            <span className="connpill__dot" />
-            {resendConfigured ? "Resend connected" : "Not connected"}
-          </span>
-        </div>
 
-        <p className="fieldhint">
-          Create an API key at <b>resend.com</b> → API Keys, and verify your sending domain (Domains). The from-address
-          must be on a verified domain. Takes effect immediately — no redeploy needed.
-        </p>
-
-        <div className="setform__grid two">
-          <label className="field">
-            <span>Resend API key</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={resendApiKey}
-              onChange={(e) => setResendApiKey(e.target.value)}
-              placeholder={resendConfigured ? "••••• (hidden)" : "re_…"}
-            />
-          </label>
-          <label className="field">
-            <span>From address</span>
-            <input
-              value={resendFrom}
-              autoComplete="off"
-              onChange={(e) => setResendFrom(e.target.value)}
-              placeholder="Nest Connect <noreply@yourdomain.com>"
-            />
-          </label>
-        </div>
-
-        <div className="setform__foot">
-          <button className="btn-ghost" type="button" onClick={testSmtp} disabled={smtpTesting || !emailConfigured}>
-            {smtpTesting ? "Sending…" : "Send test email"}
-          </button>
-          <button className="btn-primary" type="button" onClick={saveResend} disabled={update.isPending || integrations.isLoading}>
-            Save
-          </button>
-        </div>
-      </div>
-
-      <div className="setupcard">
-        <div className="setupcard__head">
-          <span className="setrow__ic" style={{ color: "#EA4335" }}>
-            <MailIcon />
-          </span>
-          <div className="setrow__main">
-            <b>Email sending · SMTP</b>
-            <small>Alternative to Resend — e.g. Gmail with an app password. Used only if Resend isn’t set.</small>
+          <div className="setform__grid two">
+            <label className="field">
+              <span>Access Key ID</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={r2AccessKeyId}
+                onChange={(e) => setR2AccessKeyId(e.target.value)}
+                placeholder={storageConfigured ? "••••• (hidden)" : "R2 token access key id"}
+              />
+            </label>
+            <label className="field">
+              <span>Secret Access Key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={r2SecretAccessKey}
+                onChange={(e) => setR2SecretAccessKey(e.target.value)}
+                placeholder={storageConfigured ? "••••• (hidden)" : "R2 token secret"}
+              />
+            </label>
           </div>
-          <span
-            className={"connpill " + (smtpConfigured ? "on" : "off")}
-            title={smtpConfigured ? "Transactional email is configured" : "No sender — invites show a link to copy instead"}
-          >
-            <span className="connpill__dot" />
-            {smtpConfigured ? "Email connected" : "Not connected"}
-          </span>
-        </div>
 
-        <p className="fieldhint">
-          Works with Gmail using an <b>app password</b> (Google Account → Security → 2-Step Verification → App
-          passwords). Host <b>smtp.gmail.com</b>, port <b>587</b>, username = your Gmail address. Takes effect
-          immediately — no redeploy needed.
-        </p>
+          <p className="fieldhint">
+            In Cloudflare → R2: create a bucket, then under <b>Manage R2 API Tokens</b> create a token with
+            Object Read &amp; Write permission. Copy the Account ID, Access Key ID and Secret here. Clear the bucket to
+            switch back to disk.
+          </p>
+        </SetupModal>
+      )}
 
-        <div className="setform__grid two">
-          <label className="field">
-            <span>SMTP host</span>
-            <input value={smtpHost} autoComplete="off" onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" />
-          </label>
-          <label className="field">
-            <span>Port</span>
-            <input value={smtpPort} autoComplete="off" inputMode="numeric" onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" />
-          </label>
-        </div>
-        <div className="setform__grid two">
-          <label className="field">
-            <span>Username (email)</span>
-            <input value={smtpUsername} autoComplete="off" onChange={(e) => setSmtpUsername(e.target.value)} placeholder="you@gmail.com" />
-          </label>
-          <label className="field">
-            <span>App password</span>
-            <input
-              type="password"
-              autoComplete="off"
-              value={smtpPassword}
-              onChange={(e) => setSmtpPassword(e.target.value)}
-              placeholder={smtpConfigured ? "••••• (hidden)" : "16-character app password"}
-            />
-          </label>
-        </div>
-        <div className="setform__grid two">
-          <label className="field">
-            <span>From address</span>
-            <input value={smtpFrom} autoComplete="off" onChange={(e) => setSmtpFrom(e.target.value)} placeholder="Defaults to the username" />
-          </label>
-        </div>
+      {editing === "resend" && (
+        <SetupModal
+          title="Email sending · Resend"
+          onClose={close}
+          foot={
+            <>
+              <button className="btn-ghost" type="button" onClick={testSmtp} disabled={smtpTesting || !emailConfigured}>
+                {smtpTesting ? "Sending…" : "Send test email"}
+              </button>
+              <button className="btn-primary" type="button" onClick={saveResend} disabled={update.isPending || integrations.isLoading}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <p className="fieldhint">
+            Create an API key at <b>resend.com</b> → API Keys, and verify your sending domain (Domains). The from-address
+            must be on a verified domain. Takes effect immediately — no redeploy needed.
+          </p>
 
-        <div className="setform__foot">
-          <button className="btn-ghost" type="button" onClick={testSmtp} disabled={smtpTesting || !emailConfigured}>
-            {smtpTesting ? "Sending…" : "Send test email"}
-          </button>
-          <button className="btn-primary" type="button" onClick={saveSmtp} disabled={update.isPending || integrations.isLoading}>
-            Save
-          </button>
-        </div>
-      </div>
-      </>
+          <div className="setform__grid two">
+            <label className="field">
+              <span>Resend API key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={resendApiKey}
+                onChange={(e) => setResendApiKey(e.target.value)}
+                placeholder={resendConfigured ? "••••• (hidden)" : "re_…"}
+              />
+            </label>
+            <label className="field">
+              <span>From address</span>
+              <input
+                value={resendFrom}
+                autoComplete="off"
+                onChange={(e) => setResendFrom(e.target.value)}
+                placeholder="Nest Connect <noreply@yourdomain.com>"
+              />
+            </label>
+          </div>
+        </SetupModal>
+      )}
+
+      {editing === "smtp" && (
+        <SetupModal
+          title="Email sending · SMTP"
+          onClose={close}
+          foot={
+            <>
+              <button className="btn-ghost" type="button" onClick={testSmtp} disabled={smtpTesting || !emailConfigured}>
+                {smtpTesting ? "Sending…" : "Send test email"}
+              </button>
+              <button className="btn-primary" type="button" onClick={saveSmtp} disabled={update.isPending || integrations.isLoading}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <p className="fieldhint">
+            Works with Gmail using an <b>app password</b> (Google Account → Security → 2-Step Verification → App
+            passwords). Host <b>smtp.gmail.com</b>, port <b>587</b>, username = your Gmail address. Takes effect
+            immediately — no redeploy needed.
+          </p>
+
+          <div className="setform__grid two">
+            <label className="field">
+              <span>SMTP host</span>
+              <input value={smtpHost} autoComplete="off" onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com" />
+            </label>
+            <label className="field">
+              <span>Port</span>
+              <input value={smtpPort} autoComplete="off" inputMode="numeric" onChange={(e) => setSmtpPort(e.target.value)} placeholder="587" />
+            </label>
+          </div>
+          <div className="setform__grid two">
+            <label className="field">
+              <span>Username (email)</span>
+              <input value={smtpUsername} autoComplete="off" onChange={(e) => setSmtpUsername(e.target.value)} placeholder="you@gmail.com" />
+            </label>
+            <label className="field">
+              <span>App password</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={smtpPassword}
+                onChange={(e) => setSmtpPassword(e.target.value)}
+                placeholder={smtpConfigured ? "••••• (hidden)" : "16-character app password"}
+              />
+            </label>
+          </div>
+          <div className="setform__grid two">
+            <label className="field">
+              <span>From address</span>
+              <input value={smtpFrom} autoComplete="off" onChange={(e) => setSmtpFrom(e.target.value)} placeholder="Defaults to the username" />
+            </label>
+          </div>
+        </SetupModal>
       )}
     </div>
   );
 }
+

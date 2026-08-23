@@ -1629,6 +1629,9 @@ input,textarea{font:inherit}
 .chcard__name small{font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chcard__foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:auto}
 .chcard__route{min-width:0;font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:capitalize}
+/* capitalize suits a routing strategy ("round_robin"); it mangles anything
+   written as a sentence or an address, so those opt out. */
+.chcard__route--plain{text-transform:none}
 .chcard--add{align-items:center;justify-content:center;flex-direction:row;gap:8px;border-style:dashed;color:var(--text-muted);background:transparent;font-weight:600;font-size:var(--fs-sm)}
 .chcard--add svg{width:16px;height:16px}
 .chcard--add:hover{color:var(--brand-strong);border-color:var(--brand);box-shadow:none}
@@ -1840,8 +1843,6 @@ input,textarea{font:inherit}
 .connect__creds .field input{background:var(--surface)}
 
 /* ---- Setup (integration credentials) ---- */
-.setupcard{border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface);padding:var(--sp-4);display:flex;flex-direction:column;gap:14px}
-.setupcard__head{display:flex;align-items:center;gap:12px}
 .copyrow{display:flex;gap:var(--sp-2);align-items:stretch}
 .copyrow input{flex:1;min-width:0;font-family:var(--mono);font-size:var(--fs-xs)}
 .copyrow .btn-ghost,.copyrow .btn-primary{flex:0 0 auto;white-space:nowrap}
@@ -1851,9 +1852,11 @@ input,textarea{font:inherit}
 .invitebox p{margin:0;font-size:var(--fs-sm);color:var(--text-muted)}
 .reroutecheck{display:flex;gap:var(--sp-2);align-items:flex-start;font-size:var(--fs-xs);line-height:1.4;color:var(--text-muted);cursor:pointer;margin:-2px 0 2px}
 .reroutecheck input{margin-top:2px;flex:0 0 auto}
-.setupcard__sub{display:flex;flex-direction:column;gap:3px;padding-top:var(--sp-3);margin-top:2px;border-top:1px solid var(--border)}
-.setupcard__sub b{font-size:var(--fs-sm)}
-.setupcard__sub small{color:var(--text-faint);line-height:1.5}
+/* A titled sub-section inside a credential sheet (e.g. "Real-time delivery
+   (optional)") — a hairline rule and a heading, not a nested card. */
+.setform__sub{display:flex;flex-direction:column;gap:3px;padding-top:var(--sp-3);margin-top:2px;border-top:1px solid var(--border)}
+.setform__sub b{font-size:var(--fs-sm)}
+.setform__sub small{color:var(--text-faint);line-height:1.5}
 
 /* ---- Customers (CRM) ---- */
 /* .custsearch / .custtags / .custtag(.more) / .routepill(.on) → Tailwind
