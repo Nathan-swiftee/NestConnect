@@ -6,8 +6,8 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
 import { View } from "react-native";
+import { haptics } from "../haptics";
 import { ReplyIcon } from "../icons";
 import { useTheme } from "../theme";
 
@@ -67,8 +67,11 @@ export function SwipeToReply({
   const dir = mine ? -1 : 1;
 
   function commit() {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Order matters: the reply is the point, the buzz is decoration. `haptics`
+    // can never throw, but keeping the real work first means it stays true even
+    // if that changes.
     onReply();
+    haptics.tap();
   }
 
   const pan = Gesture.Pan()

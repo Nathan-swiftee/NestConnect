@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useViews } from "@ding/client";
 import { ChevronRight, InboxIcon, SnoozeIcon, TeamGlyph, XIcon, channelColor, channelMeta } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
+import { haptics } from "../haptics";
 
 /**
  * The inbox switcher — the web sidebar, as a sheet.
@@ -34,6 +35,8 @@ export function ViewSwitcher({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   function pick(key: string) {
+    // Every row in here goes through this, so one call covers the whole sheet.
+    haptics.select();
     onSelect(key);
     onClose();
   }

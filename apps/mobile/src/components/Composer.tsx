@@ -8,6 +8,7 @@ import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
 import { VoiceRecorder, type RecordedVoice } from "./VoiceRecorder";
 import { useTheme } from "../theme";
+import { haptics } from "../haptics";
 import {
   AttachIcon,
   BoltIcon,
@@ -108,7 +109,12 @@ export function Composer({
 
   async function submit() {
     const text = body.trim();
-    if ((!text && !files.readyIds.length) || locked) return;
+    if ((!text && !files.readyIds.length) || locked) {
+      // Refused rather than ignored: outside the WhatsApp window there *is* a
+      // reason, and a dead button with no feedback reads as a broken one.
+      if (locked) haptics.warning();
+      return;
+    }
     setError(null);
     setEmojiOpen(false);
     // Clear optimistically — the message is already on screen via useSendMessage,
@@ -125,6 +131,7 @@ export function Composer({
         ...(replyTo && !internal ? { quotedMsgId: replyTo.id } : {}),
         ...(files.readyIds.length ? { attachmentIds: files.readyIds } : {}),
       });
+      haptics.success();
       files.clear();
       onClearReply?.();
     } catch (err) {
@@ -135,10 +142,14 @@ export function Composer({
       // leaves the box empty because it is genuinely going to be sent.
       const status = (err as { status?: number }).status;
       if (status && status >= 400 && status < 500) {
+        haptics.error();
         setBody(text);
         setError(err instanceof Error ? err.message : "Couldn't send — try again.");
         return;
       }
+      // Queued, not lost — which is a success from where the agent is sitting,
+      // so it feels like one.
+      haptics.success();
       await enqueue({
         conversationId: conv.id,
         body: text,
@@ -172,8 +183,10 @@ export function Composer({
         attachmentIds: [attachment.id],
         ...(replyTo ? { quotedMsgId: replyTo.id } : {}),
       });
+      haptics.success();
       onClearReply?.();
     } catch (err) {
+      haptics.error();
       setError(err instanceof Error ? err.message : "Couldn't send the voice note.");
     }
   }

@@ -2,6 +2,7 @@ import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckIcon } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
+import { haptics } from "../haptics";
 
 export interface SheetAction {
   key: string;
@@ -61,6 +62,9 @@ export function ActionSheet({
               <Pressable
                 key={a.key}
                 onPress={() => {
+                  // One place for every sheet action. Actions that finish
+                  // something add their own success buzz on top.
+                  haptics.select();
                   onClose();
                   a.onPress();
                 }}

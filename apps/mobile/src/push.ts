@@ -60,15 +60,25 @@ async function ensureAndroidChannels(): Promise<void> {
 }
 
 /**
- * iOS notification categories — the quick actions on a pulled-down banner.
+ * Notification categories — the quick actions on the banner.
  *
- * Registered with the same ids the server sends as `categoryId`. Only messages
- * get one: an assignment or a reminder has nothing to do from the banner except
- * open, and a button that only opens is a button that lies about being a
- * shortcut.
+ * Registered with the same ids the server sends as `categoryId`, on both
+ * platforms: iOS calls them categories and Android calls them actions, but
+ * expo-notifications takes the same declaration for each, and a reply field is
+ * `UNTextInputNotificationAction` on one and `RemoteInput` on the other.
+ *
+ * Only messages get a category. An assignment or a reminder has nothing to do
+ * from the banner except open, and a button that only opens is a button lying
+ * about being a shortcut.
+ *
+ * `opensAppToForeground: false` is what makes these worth having — the reply
+ * goes out and the banner closes without the app taking over the screen. The
+ * handler for that runs in a short-lived background process, which is why a
+ * quick reply is written to the durable send queue rather than posted directly
+ * (see notification-routing.ts).
  */
 async function ensureCategories(): Promise<void> {
-  if (Platform.OS !== "ios") return;
+  if (Platform.OS === "web") return;
   await Notifications.setNotificationCategoryAsync("message", [
     {
       identifier: "reply",

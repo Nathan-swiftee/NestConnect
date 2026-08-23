@@ -362,6 +362,34 @@ separate that from something people trust.
 - Badge count = unread conversations, computed server-side and sent with the
   payload; cleared when the inbox is read.
 
+### 5.2b Acting from the banner — the parts that are easy to get wrong
+The banner carries two buttons on a message: **Reply** (a text field) and **Mark
+read**. Both are declared once and registered on both platforms — iOS calls them
+categories and Android calls them actions, but expo-notifications takes the same
+declaration, and a reply field is `UNTextInputNotificationAction` on one and
+`RemoteInput` on the other. The server side is one field: `categoryId` on the
+push, sent only for the kinds that have something to act on.
+
+Three things this has to get right:
+
+- **Only a tap navigates.** The action identifier decides: `reply` and `read` do
+  their work and leave you where you were. Pushing the thread after a quick
+  reply would defeat the point of having replied from the banner.
+- **A quick reply goes through the durable send queue, not straight at the
+  API.** This runs in a short-lived background process, usually on a phone that
+  has just come out of a pocket. A direct call that fails there fails silently
+  and the reply is gone — typed, banner dismissed, never sent. Queued, it
+  survives the process being killed and goes out on the next flush.
+- **The session may not be loaded yet.** The API client reads its token
+  synchronously from a module cache that the app fills on start, and a
+  notification action can beat that — the OS wakes the process *for* the action.
+  Both handlers load the session first; it is idempotent and costs one keystore
+  read.
+
+The honest limit: on Android, a background action only runs while the app's
+process can be started to handle it. With the app force-stopped by the user,
+the OS will not deliver it to JS. Verify on device before promising it.
+
 ### 5.3 Android specifics
 - Notification **channels** are mandatory on 8+: one per class (`messages`,
   `mentions`, `assignments`, `reminders`) so a user can silence one without

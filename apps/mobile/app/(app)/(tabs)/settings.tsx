@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useLogout,
@@ -13,6 +13,7 @@ import { Avatar } from "../../../src/components/Avatar";
 import { BellIcon, LogoutIcon } from "../../../src/icons";
 import { usePushRegistration } from "../../../src/push";
 import { useTheme } from "../../../src/theme";
+import { EmptyState, QueryState } from "../../../src/components/States";
 
 /**
  * Settings on a phone: who you are, whether you're taking work, and what is
@@ -133,8 +134,12 @@ export default function Settings() {
       ) : null}
 
       <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 rounded-16 border">
-        {pushPrefs.isLoading || !p ? (
-          <ActivityIndicator color={c.brand} className="py-8" />
+        {pushPrefs.isLoading || pushPrefs.isError || !p ? (
+          <QueryState
+            query={pushPrefs}
+            what="your notification settings"
+            empty={<EmptyState title="No settings to show" />}
+          />
         ) : (
           <>
             <Toggle

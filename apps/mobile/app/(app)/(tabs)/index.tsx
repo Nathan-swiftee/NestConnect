@@ -15,7 +15,9 @@ import { Avatar } from "../../../src/components/Avatar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
 import { ViewSwitcher } from "../../../src/components/ViewSwitcher";
 import { PushGate, useDelayedPrompt } from "../../../src/components/PushGate";
+import { EmptyState, QueryState } from "../../../src/components/States";
 import { clearBadge, usePushRegistration } from "../../../src/push";
+import { haptics } from "../../../src/haptics";
 import { ChevronRight, SearchIcon } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 
@@ -155,7 +157,10 @@ export default function Inbox() {
           that says so, so it stays visible rather than appearing on press. */}
       <View className="flex-row items-center justify-between px-4 pb-2 pt-2">
         <Pressable
-          onPress={() => setSwitcher(true)}
+          onPress={() => {
+            haptics.select();
+            setSwitcher(true);
+          }}
           accessibilityRole="button"
           accessibilityLabel={`${viewTitle}. Change inbox`}
           hitSlop={8}
@@ -204,7 +209,16 @@ export default function Inbox() {
       {searching ? null : (
         <View className="flex-row gap-2 px-4 pb-2">
           {FILTERS.map((f) => (
-            <Chip key={f.key} label={f.label} active={f.key === filter} onPress={() => setFilter(f.key)} subtle />
+            <Chip
+              key={f.key}
+              label={f.label}
+              active={f.key === filter}
+              onPress={() => {
+                haptics.select();
+                setFilter(f.key);
+              }}
+              subtle
+            />
           ))}
         </View>
       )}
@@ -229,24 +243,31 @@ export default function Inbox() {
         }}
         ListFooterComponent={active.isFetchingNextPage ? <ActivityIndicator color={c.brand} className="py-4" /> : null}
         ListEmptyComponent={
-          active.isLoading ? (
-            <ActivityIndicator color={c.brand} className="py-12" />
-          ) : (
-            <View className="items-center px-8 py-16">
-              <Text className="text-lg font-medium text-fg">
-                {searching ? "No matches" : "Nothing here"}
-              </Text>
-              <Text className="mt-1 text-center text-md text-muted">
-                {searching
-                  ? `Nothing matching “${search}”.`
-                  : filter !== "all"
-                    ? "Nothing in this view matches that filter."
-                    : view === "grabs"
-                      ? "Nothing is waiting to be picked up."
-                      : "Nothing needs you right now — pull down to check for new messages."}
-              </Text>
-            </View>
-          )
+          // Error before empty, always: a failed request has no items either,
+          // and "Nothing here" over a dead connection tells someone their inbox
+          // is clear when in fact nobody knows.
+          <QueryState
+            query={active}
+            what={searching ? "search results" : "your inbox"}
+            empty={
+              searching ? (
+                <EmptyState icon="search" title="No matches" body={`Nothing matching “${search}”.`} />
+              ) : filter !== "all" ? (
+                <EmptyState
+                  title="Nothing matches that filter"
+                  body="This view has conversations, but none of them are in this state."
+                  action={{ label: "Show all", onPress: () => setFilter("all") }}
+                />
+              ) : view === "grabs" ? (
+                <EmptyState title="Nothing up for grabs" body="Everything in the shared inboxes has someone on it." />
+              ) : (
+                <EmptyState
+                  title="You're all clear"
+                  body="Nothing needs you right now — pull down to check for new messages."
+                />
+              )
+            }
+          />
         }
       />
 

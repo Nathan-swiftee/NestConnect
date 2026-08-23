@@ -41,10 +41,12 @@ const ANDROID_CHANNEL: Record<PushKind, string> = {
   test: "messages",
 };
 
-/** iOS notification categories — which quick actions the pulled-down banner
- *  offers. A message can be replied to; an assignment or a reminder can only be
- *  opened, so they get no category rather than a dead button. */
-const IOS_CATEGORY: Partial<Record<PushKind, string>> = {
+/** Notification categories — which quick actions the banner offers. The app
+ *  registers the same ids on both platforms (iOS categories, Android actions),
+ *  so this is not iOS-only. A message can be replied to or marked read; an
+ *  assignment or a reminder can only be opened, so they get no category rather
+ *  than a dead button. */
+const CATEGORY: Partial<Record<PushKind, string>> = {
   message: "message",
   team_message: "message",
   mention: "message",
@@ -221,7 +223,7 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
       },
       ...(badges.has(d.userId) ? { badge: badges.get(d.userId) } : {}),
       channelId: ANDROID_CHANNEL[req.kind],
-      ...(IOS_CATEGORY[req.kind] ? { categoryId: IOS_CATEGORY[req.kind] } : {}),
+      ...(CATEGORY[req.kind] ? { categoryId: CATEGORY[req.kind] } : {}),
       // One key per conversation: five messages in a chat become one entry in the
       // tray rather than five banners. `threadId` is the iOS half of the same
       // idea — collapse replaces, thread groups.

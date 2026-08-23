@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAnalytics } from "@ding/client";
 import type { AnalyticsRange } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { channelColor, channelMeta } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
+import { EmptyState, QueryState } from "../../../src/components/States";
 
 const RANGES: { key: AnalyticsRange; label: string }[] = [
   { key: "7d", label: "7 days" },
@@ -44,7 +45,8 @@ export default function Insights() {
   const insets = useSafeAreaInsets();
   const { c } = useTheme();
   const [range, setRange] = useState<AnalyticsRange>("30d");
-  const { data, isLoading } = useAnalytics({ range, channel: "all", teamId: "all", agentUserId: "all" });
+  const analytics = useAnalytics({ range, channel: "all", teamId: "all", agentUserId: "all" });
+  const { data, isLoading } = analytics;
 
   const k = data?.kpis;
 
@@ -78,8 +80,12 @@ export default function Insights() {
         })}
       </View>
 
-      {isLoading || !data || !k ? (
-        <ActivityIndicator color={c.brand} className="py-12" />
+      {isLoading || analytics.isError || !data || !k ? (
+        <QueryState
+          query={analytics}
+          what="your numbers"
+          empty={<EmptyState title="No activity in this range" body="Try a longer range." />}
+        />
       ) : (
         <>
           <View className="flex-row flex-wrap gap-2 px-4">

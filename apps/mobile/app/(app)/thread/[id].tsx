@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -38,8 +37,10 @@ import { MessageActions } from "../../../src/components/MessageActions";
 import { ReadLog, readSummary } from "../../../src/components/ReadLog";
 import { Reactions } from "../../../src/components/Reactions";
 import { SwipeToReply } from "../../../src/components/SwipeToReply";
+import { ErrorState, Loading } from "../../../src/components/States";
 import { Ticks } from "../../../src/components/Ticks";
 import { BackIcon, DetailsIcon, EyeIcon, MoreIcon, channelColor, channelMeta } from "../../../src/icons";
+import { haptics } from "../../../src/haptics";
 import { useTheme } from "../../../src/theme";
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
@@ -95,7 +96,21 @@ export default function Thread() {
   if (conv.isLoading) {
     return (
       <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
-        <ActivityIndicator color={c.brand} />
+        <Loading />
+      </View>
+    );
+  }
+  // A failed load and a conversation that genuinely isn't there are different
+  // things, and only one of them is worth trying again.
+  if (conv.isError) {
+    return (
+      <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1 justify-center">
+        <ErrorState error={conv.error} what="this conversation" onRetry={() => void conv.refetch()} />
+        <Pressable onPress={() => router.back()} className="items-center py-2 active:opacity-60">
+          <Text style={{ color: c.brand }} className="text-md font-medium">
+            Back to inbox
+          </Text>
+        </Pressable>
       </View>
     );
   }
@@ -103,6 +118,9 @@ export default function Thread() {
     return (
       <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1 items-center justify-center px-8">
         <Text className="text-lg font-medium text-fg">This conversation isn't available</Text>
+        <Text className="mt-1 text-center text-md text-muted">
+          It may have been merged into another thread, or you no longer have access to it.
+        </Text>
         <Pressable onPress={() => router.back()} className="mt-4 active:opacity-60">
           <Text style={{ color: c.brand }} className="text-lg font-medium">
             Back to inbox
@@ -152,7 +170,12 @@ export default function Thread() {
       key: "status",
       label: closed ? "Reopen conversation" : "Resolve conversation",
       detail: closed ? "Move it back into the inbox" : "Close it — a new message reopens it",
-      onPress: () => setStatus.mutate({ id: data.id, status: closed ? "open" : "closed" }),
+      onPress: () => {
+        // Resolving is the one action in here that finishes something, and the
+        // screen barely changes when it lands. The buzz is the confirmation.
+        haptics.success();
+        setStatus.mutate({ id: data.id, status: closed ? "open" : "closed" });
+      },
     },
     { key: "snooze", label: "Snooze…", detail: "Hide it until later", onPress: () => setSheet("snooze") },
     { key: "assign", label: "Assign…", onPress: () => setSheet("assign") },
@@ -189,7 +212,10 @@ export default function Thread() {
                 key={m.id}
                 message={m}
                 conv={data}
-                onLongPress={() => setActing(m)}
+                onLongPress={() => {
+                  haptics.tap();
+                  setActing(m);
+                }}
                 onReply={() => setReplyTo(m)}
                 onOpenReadLog={() => setReadLog(m)}
                 // Sending the same emoji again is how the server clears it.
@@ -253,9 +279,10 @@ export default function Thread() {
       <MessageActions
         message={acting}
         conv={data}
-        onReact={(emoji) =>
-          react.mutate({ conversationId: data.id, messageId: acting!.id, emoji })
-        }
+        onReact={(emoji) => {
+          haptics.select();
+          react.mutate({ conversationId: data.id, messageId: acting!.id, emoji });
+        }}
         onReply={() => setReplyTo(acting)}
         onReceipts={() => setReadLog(acting)}
         onClose={() => setActing(null)}

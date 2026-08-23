@@ -1,11 +1,12 @@
 import { useDeferredValue, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { relativeTime, useContact, useContacts } from "@ding/client";
 import type { Contact } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
+import { EmptyState, QueryState } from "../../../src/components/States";
 import { ChevronRight, SearchIcon, XIcon } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 
@@ -19,7 +20,8 @@ import { useTheme } from "../../../src/theme";
 export default function Customers() {
   const insets = useSafeAreaInsets();
   const { c } = useTheme();
-  const { data, isLoading } = useContacts();
+  const contacts = useContacts();
+  const { data } = contacts;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const q = useDeferredValue(query.trim().toLowerCase());
@@ -66,16 +68,17 @@ export default function Customers() {
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardDismissMode="on-drag"
         ListEmptyComponent={
-          isLoading ? (
-            <ActivityIndicator color={c.brand} className="py-12" />
-          ) : (
-            <View className="items-center px-8 py-16">
-              <Text className="text-lg font-medium text-fg">{q ? "No matches" : "No customers yet"}</Text>
-              <Text className="mt-1 text-center text-md text-muted">
-                {q ? `Nothing matching “${query.trim()}”.` : "Customers appear here as they message you."}
-              </Text>
-            </View>
-          )
+          <QueryState
+            query={contacts}
+            what="your customers"
+            empty={
+              q ? (
+                <EmptyState icon="search" title="No matches" body={`Nothing matching “${query.trim()}”.`} />
+              ) : (
+                <EmptyState title="No customers yet" body="Customers appear here as they message you." />
+              )
+            }
+          />
         }
       />
 
@@ -121,7 +124,8 @@ function Row({ contact, onPress }: { contact: Contact; onPress: () => void }) {
 function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const { c } = useTheme();
-  const { data, isLoading } = useContact(id);
+  const contact = useContact(id);
+  const { data, isLoading } = contact;
 
   if (!id) return null;
 
@@ -147,8 +151,8 @@ function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void
         </Pressable>
       </View>
 
-      {isLoading || !data ? (
-        <ActivityIndicator color={c.brand} className="py-12" />
+      {isLoading || contact.isError || !data ? (
+        <QueryState query={contact} what="this customer" empty={<EmptyState title="Not found" />} />
       ) : (
         <FlatList
           data={data.conversations}
