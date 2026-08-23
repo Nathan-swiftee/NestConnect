@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -25,7 +25,7 @@ import {
   useSetStatus,
   useSnooze,
 } from "@ding/client";
-import type { ConversationWithMessages, Message } from "@ding/schemas";
+import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { ActionSheet, type SheetAction } from "../../../src/components/ActionSheet";
 import { Attachments } from "../../../src/components/Attachments";
 import { Avatar } from "../../../src/components/Avatar";
@@ -85,6 +85,54 @@ export default function Thread() {
 
   useRealtime(id);
 
+  const data = conv.data;
+
+  /**
+   * Everything below exists to keep <Bubble> from re-rendering when nothing
+   * about its message changed.
+   *
+   * The thread is a plain ScrollView, so every loaded message is mounted — 300
+   * of them after a few taps of "load earlier". Before this, opening the
+   * details sheet re-rendered all 300, because each bubble took a fresh arrow
+   * function for every callback and the whole conversation object besides.
+   * Measured on a 6x-throttled CPU that was a 2.5-second frozen frame: not a
+   * slow list, a hung app.
+   *
+   * So: the derivations are memoised, the handlers take the message as an
+   * argument instead of closing over it, and the mutations they need are read
+   * through a ref rather than listed as dependencies — a react-query mutation
+   * object is new on every render and would defeat the memo from the inside.
+   */
+  const days = useMemo(() => (data ? groupMessagesByDay(data.messages) : []), [data]);
+  const byId = useMemo(() => {
+    const m = new Map<string, Message>();
+    for (const msg of data?.messages ?? []) m.set(msg.id, msg);
+    return m;
+  }, [data]);
+
+  const live = useRef({ id, react, retry });
+  live.current = { id, react, retry };
+
+  const onLongPress = useCallback((m: Message) => {
+    haptics.tap();
+    setActing(m);
+  }, []);
+  const onReply = useCallback((m: Message) => setReplyTo(m), []);
+  const onOpenReadLog = useCallback((m: Message) => setReadLog(m), []);
+  // Sending the same emoji again is how the server clears it.
+  const onRemoveReaction = useCallback((m: Message) => {
+    const { id: convId, react: r } = live.current;
+    r.mutate({
+      conversationId: convId,
+      messageId: m.id,
+      emoji: m.reactions?.find((x) => x.by === "user")?.emoji ?? "",
+    });
+  }, []);
+  const onRetry = useCallback((m: Message) => {
+    const { id: convId, retry: rt } = live.current;
+    rt.mutate({ conversationId: convId, messageId: m.id });
+  }, []);
+
   // Opening a thread is reading it — clear the badge and send the WhatsApp read
   // receipt, once per visit rather than on every re-render.
   useEffect(() => {
@@ -114,7 +162,7 @@ export default function Thread() {
       </View>
     );
   }
-  if (!conv.data) {
+  if (!data) {
     return (
       <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1 items-center justify-center px-8">
         <Text className="text-lg font-medium text-fg">This conversation isn't available</Text>
@@ -130,7 +178,6 @@ export default function Thread() {
     );
   }
 
-  const data = conv.data;
   const me = session.data?.user;
   const closed = data.status === "closed";
 
@@ -197,7 +244,7 @@ export default function Thread() {
         keyboardDismissMode="interactive"
       >
         <LoadOlder conv={data} />
-        {groupMessagesByDay(data.messages).map((group) => (
+        {days.map((group) => (
           // No gap here on purpose: spacing is per-bubble, so a run can close
           // up. A container gap would apply the same distance to every pair and
           // there would be no visible grouping at all.
@@ -211,26 +258,21 @@ export default function Thread() {
               <Bubble
                 key={m.id}
                 message={m}
-                conv={data}
-                onLongPress={() => {
-                  haptics.tap();
-                  setActing(m);
-                }}
-                onReply={() => setReplyTo(m)}
-                onOpenReadLog={() => setReadLog(m)}
-                // Sending the same emoji again is how the server clears it.
-                onRemoveReaction={() =>
-                  react.mutate({
-                    conversationId: data.id,
-                    messageId: m.id,
-                    emoji: m.reactions?.find((r) => r.by === "user")?.emoji ?? "",
-                  })
-                }
+                // Primitives and one resolved message rather than the whole
+                // conversation: `conv` is a new object on every refetch, and
+                // passing it would re-render every bubble for a change to one.
+                channel={data.channel}
+                contactName={data.contact.displayName}
+                quoted={m.quotedMsgId ? byId.get(m.quotedMsgId) : undefined}
                 meId={me?.id}
                 // Same speaker as the one above? Then it's part of a run, and
                 // loses the name and most of the gap above it.
                 continues={!!group.items[i - 1] && speakerKey(group.items[i - 1], data.channel) === speakerKey(m, data.channel)}
-                onRetry={() => retry.mutate({ conversationId: data.id, messageId: m.id })}
+                onLongPress={onLongPress}
+                onReply={onReply}
+                onOpenReadLog={onOpenReadLog}
+                onRemoveReaction={onRemoveReaction}
+                onRetry={onRetry}
               />
             ))}
           </View>
@@ -354,9 +396,20 @@ function LoadOlder({ conv }: { conv: ConversationWithMessages }) {
   );
 }
 
-function Bubble({
+/**
+ * One message.
+ *
+ * Memoised, and every prop is either a primitive or an object whose identity
+ * only changes when the thing it describes changes: a message, the one message
+ * it quotes, and handlers that take the message as an argument rather than
+ * capturing it. That is the whole reason the signature looks like this instead
+ * of taking `conv` and a set of closures — see the block above the render loop.
+ */
+const Bubble = memo(function Bubble({
   message,
-  conv,
+  channel,
+  contactName,
+  quoted,
   meId,
   continues,
   onRetry,
@@ -366,20 +419,20 @@ function Bubble({
   onOpenReadLog,
 }: {
   message: Message;
-  conv: ConversationWithMessages;
+  channel: ChannelType;
+  contactName: string;
+  /** The message this one quotes, already resolved by the parent. */
+  quoted?: Message;
   meId?: string;
   continues: boolean;
-  onRetry: () => void;
-  onLongPress: () => void;
-  onReply: () => void;
-  onRemoveReaction: () => void;
-  onOpenReadLog: () => void;
+  onRetry: (m: Message) => void;
+  onLongPress: (m: Message) => void;
+  onReply: (m: Message) => void;
+  onRemoveReaction: (m: Message) => void;
+  onOpenReadLog: (m: Message) => void;
 }) {
   const { c } = useTheme();
   const mine = message.direction === "out";
-  const quoted = message.quotedMsgId
-    ? conv.messages.find((m) => m.id === message.quotedMsgId)
-    : undefined;
 
   if (message.internal) {
     const byMe = message.authorUserId === meId;
@@ -406,21 +459,21 @@ function Bubble({
   // Swipe-to-reply only where a reply means something: WhatsApp threads a
   // quoted reply, email does not, and an internal note has no customer to
   // quote out to.
+  const canSwipe =
+    !message.internal && (channel === "whatsapp" || channel === "whatsapp_group");
+
   // Only an outbound email has tracked recipients.
   const read = mine && !message.internal ? readSummary(message) : null;
 
-  const canSwipe =
-    !message.internal && (conv.channel === "whatsapp" || conv.channel === "whatsapp_group");
-
   return (
-    <SwipeToReply onReply={onReply} mine={mine} enabled={canSwipe}>
+    <SwipeToReply onReply={() => onReply(message)} mine={mine} enabled={canSwipe}>
     <View
       testID={`msg-${message.id}`}
       className={mine ? "items-end" : "items-start"}
       style={{ marginTop: continues ? 2 : 10 }}
     >
       <Pressable
-        onLongPress={onLongPress}
+        onLongPress={() => onLongPress(message)}
         delayLongPress={280}
         accessibilityRole="button"
         accessibilityLabel={`Message: ${message.body || "attachment"}. Long press for actions.`}
@@ -432,16 +485,16 @@ function Bubble({
         className="rounded-16 border px-3.5 py-2.5"
       >
         {/* In a group, who spoke matters as much as what they said. */}
-        {!continues && !mine && conv.channel === "whatsapp_group" ? (
+        {!continues && !mine && channel === "whatsapp_group" ? (
           <Text style={{ color: c.group }} className="pb-0.5 text-2xs font-semibold">
-            {message.authorName ?? conv.contact.displayName}
+            {message.authorName ?? contactName}
           </Text>
         ) : null}
 
         {quoted ? (
           <View style={{ borderLeftColor: mine ? c.brandStrong : c.borderStrong, backgroundColor: c.surface2 }} className="mb-1.5 rounded-8 border-l-2 px-2.5 py-1.5">
             <Text numberOfLines={1} className="text-2xs font-medium text-muted">
-              {quoted.direction === "out" ? "You" : conv.contact.displayName}
+              {quoted.direction === "out" ? "You" : contactName}
             </Text>
             <Text numberOfLines={2} className="text-sm text-muted">
               {quoted.body || "Attachment"}
@@ -458,7 +511,7 @@ function Bubble({
               only honest answer to "did they see it". */}
           {read ? (
             <Pressable
-              onPress={onOpenReadLog}
+              onPress={() => onOpenReadLog(message)}
               accessibilityRole="button"
               accessibilityLabel={`Read receipts: ${read.seen} of ${read.total} opened`}
               hitSlop={6}
@@ -485,12 +538,12 @@ function Bubble({
       <Reactions
         reactions={message.reactions ?? []}
         mine={mine}
-        contactName={conv.contact.displayName}
-        onRemove={onRemoveReaction}
+        contactName={contactName}
+        onRemove={() => onRemoveReaction(message)}
       />
 
       {mine && message.status === "failed" ? (
-        <Pressable onPress={onRetry} accessibilityRole="button" className="px-1 pt-1 active:opacity-60">
+        <Pressable onPress={() => onRetry(message)} accessibilityRole="button" className="px-1 pt-1 active:opacity-60">
           <Text style={{ color: c.brand }} className="text-2xs font-medium">
             Retry{message.failureReason ? ` · ${message.failureReason}` : ""}
           </Text>
@@ -499,4 +552,4 @@ function Bubble({
     </View>
     </SwipeToReply>
   );
-}
+});

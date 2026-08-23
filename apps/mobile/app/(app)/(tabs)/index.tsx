@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,13 +38,22 @@ function matchesFilter(c: Conversation, f: FilterKey): boolean {
   return true;
 }
 
-function Row({ conv, onPress }: { conv: Conversation; onPress: () => void }) {
+/**
+ * One conversation in the list.
+ *
+ * Memoised because the parent re-renders on every keystroke in the search
+ * field, and FlatList recycling doesn't help with that: the rows are already
+ * mounted, they just get new props. `conv` only changes when that conversation
+ * changes, and `onPress` is stable, so a search that matches nothing still
+ * costs nothing to type.
+ */
+const Row = memo(function Row({ conv, onPress }: { conv: Conversation; onPress: (id: string) => void }) {
   const { c } = useTheme();
   const unread = conv.unreadCount > 0 || conv.unread;
   const overdue = !!conv.slaDueAt && new Date(conv.slaDueAt).getTime() < Date.now() && conv.status !== "closed";
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress(conv.id)}
       accessibilityRole="button"
       accessibilityLabel={`${conv.contact.displayName}. ${conv.preview ?? ""}`}
       className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
@@ -88,7 +97,7 @@ function Row({ conv, onPress }: { conv: Conversation; onPress: () => void }) {
       </View>
     </Pressable>
   );
-}
+});
 
 export default function Inbox() {
   const insets = useSafeAreaInsets();
@@ -143,6 +152,13 @@ export default function Inbox() {
   }, [views.data, view]);
   const viewTitle = current?.title ?? "Inbox";
   const viewCount = current?.count;
+
+  // Stable, so <Row>'s memo isn't defeated by a new arrow on every render.
+  // The row knows its own id, so the handler doesn't need to close over it.
+  const openThread = useCallback(
+    (id: string) => router.push({ pathname: "/(app)/thread/[id]", params: { id } }),
+    [],
+  );
 
   const active = searching ? found : list;
   const items = useMemo(
@@ -230,9 +246,7 @@ export default function Inbox() {
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <Row conv={item} onPress={() => router.push({ pathname: "/(app)/thread/[id]", params: { id: item.id } })} />
-        )}
+        renderItem={({ item }) => <Row conv={item} onPress={openThread} />}
         ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-[80px] h-px" />}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardDismissMode="on-drag"

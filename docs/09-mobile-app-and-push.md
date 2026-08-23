@@ -367,8 +367,44 @@ real devices and a nice touch must never take a send down with it.
   Native Web reports a `fontScale` of 1 regardless of browser text size, so the
   harness used everywhere else here cannot exercise it.
 
-**Still to do.** List performance on a long thread, Sentry, device E2E
-(Maestro), EAS Submit to TestFlight and Play internal testing.
+**Thread performance — the expensive half fixed, the other half measured and
+left alone.**
+
+Measured on a 300-message thread with the CPU throttled 6× (roughly mid-range
+Android; unthrottled desktop Chromium renders this at a flat 60fps and tells
+you nothing):
+
+| | before | after |
+|---|---|---|
+| Re-render on a parent state change (opening the details sheet) | **2,533 ms** | **300 ms** |
+| Same, on a default 40-message thread | — | 350 ms |
+| Scrolling, frames over 20 ms — 300 messages | 7.4% | 7.4% |
+| Scrolling, frames over 20 ms — 40 messages | — | 0.7% |
+
+The 2.5-second figure is not a slow list, it is a hung app, and it had nothing
+to do with the message count being large — it was that *every* bubble
+re-rendered on *any* state change, because each one took a fresh arrow function
+for each of five callbacks plus the whole conversation object. `<Bubble>` is
+memoised now, its props are primitives and one resolved quoted message, the
+handlers take the message as an argument instead of capturing it, and the
+mutations they need are read through a ref rather than listed as dependencies
+(a react-query mutation object is new on every render and would have defeated
+the memo from the inside). The tell that it worked: the cost is now the same at
+40 messages and at 300 — the modal's own present animation — so message count
+no longer enters into it. `<Row>` in the conversation list got the same
+treatment, because the parent re-renders on every keystroke in the search field.
+
+**Scrolling is unchanged, deliberately.** That 7.4% is DOM and layout cost, not
+React, and the only real fix is virtualising the thread — replacing its
+`ScrollView` with a `FlatList`. That is exactly the container the composer's
+anchoring and keyboard behaviour are built around, and it was fixed at some
+cost; it is not worth destabilising for a case that needs seven deliberate taps
+of "Load earlier messages" to reach. The default 40-message thread scrolls
+cleanly (0.7%). If long threads become a real complaint, virtualising is the
+answer and it should be done as its own change with the composer re-verified.
+
+**Still to do.** Sentry, device E2E (Maestro), EAS Submit to TestFlight and
+Play internal testing.
 
 ---
 
