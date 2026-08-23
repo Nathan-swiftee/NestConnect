@@ -144,22 +144,42 @@ so Metro cannot resolve the app's own imports and the build dies in *Bundle
 JavaScript* with no useful message. The server never hit this because its
 Dockerfile runs `pnpm build` explicitly.
 
-The fix is an `eas-build-post-install` hook — a script EAS runs after install —
-declared as:
+The first attempt at a fix was an `eas-build-post-install` hook running
+`pnpm --filter "@ding/client..." build`. It is still there and still useful, but
+it is not the fix: the build failed again with it in place, because whether EAS
+runs that hook in a pnpm monorepo is not something to bet a build on.
 
+**The actual fix is to stop needing a build step at all.** Metro can consume
+TypeScript directly, so both packages now advertise their source to it and their
+compiled output to everyone else:
+
+```jsonc
+"react-native": "./src/index.ts",        // Metro's resolverMainFields
+"exports": { ".": {
+  "react-native": "./src/index.ts",      // matched first — Metro takes source
+  "types":   "./dist/index.d.ts",
+  "import":  "./dist/index.js",          // Vite, for the web app
+  "require": "./dist/index.cjs"          // Node, for the API
+}}
 ```
-pnpm --filter "@ding/client..." build
-```
 
-The trailing `...` is doing real work: it means "this package *and its
-dependencies*", so `@ding/schemas` is built first without naming it. It is
-declared in **both** the root and `apps/mobile` package.json, because which one
-EAS reads in a monorepo depends on where it runs install; the second run is a
-~3-second no-op rebuild, which is cheaper than guessing wrong and burning a
-build.
+Condition order matters — `react-native` has to come first to win. Vite and Node
+never match that condition, so the web app and API are untouched and still
+resolve to `dist`.
 
-Anything else added to `packages/*` that compiles to `dist/` has to be reachable
-from that filter, or it will fail the same way.
+This was verified by reproducing the failure and the fix locally, since
+`expo export:embed` is pure JS bundling and needs no Android SDK:
+
+| | result |
+|---|---|
+| `dist/` built, old exports | exit 0 — masked the bug |
+| `dist/` removed, old exports | **exit 1** — reproduced the EAS failure |
+| `dist/` removed, source exports | exit 0 — 2501 modules bundled |
+
+The last row is the one that matters: it is the state an EAS builder is in.
+
+Any new `packages/*` the app imports needs the same two fields, or it will fail
+the same way.
 
 ### 3.1 Link the project — once
 

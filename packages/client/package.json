@@ -9,6 +9,7 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "react-native": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
@@ -35,5 +36,6 @@
     "socket.io-client": "^4.8.1",
     "tsup": "^8.3.5",
     "typescript": "^5.6.3"
-  }
+  },
+  "react-native": "./src/index.ts"
 }
