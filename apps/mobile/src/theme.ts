@@ -1,9 +1,31 @@
 import { useColorScheme } from "react-native";
+import { vars } from "nativewind";
 import { colors, duration, fontSize, fontWeight, letterSpacing, lineHeight, radius, space } from "@ding/design/tokens";
 import type { ThemeColors } from "@ding/design/tokens";
 
 export { duration, fontSize, fontWeight, letterSpacing, lineHeight, radius, space };
 export type { ThemeColors };
+
+/** tokens.ts is camelCased; the CSS variables the Tailwind config reads use the
+ *  CSS names. Converted once per scheme rather than on every render. */
+const kebab = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+export const paletteVars = {
+  light: vars(Object.fromEntries(Object.entries(colors.light).map(([k, v]) => [`--${kebab(k)}`, v]))),
+  dark: vars(Object.fromEntries(Object.entries(colors.dark).map(([k, v]) => [`--${kebab(k)}`, v]))),
+};
+
+/**
+ * The palette variables for the current scheme.
+ *
+ * The root layout publishes these once, and everything under it inherits — but
+ * a React Native `Modal` renders into its own view hierarchy, outside that root.
+ * Anything inside a Modal has to re-publish them or its colour utilities resolve
+ * against nothing and it renders one theme's text on the other theme's ground.
+ * Spread this onto the Modal's outermost child.
+ */
+export function useThemeVars() {
+  return paletteVars[useColorScheme() === "dark" ? "dark" : "light"];
+}
 
 /**
  * The palette for the scheme the phone is currently in.

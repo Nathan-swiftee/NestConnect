@@ -30,5 +30,5 @@ export default function Index() {
       </View>
     );
   }
-  return session.data?.user ? <Redirect href="/(app)/inbox" /> : <Redirect href="/sign-in" />;
+  return session.data?.user ? <Redirect href="/(app)/(tabs)" /> : <Redirect href="/sign-in" />;
 }

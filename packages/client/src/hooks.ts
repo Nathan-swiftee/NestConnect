@@ -28,6 +28,7 @@ import {
   type UpdateInboxInput,
   type UpdateIntegrationSettingsInput,
   type UpdateMyPreferencesInput,
+  type UpdatePushPreferencesInput,
   type UpdateMyProfileInput,
   type ChangePasswordInput,
   type UpdateTeamInput,
@@ -197,6 +198,21 @@ export function useUpdateMyPreferences() {
       qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["people"] });
     },
+  });
+}
+
+/** What this person wants to be pushed about. Only the native app surfaces
+ *  these, but they live here because they're the account's, not the device's. */
+export const usePushPreferences = () =>
+  useQuery({ queryKey: ["push-prefs"], queryFn: api.pushPreferences });
+
+export function useUpdatePushPreferences() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: UpdatePushPreferencesInput) => api.updatePushPreferences(input),
+    // The server returns the merged result, so seed the cache with it rather
+    // than refetching — a toggle that visibly waits feels broken.
+    onSuccess: (next) => qc.setQueryData(["push-prefs"], next),
   });
 }
 

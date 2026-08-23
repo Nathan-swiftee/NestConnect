@@ -1,7 +1,7 @@
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CheckIcon } from "../icons";
-import { useTheme } from "../theme";
+import { useTheme, useThemeVars } from "../theme";
 
 export interface SheetAction {
   key: string;
@@ -34,14 +34,18 @@ export function ActionSheet({
   onClose: () => void;
 }) {
   const { c } = useTheme();
+  const themeVars = useThemeVars();
   const insets = useSafeAreaInsets();
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {/* A Modal renders outside the root that publishes the palette, so the
+          scheme's variables are re-applied here — otherwise the colour utilities
+          inside resolve against nothing. */}
       <Pressable
         onPress={onClose}
         accessibilityLabel="Close"
-        style={{ backgroundColor: c.scrim }}
+        style={[themeVars, { backgroundColor: c.scrim }]}
         className="flex-1 justify-end"
       >
         {/* Stop taps inside the sheet from reaching the scrim behind it. */}

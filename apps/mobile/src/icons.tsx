@@ -1,3 +1,4 @@
+import type { ColorValue } from "react-native";
 import Svg, { Circle, Path, Rect, type SvgProps } from "react-native-svg";
 import type { ChannelType } from "@ding/schemas";
 import type { ThemeColors } from "./theme";
@@ -19,7 +20,9 @@ import type { ThemeColors } from "./theme";
 export interface IconProps {
   /** Width and height in px. The viewBox is square, so one number does both. */
   size?: number;
-  color?: string;
+  /** `ColorValue` rather than `string` because React Navigation hands its tab
+   *  icons one, and react-native-svg accepts it as a paint. */
+  color?: ColorValue;
 }
 
 type P = IconProps & Omit<SvgProps, "color">;
@@ -55,6 +58,30 @@ function solid(d: string, viewBox = "0 0 24 24") {
 /* ---- chrome ---- */
 
 export const InboxIcon = stroke("M3 12h5l2 3h4l2-3h5M4 6h16a1 1 0 0 1 1 1v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a1 1 0 0 1 1-1Z");
+export const ContactsIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
+    <Circle cx="9" cy="8" r="3.2" stroke={color} strokeWidth={1.8} />
+    <Path
+      d="M3.5 19a5.5 5.5 0 0 1 11 0M16 7.5a3 3 0 0 1 0 6M17.5 19a5 5 0 0 0-3-4.6"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+    />
+  </Svg>
+);
+export const InsightsIcon = stroke("M5 20V10M12 20V4M19 20v-7");
+export const SettingsIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
+    <Path
+      d="M10.32 3.2a1 1 0 0 1 .98-.8h1.4a1 1 0 0 1 .98.8l.26 1.36a6.9 6.9 0 0 1 1.7 1l1.32-.46a1 1 0 0 1 1.18.44l.7 1.21a1 1 0 0 1-.2 1.26l-1.06.92a6.95 6.95 0 0 1 0 1.96l1.06.92a1 1 0 0 1 .2 1.26l-.7 1.21a1 1 0 0 1-1.18.44l-1.32-.46a6.9 6.9 0 0 1-1.7 1l-.26 1.36a1 1 0 0 1-.98.8h-1.4a1 1 0 0 1-.98-.8l-.26-1.36a6.9 6.9 0 0 1-1.7-1l-1.32.46a1 1 0 0 1-1.18-.44l-.7-1.21a1 1 0 0 1 .2-1.26l1.06-.92a6.95 6.95 0 0 1 0-1.96l-1.06-.92a1 1 0 0 1-.2-1.26l.7-1.21a1 1 0 0 1 1.18-.44l1.32.46a6.9 6.9 0 0 1 1.7-1l.26-1.36Z"
+      stroke={color}
+      strokeWidth={1.7}
+      strokeLinejoin="round"
+    />
+    <Circle cx="12" cy="12" r="2.7" stroke={color} strokeWidth={1.7} />
+  </Svg>
+);
+export const BellIcon = stroke("M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0");
 export const SearchIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
     <Circle cx="11" cy="11" r="7" stroke={color} strokeWidth={1.9} />
@@ -220,4 +247,76 @@ export function channelMeta(type: ChannelType): ChannelMeta {
 /** The channel's colour for the current scheme, in one call. */
 export function channelColor(type: ChannelType, c: ThemeColors): string {
   return c[channelMeta(type).colorKey];
+}
+
+/* ---- team icon library ---- */
+
+/** The same keys Settings › Teams offers on the web, so a team picked there
+ *  shows the icon it was given here. Paths copied from the web's TEAM_ICONS. */
+const TEAM_PATHS: Record<string, string> = {
+  headset:
+    "M4 13v-1a8 8 0 0 1 16 0v1M4 13a2 2 0 0 1 2 2v2a2 2 0 0 1-4 0v-2a2 2 0 0 1 2-2Zm16 0a2 2 0 0 1 2 2v2a2 2 0 0 1-4 0v-2a2 2 0 0 1 2-2ZM20 17v1a3 3 0 0 1-3 3h-3",
+  cart: "M3 4h2l2.4 11.2a1 1 0 0 0 1 .8h8.2a1 1 0 0 0 1-.78L21 8H6",
+  truck: "M3 6h11v9H3zM14 9h4l3 3v3h-7z",
+  wrench: "M14.7 6.3a4 4 0 0 0-5.4 5.2L4 16.8 7.2 20l5.3-5.3a4 4 0 0 0 5.2-5.4l-2.4 2.4-2.3-.6-.6-2.3 2.9-2.3Z",
+  briefcase: "M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18",
+  userplus: "M3.5 20a5.5 5.5 0 0 1 11 0M18 8v6M15 11h6",
+  users: "M3.5 19a5.5 5.5 0 0 1 11 0M16 7.5a3 3 0 0 1 0 6M17.5 19a5 5 0 0 0-3-4.6",
+  star: "M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 17l-5.2 2.8 1-5.9L4.5 9.7l5.9-.9L12 3.5Z",
+  flag: "M5 21V4M5 5h11l-2 3 2 3H5",
+  bolt: "M13 2 4 14h7l-1 8 9-12h-7l1-8Z",
+  shield: "M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z",
+  heart: "M12 20S4 15 4 9.5A3.5 3.5 0 0 1 12 7a3.5 3.5 0 0 1 8 2.5C20 15 12 20 12 20Z",
+  tag: "M3 12V4h8l9 9-8 8-9-9Z",
+  box: "M12 3 4 7v10l8 4 8-4V7l-8-4ZM4 7l8 4 8-4M12 21V11",
+  calendar: "M3 9h18M8 3v4M16 3v4",
+  chart: "M4 20V4M4 20h16M9 16v-5M13 16V8M17 16v-3",
+  globe: "M3 12h18M12 3c2.6 2.6 2.6 15.4 0 18M12 3c-2.6 2.6-2.6 15.4 0 18",
+  phone: "M6 3h3l1.5 5-2 1.5a12 12 0 0 0 5 5l1.5-2 5 1.5V18a2 2 0 0 1-2.2 2A16 16 0 0 1 4 6.2 2 2 0 0 1 6 3Z",
+};
+
+/** Extra shapes a few team icons need beyond their single path (the circles and
+ *  rectangles the web draws alongside). */
+function TeamExtras({ icon, color }: { icon: string; color: ColorValue }) {
+  switch (icon) {
+    case "cart":
+      return (
+        <>
+          <Circle cx="9" cy="20" r="1.4" stroke={color} strokeWidth={1.8} />
+          <Circle cx="18" cy="20" r="1.4" stroke={color} strokeWidth={1.8} />
+        </>
+      );
+    case "truck":
+      return (
+        <>
+          <Circle cx="7" cy="18" r="1.6" stroke={color} strokeWidth={1.8} />
+          <Circle cx="17.5" cy="18" r="1.6" stroke={color} strokeWidth={1.8} />
+        </>
+      );
+    case "briefcase":
+      return <Rect x="3" y="7" width="18" height="13" rx="2" stroke={color} strokeWidth={1.8} />;
+    case "userplus":
+      return <Circle cx="9" cy="8" r="3.4" stroke={color} strokeWidth={1.8} />;
+    case "users":
+      return <Circle cx="9" cy="8" r="3.2" stroke={color} strokeWidth={1.8} />;
+    case "tag":
+      return <Circle cx="7.5" cy="7.5" r="1.3" stroke={color} strokeWidth={1.8} />;
+    case "calendar":
+      return <Rect x="3" y="5" width="18" height="16" rx="2" stroke={color} strokeWidth={1.8} />;
+    case "globe":
+      return <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth={1.8} />;
+    default:
+      return null;
+  }
+}
+
+/** A team's chosen icon, falling back to the generic team glyph. */
+export function TeamGlyph({ icon, size = 20, color = "currentColor" }: IconProps & { icon?: string | null }) {
+  const key = icon && TEAM_PATHS[icon] ? icon : "users";
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <TeamExtras icon={key} color={color} />
+      <Path d={TEAM_PATHS[key]} stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
 }

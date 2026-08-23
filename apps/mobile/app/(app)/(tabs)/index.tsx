@@ -5,36 +5,22 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   listTime,
   useConversations,
-  useLogout,
   useRefresh,
   useSearchConversations,
   useSession,
   useViews,
 } from "@ding/client";
 import type { Conversation } from "@ding/schemas";
-import { Avatar } from "../../src/components/Avatar";
-import { ChannelDot } from "../../src/components/ChannelDot";
-import { LogoutIcon, SearchIcon } from "../../src/icons";
-import { useTheme } from "../../src/theme";
-
-/**
- * The views a phone opens on, and the order they're in.
- *
- * These keys are the server's, not new ones — the web sidebar offers the same
- * set plus mentions, labels and per-team inboxes. A phone gets the three an
- * agent actually works a shift from: everything waiting on me, the unclaimed
- * queue, and mine alone. `inbound` leads because it's the one that answers
- * "what needs me right now".
- */
-const VIEWS = [
-  { key: "inbound", label: "Inbound" },
-  { key: "grabs", label: "Queue" },
-  { key: "mine", label: "Mine" },
-  { key: "snoozed", label: "Later" },
-] as const;
+import { Avatar } from "../../../src/components/Avatar";
+import { ChannelDot } from "../../../src/components/ChannelDot";
+import { ViewSwitcher } from "../../../src/components/ViewSwitcher";
+import { ChevronRight, SearchIcon } from "../../../src/icons";
+import { useTheme } from "../../../src/theme";
 
 /** Narrowing applied on top of the chosen view, client-side — the same three
- *  the web offers, and the ones you actually reach for mid-shift. */
+ *  the web offers, and the ones you actually reach for mid-shift. These are
+ *  filters, not navigation: they narrow whatever view you're in. The views
+ *  themselves live in the switcher, reached from the title. */
 const FILTERS = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
@@ -104,6 +90,7 @@ export default function Inbox() {
   const insets = useSafeAreaInsets();
   const { c } = useTheme();
   const [view, setView] = useState<string>("inbound");
+  const [switcher, setSwitcher] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
   // Keep typing responsive: the request follows the keystrokes rather than
@@ -116,12 +103,21 @@ export default function Inbox() {
   const list = useConversations(view);
   const found = useSearchConversations(search, searching);
   const { refresh, refreshing } = useRefresh();
-  const logout = useLogout();
 
-  const counts = useMemo(() => {
-    const all = [...(views.data?.my ?? []), ...(views.data?.shared.teams ?? []), ...(views.data?.shared.inboxes ?? [])];
-    return Object.fromEntries(all.map((v) => [v.key, v.count]));
-  }, [views.data]);
+  // The chosen view's own name and count, for the header. Looked up across every
+  // section because the switcher can select a team, a channel or a label — not
+  // just one of "my" views.
+  const current = useMemo(() => {
+    const all = [
+      ...(views.data?.my ?? []),
+      ...(views.data?.shared.teams ?? []),
+      ...(views.data?.shared.inboxes ?? []),
+      ...(views.data?.shared.labels ?? []),
+    ];
+    return all.find((v) => v.key === view);
+  }, [views.data, view]);
+  const viewTitle = current?.title ?? "Inbox";
+  const viewCount = current?.count;
 
   const active = searching ? found : list;
   const items = useMemo(
@@ -131,20 +127,31 @@ export default function Inbox() {
 
   return (
     <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1">
+      {/* The title IS the inbox switcher — tap it to change view, the way Front
+          does and the way the web's sidebar works. The chevron is the only cue
+          that says so, so it stays visible rather than appearing on press. */}
       <View className="flex-row items-center justify-between px-4 pb-2 pt-2">
-        <View>
-          <Text className="text-2xl font-semibold tracking-tight text-fg">Inbox</Text>
-          <Text className="text-sm text-muted">{session.data?.user?.name ?? ""}</Text>
-        </View>
         <Pressable
-          onPress={() => logout.mutate()}
+          onPress={() => setSwitcher(true)}
           accessibilityRole="button"
-          accessibilityLabel="Sign out"
+          accessibilityLabel={`${viewTitle}. Change inbox`}
           hitSlop={8}
-          style={{ backgroundColor: c.surface2 }}
-          className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
+          className="flex-1 flex-row items-center gap-1.5 active:opacity-60"
         >
-          <LogoutIcon size={19} color={c.textMuted} />
+          <View className="flex-shrink">
+            <View className="flex-row items-center gap-1.5">
+              <Text numberOfLines={1} className="text-2xl font-semibold tracking-tight text-fg">
+                {viewTitle}
+              </Text>
+              <View style={{ transform: [{ rotate: "90deg" }] }}>
+                <ChevronRight size={16} color={c.textMuted} />
+              </View>
+            </View>
+            <Text numberOfLines={1} className="text-sm text-muted">
+              {viewCount != null ? `${viewCount} open · ` : ""}
+              {session.data?.user?.name ?? ""}
+            </Text>
+          </View>
         </Pressable>
       </View>
 
@@ -172,21 +179,11 @@ export default function Inbox() {
       </View>
 
       {searching ? null : (
-        <>
-          <View className="flex-row gap-2 px-4 pb-2">
-            {VIEWS.map((v) => {
-              const on = v.key === view;
-              return (
-                <Chip key={v.key} label={v.label} count={counts[v.key]} active={on} onPress={() => setView(v.key)} />
-              );
-            })}
-          </View>
-          <View className="flex-row gap-2 px-4 pb-2">
-            {FILTERS.map((f) => (
-              <Chip key={f.key} label={f.label} active={f.key === filter} onPress={() => setFilter(f.key)} subtle />
-            ))}
-          </View>
-        </>
+        <View className="flex-row gap-2 px-4 pb-2">
+          {FILTERS.map((f) => (
+            <Chip key={f.key} label={f.label} active={f.key === filter} onPress={() => setFilter(f.key)} subtle />
+          ))}
+        </View>
       )}
 
       <FlatList
@@ -228,6 +225,14 @@ export default function Inbox() {
             </View>
           )
         }
+      />
+
+      <ViewSwitcher
+        visible={switcher}
+        view={view}
+        onSelect={setView}
+        onOpenConversation={(id) => router.push({ pathname: "/(app)/thread/[id]", params: { id } })}
+        onClose={() => setSwitcher(false)}
       />
     </View>
   );

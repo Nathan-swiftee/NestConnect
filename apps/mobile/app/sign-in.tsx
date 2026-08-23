@@ -42,7 +42,7 @@ export default function SignIn() {
     if (result.token) await saveSession(result.token);
     qc.setQueryData(["session"], result);
     await qc.invalidateQueries();
-    router.replace("/(app)/inbox");
+    router.replace("/(app)/(tabs)");
   }
 
   async function submitPassword() {
