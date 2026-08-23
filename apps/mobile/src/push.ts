@@ -118,6 +118,12 @@ export function usePushRegistration(signedIn: boolean) {
   const [status, setStatus] = useState<Notifications.PermissionStatus | null>(null);
   const registered = useRef(false);
 
+  // Push needs a real device with a real APNs/FCM registration. A simulator has
+  // none, and the web build has no native notification stack at all — asking
+  // there would put a permission sheet in front of someone for something that
+  // cannot work, which is worse than staying quiet.
+  const supported = Device.isDevice && Platform.OS !== "web";
+
   /** Register (or refresh) this device with the server. */
   const register = useCallback(async () => {
     const token = await getToken();
@@ -178,7 +184,7 @@ export function usePushRegistration(signedIn: boolean) {
   // granted → make sure we're registered (tokens rotate); anything else →
   // make sure we're not, because the OS has stopped delivering.
   useEffect(() => {
-    if (!signedIn) return;
+    if (!signedIn || !supported) return;
     let cancelled = false;
 
     const sync = async () => {
@@ -202,9 +208,17 @@ export function usePushRegistration(signedIn: boolean) {
       cancelled = true;
       sub.remove();
     };
-  }, [signedIn, register, unregister]);
+  }, [signedIn, supported, register, unregister]);
 
-  return { status, granted: status === "granted", requestPermission, hasAsked, unregister };
+  return {
+    /** False on web and simulators — nothing here will work, so ask nothing. */
+    supported,
+    status,
+    granted: status === "granted",
+    requestPermission,
+    hasAsked,
+    unregister,
+  };
 }
 
 /** Clear the app-icon badge — called when the inbox is read. */

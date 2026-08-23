@@ -297,10 +297,39 @@ and the APNs `.p8` still have to be uploaded to EAS, and the simulator does not
 receive real pushes.
 
 ### Phase 4 — Quality and release
-Quick reply from the notification (iOS `UNTextInputNotificationAction`, Android
-`RemoteInput`), camera and library pickers, haptics, offline behaviour, empty and
-error states, accessibility (Dynamic Type, VoiceOver/TalkBack labels), list
-performance on a long thread, Sentry, device E2E (Maestro), EAS Submit to
+
+**Thread gestures — done.** Three things a messaging app is judged on, built to
+behave the way the app people compare us to behaves:
+
+- **Reaction pills, WhatsApp-style.** The pill overlaps the bubble's bottom
+  edge rather than sitting inside it, hangs off the *outer* corner so it mirrors
+  with the thread, and is filled with the neutral chip grey and ringed in the
+  thread background — so where it crosses the bubble the ring separates them,
+  and where it hangs below, the ring disappears and the pill reads as cut out of
+  the bubble. Tapping our own reaction clears it, which is what the server
+  already does with a repeated emoji.
+- **Swipe to reply.** Pan on the UI thread through Reanimated, claimed only once
+  the finger is decisively horizontal so a diagonal flick still scrolls. Inbound
+  swipes right, outbound left. The commit threshold sits at ~80% of the point
+  where the arrow reaches full size, not at it: people release *as* they finish
+  a pull, and a threshold at full size fires on the frame they're already easing
+  back from. Off on email and internal notes, where there's nothing to quote.
+- **Read receipts on email.** A sent email carries the open count in its meta
+  row, and tapping it opens the per-recipient log. Marked with an eye, not a
+  double tick — email has no delivery receipt, so borrowing WhatsApp's glyph
+  would claim something the channel can't tell us. Where a message has tracked
+  recipients that count *replaces* the ticks rather than sitting beside them:
+  one status marker, and the measured one.
+
+Reactions are offered on every channel, matching the web. On WhatsApp the emoji
+is delivered to the customer; anywhere else the server stores it and skips
+dispatch, so the sheet says out loud that only the team will see it.
+
+**Still to do.** Quick reply from the notification (iOS
+`UNTextInputNotificationAction`, Android `RemoteInput` — the categories are
+registered but the actions do nothing yet), haptics through the rest of the app,
+empty and error states, accessibility (Dynamic Type, VoiceOver/TalkBack labels),
+list performance on a long thread, Sentry, device E2E (Maestro), EAS Submit to
 TestFlight and Play internal testing.
 
 ---

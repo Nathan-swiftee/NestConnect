@@ -159,6 +159,7 @@ export function makeSeed() {
       reactions?: Message["reactions"];
       quotedMsgId?: string;
       bodyHtml?: string;
+      email?: Message["email"];
     } = {},
   ): Message => ({
     id: `msg_${++mid}`,
@@ -175,6 +176,7 @@ export function makeSeed() {
     attachments: opts.attachments ?? [],
     reactions: opts.reactions ?? [],
     quotedMsgId: opts.quotedMsgId,
+    email: opts.email,
     createdAt: opts.at ?? mins(minsAgo),
   });
 
@@ -185,7 +187,9 @@ export function makeSeed() {
     msg("conv_ivy", 2, "out", "user", "Nathan A", "Morning Priya 👋 Yes — you're booked in. I'll confirm the slot shortly.", 0, { at: dayAt(2, 9, 8), reactions: [{ emoji: "👍", by: "contact" }] }),
     msg("conv_ivy", 3, "in", "contact", "Priya (The Ivy House)", "Amazing. One change — could we push it to 5pm? We've got a lunch service running.", 0, { at: dayAt(1, 13, 20) }),
     msg("conv_ivy", 4, "out", "user", "James", "@nathan can the Bristol route take a 5pm slot for the Ivy House? Lunch clash their end.", 0, { internal: true, at: dayAt(1, 13, 24) }),
-    msg("conv_ivy", 5, "in", "contact", "James · Swiftee", "Yep, 5pm works — I'll re-slot the route now. 👍", 35),
+    // One reaction on each side of the thread, so the pill's mirroring is
+    // visible in the demo: theirs on our message above, ours on theirs here.
+    msg("conv_ivy", 5, "in", "contact", "James · Swiftee", "Yep, 5pm works — I'll re-slot the route now. 👍", 35, { reactions: [{ emoji: "❤️", by: "user" }] }),
     msg("conv_ivy", 6, "in", "contact", "Priya (The Ivy House)", "Here's the pallet we need matched 👇", 30, { messageType: "image", attachments: DEMO_IMAGE_ATT }),
     msg("conv_ivy", 7, "in", "contact", "Priya (The Ivy House)", "", 29, { messageType: "voice", attachments: DEMO_VOICE_ATT }),
     msg("conv_ivy", 8, "in", "contact", "Priya (The Ivy House)", "And the PO for your records", 28, { messageType: "document", attachments: DEMO_DOC_ATT }),
@@ -250,7 +254,19 @@ export function makeSeed() {
       slaDueAt: null, lastActivityAt: mins(18), seq: 2, preview: "Re: Weekly stem order — confirmed for Thursday AM",
       messages: [
         msg("conv_bloom", 1, "in", "contact", "Bloom Florists", "Bloom Florists — Weekly Purchase Order (PO #BF-2288). Here's this week's order — same delivery window as usual please.", 40, { bodyHtml: bloomEmailHtml }),
-        msg("conv_bloom", 2, "out", "user", "Nathan A", "Got it, thank you! Confirmed for Thursday AM. I'll send tracking once it's out.", 18, { bodyHtml: "<p>Got it, thank you! <b>Confirmed for Thursday AM.</b></p><p>I'll send tracking once it's out. 🌸</p><p>— Nathan, Swiftee</p>" }),
+        msg("conv_bloom", 2, "out", "user", "Nathan A", "Got it, thank you! Confirmed for Thursday AM. I'll send tracking once it's out.", 18, {
+          bodyHtml: "<p>Got it, thank you! <b>Confirmed for Thursday AM.</b></p><p>I'll send tracking once it's out. 🌸</p><p>— Nathan, Swiftee</p>",
+          // Two tracked recipients, one of whom has opened it: the case per-recipient
+          // tracking exists for — "did the person who needed to see it see it, or
+          // only their colleague".
+          email: {
+            subject: "Re: Weekly Purchase Order (PO #BF-2288)",
+            recipients: [
+              { address: "hello@bloomflorists.co.uk", kind: "to", openedAt: mins(12) },
+              { address: "accounts@bloomflorists.co.uk", kind: "cc", openedAt: null },
+            ],
+          },
+        }),
       ],
     },
     {

@@ -116,7 +116,7 @@ export default function Settings() {
         </Text>
       </View>
 
-      {push.status && !push.granted ? (
+      {push.supported && push.status && !push.granted ? (
         <Pressable
           onPress={() => void push.requestPermission()}
           accessibilityRole="button"

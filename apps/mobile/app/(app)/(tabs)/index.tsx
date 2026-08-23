@@ -113,7 +113,7 @@ export default function Inbox() {
   const promptDue = useDelayedPrompt(!list.isLoading && !!session.data?.user);
 
   useEffect(() => {
-    if (!promptDue || askedThisRun || push.granted || push.status === null) return;
+    if (!push.supported || !promptDue || askedThisRun || push.granted || push.status === null) return;
     // Only ever put our own sheet up once per install; after that the answer
     // lives in OS settings, where nagging can't reach it anyway.
     void push.hasAsked().then((asked) => {

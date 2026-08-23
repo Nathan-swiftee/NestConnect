@@ -177,6 +177,21 @@ export const CheckCircleIcon = ({ size = 22, color = "currentColor", ...rest }: 
   </Svg>
 );
 export const ReopenIcon = stroke("M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5", 1.9);
+/** Read receipts, on email. Deliberately *not* a double tick: email has no
+ *  delivery receipt, so borrowing WhatsApp's glyph would claim something the
+ *  channel can't tell us. The web marks the same action with the same eye. */
+export const EyeIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
+    <Path
+      d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"
+      stroke={color}
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Circle cx="12" cy="12" r="3" stroke={color} strokeWidth={1.8} />
+  </Svg>
+);
 export const AlertIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" {...rest}>
     <Circle cx="12" cy="12" r="9" stroke={color} strokeWidth={1.9} />

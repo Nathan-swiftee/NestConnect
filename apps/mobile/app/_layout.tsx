@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from "react-native";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { colors } from "@ding/design/tokens";
 import { useColorScheme } from "react-native";
@@ -41,33 +42,37 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      {/* The palette for this scheme, published as CSS variables to everything
-          below. Every colour utility (`text-fg`, `bg-surface`, …) resolves
-          through these, so switching the phone to dark switches the whole app
-          rather than only the places that read useTheme() directly. */}
-      <View style={paletteVars[scheme]} className="flex-1">
-        <QueryClientProvider client={queryClient}>
-          <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-          {ready ? (
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                contentStyle: { backgroundColor: c.bg },
-                animation: "slide_from_right",
-              }}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
-              <Stack.Screen name="(app)" />
-            </Stack>
-          ) : (
-            <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
-              <ActivityIndicator color={c.brand} />
-            </View>
-          )}
-        </QueryClientProvider>
-      </View>
-    </SafeAreaProvider>
+    // Gesture handler needs its own root above everything, or pan gestures
+    // (swipe-to-reply) silently never fire on Android.
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        {/* The palette for this scheme, published as CSS variables to everything
+            below. Every colour utility (`text-fg`, `bg-surface`, …) resolves
+            through these, so switching the phone to dark switches the whole app
+            rather than only the places that read useTheme() directly. */}
+        <View style={paletteVars[scheme]} className="flex-1">
+          <QueryClientProvider client={queryClient}>
+            <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+            {ready ? (
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  contentStyle: { backgroundColor: c.bg },
+                  animation: "slide_from_right",
+                }}
+              >
+                <Stack.Screen name="index" />
+                <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
+                <Stack.Screen name="(app)" />
+              </Stack>
+            ) : (
+              <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
+                <ActivityIndicator color={c.brand} />
+              </View>
+            )}
+          </QueryClientProvider>
+        </View>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

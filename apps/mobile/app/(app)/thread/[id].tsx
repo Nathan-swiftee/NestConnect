@@ -35,8 +35,11 @@ import { useSendQueue } from "../../../src/send-queue";
 import { DetailsPanel } from "../../../src/components/DetailsPanel";
 import { QueuedBubble } from "../../../src/components/QueuedBubble";
 import { MessageActions } from "../../../src/components/MessageActions";
+import { ReadLog, readSummary } from "../../../src/components/ReadLog";
+import { Reactions } from "../../../src/components/Reactions";
+import { SwipeToReply } from "../../../src/components/SwipeToReply";
 import { Ticks } from "../../../src/components/Ticks";
-import { BackIcon, DetailsIcon, MoreIcon, channelColor, channelMeta } from "../../../src/icons";
+import { BackIcon, DetailsIcon, EyeIcon, MoreIcon, channelColor, channelMeta } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
@@ -75,6 +78,7 @@ export default function Thread() {
   // composer is quoting. Separate: acting on a message doesn't quote it.
   const [acting, setActing] = useState<Message | null>(null);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [readLog, setReadLog] = useState<Message | null>(null);
   const scroller = useRef<ScrollView>(null);
   const marked = useRef(false);
 
@@ -186,6 +190,16 @@ export default function Thread() {
                 message={m}
                 conv={data}
                 onLongPress={() => setActing(m)}
+                onReply={() => setReplyTo(m)}
+                onOpenReadLog={() => setReadLog(m)}
+                // Sending the same emoji again is how the server clears it.
+                onRemoveReaction={() =>
+                  react.mutate({
+                    conversationId: data.id,
+                    messageId: m.id,
+                    emoji: m.reactions?.find((r) => r.by === "user")?.emoji ?? "",
+                  })
+                }
                 meId={me?.id}
                 // Same speaker as the one above? Then it's part of a run, and
                 // loses the name and most of the gap above it.
@@ -235,6 +249,7 @@ export default function Thread() {
         onClose={() => setSheet(null)}
         onOpenConversation={(id) => router.replace({ pathname: "/(app)/thread/[id]", params: { id } })}
       />
+      <ReadLog message={readLog} visible={!!readLog} onClose={() => setReadLog(null)} />
       <MessageActions
         message={acting}
         conv={data}
@@ -242,6 +257,7 @@ export default function Thread() {
           react.mutate({ conversationId: data.id, messageId: acting!.id, emoji })
         }
         onReply={() => setReplyTo(acting)}
+        onReceipts={() => setReadLog(acting)}
         onClose={() => setActing(null)}
       />
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
@@ -312,6 +328,9 @@ function Bubble({
   continues,
   onRetry,
   onLongPress,
+  onReply,
+  onRemoveReaction,
+  onOpenReadLog,
 }: {
   message: Message;
   conv: ConversationWithMessages;
@@ -319,6 +338,9 @@ function Bubble({
   continues: boolean;
   onRetry: () => void;
   onLongPress: () => void;
+  onReply: () => void;
+  onRemoveReaction: () => void;
+  onOpenReadLog: () => void;
 }) {
   const { c } = useTheme();
   const mine = message.direction === "out";
@@ -348,7 +370,17 @@ function Bubble({
     );
   }
 
+  // Swipe-to-reply only where a reply means something: WhatsApp threads a
+  // quoted reply, email does not, and an internal note has no customer to
+  // quote out to.
+  // Only an outbound email has tracked recipients.
+  const read = mine && !message.internal ? readSummary(message) : null;
+
+  const canSwipe =
+    !message.internal && (conv.channel === "whatsapp" || conv.channel === "whatsapp_group");
+
   return (
+    <SwipeToReply onReply={onReply} mine={mine} enabled={canSwipe}>
     <View
       testID={`msg-${message.id}`}
       className={mine ? "items-end" : "items-start"}
@@ -387,21 +419,42 @@ function Bubble({
         {message.body ? <Text className="text-lg leading-snug text-fg">{message.body}</Text> : null}
         <Attachments items={message.attachments ?? []} />
 
-        {message.reactions?.length ? (
-          <View className="flex-row gap-1 pt-1.5">
-            {message.reactions.map((r, i) => (
-              <View key={`${r.emoji}-${i}`} style={{ backgroundColor: c.surface2 }} className="rounded-full px-1.5 py-0.5">
-                <Text className="text-sm">{r.emoji}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
         <View className="flex-row items-center justify-end gap-1.5 pt-1">
+          {/* A sent email says how many recipients opened it, and opens the
+              per-person log. Email has no real delivery receipt, so this is the
+              only honest answer to "did they see it". */}
+          {read ? (
+            <Pressable
+              onPress={onOpenReadLog}
+              accessibilityRole="button"
+              accessibilityLabel={`Read receipts: ${read.seen} of ${read.total} opened`}
+              hitSlop={6}
+              className="flex-row items-center gap-1 active:opacity-60"
+            >
+              <EyeIcon size={13} color={read.seen ? c.email : c.textFaint} />
+              <Text
+                style={{ color: read.seen ? c.email : c.textFaint }}
+                className="text-2xs font-medium"
+              >
+                {read.seen}/{read.total}
+              </Text>
+            </Pressable>
+          ) : null}
           <Text className="text-2xs text-faint">{clockTime(message.createdAt)}</Text>
-          {mine ? <Ticks status={message.status} /> : null}
+          {/* One status marker, never two. Where an email has tracked
+              recipients the open count above is strictly the better answer —
+              it's measured rather than inferred — and a second double-tick
+              beside it would be the same claim told two ways. */}
+          {mine && !read ? <Ticks status={message.status} /> : null}
         </View>
       </Pressable>
+
+      <Reactions
+        reactions={message.reactions ?? []}
+        mine={mine}
+        contactName={conv.contact.displayName}
+        onRemove={onRemoveReaction}
+      />
 
       {mine && message.status === "failed" ? (
         <Pressable onPress={onRetry} accessibilityRole="button" className="px-1 pt-1 active:opacity-60">
@@ -411,5 +464,6 @@ function Bubble({
         </Pressable>
       ) : null}
     </View>
+    </SwipeToReply>
   );
 }

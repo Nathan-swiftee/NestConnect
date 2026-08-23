@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Platform } from "react-native";
 import { router } from "expo-router";
 import * as Notifications from "expo-notifications";
 
@@ -30,12 +31,16 @@ function conversationIdOf(response: Notifications.NotificationResponse): string 
  * The cold-start response is also delivered to the listener on some platforms,
  * so responses are de-duplicated by identifier — otherwise a cold start pushes
  * the thread twice and the back button lands on the same screen again.
+ *
+ * Native only. The web build has no notification stack behind these calls, and
+ * `getLastNotificationResponseAsync` throws there rather than resolving empty —
+ * so the whole hook is a no-op on web instead of a caught error on every mount.
  */
 export function useNotificationRouting(enabled: boolean) {
   const handled = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || Platform.OS === "web") return;
     let cancelled = false;
 
     const open = (response: Notifications.NotificationResponse) => {
@@ -47,10 +52,14 @@ export function useNotificationRouting(enabled: boolean) {
       router.push({ pathname: "/(app)/thread/[id]", params: { id } });
     };
 
-    // Cold start: was the app launched by a tap?
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (!cancelled && response) open(response);
-    });
+    // Cold start: was the app launched by a tap? Failure here is never worth a
+    // crash — the worst case is the app opens on the inbox instead of the
+    // thread, which is where it would have opened anyway.
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (!cancelled && response) open(response);
+      })
+      .catch(() => {});
 
     const sub = Notifications.addNotificationResponseReceivedListener(open);
     return () => {
