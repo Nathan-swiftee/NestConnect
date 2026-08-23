@@ -177,6 +177,34 @@ export function parseAddress(raw: string): { email: string; name?: string } {
   return { email: trimmed.toLowerCase() };
 }
 
+/**
+ * Every address in a To/Cc header, lower-cased.
+ *
+ * Splitting on "," is not quite enough: a display name may contain one
+ * (`"Ashcroft, Bob" <bob@…>`), which would otherwise split one recipient into
+ * two unusable halves. So commas inside quotes or angle brackets don't count.
+ */
+export function parseAddressList(raw: string | undefined): string[] {
+  if (!raw) return [];
+  const parts: string[] = [];
+  let current = "";
+  let quoted = false;
+  let angled = false;
+  for (const ch of raw) {
+    if (ch === '"') quoted = !quoted;
+    else if (ch === "<") angled = true;
+    else if (ch === ">") angled = false;
+    if (ch === "," && !quoted && !angled) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  parts.push(current);
+  return [...new Set(parts.map((p) => parseAddress(p).email).filter(Boolean))];
+}
+
 /** Collect the Message-IDs a mail threads onto (References + In-Reply-To). */
 export function threadRefs(msg: GmailMessage): string[] {
   const raw = `${headerValue(msg, "References") ?? ""} ${headerValue(msg, "In-Reply-To") ?? ""}`;

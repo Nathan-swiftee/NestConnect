@@ -22,6 +22,7 @@ import {
   GmailApiError,
   headerValue,
   parseAddress,
+  parseAddressList,
   threadRefs,
 } from "./gmail-api";
 
@@ -288,6 +289,12 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
         references: threadRefs(msg),
         threadId: msg.threadId,
         authorName: senderName || "Gmail",
+        // Who it actually went to, so the reply is filed on that customer's
+        // thread rather than whichever conversation shares the References chain.
+        recipients: [
+          ...parseAddressList(headerValue(msg, "To")),
+          ...parseAddressList(headerValue(msg, "Cc")),
+        ],
         attachments: outAtts.length ? outAtts : undefined,
       });
       return !!res;

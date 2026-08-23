@@ -1571,13 +1571,15 @@ export class PrismaStore extends Store {
 
   async findConversationByMessageChannelIds(
     channelMsgIds: string[],
-    opts: { contactId?: string } = {},
+    opts: { contactIds?: string[] } = {},
   ): Promise<string | undefined> {
     if (!channelMsgIds.length) return undefined;
     const msg = await this.prisma.message.findFirst({
       where: {
         channelMsgId: { in: channelMsgIds },
-        ...(opts.contactId ? { conversation: { is: { contactId: opts.contactId } } } : {}),
+        ...(opts.contactIds?.length
+          ? { conversation: { is: { contactId: { in: opts.contactIds } } } }
+          : {}),
       },
       orderBy: { createdAt: "desc" },
     });
@@ -1951,9 +1953,31 @@ export class PrismaStore extends Store {
 
   /* ---- groups ---- */
 
-  async findConversationByChannelRef(channelRef: string): Promise<string | undefined> {
-    const c = await this.prisma.conversation.findFirst({ where: { channelRef }, select: { id: true } });
+  async findConversationByChannelRef(
+    channelRef: string,
+    opts: { contactIds?: string[] } = {},
+  ): Promise<string | undefined> {
+    const c = await this.prisma.conversation.findFirst({
+      where: { channelRef, ...(opts.contactIds?.length ? { contactId: { in: opts.contactIds } } : {}) },
+      select: { id: true },
+    });
     return c?.id;
+  }
+
+  async findContactByIdentity(params: {
+    orgId: string;
+    kind: "phone" | "email" | "wa_id";
+    value: string;
+  }): Promise<Contact | undefined> {
+    // Same matching as upsertContactByIdentity — canonical value, and phone/wa_id
+    // treated as one identity — but lookup only, never creating.
+    const matchKinds = params.kind === "email" ? ["email"] : ["phone", "wa_id"];
+    const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
+    const ident = await this.prisma.contactIdentity.findFirst({
+      where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },
+      include: { contact: { include: { identities: true } } },
+    });
+    return ident ? mapContact(ident.contact) : undefined;
   }
 
   async createContact(params: {

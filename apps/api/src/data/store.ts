@@ -657,14 +657,18 @@ export abstract class Store {
   /**
    * The conversation an email's References/In-Reply-To headers point at.
    *
-   * `contactId` scopes the match to one customer's thread, which matters more
-   * than it looks: everyone on a CC list shares the same References chain, so an
-   * unscoped lookup files a CC'd recipient's Reply-All onto the original
+   * `contactIds` scopes the match to those customers' threads, which matters
+   * more than it looks: everyone on a CC list shares the same References chain,
+   * so an unscoped lookup files a CC'd recipient's Reply-All onto the original
    * sender's conversation and silently merges two customers.
+   *
+   * Inbound passes the one sender. An agent's own reply, synced back from
+   * Gmail, passes everyone it was addressed to — the thread it belongs to is
+   * the one whose customer is on that list.
    */
   abstract findConversationByMessageChannelIds(
     channelMsgIds: string[],
-    opts?: { contactId?: string },
+    opts?: { contactIds?: string[] },
   ): Promise<string | undefined>;
 
   abstract upsertContactByIdentity(params: {
@@ -739,7 +743,32 @@ export abstract class Store {
 
   /* ---- WhatsApp groups ---- */
 
-  abstract findConversationByChannelRef(channelRef: string): Promise<string | undefined>;
+  /**
+   * The conversation that owns a provider-side thread id (a WhatsApp group id,
+   * or a Gmail thread). `contactIds` scopes it for the same reason as the
+   * References lookup above: a Gmail thread can hold mail to and from several
+   * customers, so "which conversation is this thread" is only answerable
+   * alongside "who was this addressed to".
+   */
+  abstract findConversationByChannelRef(
+    channelRef: string,
+    opts?: { contactIds?: string[] },
+  ): Promise<string | undefined>;
+
+  /**
+   * Find an existing contact by a messaging identity — without creating one.
+   *
+   * Distinct from {@link upsertContactByIdentity}: that is for an inbound from
+   * a real person, where creating the contact is right. Here we're only asking
+   * "do we already know this address?" about the recipients of an agent's own
+   * email, and inventing a contact for every address they ever CC would fill
+   * the customer list with colleagues and suppliers.
+   */
+  abstract findContactByIdentity(params: {
+    orgId: string;
+    kind: "phone" | "email" | "wa_id";
+    value: string;
+  }): Promise<Contact | undefined>;
 
   /**
    * Create a contact (a group's synthetic contact, or a customer added by hand),

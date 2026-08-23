@@ -97,6 +97,14 @@ For addresses we want Nest Connect to fully own, or non-Google/MS domains:
 ### Threading & the shared-inbox model
 
 - **Threading** uses standard headers — `Message-ID`, `In-Reply-To`, `References` — plus subject/participant heuristics, to group emails into one Nest Connect **conversation**. Each outbound message sets/propagates these headers so replies land back in the right thread.
+- **Threading is always scoped to a customer.** Everyone on a CC list shares one
+  `References` chain, and Gmail groups their replies into one mailbox thread, so
+  the headers alone say "same conversation" about messages from two different
+  people. Inbound therefore matches the chain only against the sender's own
+  conversations, a Gmail thread id is owned by exactly one conversation, and an
+  agent's reply synced back from Gmail is matched against the customers it was
+  actually addressed to. Without that, a CC'd customer's Reply-All merges into
+  the original sender's thread and an agent ends up answering the wrong person.
 - A **shared email inbox** is just an `Inbox` of type `email` owned by one or more teams — the *same* conversation/assignment/routing model as WhatsApp. Collision detection, internal notes, and "up for grabs" all work identically.
 - **Attachments** stream to R2; large ones are linked, not inlined.
 - **Signatures, quoting, CC/BCC, drafts** handled in the Tiptap composer; per-user and per-inbox signatures.

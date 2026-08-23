@@ -261,7 +261,7 @@ export class IngestService {
     // wrong person. Scoping by contact means a new sender opens their own
     // conversation, which is what a shared inbox has to do.
     let conversationId = input.references?.length
-      ? await this.store.findConversationByMessageChannelIds(input.references, { contactId: contact.id })
+      ? await this.store.findConversationByMessageChannelIds(input.references, { contactIds: [contact.id] })
       : undefined;
     let created = false;
 
@@ -330,6 +330,14 @@ export class IngestService {
    * conversation, so the thread stays complete. Resolves the thread by
    * References/In-Reply-To, then by the Gmail thread id; a reply to a thread Nest
    * has never seen is skipped.
+   *
+   * `recipients` is what makes that resolution safe. A Gmail thread started by
+   * one customer can hold replies addressed to a different one — a CC'd person
+   * the agent then answered — and both share the References chain and the thread
+   * id. Without knowing who the mail was actually *to*, either lookup files the
+   * agent's reply to Bob onto Alice's conversation. So the thread this belongs
+   * to is the one whose customer is among the recipients; if none of them is a
+   * customer we know, we record nothing rather than guess.
    */
   async ingestOutboundEmail(input: {
     subject?: string;
@@ -339,6 +347,8 @@ export class IngestService {
     references?: string[];
     threadId?: string;
     authorName?: string;
+    /** Every address the agent sent to — To and Cc. */
+    recipients?: string[];
     attachments?: AttachmentInput[];
   }): Promise<{ conversationId: string } | undefined> {
     // Already stored (Nest sent it, or a previous sync grabbed it) → nothing to do.
@@ -346,11 +356,19 @@ export class IngestService {
       const seen = await this.store.getMessageRefByChannelId(input.messageId);
       if (seen) return { conversationId: seen.conversationId };
     }
+
+    const contactIds = await this.recipientContactIds(input.recipients);
+    // A message whose recipients we can't place is one we can't file safely.
+    // Before scoping existed this fell through to an unscoped lookup, which is
+    // precisely how a reply landed on the wrong customer's thread.
+    if (input.recipients?.length && !contactIds.length) return undefined;
+    const scope = contactIds.length ? { contactIds } : undefined;
+
     let conversationId = input.references?.length
-      ? await this.store.findConversationByMessageChannelIds(input.references)
+      ? await this.store.findConversationByMessageChannelIds(input.references, scope)
       : undefined;
     if (!conversationId && input.threadId) {
-      conversationId = await this.store.findConversationByChannelRef(input.threadId);
+      conversationId = await this.store.findConversationByChannelRef(input.threadId, scope);
     }
     if (!conversationId) return undefined;
 
@@ -370,6 +388,29 @@ export class IngestService {
       }
     }
     return { conversationId };
+  }
+
+  /**
+   * Which of these addresses are customers we already know.
+   *
+   * Lookup only, never create: an agent's outgoing mail is addressed to
+   * colleagues, suppliers and mailing lists as well as customers, and turning
+   * every one of those into a contact would bury the customer list. An address
+   * we don't recognise simply doesn't narrow the search.
+   */
+  private async recipientContactIds(recipients: string[] | undefined): Promise<string[]> {
+    if (!recipients?.length) return [];
+    const orgId = this.tenant.defaultOrgId;
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const address of recipients) {
+      const value = address.trim().toLowerCase();
+      if (!value || seen.has(value)) continue;
+      seen.add(value);
+      const contact = await this.store.findContactByIdentity({ orgId, kind: "email", value });
+      if (contact && !ids.includes(contact.id)) ids.push(contact.id);
+    }
+    return ids;
   }
 
   /** A new conversation inherits its routed team's first-response SLA target. */

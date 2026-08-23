@@ -1372,12 +1372,13 @@ export class MemoryStore extends Store {
 
   async findConversationByMessageChannelIds(
     channelMsgIds: string[],
-    opts: { contactId?: string } = {},
+    opts: { contactIds?: string[] } = {},
   ): Promise<string | undefined> {
     if (!channelMsgIds.length) return undefined;
     const set = new Set(channelMsgIds);
+    const scope = opts.contactIds?.length ? new Set(opts.contactIds) : undefined;
     for (const rec of this.conversations) {
-      if (opts.contactId && rec.contact.id !== opts.contactId) continue;
+      if (scope && !scope.has(rec.contact.id)) continue;
       if (rec.messages.some((m) => m.channelMsgId && set.has(m.channelMsgId))) return rec.id;
     }
     return undefined;
@@ -1701,8 +1702,32 @@ export class MemoryStore extends Store {
 
   /* ---- groups ---- */
 
-  async findConversationByChannelRef(channelRef: string): Promise<string | undefined> {
-    return this.conversations.find((c) => c.channelRef === channelRef)?.id;
+  async findConversationByChannelRef(
+    channelRef: string,
+    opts: { contactIds?: string[] } = {},
+  ): Promise<string | undefined> {
+    const scope = opts.contactIds?.length ? new Set(opts.contactIds) : undefined;
+    return this.conversations.find(
+      (c) => c.channelRef === channelRef && (!scope || scope.has(c.contact.id)),
+    )?.id;
+  }
+
+  async findContactByIdentity(params: {
+    orgId: string;
+    kind: "phone" | "email" | "wa_id";
+    value: string;
+  }): Promise<Contact | undefined> {
+    // Same canonicalisation as upsertContactByIdentity, so "+44 7911…" and
+    // "07911…" resolve to the same person here too — just without creating one.
+    const key = params.kind === "email" ? "email" : "phone";
+    const matchKind: IdentityKind = params.kind === "email" ? "email" : "phone";
+    const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
+    return this.contacts.find((c) => {
+      if (c.orgId !== params.orgId) return false;
+      const cv = (c as Record<string, unknown>)[key] as string | undefined;
+      if (!cv) return false;
+      return (normalizeIdentity(matchKind, cv)?.normalized ?? cv) === normalized;
+    });
   }
 
   async createContact(params: {
