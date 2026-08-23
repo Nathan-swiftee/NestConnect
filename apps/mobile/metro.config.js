@@ -25,4 +25,21 @@ config.resolver.nodeModulesPaths = [
 // wins over the web app's (18) rather than whichever is found first.
 config.resolver.disableHierarchicalLookup = true;
 
+// Nothing here needs to teach Metro how to reach the shared packages' source.
+// @ding/schemas and @ding/client each expose `./src/index.ts` under a
+// `react-native` key — both as an exports condition and as a top-level main
+// field — and Expo's defaults already ask for exactly that: resolverMainFields
+// is ["react-native", "browser", "main"], and unstable_conditionsByPlatform
+// puts "react-native" in the condition set for android and ios. So the native
+// build compiles those packages from TypeScript and never looks at dist/.
+//
+// That matters because dist/ is a build artefact and is gitignored: on EAS the
+// checkout has no dist/ when Metro runs. The web and API builds are unaffected
+// — neither asks for the react-native condition, so both still get dist/.
+//
+// Two independent paths reach the source (the exports condition, and the main
+// field if unstable_enablePackageExports is ever turned off), so don't add an
+// unstable_conditionNames override here: setting it wrong is a quiet way to
+// break the one that currently works.
+
 module.exports = withNativeWind(config, { input: "./src/global.css" });
