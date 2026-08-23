@@ -8,3 +8,8 @@
 !.env.example
 docs
 *.log
+
+# Native build output — the API image has no use for it, and it is large.
+apps/mobile/ios
+apps/mobile/android
+apps/mobile/.expo

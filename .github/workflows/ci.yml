@@ -29,3 +29,9 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # Typecheck can't see a native-only resolution break (a package Metro
+      # resolves differently, a config plugin that won't load). Bundling for one
+      # platform does, and takes about half a minute.
+      - name: Bundle the mobile app
+        run: pnpm --filter @ding/mobile exec expo export --platform ios --output-dir /tmp/mobile-bundle

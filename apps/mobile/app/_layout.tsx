@@ -1,0 +1,66 @@
+import { useEffect, useState } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { Stack, router } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { colors } from "@ding/design/tokens";
+import { useColorScheme } from "react-native";
+import { configureMobileClient, setSignOutHandler } from "../src/api-config";
+import { loadSession } from "../src/session";
+import "../src/global.css";
+
+// Point the shared client at this app before any hook can fire a request.
+configureMobileClient();
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5_000,
+      // A phone drops off the network constantly — a couple of retries turns a
+      // lift-shaft moment into a slightly slow load rather than an error state.
+      retry: 2,
+    },
+  },
+});
+
+export default function RootLayout() {
+  const scheme = useColorScheme() === "dark" ? "dark" : "light";
+  const c = colors[scheme];
+  // The stored token must be in memory before the first request, or a signed-in
+  // launch would fire an unauthenticated /auth/session and bounce to sign-in.
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setSignOutHandler(() => {
+      queryClient.clear();
+      router.replace("/sign-in");
+    });
+    void loadSession().finally(() => setReady(true));
+  }, []);
+
+  return (
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+        {ready ? (
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: c.bg },
+              animation: "slide_from_right",
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
+            <Stack.Screen name="(app)" />
+          </Stack>
+        ) : (
+          <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
+            <ActivityIndicator color={c.brand} />
+          </View>
+        )}
+      </QueryClientProvider>
+    </SafeAreaProvider>
+  );
+}

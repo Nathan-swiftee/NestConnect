@@ -6,10 +6,16 @@
   "type": "module",
   "exports": {
     "./tokens.css": "./tokens.css",
+    "./tokens": "./tokens.ts",
     "./tailwind-preset": "./tailwind-preset.cjs"
   },
   "files": [
     "tokens.css",
+    "tokens.ts",
     "tailwind-preset.cjs"
-  ]
+  ],
+  "scripts": {
+    "build": "node scripts/generate-tokens.mjs",
+    "typecheck": "node scripts/generate-tokens.mjs --check"
+  }
 }

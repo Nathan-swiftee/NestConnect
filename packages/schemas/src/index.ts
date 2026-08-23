@@ -991,6 +991,9 @@ export interface TwoFactorStatus {
 export interface TwoFactorChallenge {
   twoFactorRequired: true;
   method: "totp" | "email";
+  /** Token clients only: the half-authenticated token to post back with the
+   *  code. Browsers get the same thing as a short-lived cookie instead. */
+  pendingToken?: string;
 }
 
 export const groupMemberInputSchema = z.object({

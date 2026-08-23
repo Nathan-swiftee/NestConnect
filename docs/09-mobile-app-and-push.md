@@ -16,14 +16,15 @@ gets its own component tree.
 | Asset | State | Reusable on mobile? |
 |---|---|---|
 | `packages/schemas` | Zod + types for every entity and payload | **Yes, as-is** |
-| `packages/design` | `tokens.css` + `tailwind-preset.cjs` | Tokens yes; needs a `tokens.ts` export for NativeWind |
+| `packages/design` | `tokens.css` + `tailwind-preset.cjs` + generated `tokens.ts` | Yes — `tokens.ts` is generated from the CSS |
 | `apps/api` REST | NestJS, complete | Yes — but see auth below |
 | Realtime | socket.io gateway, per-user rooms | Yes — but see auth below |
 | Notifications | `NotificationsService` writes in-app bell rows (`mention`, `snooze_due`) | Yes — this is where push hooks in |
 | `Session` model | id, userId, ip, userAgent, `revokedAt` (remote sign-out works) | Yes — the right place to hang a device |
 | `apps/web` components | Web DOM + CSS cascade | **No** — rewritten natively (per doc 08) |
 
-**There is no mobile app in the repo yet.** `apps/` is `api` and `web` only.
+~~There is no mobile app in the repo yet.~~ As of Phase 1 there is: `apps/mobile`,
+plus `packages/client` holding the transport and hooks both apps share.
 
 ---
 
@@ -107,13 +108,15 @@ already proves the shape works: swapping to direct FCM/APNs later becomes a new
 provider, not a rewrite. Expo's relay is a real third party in the path, and the
 provider seam is what makes that reversible.
 
-### 3.3 A shared client package
+### 3.3 A shared client package — done in Phase 1
 
-`apps/web/src/lib/api.ts` and `hooks.ts` are transport + react-query, with no DOM
-in them. They should move to **`packages/client`** and be imported by both apps.
-Otherwise every endpoint change gets made twice and the two drift.
+`apps/web/src/lib/api.ts`, `socket.ts`, `format.ts` and most of `hooks.ts` moved
+to **`packages/client`**, imported by both apps. Otherwise every endpoint change
+gets made twice and the two drift.
 
-Formatters (`initials`, `avatarBg`, `listTime`, `relativeTime`) move with them.
+What stayed in `apps/web` is what genuinely belongs to a browser: `matchMedia`,
+the Web Audio sound toggle, and the CSS-variable theme. The old import paths
+re-export from the package, so no component changed.
 
 ---
 
@@ -161,15 +164,46 @@ delivery path (send → tickets → receipts → disable) runs against a stub Ex
 Phase 3's first task and can't be done from CI — nor from this sandbox, whose
 egress proxy blocks `exp.host`.
 
-### Phase 1 — App shell
-1. `apps/mobile`, Expo SDK (latest stable), TypeScript, EAS project, dev client.
-2. NativeWind + `packages/design/tokens.ts` **generated from `tokens.css`** so
-   there is still one source of truth, not two hand-synced files.
-3. `expo-router`, `expo-secure-store`, sign-in including the 2FA step.
-4. `packages/client` extracted and consumed by web *and* mobile.
+### Phase 1 — App shell ✅ done
 
-**Done when:** sign in on a device, see the real conversation list, and it
-updates live over the socket.
+1. **`apps/mobile`** on Expo SDK 57 (RN 0.86) with TypeScript, expo-router,
+   NativeWind, a dev-client `eas.json`, and `co.uk.swiftee.nestconnect` on both
+   platforms. The repo moved to pnpm's `hoisted` linker, which Metro requires;
+   the Docker build overrides it back to `isolated` and filters the install so
+   the server image never pulls React Native.
+2. **`packages/design/tokens.ts` is generated** from `tokens.css` by
+   `scripts/generate-tokens.mjs` — `var()` references followed and
+   `color-mix(…, transparent)` flattened to rgba, because React Native has
+   neither. `pnpm typecheck` runs it in `--check` mode, so CI fails if the two
+   ever disagree. Native's Tailwind config feeds the same generated palette
+   through the web's preset, so a utility means the same thing on both.
+3. **Sign-in, including the 2FA step**, with the token in `expo-secure-store`
+   (Keychain / EncryptedSharedPreferences, `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`).
+   The half-authenticated 2FA token is carried in the request body, since a
+   phone has no cookie jar for it.
+4. **`packages/client` extracted** — transport, the endpoint list, the socket,
+   the react-query hooks and the formatters, all shared with the web app. The
+   three things that genuinely differ (API origin, cookie vs bearer, what
+   sign-out means) are declared once per app through `configureClient`. The web
+   app's old import paths still resolve, so no component changed.
+
+Also shipped: the inbox list (Inbound / Queue / Mine, pull-to-refresh, infinite
+scroll, per-channel badges, unread counts, SLA-overdue marker) and a read-only
+thread.
+
+**Verified:** the app signs in against a real API, renders the real conversation
+list, opens a thread, and updates live over the bearer-authenticated socket — a
+new conversation appears in the list and a new message appears in the open
+thread, both without a reload. Sign-out clears the stored token. Both platforms
+bundle cleanly under Metro (1,588 modules iOS / 1,680 Android), and CI now
+bundles on every push.
+
+**A caveat worth stating plainly:** that verification ran through
+react-native-web in a headless browser, because this environment has no device
+or simulator. It proves the shared client, the auth flow, routing, data binding
+and realtime. It does **not** prove native gesture handling, keyboard behaviour,
+list performance or anything touching a native module. Those need a real device,
+which is the first thing to do with a dev-client build.
 
 ### Phase 2 — The inbox
 Conversation list (filters, search, virtualised), thread (grouped bubbles,

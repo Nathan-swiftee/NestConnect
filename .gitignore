@@ -31,3 +31,9 @@ pnpm-debug.log*
 
 # test / coverage
 coverage/
+
+# expo / react native
+apps/mobile/.expo/
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/expo-env.d.ts
