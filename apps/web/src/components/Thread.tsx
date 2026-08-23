@@ -1511,7 +1511,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       thumb.style.transform = `translateX(${btn.offsetLeft}px)`;
       thumb.style.width = `${btn.offsetWidth}px`;
     }
-  }, [internal, composeChannelState, conversationId, conv?.status]);
+    // conv.messages.length: the default tab follows the thread's last-used
+    // channel, so an inbound on the other channel can move the active tab
+    // without composeChannelState changing.
+  }, [internal, composeChannelState, conversationId, conv?.status, conv?.messages.length]);
 
   // Mirror staged items into a ref so teardown can revoke URLs without re-binding.
   useEffect(() => {
@@ -1675,13 +1678,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   })();
   // ─── Reply channel (cross-channel thread) ───
   // The thread's own channel is its identity; the *composer* may target any
-  // channel the customer is reachable on, within this one open thread. The
-  // compose channel defaults to the conversation's own and is switched below
-  // (never for a group — a group can't be answered on another channel).
+  // channel the customer is reachable on, within this one open thread.
   const convIsEmail = conv.channel === "email";
   const isGroup = conv.channel === "whatsapp_group";
-  const composeChannel: ChannelType = (!isGroup && composeChannelState) || conv.channel;
-  const isEmail = composeChannel === "email";
   // Channels this customer can be reached on within this thread (1:1 only).
   const switchable: ChannelType[] = [];
   if (!isGroup) {
@@ -1692,6 +1691,18 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Note tab). A group can only be answered on its own channel; a 1:1 lists every
   // channel the customer is reachable on (falling back to the thread's own).
   const replyTargets: ChannelType[] = isGroup || switchable.length === 0 ? [conv.channel] : switchable;
+  // Default the composer to the channel the thread most recently used, not the
+  // conversation's own channel. Those are the same for most threads and only
+  // diverge once someone has actually replied on the other one — which is
+  // exactly when answering on the thread's original channel is the wrong guess.
+  // A group is always answered in the group. Falls back to the conversation's
+  // channel if the last-used one isn't a reachable target (e.g. the thread has
+  // email history but no address on the contact record).
+  const lastUsedChannel = threadChannels[0];
+  const defaultComposeChannel: ChannelType =
+    !isGroup && lastUsedChannel && replyTargets.includes(lastUsedChannel) ? lastUsedChannel : conv.channel;
+  const composeChannel: ChannelType = (!isGroup && composeChannelState) || defaultComposeChannel;
+  const isEmail = composeChannel === "email";
   const isClosed = conv.status === "closed";
   const owned = !!conv.assigneeUserId;
   const assignedToMe = conv.assigneeUserId === me?.user.id;
@@ -2699,7 +2710,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     className={"modebtn" + (active ? " active" : "")}
                     onClick={() => {
                       setInternal(false);
-                      setComposeChannelState(ch === conv.channel ? null : ch);
+                      // Always store the pick. This used to store null for the
+                      // conversation's own channel, treating null as "the
+                      // default" — which silently ignored the click whenever
+                      // the default was some other channel.
+                      setComposeChannelState(ch);
                     }}
                     title={replyTargets.length > 1 ? `Reply via ${meta.label}` : undefined}
                   >
