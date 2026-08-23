@@ -11,13 +11,24 @@ import { clearSession, sessionToken } from "./session";
  * with nothing configured still reaches a real API rather than failing in a way
  * that looks like a bug in the app.
  *
+ * That last part is why this is the Railway service domain and not the product
+ * one. `nest.swiftee.co.uk` sat here for a while and never resolved — a build
+ * carrying it would have installed, launched, and failed every request, which
+ * reads as a broken app rather than a missing DNS record. A URL baked into a
+ * shipped binary can't be corrected remotely, so it points at the hostname that
+ * is actually serving.
+ *
+ * **Swap this to the product domain once its DNS is live and Railway has issued
+ * the certificate** — verify by loading `/health` over HTTPS on that hostname
+ * first, not by assuming propagation.
+ *
  * For local development against a laptop, point it at that machine's LAN
  * address — `localhost` on a phone is the phone.
  */
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL ??
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
-  "https://nest.swiftee.co.uk";
+  "https://ding-app-production.up.railway.app";
 
 /**
  * An attachment URL the way React Native needs it: absolute, and carrying the
