@@ -12,7 +12,8 @@
     "doctor": "expo-doctor",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf .expo ios android",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "eas-build-post-install": "pnpm --filter \"@ding/client...\" build"
   },
   "dependencies": {
     "@ding/client": "workspace:*",

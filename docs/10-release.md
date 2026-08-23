@@ -136,6 +136,31 @@ there no matter what token it's given. Run these from a laptop.
 pnpm --filter @ding/mobile exec eas --version   # 22.2.0
 ```
 
+### 3.0 Why the first build failed, and why it can't again
+
+`@ding/schemas` and `@ding/client` resolve to `./dist/index.js`, and `dist/` is
+gitignored. On an EAS builder `pnpm install` runs and nothing ever builds them,
+so Metro cannot resolve the app's own imports and the build dies in *Bundle
+JavaScript* with no useful message. The server never hit this because its
+Dockerfile runs `pnpm build` explicitly.
+
+The fix is an `eas-build-post-install` hook — a script EAS runs after install —
+declared as:
+
+```
+pnpm --filter "@ding/client..." build
+```
+
+The trailing `...` is doing real work: it means "this package *and its
+dependencies*", so `@ding/schemas` is built first without naming it. It is
+declared in **both** the root and `apps/mobile` package.json, because which one
+EAS reads in a monorepo depends on where it runs install; the second run is a
+~3-second no-op rebuild, which is cheaper than guessing wrong and burning a
+build.
+
+Anything else added to `packages/*` that compiles to `dist/` has to be reachable
+from that filter, or it will fail the same way.
+
 ### 3.1 Link the project — once
 
 ```sh

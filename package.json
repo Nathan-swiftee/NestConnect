@@ -2,7 +2,7 @@
   "name": "ding",
   "version": "0.0.0",
   "private": true,
-  "description": "Ding — Swiftee's WhatsApp-native omnichannel team inbox",
+  "description": "Ding \u2014 Swiftee's WhatsApp-native omnichannel team inbox",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=22"
@@ -17,7 +17,8 @@
     "db:down": "docker compose down",
     "db:generate": "pnpm --filter @ding/api db:generate",
     "db:migrate": "pnpm --filter @ding/api db:migrate",
-    "db:seed": "pnpm --filter @ding/api db:seed"
+    "db:seed": "pnpm --filter @ding/api db:seed",
+    "eas-build-post-install": "pnpm --filter \"@ding/client...\" build"
   },
   "devDependencies": {
     "pixelmatch": "^5.3.0",
