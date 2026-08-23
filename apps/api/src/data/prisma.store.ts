@@ -1569,10 +1569,16 @@ export class PrismaStore extends Store {
     }));
   }
 
-  async findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined> {
+  async findConversationByMessageChannelIds(
+    channelMsgIds: string[],
+    opts: { contactId?: string } = {},
+  ): Promise<string | undefined> {
     if (!channelMsgIds.length) return undefined;
     const msg = await this.prisma.message.findFirst({
-      where: { channelMsgId: { in: channelMsgIds } },
+      where: {
+        channelMsgId: { in: channelMsgIds },
+        ...(opts.contactId ? { conversation: { is: { contactId: opts.contactId } } } : {}),
+      },
       orderBy: { createdAt: "desc" },
     });
     return msg?.conversationId;

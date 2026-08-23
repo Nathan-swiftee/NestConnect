@@ -654,7 +654,18 @@ export abstract class Store {
   abstract getMembers(teamId: string): Promise<User[]>;
 
   /** Threading: find the conversation owning any message with one of these provider ids. */
-  abstract findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined>;
+  /**
+   * The conversation an email's References/In-Reply-To headers point at.
+   *
+   * `contactId` scopes the match to one customer's thread, which matters more
+   * than it looks: everyone on a CC list shares the same References chain, so an
+   * unscoped lookup files a CC'd recipient's Reply-All onto the original
+   * sender's conversation and silently merges two customers.
+   */
+  abstract findConversationByMessageChannelIds(
+    channelMsgIds: string[],
+    opts?: { contactId?: string },
+  ): Promise<string | undefined>;
 
   abstract upsertContactByIdentity(params: {
     orgId: string;

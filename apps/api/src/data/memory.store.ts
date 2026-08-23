@@ -1370,10 +1370,14 @@ export class MemoryStore extends Store {
     return this.webhookDiagnostics.slice(0, Math.min(Math.max(limit, 1), 500));
   }
 
-  async findConversationByMessageChannelIds(channelMsgIds: string[]): Promise<string | undefined> {
+  async findConversationByMessageChannelIds(
+    channelMsgIds: string[],
+    opts: { contactId?: string } = {},
+  ): Promise<string | undefined> {
     if (!channelMsgIds.length) return undefined;
     const set = new Set(channelMsgIds);
     for (const rec of this.conversations) {
+      if (opts.contactId && rec.contact.id !== opts.contactId) continue;
       if (rec.messages.some((m) => m.channelMsgId && set.has(m.channelMsgId))) return rec.id;
     }
     return undefined;

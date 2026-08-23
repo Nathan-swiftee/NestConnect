@@ -265,8 +265,11 @@ input,textarea{font:inherit}
   .conv .av{width:52px;height:52px;font-size:var(--fs-xl)}
   .conv .av .ch{width:19px;height:19px}
   .conv::after{left:80px}
-  .chip{font-size:var(--fs-sm);padding:8px var(--sp-4)}
-  .chipcount{min-width:19px;height:19px;font-size:var(--fs-xs)}
+  /* Chips keep the larger 13px label — that was the point, legibility at arm's
+     length — but come back in on padding and count size, which is where the
+     last pass overshot and made the row read heavy. */
+  .chip{font-size:var(--fs-sm);padding:7px var(--sp-3)}
+  .chipcount{min-width:18px;height:18px;font-size:var(--fs-2xs)}
 }
 /* Five row states that must never be confused with one another:
    hover  → neutral wash, nothing else

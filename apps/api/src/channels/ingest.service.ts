@@ -252,9 +252,16 @@ export class IngestService {
       return undefined;
     }
 
-    // Thread onto an existing conversation via References/In-Reply-To first.
+    // Thread onto an existing conversation via References/In-Reply-To first —
+    // but only onto THIS contact's thread.
+    //
+    // Everyone on a CC list shares one References chain, so an unscoped lookup
+    // files a CC'd recipient's Reply-All onto the original sender's
+    // conversation: two customers, one thread, and an agent replying to the
+    // wrong person. Scoping by contact means a new sender opens their own
+    // conversation, which is what a shared inbox has to do.
     let conversationId = input.references?.length
-      ? await this.store.findConversationByMessageChannelIds(input.references)
+      ? await this.store.findConversationByMessageChannelIds(input.references, { contactId: contact.id })
       : undefined;
     let created = false;
 
@@ -283,8 +290,18 @@ export class IngestService {
     // Remember the latest inbound Gmail thread id on the conversation so an
     // outbound reply is sent back into that same server-side thread (Gmail only;
     // Postmark inbound carries no thread id and threads via headers alone).
+    //
+    // One thread id, one conversation. Gmail groups a CC'd person's Reply-All
+    // into the *same* mailbox thread, so without this a second customer's
+    // conversation would claim a thread the first one already owns — which puts
+    // our replies to one of them into the other's thread, and makes the
+    // channelRef lookup ambiguous. A conversation with no claim of its own
+    // simply starts a fresh Gmail thread when we reply, which is correct.
     if (input.threadId) {
-      await this.store.setConversationChannelRef(conversationId, input.threadId);
+      const owner = await this.store.findConversationByChannelRef(input.threadId);
+      if (!owner || owner === conversationId) {
+        await this.store.setConversationChannelRef(conversationId, input.threadId);
+      }
     }
 
     // Sanitize the email's HTML once, at the boundary — the stored bodyHtml is
