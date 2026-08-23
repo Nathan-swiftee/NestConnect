@@ -25,21 +25,44 @@ config.resolver.nodeModulesPaths = [
 // wins over the web app's (18) rather than whichever is found first.
 config.resolver.disableHierarchicalLookup = true;
 
-// Nothing here needs to teach Metro how to reach the shared packages' source.
-// @ding/schemas and @ding/client each expose `./src/index.ts` under a
-// `react-native` key — both as an exports condition and as a top-level main
-// field — and Expo's defaults already ask for exactly that: resolverMainFields
-// is ["react-native", "browser", "main"], and unstable_conditionsByPlatform
-// puts "react-native" in the condition set for android and ios. So the native
-// build compiles those packages from TypeScript and never looks at dist/.
-//
-// That matters because dist/ is a build artefact and is gitignored: on EAS the
-// checkout has no dist/ when Metro runs. The web and API builds are unaffected
-// — neither asks for the react-native condition, so both still get dist/.
-//
-// Two independent paths reach the source (the exports condition, and the main
-// field if unstable_enablePackageExports is ever turned off), so don't add an
-// unstable_conditionNames override here: setting it wrong is a quiet way to
-// break the one that currently works.
+/**
+ * The shared workspace packages, resolved straight to their TypeScript source.
+ *
+ * @ding/schemas and @ding/client build a `dist/` for the web and API. That
+ * `dist/` is a build artefact and is gitignored, so a fresh checkout doesn't
+ * have one — and a fresh checkout is exactly what EAS bundles. Metro reaching
+ * for `dist/` there fails with "specifies a main module field that could not be
+ * resolved", which reads like a broken package rather than a missing build.
+ *
+ * The packages also advertise their source under a `react-native` key, as both
+ * an exports condition and a main field, and Expo does ask for that condition
+ * on native. So this alias is not the only path to the source — it is the only
+ * path that can't drift. Conditions resolve through several layers (exports
+ * map, main fields, `unstable_conditionsByPlatform`, package-exports being
+ * enabled), each with its own defaults, and any layer disagreeing produces that
+ * same misleading `dist/` error. An alias has one layer. After three remote
+ * builds spent reading that error, one layer is worth the fifteen lines.
+ *
+ * @ding/design is deliberately absent: it has no build step, its exports point
+ * at source already, so it has nothing to drift.
+ */
+const SOURCE_PACKAGES = {
+  "@ding/client": path.resolve(workspaceRoot, "packages/client/src/index.ts"),
+  "@ding/schemas": path.resolve(workspaceRoot, "packages/schemas/src/index.ts"),
+};
 
-module.exports = withNativeWind(config, { input: "./src/global.css" });
+// After withNativeWind, not before: it installs a resolver of its own, and
+// wrapping the composed config is what guarantees this one runs first rather
+// than being overwritten by it.
+const metroConfig = withNativeWind(config, { input: "./src/global.css" });
+
+const upstreamResolve = metroConfig.resolver.resolveRequest;
+metroConfig.resolver.resolveRequest = (context, moduleName, platform) => {
+  const source = SOURCE_PACKAGES[moduleName];
+  if (source) return { type: "sourceFile", filePath: source };
+  // Metro passes the next resolver in the chain as context.resolveRequest, so
+  // this delegates rather than recursing.
+  return (upstreamResolve ?? context.resolveRequest)(context, moduleName, platform);
+};
+
+module.exports = metroConfig;
