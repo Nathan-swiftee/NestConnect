@@ -97,6 +97,17 @@ For addresses we want Nest Connect to fully own, or non-Google/MS domains:
 ### Threading & the shared-inbox model
 
 - **Threading** uses standard headers — `Message-ID`, `In-Reply-To`, `References` — plus subject/participant heuristics, to group emails into one Nest Connect **conversation**. Each outbound message sets/propagates these headers so replies land back in the right thread.
+- **Identity normalisation decides who a customer *is*.** Every write path funnels
+  through one function (`contacts/identity.ts`) that turns a phone or email into a
+  canonical key; get-or-create matches on that key alone. For phones the key is
+  the **digits of the E.164 number** — `447911123456` — with the `+` dropped
+  deliberately: a number `libphonenumber` can't parse has no E.164 form, so that
+  branch can only produce raw digits, and if the parsed branch kept the `+` the
+  two could never match. `phone` and `wa_id` share the key, because a number is a
+  number however it reached us. The rule is versioned; when it changes, boot
+  re-canonicalises every stored key and merges the contacts that collapse
+  together. Getting this wrong forks one customer into two contacts with two
+  threads — the same failure as CC threading, arriving through the front door.
 - **Threading is always scoped to a customer.** Everyone on a CC list shares one
   `References` chain, and Gmail groups their replies into one mailbox thread, so
   the headers alone say "same conversation" about messages from two different

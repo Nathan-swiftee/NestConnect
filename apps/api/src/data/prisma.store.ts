@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "node:crypto";
 import { hashInviteToken, newInviteToken } from "../auth/invite-token";
-import { normalizeIdentity, type IdentityKind } from "../contacts/identity";
+import { IDENTITY_NORMALIZATION_VERSION, normalizeIdentity, type IdentityKind } from "../contacts/identity";
 import { groupDuplicateContacts } from "../contacts/duplicates";
 import type { Prisma } from "@prisma/client";
 import type {
@@ -36,6 +36,15 @@ import type {
 import { CONVERSATIONS_PAGE_SIZE, MESSAGES_PAGE_SIZE } from "@ding/schemas";
 import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
+
+/** Which normalisation wrote the identity keys currently in the table. Stored
+ *  under the default org because it describes the data, not a tenant's
+ *  configuration; a multi-tenant future would key it per org alongside the rest. */
+const IDENTITY_VERSION_KEY = "identity_normalization_version";
+/** Per-org uniqueness on (orgId, kind, normalizedValue). Created at runtime
+ *  rather than by a Prisma migration, because it can only be applied after the
+ *  data is clean — see reconcileIdentityUniqueness. */
+const IDENTITY_UNIQUE_INDEX = "ContactIdentity_orgId_kind_normalizedValue_key";
 import {
   canAdvanceStatus,
   isWaChannel,
@@ -2028,26 +2037,56 @@ export class PrismaStore extends Store {
   }
 
   /**
-   * Backfill normalizedValue (and orgId) for identity rows that don't have them
-   * yet — a one-time pass after the migration, idempotent on later boots. Existing
-   * contacts must carry a normalized value or an inbound message would fail to
-   * match them and fork a duplicate.
+   * Give every identity row a canonical `normalizedValue`, and re-canonicalise
+   * them all when the rule itself has changed.
+   *
+   * Two jobs, one pass:
+   *
+   * 1. Rows that never had a key (the original post-migration backfill).
+   * 2. Rows whose key was written by an *older* normalisation. A stored key is
+   *    only useful if it equals what today's code would compute for the same
+   *    input — otherwise an inbound message fails to match the contact it
+   *    belongs to and forks a duplicate, which is the exact failure the
+   *    normalisation exists to prevent. {@link IDENTITY_NORMALIZATION_VERSION}
+   *    is how we know, and the version is stamped only after the rewrite
+   *    succeeds, so an interrupted pass simply runs again next boot.
+   *
+   * Re-canonicalising can make two rows collide that previously didn't — that
+   * is the point — so the unique index is dropped here and
+   * {@link reconcileIdentityUniqueness} rebuilds it after merging whatever
+   * collapsed together.
    */
   async backfillIdentityNormalization(): Promise<{ updated: number }> {
+    const stored = Number((await this.getAppSetting(ORG_ID, IDENTITY_VERSION_KEY)) ?? 0);
+    const stale = stored < IDENTITY_NORMALIZATION_VERSION;
+
     const rows = await this.prisma.contactIdentity.findMany({
-      where: { OR: [{ normalizedValue: null }, { orgId: null }] },
+      where: stale ? {} : { OR: [{ normalizedValue: null }, { orgId: null }] },
       include: { contact: { select: { orgId: true } } },
     });
+
+    if (stale && rows.length) {
+      // The index is keyed on normalizedValue; rewriting those values can
+      // transiently violate it, and the collisions it would reject are exactly
+      // the duplicates reconcile is about to merge.
+      await this.prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "${IDENTITY_UNIQUE_INDEX}"`).catch(() => {});
+    }
+
     let updated = 0;
     for (const r of rows) {
       const normalized = normalizeIdentity(r.kind as IdentityKind, r.value)?.normalized ?? r.value;
+      const orgId = r.orgId ?? r.contact.orgId;
+      // Skip rows already holding the right answer, so a version bump that only
+      // moves a handful of keys doesn't rewrite the whole table.
+      if (r.normalizedValue === normalized && r.orgId === orgId) continue;
       await this.prisma.contactIdentity
-        .update({
-          where: { id: r.id },
-          data: { normalizedValue: normalized, orgId: r.orgId ?? r.contact.orgId },
-        })
+        .update({ where: { id: r.id }, data: { normalizedValue: normalized, orgId } })
         .catch(() => {});
       updated++;
+    }
+
+    if (stale) {
+      await this.setAppSetting(ORG_ID, IDENTITY_VERSION_KEY, String(IDENTITY_NORMALIZATION_VERSION));
     }
     return { updated };
   }
@@ -2058,20 +2097,28 @@ export class PrismaStore extends Store {
    * normalization backfill has given every row a canonical normalizedValue.
    */
   async reconcileIdentityUniqueness(): Promise<{ mergedContacts: number; collapsedIdentities: number; constraintApplied: boolean }> {
-    const INDEX = "ContactIdentity_orgId_kind_normalizedValue_key";
+    const INDEX = IDENTITY_UNIQUE_INDEX;
     // Fast path: once the unique index is in place, the data is already clean.
+    // The normalisation backfill drops it when the rule changed, which is what
+    // brings us back through the full pass below.
     const already = await this.prisma.$queryRawUnsafe<{ exists: boolean }[]>(
       `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = $1) AS "exists"`,
       INDEX,
     );
     if (already[0]?.exists) return { mergedContacts: 0, collapsedIdentities: 0, constraintApplied: true };
 
-    // 1) Merge every set of contacts that collide on the EXACT index key
-    //    (orgId, kind, normalizedValue) — keyed identically to the constraint so
-    //    nothing it would reject is left behind. This is stricter than the
-    //    phone/email contact view that drives the manual merge tool: it also
-    //    catches a collision hidden on a contact's 2nd+ identity row. Oldest
-    //    contact wins; mergeContacts moves the conversations across safely.
+    // 1) Merge every set of contacts that collide on the MATCH key — the same
+    //    key upsertContactByIdentity looks a customer up by, which folds `phone`
+    //    and `wa_id` into one slot because a number is a number however it
+    //    reached us. It also catches a collision hidden on a contact's 2nd+
+    //    identity row, which the manual merge tool's phone/email view misses.
+    //
+    //    Deliberately WIDER than the unique index, which includes `kind` and so
+    //    would happily leave one customer split across a `wa_id` row and a
+    //    `phone` row holding the same digits — two contacts, two threads, one
+    //    person, and no constraint violation to reveal it. Merging more than the
+    //    constraint demands is safe: it can only remove collisions, never create
+    //    them. Oldest contact wins; mergeContacts moves the conversations across.
     const rows = await this.prisma.contactIdentity.findMany({
       where: { normalizedValue: { not: null }, orgId: { not: null } },
       select: { contactId: true, orgId: true, kind: true, normalizedValue: true },
@@ -2090,7 +2137,7 @@ export class PrismaStore extends Store {
     };
     const byKey = new Map<string, string[]>();
     for (const r of rows) {
-      const key = `${r.orgId} ${r.kind} ${r.normalizedValue}`;
+      const key = `${r.orgId} ${r.kind === "email" ? "email" : "phone"} ${r.normalizedValue}`;
       const list = byKey.get(key);
       if (list) list.push(r.contactId);
       else byKey.set(key, [r.contactId]);

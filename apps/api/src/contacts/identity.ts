@@ -8,6 +8,18 @@ export type IdentityKind = "phone" | "email" | "wa_id";
  *  numbers (e.g. "07911 123456" → +447911123456). */
 export const DEFAULT_REGION: CountryCode = "GB";
 
+/**
+ * Bump when {@link normalizeIdentity} changes what it produces for the same
+ * input. Stored identity keys were written by an older version, so the store
+ * re-normalises every row (and re-runs dedup) when it sees a newer number here.
+ *
+ * 2 — canonical form became digits-only. Before this, a number libphonenumber
+ *     accepted normalised to E.164 *with* the `+` while one it rejected fell
+ *     back to bare digits, so two spellings of the same number could land in
+ *     different shapes and never match — forking one customer into two.
+ */
+export const IDENTITY_NORMALIZATION_VERSION = 2;
+
 export interface NormalizedIdentity {
   /** The value as entered (trimmed) — kept for display. */
   value: string;
@@ -21,16 +33,25 @@ export interface NormalizedIdentity {
  * key regardless of how their phone/email was typed. This is the single choke
  * point every write path funnels through — get-or-create matches on `normalized`.
  *
- * - phone / wa_id → E.164 (`+447911123456`). WhatsApp sends `wa_id` as E.164
- *   digits WITHOUT the `+` (e.g. "447911123456"); a person may type
- *   "+44 7911 123456", "07911 123456", etc. All collapse to one E.164 string.
- *   Unparseable numbers fall back to a digits-only key so format variants still
- *   collapse, rather than silently forking.
+ * - phone / wa_id → the digits of the E.164 number (`447911123456`). WhatsApp
+ *   sends `wa_id` as exactly that; a person may type "+44 7911 123456",
+ *   "07911 123456", etc. All collapse to one string.
+ *
+ *   Digits-only rather than true E.164 (`+4479…`) on purpose. A number
+ *   libphonenumber can't parse has no E.164 form, so that branch can only fall
+ *   back to raw digits — and if the other branch kept the `+`, the two would
+ *   never match. Dropping it from both makes the shapes identical by
+ *   construction. The `+` was never doing matching work anyway: it is the same
+ *   for every international number.
  * - email → trimmed + lowercased.
  *
  * Returns null when the value is empty or obviously not an identity (e.g. an
  * email with no `@`), so callers can skip writing a junk identity.
  */
+/** Everything that isn't a digit, gone. Both phone branches end here, which is
+ *  the whole point: they cannot disagree about shape. */
+const digitsOnly = (s: string) => s.replace(/\D/g, "");
+
 export function normalizeIdentity(kind: IdentityKind, raw: string): NormalizedIdentity | null {
   const value = raw.trim();
   if (!value) return null;
@@ -44,7 +65,7 @@ export function normalizeIdentity(kind: IdentityKind, raw: string): NormalizedId
 
   // phone | wa_id — keep only digits and a leading +, then parse to E.164.
   const cleaned = value.replace(/[^\d+]/g, "");
-  if (!cleaned) return null;
+  if (!digitsOnly(cleaned)) return null;
 
   // First attempt: interpret against the default region (handles national forms
   // like "07911…" and international "+44…").
@@ -52,9 +73,17 @@ export function normalizeIdentity(kind: IdentityKind, raw: string): NormalizedId
   // Second attempt: a bare full-international number with no "+" (WhatsApp's
   // wa_id format, e.g. "447911123456") — prepend "+" and parse without a region.
   if (!(parsed && parsed.isValid()) && !cleaned.startsWith("+") && /^\d{7,15}$/.test(cleaned)) {
-    parsed = parsePhoneNumberFromString("+" + cleaned);
+    // `?? parsed` matters: a failed second attempt must not discard a usable
+    // first one.
+    parsed = parsePhoneNumberFromString("+" + cleaned) ?? parsed;
   }
-  const normalized = parsed && parsed.isValid() ? parsed.number : cleaned.replace(/^\+/, "");
+  // Any successful parse wins, valid or not. libphonenumber still produces a
+  // canonical international form for a number it merely doubts — and that is
+  // exactly the case that used to fork, because the national and international
+  // spellings of one doubted number fell into different branches. Only a string
+  // it cannot parse at all falls back to raw digits, where format variants still
+  // collapse on the digits themselves.
+  const normalized = parsed ? digitsOnly(parsed.number) : digitsOnly(cleaned);
   return { value, normalized };
 }
 

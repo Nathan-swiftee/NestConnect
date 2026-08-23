@@ -130,7 +130,7 @@ export function makeSeed() {
     north: c({ id: "ct_north", orgId: ORG_ID, displayName: "Northside Logistics", company: "Logistics · Leeds", phone: "+44 113 555 0148", email: "accounts@northside.io", avatarColor: "#0EA5E9", tags: ["Wholesale", "Net-30"] }),
     bloom: c({ id: "ct_bloom", orgId: ORG_ID, displayName: "Bloom Florists", company: "Retail · Manchester", phone: "+44 161 555 0193", email: "hello@bloomflorists.co.uk", avatarColor: "#10B981", tags: ["Retail"] }),
     harbour: c({ id: "ct_harbour", orgId: ORG_ID, displayName: "Harbour Hotel", company: "Hospitality · Bristol", phone: "+44 117 555 0176", email: "front@harbourhotel.co.uk", avatarColor: "#6366F1", tags: ["Hospitality"] }),
-    acme: c({ id: "ct_acme", orgId: ORG_ID, displayName: "Acme Café", company: "Café · Bath", phone: "+44 1225 555 0110", email: "ana@acmecafe.co.uk", avatarColor: "#F59E0B", tags: ["Café"] }),
+    acme: c({ id: "ct_acme", orgId: ORG_ID, displayName: "Acme Café", company: "Café · Bath", phone: "+44 1225 555110", email: "ana@acmecafe.co.uk", avatarColor: "#F59E0B", tags: ["Café"] }),
     tide: c({ id: "ct_tide", orgId: ORG_ID, displayName: "Tide & Co.", company: "Wholesale · Cardiff", phone: "+44 29 2055 0166", email: "team@tideandco.com", avatarColor: "#14B8A6", tags: ["Wholesale", "New lead"] }),
   };
 
