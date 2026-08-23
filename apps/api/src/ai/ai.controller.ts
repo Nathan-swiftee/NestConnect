@@ -15,6 +15,27 @@ export class AiController {
     private readonly ai: AiService,
   ) {}
 
+  /** Run one real polish against a fixed sample and report what happened.
+   *  Settings › Integrations › AI calls this so a misconfigured key or model
+   *  names itself here — with Claude's own words — instead of only failing
+   *  later behind the composer's Polish button. */
+  @Post("test")
+  async test(
+    @CurrentUserId() userId: string,
+  ): Promise<{ ok: boolean; model: string; sample?: string; error?: string }> {
+    const me = await this.store.getUser(userId);
+    if (!me) throw new NotFoundException("Current user not found");
+    const model = await this.ai.model(me.orgId);
+    try {
+      const res = await this.ai.polish(me.orgId, "hi sam sorry for the wait ur order went out this morning", {
+        channel: "whatsapp",
+      });
+      return { ok: true, model, sample: res.text };
+    } catch (err) {
+      return { ok: false, model, error: err instanceof Error ? err.message : "Unknown error" };
+    }
+  }
+
   @Post("polish")
   async polish(
     @CurrentUserId() userId: string,

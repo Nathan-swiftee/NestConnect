@@ -186,6 +186,8 @@ export const api = {
   testSmtp: () => post<{ sent: boolean; via?: string; error?: string }>("/settings/integrations/smtp/test", {}),
   // AI assist — polish a draft reply (Settings › Integrations › AI)
   polishDraft: (input: PolishDraftInput) => post<PolishDraftResult>("/ai/polish", input),
+  // One real polish against a sample, so Settings can prove the key + model work.
+  testAi: () => post<{ ok: boolean; model: string; sample?: string; error?: string }>("/ai/test", {}),
   // pull-to-refresh: fetch any new Gmail on demand
   syncGmail: () => post<{ ok: boolean; synced: number }>("/channels/google/sync", {}),
   // customers (CRM)

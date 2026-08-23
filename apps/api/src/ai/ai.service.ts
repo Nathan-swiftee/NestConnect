@@ -43,6 +43,11 @@ export class AiService {
     return (await resolveAnthropicConfig(this.store, orgId)) !== null;
   }
 
+  /** The model a polish would actually use, for the Settings test result. */
+  async model(orgId: string): Promise<string> {
+    return (await resolveAnthropicConfig(this.store, orgId))?.model ?? "";
+  }
+
   async polish(
     orgId: string,
     text: string,
@@ -94,9 +99,15 @@ export class AiService {
     }
 
     if (!res.ok) {
-      // The body can carry the key back in an echoed request; log status only.
-      this.logger.warn(`Polish request rejected: HTTP ${res.status}`);
-      throw new PolishUnavailableError(this.httpMessage(res.status), "upstream");
+      // Anthropic explains itself: {"error":{"type":"...","message":"..."}}.
+      // That message is about the REQUEST (bad model, bad param), never the
+      // credential, so it's safe to log and to show the agent — and without it
+      // an unmapped status degrades to a useless "try again".
+      const detail = await this.errorDetail(res);
+      this.logger.warn(
+        `Polish request rejected: HTTP ${res.status}${detail ? ` — ${detail}` : ""} (model ${config.model})`,
+      );
+      throw new PolishUnavailableError(this.httpMessage(res.status, detail), "upstream");
     }
 
     const json = (await res.json().catch(() => null)) as {
@@ -130,11 +141,26 @@ export class AiService {
     return "This draft is a WhatsApp message. Keep it short and conversational — no email formatting, no added greeting or sign-off.";
   }
 
-  private httpMessage(status: number): string {
-    if (status === 401 || status === 403) return "Claude rejected the API key — check it in Settings";
-    if (status === 404) return "That Claude model isn't available on this key — check the model in Settings";
+  /** Pull Anthropic's own error message out of the response body, if it sent one. */
+  private async errorDetail(res: Response): Promise<string> {
+    const body = (await res.json().catch(() => null)) as { error?: { type?: string; message?: string } } | null;
+    return body?.error?.message?.trim() ?? "";
+  }
+
+  /** What the agent sees. The well-known statuses get a plain-English action;
+   *  everything else carries Anthropic's own words, because a generic "try
+   *  again" on an unmapped status tells nobody what to change. */
+  private httpMessage(status: number, detail = ""): string {
+    const suffix = detail ? ` — ${detail}` : "";
+    if (status === 401 || status === 403) return "Claude rejected the API key — check it in Settings › Integrations › AI";
+    if (status === 404) {
+      return detail
+        ? `Claude: ${detail} — check the model in Settings`
+        : "That Claude model isn't available on this key — check the model in Settings";
+    }
     if (status === 429) return "Claude is rate-limiting — try again in a moment";
     if (status >= 500) return "Claude is having trouble — try again in a moment";
-    return "Claude couldn't polish this draft — try again";
+    if (status === 400) return `Claude rejected the request${suffix || " — check the model in Settings"}`;
+    return `Claude couldn't polish this draft (HTTP ${status})${suffix}`;
   }
 }

@@ -2246,6 +2246,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const [anthropicApiKey, setAnthropicApiKey] = useState("");
   const [anthropicModel, setAnthropicModel] = useState("");
   const [polishPrompt, setPolishPrompt] = useState("");
+  const [aiTesting, setAiTesting] = useState(false);
   const [smtpTesting, setSmtpTesting] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -2442,6 +2443,19 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       },
       onError: () => onToast("Only admins & managers can change setup"),
     });
+  };
+
+  const testAi = async () => {
+    setAiTesting(true);
+    try {
+      const res = await api.testAi();
+      // Show Claude's own words on failure — that's what names a bad model.
+      onToast(res.ok ? `Claude replied: “${res.sample ?? ""}”` : res.error || "Claude couldn't be reached");
+    } catch {
+      onToast("Couldn't reach the server to test Claude");
+    } finally {
+      setAiTesting(false);
+    }
   };
 
   const testSmtp = async () => {
@@ -2843,8 +2857,8 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
           onClose={close}
           foot={
             <>
-              <button className="btn-ghost" type="button" onClick={close}>
-                Cancel
+              <button className="btn-ghost" type="button" onClick={testAi} disabled={aiTesting || !anthropicConfigured}>
+                {aiTesting ? "Testing…" : "Test"}
               </button>
               <button className="btn-primary" type="button" onClick={saveAnthropic} disabled={update.isPending || integrations.isLoading}>
                 Save
@@ -2856,6 +2870,11 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
             Create a key at <b>console.anthropic.com</b> → API Keys. With one set, a <b>Polish</b> button appears in the
             composer: one tap tidies the agent’s draft before they send it. Claude never sends anything itself, and
             never replies on its own — it only rewrites a draft the agent has already written.
+          </p>
+          <p className="fieldhint">
+            The model must be one your key can use — the exact id from your Anthropic console, e.g.
+            <b> claude-sonnet-4-5</b>. Hit <b>Test</b> below after saving: it runs one real polish and reports back
+            what Claude said, so a wrong key or model names itself here.
           </p>
 
           <div className="setform__grid two">
