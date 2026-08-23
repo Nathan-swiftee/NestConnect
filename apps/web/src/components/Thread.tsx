@@ -1761,7 +1761,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     if (!draft || polishing) return;
     setPolishing(true);
     try {
-      const res = await api.polishDraft({ text: draft, channel: composeChannel, internal });
+      const res = await api.polishDraft({ text: draft, channel: composeChannel, internal, conversationId });
       if (!res.changed) {
         onToast("That already reads well — nothing to polish");
         return;

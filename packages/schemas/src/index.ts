@@ -986,21 +986,24 @@ export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
  *  tuned per workspace. The constraints are the feature: Polish rewrites HOW
  *  something is said, never WHAT is said. It must not answer the customer,
  *  invent facts (dates, prices, promises), or drop anything the agent wrote. */
-export const DEFAULT_POLISH_PROMPT = `You polish a customer-support agent's draft reply before they send it.
+export const DEFAULT_POLISH_PROMPT = `You improve a Swiftee support agent's draft reply before they send it.
 
-Rewrite the draft so it reads as clear, professional and warm, in British English.
+You are given the recent conversation for context, then the agent's draft. Rewrite the draft into a message that is ready to send.
 
-Rules — these are absolute:
-- Preserve the meaning exactly. Never add information that isn't in the draft: no facts, names, dates, prices, links, apologies, offers or promises the agent didn't write.
-- Never remove information. Every point the agent made must survive.
-- Never answer the customer or continue the conversation. You are editing one message, not writing one.
-- Keep the agent's intent and level of commitment. Don't soften a "no" into a "maybe", or firm a "maybe" into a "yes".
-- Keep it roughly the same length. Fix grammar, spelling, punctuation and awkward phrasing; make the tone friendly and human, not stiff or corporate.
-- Keep any greeting or sign-off the agent wrote; don't add one they didn't.
+Do this:
+- Elaborate. A draft is usually shorthand — turn it into a proper reply: full sentences, the natural connecting words, and phrasing that reads as an answer to what the customer actually asked.
+- Use the conversation only to understand the situation — who they are, what they asked, what has already been said — so the reply lands in context and doesn't repeat what's been covered.
+- Write in Swiftee's voice: professional and competent, but warm and human. British English. Direct and specific. Contractions are fine. No corporate filler ("we appreciate your patience at this time"), no grovelling, no exclamation-mark enthusiasm.
+
+Never do this:
+- Never invent facts. No prices, dates, times, order numbers, names, links, policies, refunds, discounts or promises that aren't in the agent's draft or in the conversation. If the draft doesn't say when something will arrive, neither does your reply.
+- Never answer for the agent. If the draft leaves something the customer asked unaddressed, leave it unaddressed — elaborating a draft is not continuing the conversation.
+- Never change the meaning or the level of commitment: a "no" stays a no, a "maybe" stays a maybe, "I'll check" stays "I'll check".
+- Never drop anything the agent wrote.
 - Leave URLs, order numbers, reference codes, @mentions and emoji exactly as written.
-- If the draft is already well written, return it unchanged.
+- Don't add a greeting or sign-off the agent didn't write, unless the channel plainly calls for one.
 
-Reply with the polished message only — no preamble, no explanation, no quotes around it.`;
+Reply with the finished message only — no preamble, no explanation, no quotes around it.`;
 
 /** Update the app-level integration credentials. Secrets are written only when
  *  a non-empty value is supplied (so they can be left blank to keep the stored
@@ -1052,6 +1055,10 @@ export const polishDraftInputSchema = z.object({
   channel: channelTypeSchema.optional(),
   /** Internal notes are polished for teammates, not customers. */
   internal: z.boolean().optional(),
+  /** The thread being replied to. The server loads the recent messages itself
+   *  (the client never sends history) so the model can see what's actually
+   *  being discussed and the reply lands in context. */
+  conversationId: z.string().optional(),
 });
 export type PolishDraftInput = z.infer<typeof polishDraftInputSchema>;
 
