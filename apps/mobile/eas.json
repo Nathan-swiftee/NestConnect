@@ -19,14 +19,14 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://ding-app-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://nestconnect.io"
       }
     },
     "production": {
       "channel": "production",
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://ding-app-production.up.railway.app"
+        "EXPO_PUBLIC_API_URL": "https://nestconnect.io"
       }
     }
   },

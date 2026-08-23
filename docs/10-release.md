@@ -32,12 +32,26 @@ retrying, because a retry runs the same migration.
 
 ---
 
-## 2. The product domain — a manual step, once
+## 2. The product domain — done, and what it cost
 
-`nestconnect.io` is registered and currently resolves to a parking page.
-`app.nestconnect.io` is free. Neither is attached to Railway yet, and **this
-cannot be done through the Railway MCP** — the API it exposes updates service
-config, and custom domains are a separate resource. Do it in the dashboard:
+**`https://nestconnect.io` now serves the app**, via Cloudflare in front of the
+Railway service. Two things are worth recording because they'll come up again.
+
+**GoDaddy DNS could not do it.** Railway's custom domains want a CNAME, and DNS
+forbids a CNAME at a zone root. Providers work around that with ALIAS/ANAME or
+CNAME flattening; GoDaddy DNS has none of them, so the apex was unreachable
+while its nameservers lived there. Moving DNS hosting to Cloudflare (keeping the
+registration at GoDaddy — nameservers only) fixed it: Cloudflare flattens the
+apex CNAME. The subdomain `app.nestconnect.io` would have worked anywhere and is
+the fallback if the apex ever becomes a problem.
+
+**Adding a custom domain cannot be automated from here.** Railway's MCP updates
+service config; a custom domain is a separate resource. Its agent tool reports
+`"status": "applied"` on domain writes that never land — twice, verified against
+`list-domains` both times, once creating two stray service domains as a side
+effect. Treat domain changes as dashboard-only.
+
+### If it has to be done again
 
 1. Railway → project **Nest Connect** → service **ding-app** → **Settings** →
    **Networking** → **Custom Domain**.
@@ -59,17 +73,32 @@ config, and custom domains are a separate resource. Do it in the dashboard:
    # {"status":"ok","service":"ding-api",…}
    ```
 
-### When the domain is live, three things follow
+### What followed the domain going live
 
-- **`CORS_ORIGIN`** on the `ding-app` service → set to the new origin. The web
-  app is same-origin so it doesn't need this, but anything cross-origin does.
-- **Mobile API URL** → swap `apps/mobile/src/api-config.ts` (the fallback) and
-  both `env` blocks in `apps/mobile/eas.json` from the Railway host to the new
-  one. Both currently point at `ding-app-production.up.railway.app` on purpose:
-  a URL baked into a shipped binary can't be corrected remotely, so it has to
-  name a host that is actually serving on the day the build is made.
-- **Meta / Google webhook URLs** → WhatsApp's callback and Gmail's Pub/Sub push
-  endpoint both carry the old host. Update them or inbound stops.
+- ✅ **`CORS_ORIGIN`** → `https://nestconnect.io`. It does more than CORS: it is
+  the fallback for `APP_URL`, which builds invite and password-reset links *and*
+  the email read-receipt tracking pixel base (`channel-dispatcher.ts`). Pointed
+  at a dead host, the read log silently stops recording opens.
+- ✅ **Mobile API URL** → `https://nestconnect.io` in
+  `apps/mobile/src/api-config.ts` and both `env` blocks in `eas.json`.
+- ⬜ **Meta / Google** → the WhatsApp callback URL and Gmail's Pub/Sub push
+  endpoint still carry the old host, and Gmail's OAuth redirect URI is derived
+  from the request host, so `https://nestconnect.io/...` needs adding to the
+  authorised redirect URIs in Google Cloud Console. **Inbound breaks until these
+  are updated.**
+
+### Cloudflare sits in the path now — three settings that matter
+
+- **SSL/TLS mode must be Full (strict).** On *Flexible*, Cloudflare talks to
+  Railway over plain HTTP: usually a redirect loop, and when it isn't, that hop
+  carries customer conversations unencrypted.
+- **WebSockets must stay enabled** (Network settings; on by default). Realtime
+  is socket.io — collision detection, typing and live thread updates all stop
+  without it.
+- **Bot protection can block webhooks.** Meta and Google POST to
+  `/api/channels/...` with no browser fingerprint. If inbound goes quiet after a
+  Cloudflare settings change, check Bot Fight Mode and the WAF before suspecting
+  the app.
 
 ---
 
@@ -166,8 +195,8 @@ maestro test -e EMAIL=… -e PASSWORD=… apps/mobile/.maestro/smoke.yaml
 ## Order of operations
 
 1. Push → server deploys. ✅ continuous
-2. Attach the domain, wait for the certificate, verify `/health` over HTTPS.
-3. Update `CORS_ORIGIN`, the mobile API URL, and the Meta/Google webhook URLs.
+2. ✅ Attach the domain, verify it serves over HTTPS.
+3. ✅ `CORS_ORIGIN` and the mobile API URL. ⬜ Meta/Google webhook + redirect URLs.
 4. `eas init` → credentials → secrets.
 5. `preview` build → device checks → Maestro.
 6. `production` build → submit.

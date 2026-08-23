@@ -11,16 +11,18 @@ import { clearSession, sessionToken } from "./session";
  * with nothing configured still reaches a real API rather than failing in a way
  * that looks like a bug in the app.
  *
- * That last part is why this is the Railway service domain and not the product
- * one. `nest.swiftee.co.uk` sat here for a while and never resolved — a build
- * carrying it would have installed, launched, and failed every request, which
- * reads as a broken app rather than a missing DNS record. A URL baked into a
- * shipped binary can't be corrected remotely, so it points at the hostname that
- * is actually serving.
+ * That last part is why this names a host that has been checked rather than one
+ * that ought to work. `nest.swiftee.co.uk` sat here for a while and never
+ * resolved at all — a build carrying it would have installed, launched, and
+ * failed every request, which reads as a broken app rather than a missing DNS
+ * record. A URL baked into a shipped binary cannot be corrected remotely, so
+ * changing it is gated on the hostname actually answering, never on DNS having
+ * been configured.
  *
- * **Swap this to the product domain once its DNS is live and Railway has issued
- * the certificate** — verify by loading `/health` over HTTPS on that hostname
- * first, not by assuming propagation.
+ * `nestconnect.io` is now served by Cloudflare in front of the Railway service.
+ * If it ever has to move again, the Railway service domain
+ * (`ding-app-production.up.railway.app`) is always live and is the safe
+ * fallback.
  *
  * For local development against a laptop, point it at that machine's LAN
  * address — `localhost` on a phone is the phone.
@@ -28,7 +30,7 @@ import { clearSession, sessionToken } from "./session";
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL ??
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
-  "https://ding-app-production.up.railway.app";
+  "https://nestconnect.io";
 
 /**
  * An attachment URL the way React Native needs it: absolute, and carrying the
