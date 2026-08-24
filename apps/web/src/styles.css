@@ -792,14 +792,56 @@ input,textarea{font:inherit}
      Forward / Read-receipts. Desktop (hover:hover) is unaffected — the chevron
      stays on every channel there. */
   .msg:not(.msg--mail) .msg__menubtn{display:none}
-  /* React joins Reply/Forward in that menu (long-press can't reach the iframe). */
-  .msg__menuitem--touch{display:flex}
   .msg__menuitem{padding:11px 12px}
-  .msg__react.held{opacity:1;pointer-events:auto;animation:reactIn .19s cubic-bezier(.2,.9,.3,1.1)}
-  .msg__react.held .msg__react-e{animation:emojiPop .36s cubic-bezier(.25,.8,.35,1) backwards}
-  .msg.in .msg__react{top:-52px;left:0;transform-origin:bottom left}
-  .msg.out .msg__react{top:-52px;right:0;transform-origin:bottom right}
+  /* The inline reaction row and the per-bubble menu are both replaced on touch by
+     the full-screen hold overlay (.hold), which is the single path here: it
+     carries the reactions AND the actions, so neither of these should also
+     appear. Kept in the DOM (the desktop rules own them) and hidden. */
+  .msg__react,.msg__menu{display:none}
 }
+
+/* ---- touch: hold a message → reactions from the top, actions from the bottom
+   ------------------------------------------------------------------------
+   The same split the native app uses. Reacting is a glance-and-tap so it sits
+   where your eye already is; the actions are a list you read, so they sit under
+   your thumb. One overlay rather than two, so the scrim, the dismiss target and
+   the two halves all arrive together. */
+.hold{position:fixed;inset:0;z-index:55;display:flex;flex-direction:column;
+  background:var(--scrim);overscroll-behavior:contain;touch-action:none;
+  animation:overlayIn .16s ease}
+/* Clear of the thread header — a reaction pill sitting on the back button reads
+   as a mistake. The header is ~56px plus whatever the notch adds. */
+.hold__top{flex:0 0 auto;display:flex;justify-content:center;
+  padding:calc(66px + env(safe-area-inset-top)) var(--sp-4) 0}
+.hold__react{display:flex;align-items:center;gap:2px;padding:5px 7px;
+  border-radius:var(--r-full);background:var(--elevated);
+  box-shadow:0 14px 34px -10px rgba(0,0,0,.45),0 0 0 1px var(--border);
+  animation:holdDown .24s cubic-bezier(.2,.9,.3,1.05)}
+.hold__e{width:42px;height:42px;border-radius:var(--r-full);display:grid;place-items:center;
+  font-size:25px;line-height:1;background:none;border:0;cursor:pointer;
+  animation:emojiPop .34s cubic-bezier(.25,.8,.35,1) backwards}
+.hold__e:active{transform:scale(.92)}
+.hold__e.sel{background:color-mix(in srgb,var(--brand) 22%,transparent)}
+/* The sheet is pushed to the bottom by the flex column; the spacer between the
+   two halves is the dimmed thread itself, which stays readable behind. */
+.hold__sheet{margin-top:auto;display:flex;flex-direction:column;
+  padding:9px var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom));
+  border-radius:var(--r-16) var(--r-16) 0 0;background:var(--elevated);
+  box-shadow:0 -10px 30px -12px rgba(0,0,0,.35);animation:holdUp .26s var(--ease)}
+.hold__grab{width:36px;height:4px;margin:0 auto 10px;border-radius:var(--r-full);
+  background:var(--border-strong)}
+.hold__what{margin:0 0 2px;font-size:var(--fs-sm);color:var(--text-muted);
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.hold__act{display:flex;align-items:center;gap:12px;width:100%;padding:14px 2px;
+  border:0;border-top:1px solid var(--border);background:none;color:var(--text);
+  font-size:var(--fs-lg);font-weight:500;text-align:left;cursor:pointer}
+.hold__act:first-of-type{margin-top:8px}
+.hold__act:active{opacity:.6}
+.hold__act svg{width:19px;height:19px;color:var(--text-muted);flex:none}
+.hold__note{margin:10px 0 2px;padding-top:10px;border-top:1px solid var(--border);
+  font-size:var(--fs-xs);color:var(--text-faint)}
+@keyframes holdDown{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:none}}
+@keyframes holdUp{from{transform:translateY(100%)}to{transform:none}}
 
 /* flash the target bubble when jumping to a quoted message — a soft brand glow
    that blooms and fades (no hard ring) */

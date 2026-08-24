@@ -7,7 +7,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent, FORWARD_MAX_TARGETS } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
@@ -738,6 +738,106 @@ function ForwardToChatsModal({
   );
 }
 
+/**
+ * Long-press on a phone browser: reactions from the top, actions from the bottom.
+ *
+ * The same split the native app uses, and for the same reason — reacting is a
+ * glance-and-tap that belongs where your eye already is, the actions are a list
+ * you read that belongs under your thumb. Before this the web's touch path only
+ * ever showed the emoji row: Reply was swipe-only and Forward was unreachable on
+ * a WhatsApp bubble, because the ⌄ chevron is hidden on touch for everything but
+ * email.
+ *
+ * Desktop keeps its own affordances (hover smiley + corner chevron) and never
+ * mounts this — the two are different input models, not two sizes of one.
+ */
+function HoldOverlay({
+  message,
+  contactName,
+  mine,
+  onReact,
+  onReply,
+  onForward,
+  onReceipts,
+  onClose,
+}: {
+  message: Message;
+  contactName: string;
+  /** The agent's current reaction on this message, if any — tapping it clears it. */
+  mine?: string;
+  onReact: (emoji: string) => void;
+  onReply?: () => void;
+  onForward?: () => void;
+  onReceipts?: () => void;
+  onClose: () => void;
+}) {
+  // Escape closes it, like every other overlay in the app.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="hold" onClick={onClose} role="dialog" aria-label="Message actions">
+      <div className="hold__top">
+        <div className="hold__react" role="menu" aria-label="Pick a reaction">
+          {QUICK_REACTIONS.map((e, i) => (
+            <button
+              key={e}
+              type="button"
+              className={"hold__e" + (mine === e ? " sel" : "")}
+              style={{ animationDelay: `${i * 26}ms` }}
+              onClick={(ev) => {
+                ev.stopPropagation();
+                onReact(mine === e ? "" : e);
+              }}
+              aria-label={mine === e ? `Remove ${e}` : `React ${e}`}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="hold__sheet" onClick={(e) => e.stopPropagation()}>
+        <span className="hold__grab" aria-hidden="true" />
+        {/* What the actions apply to. It's the sheet's header rather than a card
+            floating over the thread, where it would sit on top of the real
+            bubble and read as a duplicate of it. */}
+        <p className="hold__what">{quotedSnippet(message)}</p>
+        {onReply && (
+          <button type="button" className="hold__act" onClick={onReply}>
+            <ReplyIcon />
+            <span>Reply</span>
+          </button>
+        )}
+        {onForward && (
+          <button type="button" className="hold__act" onClick={onForward}>
+            <ForwardIcon />
+            <span>Forward</span>
+          </button>
+        )}
+        {onReceipts && (
+          <button type="button" className="hold__act" onClick={onReceipts}>
+            <EyeIcon />
+            <span>Read receipts</span>
+          </button>
+        )}
+        {!onReply && !onForward && (
+          <p className="hold__note">
+            {message.internal
+              ? "An internal note stays with your team — it can't be replied to or forwarded."
+              : `Only your team sees this reaction — ${contactName} won't.`}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Per-message affordances threaded down from the Thread (react + reply). */
 interface MsgActions {
   /** Display name to attribute the customer's reaction to. */
@@ -1400,6 +1500,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // which message's quick-reaction bar is open. Both reset when the thread changes.
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [reactFor, setReactFor] = useState<string | null>(null);
+  // Touch, not "narrow": the hold overlay replaces affordances that only exist
+  // because a pointer can hover, so the input model is what decides — matching
+  // the `@media (hover:none)` block the touch styles already live in.
+  const touch = useMediaQuery("(hover: none)");
   const [menuFor, setMenuFor] = useState<string | null>(null);
   // The message currently being forwarded (drives whichever forward modal fits
   // its channel: addresses for email, a chat picker for WhatsApp).
@@ -1690,7 +1794,18 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     if (!reactFor && !menuFor) return;
     const onDown = (e: Event) => {
       const t = e.target as HTMLElement;
-      if (!t.closest(".msg__react") && !t.closest(".msg__reactbtn") && !t.closest(".msg__menubtn")) setReactFor(null);
+      // `.hold` (the touch overlay) owns its own dismissal — its scrim closes it
+      // on click. Without it here, this pointerdown clears `reactFor` and
+      // unmounts the sheet before the button the finger is on ever fires its
+      // click, so Reply and Forward silently do nothing.
+      if (
+        !t.closest(".msg__react") &&
+        !t.closest(".msg__reactbtn") &&
+        !t.closest(".msg__menubtn") &&
+        !t.closest(".hold")
+      ) {
+        setReactFor(null);
+      }
       if (!t.closest(".msg__menu") && !t.closest(".msg__menubtn")) setMenuFor(null);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -2944,7 +3059,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     held: reactFor === m.id,
                     menuOpen: menuFor === m.id,
                     onHold: () => { setMenuFor(null); setReactFor(m.id); },
-                    onMenuToggle: () => { setReactFor(null); setMenuFor((cur) => (cur === m.id ? null : m.id)); },
+                    // On touch there's one path, and it's the hold overlay. The
+                    // chevron survives there only on email bubbles (whose iframe
+                    // swallows the long-press), so it opens the same thing rather
+                    // than a second, differently-shaped menu.
+                    onMenuToggle: touch
+                      ? () => { setMenuFor(null); setReactFor(m.id); }
+                      : () => { setReactFor(null); setMenuFor((cur) => (cur === m.id ? null : m.id)); },
                     onReact: (emoji) => applyReaction(m.id, emoji),
                     onReply: () => startReply(m),
                     // Forward means something on both channels, but not the same
@@ -3489,6 +3610,31 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             onClose={() => setForwardMsg(null)}
           />
         ))}
+
+      {/* Touch only: the long-press overlay. Resolved from the thread each render
+          so a reaction landing over the socket is reflected while it's open. */}
+      {touch &&
+        (() => {
+          const hm = reactFor ? conv.messages.find((m) => m.id === reactFor) : undefined;
+          if (!hm) return null;
+          const canQuoteOrForward = !hm.internal;
+          return (
+            <HoldOverlay
+              message={hm}
+              contactName={conv.contact.displayName}
+              mine={(hm.reactions ?? []).find((r) => r.by === "user")?.emoji}
+              onReact={(emoji) => applyReaction(hm.id, emoji)}
+              onReply={canQuoteOrForward ? () => { setReactFor(null); startReply(hm); } : undefined}
+              onForward={canQuoteOrForward ? () => startForward(hm) : undefined}
+              onReceipts={
+                hm.direction === "out" && !hm.internal && hm.email?.recipients?.length
+                  ? () => { setReactFor(null); setReceiptsMsgId(hm.id); }
+                  : undefined
+              }
+              onClose={() => setReactFor(null)}
+            />
+          );
+        })()}
 
       {(() => {
         // Resolve the message live from the thread so opens arriving over the
