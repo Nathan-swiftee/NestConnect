@@ -18,6 +18,7 @@ import {
   useRefresh,
   useSearchConversations,
   useSession,
+  useTeams,
   useViews,
 } from "@ding/client";
 import type { Conversation } from "@ding/schemas";
@@ -69,8 +70,22 @@ function matchesFilter(c: Conversation, f: FilterKey, myId?: string): boolean {
  * mounted, they just get new props. `conv` only changes when that conversation
  * changes, and `onPress` is stable, so a search that matches nothing still
  * costs nothing to type.
+ *
+ * `teamName` arrives already resolved, as a string, for the same reason —
+ * handing every row the teams array would give it a new prop identity on each
+ * refetch and defeat the memo for a value that almost never changes.
  */
-const Row = memo(function Row({ conv, onPress }: { conv: Conversation; onPress: (id: string) => void }) {
+const Row = memo(function Row({
+  conv,
+  teamName,
+  onPress,
+}: {
+  conv: Conversation;
+  /** The team this conversation is routed to, or undefined to omit it — inside
+   *  a team's own inbox it's the same word on every row. */
+  teamName?: string;
+  onPress: (id: string) => void;
+}) {
   const { c } = useTheme();
   const unread = conv.unreadCount > 0 || conv.unread;
   const overdue = !!conv.slaDueAt && new Date(conv.slaDueAt).getTime() < Date.now() && conv.status !== "closed";
@@ -111,6 +126,17 @@ const Row = memo(function Row({ conv, onPress }: { conv: Conversation; onPress: 
           <Text className="text-2xs text-faint">
             {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
           </Text>
+          {/* Where it was routed, in the web's position: after who has it,
+              before anything time-critical. Kept faint and unpilled on purpose
+              — the team is context for the row, not a state of it, and giving
+              it a background would make it compete with the SLA warning
+              sitting right beside it. Shrinks and truncates rather than
+              pushing "Overdue" off the row. */}
+          {teamName ? (
+            <Text numberOfLines={1} className="min-w-0 shrink text-2xs font-medium text-faint">
+              {teamName}
+            </Text>
+          ) : null}
           {conv.status === "snoozed" ? <Text className="text-2xs text-faint">· Snoozed</Text> : null}
           {overdue ? <Text style={{ color: c.danger }} className="text-2xs font-medium">Overdue</Text> : null}
           {conv.labels?.slice(0, 2).map((l) => (
@@ -136,6 +162,7 @@ export default function Inbox() {
 
   const session = useSession();
   const views = useViews();
+  const teams = useTeams();
   const list = useConversations(view);
   const found = useSearchConversations(search, searching);
   const { refresh, refreshing } = useRefresh();
@@ -230,6 +257,25 @@ export default function Inbox() {
   useEffect(() => {
     if (!filters.some((f) => f.key === filter)) setFilter("all");
   }, [filters, filter]);
+
+  /**
+   * Which team each conversation was routed to.
+   *
+   * Suppressed inside a team's own inbox, where it would be the same word on
+   * every row — the view title already says it. Everywhere else it's the
+   * answer to "why is this in front of me", which on a shared inbox is the
+   * thing you most want to know before opening anything.
+   *
+   * Resolved to a name here rather than in the row so each row gets a plain
+   * string: the teams query returns a new array on every refetch, and passing
+   * it down would re-render every row for a list that changes about once a
+   * month.
+   */
+  const teamFor = useMemo(() => {
+    if (view.startsWith("team:")) return () => undefined;
+    const byId = new Map((teams.data ?? []).map((t) => [t.id, t.name]));
+    return (conv: Conversation) => (conv.assignedTeamId ? byId.get(conv.assignedTeamId) : undefined);
+  }, [teams.data, view]);
 
   return (
     <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1">
@@ -328,10 +374,10 @@ export default function Inbox() {
         renderItem={({ item, index }) =>
           index < 8 ? (
             <Animated.View entering={rowIn(index)}>
-              <Row conv={item} onPress={openThread} />
+              <Row conv={item} teamName={teamFor(item)} onPress={openThread} />
             </Animated.View>
           ) : (
-            <Row conv={item} onPress={openThread} />
+            <Row conv={item} teamName={teamFor(item)} onPress={openThread} />
           )
         }
         ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-[80px] h-px" />}
