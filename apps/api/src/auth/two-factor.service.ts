@@ -5,6 +5,7 @@ import * as OTPAuth from "otpauth";
 import QRCode from "qrcode";
 import type { TotpSetup, TwoFactorStatus, User } from "@ding/schemas";
 import { Store } from "../data/store";
+import { loginCodeEmail } from "../mail/templates";
 import { SecretEncryptionService } from "../crypto/secret-encryption.service";
 import { Mailer } from "../mail/mailer.service";
 
@@ -75,14 +76,12 @@ export class TwoFactorService {
       emailCodeHash: bcrypt.hashSync(code, 8),
       emailCodeExpires: new Date(Date.now() + EMAIL_CODE_TTL_MS).toISOString(),
     });
+    // The expiry is stated from the same constant that enforces it, so the two
+    // can't drift into the email promising ten minutes while the code dies in
+    // five.
     await this.mailer.sendMail({
       to: user.email,
-      subject: "Your Nest Connect verification code",
-      text: `Your Nest Connect verification code is ${code}. It expires in 10 minutes.`,
-      html:
-        `<p>Your <b>Nest Connect</b> verification code is:</p>` +
-        `<p style="font-size:26px;font-weight:800;letter-spacing:3px;margin:8px 0">${code}</p>` +
-        `<p style="color:#667">It expires in 10 minutes. If you didn't request it, you can ignore this email.</p>`,
+      ...loginCodeEmail(code, Math.round(EMAIL_CODE_TTL_MS / 60_000)),
     });
   }
 

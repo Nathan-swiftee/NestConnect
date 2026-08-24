@@ -7,10 +7,7 @@ import { Store } from "../data/store";
 import { resolveResendConfig, resolveSmtpConfig, type ResendConfig, type SmtpConfig } from "./smtp-config";
 import { GMAIL_CONFIG, GoogleOAuthService } from "../channels/google/google-oauth.service";
 import { buildMime, gmail } from "../channels/google/gmail-api";
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+import { inviteEmail, passwordResetEmail, testEmail } from "./templates";
 
 /** Reject with a clear message if `p` hasn't settled within `ms`, so a stalled
  *  network call can never leave an HTTP request hanging. */
@@ -226,43 +223,19 @@ export class Mailer {
   }
 
   // ---- Composed system messages ------------------------------------------
+  //
+  // The wording and the design live in templates.ts; this file stays about
+  // getting bytes to a mail server.
 
   async sendInvite(to: string, name: string, url: string): Promise<MailResult> {
-    const safeUrl = escapeHtml(url).replace(/"/g, "&quot;");
-    return this.sendMail({
-      to,
-      subject: "You've been invited to Nest Connect",
-      text: `Hi ${name},\n\nYou've been invited to Nest Connect. Set your password to get started:\n${url}\n\nThis link expires in 7 days.`,
-      html:
-        `<p>Hi ${escapeHtml(name)},</p>` +
-        `<p>You've been invited to <b>Nest Connect</b>. Set your password to get started:</p>` +
-        `<p><a href="${safeUrl}">Set your password</a></p>` +
-        `<p style="color:#667">This link expires in 7 days.</p>`,
-    });
+    return this.sendMail({ to, ...inviteEmail(name, url) });
   }
 
   async sendPasswordReset(to: string, name: string, url: string): Promise<MailResult> {
-    const safeUrl = escapeHtml(url).replace(/"/g, "&quot;");
-    return this.sendMail({
-      to,
-      subject: "Reset your Nest Connect password",
-      text: `Hi ${name},\n\nWe received a request to reset your Nest Connect password. Choose a new one here:\n${url}\n\nThis link expires in 7 days. If you didn't request this, you can safely ignore this email.`,
-      html:
-        `<p>Hi ${escapeHtml(name)},</p>` +
-        `<p>We received a request to reset your <b>Nest Connect</b> password. Choose a new one:</p>` +
-        `<p><a href="${safeUrl}">Reset your password</a></p>` +
-        `<p style="color:#667">This link expires in 7 days. If you didn't request this, you can safely ignore this email.</p>`,
-    });
+    return this.sendMail({ to, ...passwordResetEmail(name, url) });
   }
 
   async sendTest(to: string): Promise<MailResult> {
-    return this.sendMail({
-      to,
-      subject: "Nest Connect — test email",
-      text: "This is a test email from Nest Connect. If you're reading this, your SMTP settings are working. 🎉",
-      html:
-        `<p>This is a <b>test email</b> from Nest Connect.</p>` +
-        `<p>If you're reading this, your SMTP settings are working. 🎉</p>`,
-    });
+    return this.sendMail({ to, ...testEmail() });
   }
 }
