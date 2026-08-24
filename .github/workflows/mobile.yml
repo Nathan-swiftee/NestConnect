@@ -1,0 +1,113 @@
+name: Mobile build
+
+# Deliberately manual. A native build takes ~15–25 minutes of EAS queue and burns
+# a build credit, so it should happen when someone wants an installable app —
+# not on every push. Trigger it from the repo's Actions tab (github.com works
+# fine from a phone browser); the run's summary links to the build page, where
+# the QR code and install link appear.
+#
+# Requires one repository secret, EXPO_TOKEN — see docs/08-mobile-builds.md.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "build = a new installable app. update = push JS-only changes to apps already installed (seconds, no rebuild)."
+        type: choice
+        options: [build, update]
+        default: build
+      platform:
+        description: "Which app to build. Ignored for update — an update reaches both."
+        type: choice
+        options: [android, ios, all]
+        default: android
+      profile:
+        description: "preview = internal install (Android APK). production = store build."
+        type: choice
+        options: [preview, production]
+        default: preview
+      message:
+        description: "Note shown against the build/update on expo.dev. Defaults to the commit subject."
+        type: string
+        required: false
+
+concurrency:
+  # One at a time per ref: two builds of the same commit is a wasted credit, and
+  # two updates racing onto one channel is a coin flip over which lands last.
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version:` — pnpm/action-setup reads it from "packageManager" in
+      # package.json, and pinning it in both places aborts the action
+      # (ERR_PNPM_BAD_PM_VERSION). Same as ci.yml.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # Installed from the ROOT: apps/mobile depends on @ding/client and
+      # @ding/schemas, and node-linker=hoisted puts their files in the root
+      # node_modules rather than under apps/mobile.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Catches a resolution break before spending 20 minutes of EAS queue on it.
+      # Metro resolves differently from tsc, so a typecheck alone wouldn't.
+      - name: Bundle check
+        working-directory: apps/mobile
+        run: pnpm exec expo export --platform ios --output-dir /tmp/mobile-bundle
+
+      # `head_commit` only exists on push events, so read the subject from git.
+      - name: Resolve the message
+        id: msg
+        run: |
+          MSG="${{ inputs.message }}"
+          [ -n "$MSG" ] || MSG="$(git log -1 --pretty=%s)"
+          echo "text=$MSG" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        if: inputs.mode == 'build'
+        working-directory: apps/mobile
+        run: |
+          # --no-wait so the runner isn't held for the whole queue: EAS builds it
+          # server-side either way, and the build page is where it's watched.
+          pnpm exec eas build \
+            --platform ${{ inputs.platform }} \
+            --profile ${{ inputs.profile }} \
+            --message "${{ steps.msg.outputs.text }}" \
+            --non-interactive \
+            --no-wait
+
+      - name: Update
+        if: inputs.mode == 'update'
+        working-directory: apps/mobile
+        run: |
+          # The channel matches the build profile's `channel` in eas.json, so an
+          # update published here reaches the builds made with that profile.
+          pnpm exec eas update \
+            --channel ${{ inputs.profile }} \
+            --message "${{ steps.msg.outputs.text }}" \
+            --non-interactive
+
+      - name: Where to find it
+        run: |
+          KIND="${{ inputs.mode == 'build' && 'builds' || 'updates' }}"
+          {
+            echo "### Mobile ${{ inputs.mode }} started"
+            echo
+            echo "Watch it — and get the install link / QR code — at:"
+            echo
+            echo "<https://expo.dev/accounts/swiftee/projects/nest-connect/$KIND>"
+          } >> "$GITHUB_STEP_SUMMARY"

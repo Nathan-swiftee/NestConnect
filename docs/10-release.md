@@ -124,11 +124,16 @@ effect. Treat domain changes as dashboard-only.
 
 ---
 
-## 3. Mobile — from a machine with an Expo login
+## 3. Mobile — builds and updates
 
 **None of this runs from the build sandbox.** Its network policy refuses
 `api.expo.dev` and `exp.host`, so eas-cli cannot authenticate or submit from
-there no matter what token it's given. Run these from a laptop.
+there no matter what token it's given.
+
+That leaves two places a build can come from. The one-time setup below (3.1–3.3)
+is interactive and needs a laptop with an Expo login. **Everyday builds don't**
+— once that setup exists, 3.4 triggers them from GitHub in a browser, which
+works from a phone.
 
 `eas-cli` is pinned in the repo so everyone uses the same version:
 
@@ -220,14 +225,67 @@ Set on the EAS project (`eas secret:create`), not in the repo:
 | `EXPO_APPLE_ID`, `EXPO_ASC_APP_ID`, `EXPO_APPLE_TEAM_ID` | Read by `eas.json`'s submit profile. |
 | `EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | Same, for Play. |
 
-### 3.4 Build and submit
+### 3.4 Everyday builds — from GitHub, no terminal
+
+<https://github.com/Nathan-swiftee/Chat/actions/workflows/mobile.yml> → **Run
+workflow**. Pick the branch, then:
+
+| Option | What to pick |
+|---|---|
+| **mode** | `build` for a new installable app; `update` to push JS-only changes |
+| **platform** | `android`, `ios`, or `all` |
+| **profile** | `preview` for an install-it-yourself APK; `production` for a store build |
+
+The run finishes in a couple of minutes — it does **not** sit and wait for the
+build, because EAS is building it server-side regardless and holding a GitHub
+runner idle for 20 minutes tells you nothing the build page doesn't. The run's
+summary links to
+<https://expo.dev/accounts/swiftee/projects/nest-connect/builds>, where the
+build shows its progress and then offers a **QR code and an install link**. That
+link is shareable: anyone you send it to installs the same build.
+
+Reckon on 15–25 minutes including queue time.
+
+**One secret makes this work.** Create a robot token at
+<https://expo.dev/accounts/swiftee/settings/access-tokens> and add it as
+`EXPO_TOKEN` under
+<https://github.com/Nathan-swiftee/Chat/settings/secrets/actions>. A robot token
+rather than a personal login: it isn't tied to anyone's 2FA, it survives a
+password change, and it can be revoked on its own.
+
+#### `update` is usually the one you want
+
+Most changes to this app are JavaScript — a screen, a component, some copy. Those
+need no new binary. `mode: update` publishes to EAS Update and every installed
+build on that channel picks it up **on next launch**, in seconds, no reinstall.
+
+Reach for `build` only when something native changed:
+
+- a new dependency with native code
+- a change to `app.json` / `app.config.ts` — permissions, icons, bundle id, plugins
+- an Expo SDK upgrade
+- the app version — `runtimeVersion` follows it (policy: `appVersion`), so bumping
+  the version means existing installs stop accepting updates until rebuilt
+
+When in doubt, `update` is safe: if the change really did need native code, the
+update simply won't contain it. It can't break an install.
+
+#### Why it's manual rather than on every push
+
+A build costs a credit and ~20 minutes of queue. Firing one per commit spends
+both on changes nobody is waiting to install. `ci.yml` already bundles the app on
+every push, which is what actually catches breakage — the build is for when you
+want the app in your hand. The workflow re-runs that bundle check first, because
+catching a Metro resolution break in 40 seconds beats catching it after 20
+minutes of queue (see 3.0 — that failure mode is not hypothetical here).
+
+### 3.5 Submitting to the stores — still a terminal job
+
+Building is 3.4. Submitting is deliberately not wired to a button — a store
+submission is the one action here you cannot take back, and it should cost a
+conscious trip to a terminal.
 
 ```sh
-# Internal testing first — a real device, real push, real network.
-pnpm exec eas build --profile preview --platform all
-
-# Then production.
-pnpm exec eas build --profile production --platform all
 pnpm exec eas submit --profile production --platform ios       # → TestFlight
 pnpm exec eas submit --profile production --platform android   # → Play internal, as a draft
 ```
@@ -235,7 +293,7 @@ pnpm exec eas submit --profile production --platform android   # → Play intern
 Android goes to the `internal` track as a **draft** on purpose: a submission is
 never one command away from being live.
 
-### 3.5 Before you submit — the device checks
+### 3.6 Before you submit — the device checks
 
 Three things are implemented and **verified only in a browser harness**, because
 no device or simulator was available. Each needs ten minutes on a real phone:
@@ -265,9 +323,9 @@ maestro test -e EMAIL=… -e PASSWORD=… apps/mobile/.maestro/smoke.yaml
 2. ✅ Attach the domain, verify it serves over HTTPS.
 3. ✅ `CORS_ORIGIN` and the mobile API URL. ⬜ Google OAuth redirect URI (the one
    real breakage); webhooks are fine where they are until you retire the old host.
-4. `eas init` → credentials → secrets.
-5. `preview` build → device checks → Maestro.
-6. `production` build → submit.
+4. `eas init` → credentials → secrets → the `EXPO_TOKEN` GitHub secret (3.1–3.4).
+5. `preview` build from the Actions tab → device checks → Maestro.
+6. `production` build from the Actions tab → `eas submit` from a terminal.
 
 Doing 4–6 before 2–3 means shipping a binary that names the wrong host, and that
 is the one mistake here you cannot fix without a new release.
