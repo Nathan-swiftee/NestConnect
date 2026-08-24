@@ -34,6 +34,7 @@ import type {
 } from "@ding/schemas";
 import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE, publicChannelConfig } from "@ding/schemas";
 import { env } from "../config/env";
+import { threadsTogether } from "./email-threading";
 import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
@@ -1446,6 +1447,13 @@ export class MemoryStore extends Store {
     // inbox — another number, email address, or channel — starts a separate
     // conversation, and a closed thread starts a new one. (Agents still reply
     // cross-channel inside a thread via the send path; this governs inbound + reach.)
+    //
+    // Email adds a second condition: the subject has to match. A mailbox thread
+    // is a topic, not a person, so a customer writing about something new gets a
+    // new conversation rather than having it filed under whatever they last
+    // wrote about. See email-threading.ts — and note this only decides what
+    // happens when the mail carried no usable References chain, which the ingest
+    // path has already tried.
     const open = [...this.conversations]
       .sort(byRecencyDesc)
       .find(
@@ -1453,7 +1461,8 @@ export class MemoryStore extends Store {
           c.orgId === params.orgId &&
           c.inboxId === params.inboxId &&
           c.contact.id === params.contact.id &&
-          (c.status === "open" || c.status === "pending"),
+          (c.status === "open" || c.status === "pending") &&
+          threadsTogether(params.channel, params.subject, c.subject),
       );
     if (open) return { conversation: this.summary(open), created: false };
 

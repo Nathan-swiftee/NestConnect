@@ -97,6 +97,23 @@ For addresses we want Nest Connect to fully own, or non-Google/MS domains:
 ### Threading & the shared-inbox model
 
 - **Threading** uses standard headers — `Message-ID`, `In-Reply-To`, `References` — plus subject/participant heuristics, to group emails into one Nest Connect **conversation**. Each outbound message sets/propagates these headers so replies land back in the right thread.
+- **The subject decides the thread when the headers don't.** Every other channel
+  is one conversation per person; a mailbox is not. "Invoice #4471" and
+  "Christmas opening hours" from the same customer are two conversations, and
+  filing the second onto the first buries it under whatever they last wrote
+  about. So an inbound email that carries no usable `References` chain only
+  joins an open conversation whose subject matches, compared with reply and
+  forward prefixes stripped and case folded (`data/email-threading.ts`) — "Re:",
+  "Fwd: Re:" and "Re[2]:" are all the same thread. This is a fallback, never the
+  first test: a genuine reply threads on its header chain.
+  - **An agent renaming a thread is safe**, twice over. The customer's reply
+    carries `References` and matches before the subject is ever consulted; and
+    the rename is written to the conversation, so their "Re: <new subject>"
+    matches it anyway.
+  - The rule is keyed on the channel, not on whether a subject happens to
+    exist. A WhatsApp group carries the group's name in the same field, and
+    comparing that against an inbound with no subject would fork every group
+    thread on every message.
 - **Identity normalisation decides who a customer *is*.** Every write path funnels
   through one function (`contacts/identity.ts`) that turns a phone or email into a
   canonical key; get-or-create matches on that key alone. For phones the key is

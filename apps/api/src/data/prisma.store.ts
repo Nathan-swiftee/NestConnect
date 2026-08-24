@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { hashInviteToken, newInviteToken } from "../auth/invite-token";
 import { IDENTITY_NORMALIZATION_VERSION, normalizeIdentity, type IdentityKind } from "../contacts/identity";
 import { groupDuplicateContacts } from "../contacts/duplicates";
+import { threadsTogether } from "./email-threading";
 import type { Prisma } from "@prisma/client";
 import type {
   Attachment,
@@ -1684,11 +1685,26 @@ export class PrismaStore extends Store {
     // — another number, email address, or channel — is a separate conversation,
     // and a closed thread starts a new one. (Agents still reply cross-channel
     // inside a thread via the send path; this governs inbound + reach.)
-    const open = await this.prisma.conversation.findFirst({
+    //
+    // Email adds a second condition: the subject has to match. A mailbox thread
+    // is a topic, not a person, so a customer writing about something new gets a
+    // new conversation rather than having it filed under whatever they last
+    // wrote about. See email-threading.ts — and note this only decides what
+    // happens when the mail carried no usable References chain, which the ingest
+    // path has already tried.
+    //
+    // Matched in JS rather than SQL because the comparison strips "Re:"/"Fwd:"
+    // and folds case, which no index can express — and because the alternative
+    // is two implementations of the same rule drifting apart from each other.
+    // The candidate set is a single contact's open threads in one inbox, so it
+    // is a handful of rows; the take() is a bound, not a page.
+    const candidates = await this.prisma.conversation.findMany({
       where: { orgId: params.orgId, inboxId: params.inboxId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
       include: convInclude,
       orderBy: { lastActivityAt: "desc" },
+      take: 25,
     });
+    const open = candidates.find((c) => threadsTogether(params.channel, params.subject, c.subject));
     if (open) return { conversation: mapConversation(open), created: false };
 
     const created = await this.prisma.conversation.create({
