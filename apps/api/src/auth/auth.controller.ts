@@ -89,11 +89,24 @@ export class AuthController {
    * longer (re-authenticating a phone weekly is a real cost) and stay revocable
    * through the same `Session` row either way.
    */
+  /**
+   * Who you are, plus the deployment's 2FA policy. The policy rides along with
+   * the session because the enrolment gate is drawn by the client: without it
+   * the web app would have to assume a rule the server owns.
+   *
+   * Deliberately NOT called `twoFactorRequired` — that key is the discriminator
+   * for a login challenge (`TwoFactorChallenge`), and reusing it here would make
+   * every successful session look like one.
+   */
+  private async meResponse(userId: string) {
+    return { ...(await this.store.me(userId)), twoFactorEnforced: env.auth.require2fa };
+  }
+
   private async grantSession(userId: string, req: Request, res: Response, tokenAuth = false) {
     const sessionId = await this.sessions.create(userId, clientMeta(req));
     const ttl = tokenAuth ? env.auth.mobileTtlSeconds : env.auth.ttlSeconds;
     const token = this.auth.sign(userId, sessionId, ttl);
-    const me = await this.store.me(userId);
+    const me = await this.meResponse(userId);
     if (!tokenAuth) {
       res.cookie(env.auth.cookieName, token, cookieOptions());
       return me;
@@ -202,7 +215,7 @@ export class AuthController {
 
   @Get("session")
   session(@CurrentUserId() userId: string) {
-    return this.store.me(userId);
+    return this.meResponse(userId);
   }
 
   /**

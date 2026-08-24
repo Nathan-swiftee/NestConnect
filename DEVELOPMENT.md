@@ -101,6 +101,12 @@ with `@Public()` marking login, `/health`, and the channel webhooks. The
   `GET /api/auth/session`.
 - The web app gates on `GET /api/auth/session` — unauthenticated shows the login
   screen; the avatar menu signs out.
+- **Two-factor is mandatory**: a signed-in user who hasn't enrolled is held at
+  the setup gate. To skip it locally set `AUTH_REQUIRE_2FA=false` — the API
+  reports the policy on the session response (`twoFactorEnforced`) and the web
+  app follows it. The flag is **ignored in production**, and it only turns off
+  forced *enrolment*: a user who has already enrolled is still asked for a code
+  at login, in dev too.
 
 ## Create an inbox
 

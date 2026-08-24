@@ -76,6 +76,11 @@ export interface SidebarViews {
 export interface MeResponse {
   user: User;
   teams: Team[];
+  /** Whether this deployment holds an un-enrolled user at the 2FA setup gate.
+   *  Always true in production; settable off in dev via AUTH_REQUIRE_2FA=false.
+   *  Optional so a client running ahead of the API still compiles — read it as
+   *  `!== false` at the gate, so an absent value keeps 2FA mandatory. */
+  twoFactorEnforced?: boolean;
 }
 export interface CreateUserResult {
   user: User;

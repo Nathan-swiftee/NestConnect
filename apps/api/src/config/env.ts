@@ -46,6 +46,24 @@ export const env = {
     mobileTtlSeconds: Number(process.env.AUTH_MOBILE_TTL_SECONDS ?? 60 * 60 * 24 * 60),
     // Password for all seeded demo users (dev only).
     devPassword: process.env.AUTH_DEV_PASSWORD ?? "ding1234",
+    /**
+     * Whether an authenticated user who hasn't enrolled in 2FA is held at the
+     * setup gate. On by default and *forced* on in production: needing an
+     * authenticator app to reach a local stack or a CI run is real friction, but
+     * a prod deployment must not be able to drop the requirement by setting one
+     * env var. So `AUTH_REQUIRE_2FA=false` is honoured only outside production.
+     *
+     * This is about mandatory *enrolment*, not about skipping the code: a user
+     * who has already enrolled is still challenged at login, in dev too.
+     *
+     * Read as a getter so it reflects the environment at call time, like
+     * `mockMessaging`. The production check is spelled out rather than reusing
+     * `env.isProd`, because a getter on this nested object sees `auth` as
+     * `this`, not `env`.
+     */
+    get require2fa(): boolean {
+      return process.env.NODE_ENV === "production" || process.env.AUTH_REQUIRE_2FA !== "false";
+    },
   },
   // Master key for encrypting integration secrets at rest (AES-256-GCM). Loaded
   // from the environment only — never stored in Postgres. Prefer a base64- or
@@ -161,7 +179,14 @@ const DEFAULT_JWT_SECRET = "ding-dev-secret-change-me";
  * warned about, not fatal.
  */
 export function assertProdSecrets(logger: { warn: (m: string) => void } = console): void {
-  if (!env.isProd) return;
+  // Outside production the only thing worth saying is which guardrails are down,
+  // so they're visible in the log rather than discovered by surprise.
+  if (!env.isProd) {
+    if (!env.auth.require2fa) {
+      logger.warn("AUTH_REQUIRE_2FA=false — mandatory two-factor enrolment is OFF. Ignored in production.");
+    }
+    return;
+  }
   if (!process.env.AUTH_JWT_SECRET || process.env.AUTH_JWT_SECRET === DEFAULT_JWT_SECRET) {
     throw new Error(
       "Refusing to start in production with an insecure AUTH_JWT_SECRET. Set a strong, random value.",

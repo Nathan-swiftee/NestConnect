@@ -22,8 +22,10 @@ export function App() {
     return <LoginScreen />;
   }
   // Mandatory 2FA: an authenticated user who hasn't enrolled is held at the
-  // enrolment gate until they set it up (or sign out).
-  if (!user.twoFactorEnabled) {
+  // enrolment gate until they set it up (or sign out). The server owns the rule
+  // — it's always on in production, and only a dev API can answer `false` — so
+  // an absent flag (an API older than this bundle) still gates.
+  if (session.data?.twoFactorEnforced !== false && !user.twoFactorEnabled) {
     return <TwoFactorGate />;
   }
   return <Workspace />;

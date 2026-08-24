@@ -66,8 +66,10 @@ export class WorkspaceController {
   }
 
   @Get("me")
-  me(@CurrentUserId() userId: string) {
-    return this.store.me(userId);
+  async me(@CurrentUserId() userId: string) {
+    // Same shape as /auth/session, 2FA policy included — the two are one type on
+    // the client, so they must not drift.
+    return { ...(await this.store.me(userId)), twoFactorEnforced: env.auth.require2fa };
   }
 
   /** A user updating their OWN availability + email signature (no admin rights). */
