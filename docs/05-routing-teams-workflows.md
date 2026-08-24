@@ -89,6 +89,26 @@ Every move: updates the conversation, **writes an `AssignmentEvent`** (who, from
 
 Because multiple agents see the same shared inbox, Nest Connect shows **live presence on each conversation** ("Alice is viewing", "Ben is typing to this client") and a **soft-lock warning** if you start replying to something someone else is actively answering. Prevents double-replies without hard-locking anyone out.
 
+**The unread badge belongs to whoever has to reply.** An assigned conversation
+clears its badge only for its assignee. A teammate opening it to look something
+up — or glancing at it from the shared inbox — leaves it unread, because that
+badge is the only thing telling the assignee a customer is waiting on them. Let
+anyone clear it and the failure is silent: the message drops off the assignee's
+unread list and simply never gets answered. Unassigned works the other way on
+purpose — nobody owns it, the team owns it collectively, and a teammate reading
+it *is* the team having seen it.
+
+The WhatsApp read receipt is deliberately not conditional on any of this. It
+reports a fact about the customer's message — somebody at this business has read
+it — and that is true whoever opened the thread. Tying the customer's blue ticks
+to which colleague happened to look would be both wrong and invisible to us.
+
+> This is ownership-scoped, not per-user: there is one `unread` flag, and who may
+> clear it depends on assignment. Genuinely per-user read state (every agent with
+> their own unread list, Front-style) needs a `(conversation, user, lastReadSeq)`
+> table and is a larger change; the rule above fixes the failure that actually
+> loses messages.
+
 ## "My Inbound" — precise semantics
 
 A conversation is in user *U*'s **My Inbound** when it's `open`/`pending` **and** either:

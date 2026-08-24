@@ -95,10 +95,14 @@ export class ConversationsController {
     return this.conversations.snooze(id, body.until);
   }
 
-  /** Mark a conversation read — clears the unread badge + sends a WhatsApp read receipt. */
+  /**
+   * Mark a conversation read — sends a WhatsApp read receipt, and clears the
+   * unread badge if this reader is the one responsible for replying. Who that
+   * is (assignee, or anyone when unassigned) is decided in the service.
+   */
   @Post(":id/read")
-  markRead(@Param("id") id: string) {
-    return this.conversations.markRead(id);
+  markRead(@Param("id") id: string, @CurrentUserId() userId: string) {
+    return this.conversations.markRead(id, userId);
   }
 
   /** Manually mark a conversation unread — leaves a WhatsApp-style empty dot. */

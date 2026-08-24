@@ -288,13 +288,38 @@ export class ConversationsService {
     return conv;
   }
 
-  /** Agent opened/read a conversation: clear its unread badge and, on WhatsApp,
-   *  send the customer a read receipt (blue ticks) for their latest message. */
-  async markRead(id: string): Promise<Conversation> {
+  /**
+   * Agent opened a conversation.
+   *
+   * **The unread badge belongs to whoever has to reply.** An assigned
+   * conversation only clears for its assignee: a teammate opening it to look
+   * something up, or glancing at it from the shared inbox, must not take the
+   * badge off someone else's queue. That badge is the only thing telling the
+   * assignee a customer is waiting on them, and once another person's tap has
+   * cleared it the message is gone from their unread list and simply doesn't
+   * get answered — a silent failure, and the worst kind for a shared inbox.
+   *
+   * Unassigned is the other way round on purpose: nobody owns it, the team owns
+   * it collectively, and a teammate reading it *is* the team having seen it.
+   *
+   * The WhatsApp read receipt is deliberately not conditional. It reports a
+   * fact about the customer's message — somebody at this business has read it —
+   * and that is true whoever opened the thread. Tying it to the badge would
+   * make the customer's blue ticks depend on which colleague happened to look,
+   * which is both wrong and invisible to us.
+   */
+  async markRead(id: string, readerUserId?: string): Promise<Conversation> {
     const conv = await this.store.getConversation(id);
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
-    const updated = await this.store.clearUnread(id);
+
+    const owner = conv.assigneeUserId ?? null;
+    // No reader id (an internal caller) keeps the old behaviour rather than
+    // silently refusing to clear anything.
+    const mayClear = !owner || !readerUserId || owner === readerUserId;
+
+    const updated = mayClear ? await this.store.clearUnread(id) : undefined;
     if (updated) this.realtime.emitConversationUpdated(updated);
+
     if (conv.channel === "whatsapp" || conv.channel === "whatsapp_group") {
       const lastInbound = [...conv.messages]
         .reverse()
