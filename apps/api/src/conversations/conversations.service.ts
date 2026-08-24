@@ -5,12 +5,14 @@ import type {
   Conversation,
   ConversationPage,
   ConversationWithMessages,
+  ForwardResult,
   Message,
   MessagePage,
   SendMessageInput,
   UpdatePriorityInput,
   UpdateStatusInput,
 } from "@ding/schemas";
+import { FORWARD_MAX_TARGETS } from "@ding/schemas";
 import { Store, type OutboundDeliveryMeta } from "../data/store";
 import { isWaChannel } from "../data/mappers";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -89,7 +91,18 @@ export class ConversationsService {
     return conv;
   }
 
-  async sendMessage(id: string, input: SendMessageInput, userId: string): Promise<Message> {
+  /**
+   * @param opts.forwarded Mark the send as passing on someone else's message.
+   *   Set here rather than on `SendMessageInput` deliberately: "Forwarded" is a
+   *   claim about provenance, and a client shouldn't be able to stamp it on
+   *   something it wrote itself.
+   */
+  async sendMessage(
+    id: string,
+    input: SendMessageInput,
+    userId: string,
+    opts: { forwarded?: boolean } = {},
+  ): Promise<Message> {
     const author = await this.store.getUser(userId);
     if (!author) throw new NotFoundException("Current user not found");
 
@@ -200,6 +213,7 @@ export class ConversationsService {
         channel: channelOverride,
         idempotencyKey,
         deliveryMeta,
+        forwarded: opts.forwarded,
       },
       author,
     );
@@ -229,6 +243,92 @@ export class ConversationsService {
       await this.queue.enqueueDelivery({ messageId: message.id, conversationId: id }, idempotencyKey);
     }
     return message;
+  }
+
+  /**
+   * Pass one message on to other customers' WhatsApp chats.
+   *
+   * WhatsApp has no forward primitive — a forward is a fresh send of the same
+   * content to a different chat, which is exactly what this does. Media rides
+   * along as a cloned attachment row pointing at the same stored object, so
+   * forwarding a video costs a row, not a re-upload.
+   *
+   * Each target is attempted independently and reported separately. The failure
+   * that actually happens is per-chat (a closed 24-hour window on one of them),
+   * and collapsing that into a single "forward failed" would leave an agent not
+   * knowing which of five customers got it.
+   */
+  async forwardMessage(
+    conversationId: string,
+    messageId: string,
+    contactIds: string[],
+    userId: string,
+  ): Promise<ForwardResult[]> {
+    const me = await this.store.getUser(userId);
+    if (!me) throw new NotFoundException("Current user not found");
+
+    const conv = await this.store.getConversation(conversationId);
+    if (!conv) throw new NotFoundException(`Conversation ${conversationId} not found`);
+    const source = conv.messages.find((m) => m.id === messageId);
+    if (!source) throw new NotFoundException("Message not found in this conversation");
+    // An internal note is the team talking to itself. Forwarding one to a
+    // customer's WhatsApp is the single worst thing this feature could do, so
+    // it's refused at the door rather than guarded further down.
+    if (source.internal) throw new BadRequestException("Internal notes can't be forwarded.");
+
+    const inbox = (await this.store.listInboxes()).find((i) => i.type === "whatsapp");
+    if (!inbox) throw new BadRequestException("No WhatsApp inbox is connected yet.");
+
+    // Dedupe: picking the same customer twice should send once, not twice.
+    const targets = [...new Set(contactIds)].slice(0, FORWARD_MAX_TARGETS);
+    const results: ForwardResult[] = [];
+
+    for (const contactId of targets) {
+      const contact = await this.store.getContactWithConversations(contactId);
+      if (!contact) {
+        results.push({ contactId, name: "Unknown customer", ok: false, error: "Customer not found" });
+        continue;
+      }
+      const name = contact.displayName;
+      if (!contact.phone) {
+        results.push({ contactId, name, ok: false, error: "No WhatsApp number on file" });
+        continue;
+      }
+      try {
+        const { conversation, created } = await this.store.findOrCreateOpenConversation({
+          orgId: me.orgId,
+          inboxId: inbox.id,
+          contact,
+          channel: "whatsapp",
+          // Whoever forwards owns the thread they've just started.
+          assigneeUserId: me.id,
+        });
+        if (created) this.realtime.emitConversationUpdated(conversation);
+
+        // Cloned per target: each send claims its own attachment rows, so two
+        // targets can't race to claim the same staged upload.
+        const attachmentIds = await this.store.stageAttachmentCopies(source.id);
+        // A media message with no caption has an empty body, which the send
+        // schema allows only because the attachments carry it.
+        await this.sendMessage(
+          conversation.id,
+          {
+            body: source.body ?? "",
+            internal: false,
+            ...(attachmentIds.length ? { attachmentIds } : {}),
+          },
+          userId,
+          { forwarded: true },
+        );
+        results.push({ contactId, name, ok: true, conversationId: conversation.id });
+      } catch (err) {
+        // The expected failure here is a closed 24-hour window, and sendMessage
+        // already phrases that for an agent. Keep its wording.
+        const message = err instanceof Error ? err.message : "Couldn't forward to this chat";
+        results.push({ contactId, name, ok: false, error: message });
+      }
+    }
+    return results;
   }
 
   /** Manually retry a failed outbound message: reset it to queued and re-enqueue. */

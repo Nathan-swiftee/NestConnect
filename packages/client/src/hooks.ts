@@ -661,6 +661,32 @@ export function useRetryMessage() {
   });
 }
 
+/**
+ * Forward a message on to other customers' WhatsApp chats.
+ *
+ * Resolves to one result per target rather than throwing on the first failure —
+ * a partly-successful forward is the normal case (one chat's 24-hour window has
+ * closed), and the caller needs the breakdown to say which. It only rejects when
+ * the whole request fails.
+ *
+ * Every target either lands in an existing thread or opens a new one, so both
+ * the list and any thread the agent then visits are refetched.
+ */
+export function useForwardMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { conversationId: string; messageId: string; contactIds: string[] }) =>
+      api.forwardMessage(v.conversationId, v.messageId, v.contactIds),
+    onSuccess: (results) => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+      for (const r of results) {
+        if (r.conversationId) qc.invalidateQueries({ queryKey: ["conversation", r.conversationId] });
+      }
+    },
+  });
+}
+
 /** Mark a conversation read: clears the unread badge and sends a WhatsApp read
  *  receipt (blue ticks) for the customer's latest message. Idempotent server-side. */
 export function useMarkRead() {

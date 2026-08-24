@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import {
   assignConversationInputSchema,
+  forwardMessageInputSchema,
   reactionInputSchema,
   sendMessageInputSchema,
   setConversationLabelsInputSchema,
@@ -8,6 +9,7 @@ import {
   updatePriorityInputSchema,
   updateStatusInputSchema,
   type AssignConversationInput,
+  type ForwardMessageInput,
   type ReactionInput,
   type SendMessageInput,
   type SetConversationLabelsInput,
@@ -135,6 +137,18 @@ export class ConversationsController {
     @Body(new ZodValidationPipe(reactionInputSchema)) body: ReactionInput,
   ) {
     return this.conversations.react(id, messageId, body.emoji);
+  }
+
+  /** Pass this message on to other customers' WhatsApp chats. Reports one result
+   *  per target — a closed 24-hour window fails that chat, not the whole send. */
+  @Post(":id/messages/:messageId/forward")
+  forward(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Param("messageId") messageId: string,
+    @Body(new ZodValidationPipe(forwardMessageInputSchema)) body: ForwardMessageInput,
+  ) {
+    return this.conversations.forwardMessage(id, messageId, body.contactIds, userId);
   }
 
   /** Manually retry a failed outbound message (re-queues it for delivery). */

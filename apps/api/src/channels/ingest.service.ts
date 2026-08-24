@@ -17,6 +17,8 @@ export interface WhatsAppInbound {
   attachments?: AttachmentInput[];
   /** Id of the message this one replies to (already resolved to our id). */
   quotedMsgId?: string;
+  /** WhatsApp flagged this as forwarded to us rather than written by the sender. */
+  forwarded?: boolean;
 }
 
 export interface EmailInbound {
@@ -154,6 +156,7 @@ export class IngestService {
       messageType: input.messageType,
       attachments: input.attachments,
       quotedMsgId: input.quotedMsgId,
+      forwarded: input.forwarded,
     });
     if (message) {
       this.realtime.emitMessageCreated(conv.id, message, inbox.orgId);
@@ -173,6 +176,7 @@ export class IngestService {
     messageType?: MessageType;
     attachments?: AttachmentInput[];
     quotedMsgId?: string;
+    forwarded?: boolean;
   }): Promise<{ conversationId: string; created: boolean } | undefined> {
     if (input.channelMsgId) {
       const seen = await this.store.getMessageRefByChannelId(input.channelMsgId);
@@ -213,6 +217,7 @@ export class IngestService {
       messageType: input.messageType,
       attachments: input.attachments,
       quotedMsgId: input.quotedMsgId,
+      forwarded: input.forwarded,
     });
     if (message) {
       this.realtime.emitMessageCreated(conversationId, message, orgId);

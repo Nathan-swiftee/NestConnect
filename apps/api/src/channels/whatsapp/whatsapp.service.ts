@@ -41,8 +41,9 @@ export interface WhatsAppWebhookBody {
           sticker?: WaMedia;
           /** An emoji reaction to an earlier message (empty emoji = removed). */
           reaction?: { message_id?: string; emoji?: string };
-          /** Set when the customer replied to (quoted) an earlier message. */
-          context?: { id?: string };
+          /** `id` is the message this one quotes (a reply); `forwarded` is set
+           *  when the sender passed it on from another chat instead of writing it. */
+          context?: { id?: string; forwarded?: boolean };
         }>;
         statuses?: Array<{
           id: string;
@@ -130,6 +131,8 @@ export class WhatsAppService {
             const quotedMsgId = msg.context?.id
               ? (await this.store.getMessageRefByChannelId(msg.context.id))?.id
               : undefined;
+            // Meta only sets this when the sender forwarded the message to us.
+            const forwarded = msg.context?.forwarded === true;
             const res = groupId
               ? await this.ingest.ingestWhatsAppGroup({
                   groupId,
@@ -140,6 +143,7 @@ export class WhatsAppService {
                   messageType,
                   attachments,
                   quotedMsgId,
+                  forwarded,
                 })
               : await this.ingest.ingestWhatsApp({
                   phoneNumberId,
@@ -150,6 +154,7 @@ export class WhatsAppService {
                   messageType,
                   attachments,
                   quotedMsgId,
+                  forwarded,
                 });
             if (res) messages += 1;
           } catch (err) {

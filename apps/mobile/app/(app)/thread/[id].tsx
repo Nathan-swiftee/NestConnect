@@ -13,6 +13,7 @@ import {
   speakerKey,
   useAssign,
   useConversation,
+  useForwardMessage,
   useLoadOlderMessages,
   useMarkRead,
   usePeople,
@@ -33,6 +34,7 @@ import { useSendQueue } from "../../../src/send-queue";
 import { DetailsPanel } from "../../../src/components/DetailsPanel";
 import { QueuedBubble } from "../../../src/components/QueuedBubble";
 import { MessageActions } from "../../../src/components/MessageActions";
+import { ForwardSheet } from "../../../src/components/ForwardSheet";
 import { ReadLog, readSummary } from "../../../src/components/ReadLog";
 import { Reactions } from "../../../src/components/Reactions";
 import { SwipeToReply } from "../../../src/components/SwipeToReply";
@@ -41,7 +43,7 @@ import { Tail, tailCorner } from "../../../src/components/Tail";
 import { EmailBody } from "../../../src/components/EmailBody";
 import { Ticks } from "../../../src/components/Ticks";
 import { useToast } from "../../../src/components/Toast";
-import { BackIcon, DetailsIcon, EyeIcon, MoreIcon, channelColor, channelMeta } from "../../../src/icons";
+import { BackIcon, DetailsIcon, EyeIcon, ForwardIcon, MoreIcon, channelColor, channelMeta } from "../../../src/icons";
 import { haptics } from "../../../src/haptics";
 import { enter } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
@@ -79,6 +81,7 @@ export default function Thread() {
   const markRead = useMarkRead();
   const retry = useRetryMessage();
   const react = useReact();
+  const forward = useForwardMessage();
   const queue = useSendQueue();
   const teams = useTeams();
   const toast = useToast();
@@ -90,6 +93,8 @@ export default function Thread() {
   const [acting, setActing] = useState<Message | null>(null);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [readLog, setReadLog] = useState<Message | null>(null);
+  // The message being forwarded on to other chats (drives the picker sheet).
+  const [forwarding, setForwarding] = useState<Message | null>(null);
   const scroller = useRef<ScrollView>(null);
   const marked = useRef(false);
 
@@ -142,6 +147,42 @@ export default function Thread() {
     const { id: convId, retry: rt } = live.current;
     rt.mutate({ conversationId: convId, messageId: m.id });
   }, []);
+
+  // Send `forwarding` on to the picked customers. The server reports each target
+  // separately — a closed 24-hour window on one chat is the normal partial
+  // failure — so the toast names what didn't go rather than claiming it all did.
+  const submitForward = (contactIds: string[]) => {
+    const m = forwarding;
+    if (!m) return;
+    forward.mutate(
+      { conversationId: id, messageId: m.id, contactIds },
+      {
+        onSuccess: (results) => {
+          setForwarding(null);
+          const sent = results.filter((r) => r.ok);
+          const failed = results.filter((r) => !r.ok);
+          // Only a clean sweep gets the success buzz; a partial forward is not
+          // a thing to congratulate someone for.
+          if (failed.length) haptics.warning();
+          else haptics.success();
+          if (!failed.length) {
+            toast({ text: sent.length === 1 ? `Forwarded to ${sent[0].name}` : `Forwarded to ${sent.length} chats` });
+          } else if (!sent.length) {
+            toast({
+              text: failed.length === 1 ? `${failed[0].name}: ${failed[0].error}` : "Couldn't forward to any of those chats",
+              tone: "error",
+            });
+          } else {
+            toast({
+              text: `Forwarded to ${sent.length} — ${failed.map((f) => f.name).join(", ")} didn't go`,
+              tone: "info",
+            });
+          }
+        },
+        onError: () => toast({ text: "Couldn't forward that message. Please try again.", tone: "error" }),
+      },
+    );
+  };
 
   // Opening a thread is reading it — clear the badge and send the WhatsApp read
   // receipt, once per visit rather than on every re-render.
@@ -412,8 +453,15 @@ export default function Thread() {
           react.mutate({ conversationId: data.id, messageId: acting!.id, emoji });
         }}
         onReply={() => setReplyTo(acting)}
+        onForward={() => setForwarding(acting)}
         onReceipts={() => setReadLog(acting)}
         onClose={() => setActing(null)}
+      />
+      <ForwardSheet
+        message={forwarding}
+        busy={forward.isPending}
+        onSubmit={submitForward}
+        onClose={() => setForwarding(null)}
       />
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
     </KeyboardAvoidingView>
@@ -617,6 +665,18 @@ const Bubble = memo(function Bubble({
           <Text style={{ color: c.group }} className="pb-0.5 text-2xs font-semibold">
             {message.authorName ?? contactName}
           </Text>
+        ) : null}
+
+        {/* WhatsApp's "Forwarded" tell, above the content it qualifies: these
+            aren't the sender's own words. Kept at the weight of the timestamp so
+            it reads as chrome rather than as part of the message. */}
+        {message.forwarded ? (
+          <View className="flex-row items-center gap-1 pb-1">
+            <ForwardIcon size={12} color={c.textFaint} />
+            <Text style={{ color: c.textFaint }} className="text-2xs italic">
+              Forwarded
+            </Text>
+          </View>
         ) : null}
 
         {quoted ? (

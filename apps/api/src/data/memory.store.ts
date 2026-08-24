@@ -934,6 +934,7 @@ export class MemoryStore extends Store {
       channel?: ChannelType;
       idempotencyKey?: string;
       deliveryMeta?: OutboundDeliveryMeta;
+      forwarded?: boolean;
     },
     author: User,
   ): Promise<Message | undefined> {
@@ -961,6 +962,7 @@ export class MemoryStore extends Store {
       attachments,
       reactions: [],
       quotedMsgId: input.quotedMsgId,
+      ...(input.forwarded ? { forwarded: true } : {}),
       // Surface the email headers on the message so the bubble can show them.
       email:
         input.deliveryMeta &&
@@ -1020,6 +1022,32 @@ export class MemoryStore extends Store {
     };
     this.pendingUploads.set(id, att);
     return att;
+  }
+
+  async stageAttachmentCopies(messageId: string): Promise<string[]> {
+    let source: Attachment[] | undefined;
+    for (const rec of this.conversations) {
+      const m = rec.messages.find((x) => x.id === messageId);
+      if (m) {
+        source = m.attachments;
+        break;
+      }
+    }
+    if (!source?.length) return [];
+    const ids: string[] = [];
+    for (const att of source) {
+      // The copy re-uses the original's storage ref, so the same object is served
+      // for both messages and forwarding a large file costs nothing.
+      const ref = this.mediaRefs.get(att.id);
+      const id = `att_${++this.idSeq}`;
+      if (ref) this.mediaRefs.set(id, ref);
+      // Only re-point the URL when there's a ref behind it. Seeded demo media is
+      // an inline data: URI with nothing in `mediaRefs`, and rewriting that to
+      // /api/media/<newId> would produce a copy whose URL 404s.
+      this.pendingUploads.set(id, { ...att, id, ...(ref ? { url: `/api/media/${id}` } : {}) });
+      ids.push(id);
+    }
+    return ids;
   }
 
   /** Pull staged uploads out of the pending map (they now belong to a message). */
@@ -1513,6 +1541,7 @@ export class MemoryStore extends Store {
       attachments: this.storeAttachments(input.attachments),
       reactions: [],
       quotedMsgId: input.quotedMsgId,
+      ...(input.forwarded ? { forwarded: true } : {}),
       createdAt: new Date().toISOString(),
     };
     rec.messages.push(message);

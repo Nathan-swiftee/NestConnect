@@ -333,6 +333,9 @@ export function mapMessage(m: MessageRow): Message {
     attachments: (m.attachments ?? []).map(mapAttachment),
     reactions: parseReactions(m.reactions),
     quotedMsgId: m.quotedMsgId ?? undefined,
+    // Only sent when true: the label is the exception, and every message
+    // carrying `forwarded: false` would be noise on the wire.
+    forwarded: m.forwarded ? true : undefined,
     bodyHtml: m.bodyHtml ?? undefined,
     attemptCount: m.attemptCount ?? 0,
     failureReason: m.failureReason ?? undefined,

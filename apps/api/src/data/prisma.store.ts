@@ -1045,6 +1045,7 @@ export class PrismaStore extends Store {
       channel?: ChannelType;
       idempotencyKey?: string;
       deliveryMeta?: OutboundDeliveryMeta;
+      forwarded?: boolean;
     },
     author: User,
   ): Promise<Message | undefined> {
@@ -1082,6 +1083,7 @@ export class PrismaStore extends Store {
           messageType,
           channel: input.channel ?? null,
           quotedMsgId: input.quotedMsgId ?? null,
+          forwarded: input.forwarded ?? false,
           idempotencyKey: input.idempotencyKey ?? null,
           deliveryMeta: (input.deliveryMeta as Prisma.InputJsonValue) ?? undefined,
           ...(staged.length ? { attachments: { connect: staged.map((a) => ({ id: a.id })) } } : {}),
@@ -1111,6 +1113,32 @@ export class PrismaStore extends Store {
   async createUploadAttachment(_orgId: string, input: AttachmentInput): Promise<Attachment> {
     const row = await this.prisma.attachment.create({ data: toAttachmentCreate(input) });
     return mapAttachment(row);
+  }
+
+  async stageAttachmentCopies(messageId: string): Promise<string[]> {
+    const source = await this.prisma.attachment.findMany({ where: { messageId } });
+    if (!source.length) return [];
+    const ids: string[] = [];
+    for (const a of source) {
+      // messageId stays null so the copy reads as a staged upload and the normal
+      // claim step in addMessage picks it up. r2Key is shared with the original —
+      // forwarding re-points at the stored object rather than duplicating it.
+      const row = await this.prisma.attachment.create({
+        data: {
+          r2Key: a.r2Key,
+          mime: a.mime,
+          size: a.size,
+          filename: a.filename,
+          kind: a.kind,
+          durationMs: a.durationMs,
+          width: a.width,
+          height: a.height,
+          waveform: a.waveform,
+        },
+      });
+      ids.push(row.id);
+    }
+    return ids;
   }
 
   async assign(
@@ -1752,6 +1780,7 @@ export class PrismaStore extends Store {
           channel: input.channel ?? null,
           messageType: input.messageType ?? "text",
           quotedMsgId: input.quotedMsgId ?? null,
+          forwarded: input.forwarded ?? false,
           ...(input.attachments?.length
             ? { attachments: { create: input.attachments.map(toAttachmentCreate) } }
             : {}),

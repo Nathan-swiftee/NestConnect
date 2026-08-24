@@ -20,6 +20,7 @@ import type {
   CreateTeamInput,
   CreateUserInput,
   CreateLabelInput,
+  ForwardResult,
   Inbox,
   IntegrationSettings,
   Label,
@@ -334,6 +335,12 @@ export const api = {
   // React to a message with an emoji (empty string removes the agent's reaction).
   react: (conversationId: string, messageId: string, emoji: string) =>
     post<Message>(`/conversations/${conversationId}/messages/${messageId}/react`, { emoji }),
+  // Pass a message on to other customers' WhatsApp chats. Resolves to one result
+  // per target — some can land while others bounce off a closed 24-hour window.
+  forwardMessage: (conversationId: string, messageId: string, contactIds: string[]) =>
+    post<ForwardResult[]>(`/conversations/${conversationId}/messages/${messageId}/forward`, {
+      contactIds,
+    }),
   // Re-queue a failed outbound message for another delivery attempt.
   retryMessage: (conversationId: string, messageId: string) =>
     post<Message>(`/conversations/${conversationId}/messages/${messageId}/retry`, {}),

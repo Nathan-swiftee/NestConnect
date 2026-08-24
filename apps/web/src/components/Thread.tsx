@@ -6,8 +6,8 @@ import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
-import { ClientEvent, ServerEvent } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates } from "../hooks";
+import { ClientEvent, ServerEvent, FORWARD_MAX_TARGETS } from "@ding/schemas";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
@@ -55,6 +55,7 @@ import {
   TrashIcon,
   RefreshIcon,
   EditIcon,
+  SearchIcon,
 } from "../lib/icons";
 
 interface Props {
@@ -619,6 +620,124 @@ function ForwardModal({
   );
 }
 
+/**
+ * Forward a WhatsApp message on to other customers' chats.
+ *
+ * A different shape from forwarding an email, because WhatsApp is a different
+ * thing: an email forward goes to addresses you type, a WhatsApp forward goes to
+ * chats you pick. So this is a customer picker, capped at the same number of
+ * chats WhatsApp itself allows in one go.
+ */
+function ForwardToChatsModal({
+  message,
+  busy,
+  onSubmit,
+  onClose,
+}: {
+  message: Message;
+  busy: boolean;
+  onSubmit: (contactIds: string[]) => void;
+  onClose: () => void;
+}) {
+  const { data: contacts } = useContacts();
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  // A WhatsApp forward needs a number to land on; a blocked customer is one we
+  // deliberately don't message.
+  const reachable = useMemo(
+    () => (contacts ?? []).filter((c) => c.phone && !c.blocked),
+    [contacts],
+  );
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return reachable;
+    return reachable.filter(
+      (c) =>
+        c.displayName.toLowerCase().includes(needle) ||
+        (c.company ?? "").toLowerCase().includes(needle) ||
+        (c.phone ?? "").includes(needle),
+    );
+  }, [reachable, q]);
+
+  const atCap = picked.size >= FORWARD_MAX_TARGETS;
+  const toggle = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      // Silently ignoring a tap past the cap would read as a broken checkbox, so
+      // the rows disable themselves instead (see `blocked` below).
+      else if (next.size < FORWARD_MAX_TARGETS) next.add(id);
+      return next;
+    });
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (picked.size && !busy) onSubmit([...picked]);
+  };
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <form className="modal__box modal--form" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <div className="modal__head">
+          <h2>Forward to…</h2>
+          <button type="button" className="modal__x" onClick={onClose} aria-label="Close"><XIcon /></button>
+        </div>
+        <div className="modal__body">
+          <div className="fwdprev">
+            <div className="fwdprev__snip">{quotedSnippet(message)}</div>
+          </div>
+          <div className="bpick">
+            <div className="setsearch bpick__search">
+              <SearchIcon />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search customers by name or number…"
+                autoFocus
+              />
+            </div>
+            {reachable.length === 0 ? (
+              <div className="setempty">No customers with a WhatsApp number yet.</div>
+            ) : filtered.length === 0 ? (
+              <div className="setempty">No customer matches “{q.trim()}”.</div>
+            ) : (
+              <div className="bpick__list">
+                {filtered.map((c) => {
+                  const on = picked.has(c.id);
+                  const blocked = !on && atCap;
+                  return (
+                    <label
+                      key={c.id}
+                      className={"bpick__row" + (on ? " on" : "") + (blocked ? " bpick__row--off" : "")}
+                    >
+                      <input type="checkbox" checked={on} disabled={blocked} onChange={() => toggle(c.id)} />
+                      <span className="bpick__name">{c.displayName}</span>
+                      <span className="bpick__phone">{c.phone}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <small className="fieldhint">
+              {atCap
+                ? `That's the most WhatsApp forwards to at once (${FORWARD_MAX_TARGETS}).`
+                : `Pick up to ${FORWARD_MAX_TARGETS} chats. Each gets its own copy, marked “Forwarded”.`}
+            </small>
+          </div>
+        </div>
+        <div className="modal__foot">
+          <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn-primary fwd-go" disabled={!picked.size || busy}>
+            <ForwardIcon />
+            {busy ? "Forwarding…" : picked.size > 1 ? `Forward to ${picked.size}` : "Forward"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 /** Per-message affordances threaded down from the Thread (react + reply). */
 interface MsgActions {
   /** Display name to attribute the customer's reaction to. */
@@ -927,6 +1046,15 @@ function MessageBubble({
                 <span className="quoted__txt">{quotedSnippet(quoted)}</span>
               </span>
             </button>
+          )}
+          {/* WhatsApp's "Forwarded" tell, above the content it qualifies: these
+              aren't the sender's own words, and that's worth knowing before you
+              read them. Same label whichever direction it came from. */}
+          {m.forwarded && (
+            <span className="fwdmark">
+              <ForwardIcon />
+              Forwarded
+            </span>
           )}
           {hasMedia && atts.map((a) => <AttachmentView key={a.id} att={a} onImage={onImage} />)}
           {isEmailHtml ? (
@@ -1264,6 +1392,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const { mutate: markUnread } = useMarkUnread();
   const { mutate: react } = useReact();
   const { mutate: retry } = useRetryMessage();
+  const forward = useForwardMessage();
   const { data: people } = usePeople();
 
   const [text, setText] = useState("");
@@ -1272,7 +1401,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [reactFor, setReactFor] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  // The email message currently being forwarded (drives the forward modal).
+  // The message currently being forwarded (drives whichever forward modal fits
+  // its channel: addresses for email, a chat picker for WhatsApp).
   const [forwardMsg, setForwardMsg] = useState<Message | null>(null);
   // The id of the sent email whose read receipts are open (resolved live from the
   // thread each render, so the modal updates as opens arrive over the socket).
@@ -1935,11 +2065,38 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     requestAnimationFrame(() => taRef.current?.focus());
   };
 
-  // Open the forward modal for an email message.
+  // Open the forward modal for a message (which one depends on its channel).
   const startForward = (m: Message) => {
     setForwardMsg(m);
     setReactFor(null);
     setMenuFor(null);
+  };
+
+  // Forward a WhatsApp message on to other customers' chats. Each target is
+  // reported separately by the server, so the toast says what actually happened
+  // rather than claiming a clean sweep — a closed 24-hour window on one chat is
+  // the normal partial failure, and the agent needs to know which one it was.
+  const submitForwardToChats = (contactIds: string[]) => {
+    const m = forwardMsg;
+    if (!m) return;
+    forward.mutate(
+      { conversationId: conv.id, messageId: m.id, contactIds },
+      {
+        onSuccess: (results) => {
+          setForwardMsg(null);
+          const sent = results.filter((r) => r.ok);
+          const failed = results.filter((r) => !r.ok);
+          if (!failed.length) {
+            onToast(sent.length === 1 ? `Forwarded to ${sent[0].name}` : `Forwarded to ${sent.length} chats`);
+          } else if (!sent.length) {
+            onToast(failed.length === 1 ? `${failed[0].name}: ${failed[0].error}` : "Couldn’t forward to any of those chats");
+          } else {
+            onToast(`Forwarded to ${sent.length} — ${failed.map((f) => f.name).join(", ")} didn’t go`);
+          }
+        },
+        onError: () => onToast("Couldn’t forward that message. Please try again."),
+      },
+    );
   };
 
   // Forward `forwardMsg` on to `toRaw` (comma/space-separated addresses) with an
@@ -2790,9 +2947,14 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     onMenuToggle: () => { setReactFor(null); setMenuFor((cur) => (cur === m.id ? null : m.id)); },
                     onReact: (emoji) => applyReaction(m.id, emoji),
                     onReply: () => startReply(m),
-                    // Forward is an email action — offered only on email messages.
-                    onForward:
-                      (m.channel ?? conv.channel) === "email" ? () => startForward(m) : undefined,
+                    // Forward means something on both channels, but not the same
+                    // thing: an email goes on to addresses you type, a WhatsApp
+                    // message goes on to chats you pick. Either way it's the same
+                    // menu item, opening whichever modal fits.
+                    //
+                    // Not offered on an internal note — that's the team talking to
+                    // itself, and the server refuses it too.
+                    onForward: m.internal ? undefined : () => startForward(m),
                     // Read receipts — only on a sent email that has tracked recipients.
                     onReceipts:
                       m.direction === "out" && !m.internal && m.email?.recipients?.length
@@ -3308,15 +3470,25 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         />
       )}
 
-      {forwardMsg && (
-        <ForwardModal
-          message={forwardMsg}
-          contactName={conv.contact.displayName}
-          subject={forwardMsg.email?.subject ?? conv.subject ?? ""}
-          onSubmit={submitForward}
-          onClose={() => setForwardMsg(null)}
-        />
-      )}
+      {/* Which forward this is depends on the message's own channel, not the
+          conversation's — a cross-channel thread can hold both. */}
+      {forwardMsg &&
+        ((forwardMsg.channel ?? conv.channel) === "email" ? (
+          <ForwardModal
+            message={forwardMsg}
+            contactName={conv.contact.displayName}
+            subject={forwardMsg.email?.subject ?? conv.subject ?? ""}
+            onSubmit={submitForward}
+            onClose={() => setForwardMsg(null)}
+          />
+        ) : (
+          <ForwardToChatsModal
+            message={forwardMsg}
+            busy={forward.isPending}
+            onSubmit={submitForwardToChats}
+            onClose={() => setForwardMsg(null)}
+          />
+        ))}
 
       {(() => {
         // Resolve the message live from the thread so opens arriving over the

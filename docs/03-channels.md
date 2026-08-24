@@ -42,6 +42,34 @@ The official Groups API lets an approved business **create, manage, and message 
 - **Click-to-WhatsApp / Page CTA entry** opens a **72-hour** free window (including templates).
 - **Quality rating & messaging tiers** govern how many unique users you can message per day; low quality → throttling. We monitor quality signals and surface them to admins.
 
+### Forwarding a message to other chats
+
+WhatsApp has no forward primitive — a forward is a fresh send of the same content
+into a different chat, which is what `POST /api/conversations/:id/messages/:messageId/forward`
+does. Given a list of customer ids it opens (or reuses) each one's WhatsApp
+thread and sends a copy there, marked `forwarded` so both our thread and the web
+and native UIs show WhatsApp's familiar "Forwarded" label.
+
+Three things follow from that shape and are worth knowing:
+
+- **Every target is attempted and reported separately.** The 24-hour window is
+  per chat, so a forward to five customers where two windows have closed is the
+  normal case, not an error. The response is one result per target and the UI
+  names which ones didn't go.
+- **Media is cloned, not re-uploaded.** The copy is a new attachment row pointing
+  at the same stored object, so forwarding a large video costs a row. The original
+  keeps working; nothing is moved.
+- **Internal notes can't be forwarded**, and the server refuses them rather than
+  relying on the UI to hide the option. A note is the team talking to itself, and
+  a forward is the one action that would put it in front of a customer.
+
+Capped at **5 chats** per forward, mirroring WhatsApp's own limit — the reason for
+that limit (bulk forwarding reads as spam) applies to us too.
+
+Inbound, Meta sets `context.forwarded` when a customer passes something on to us,
+and we store it on the message and show the same label. It changes how an agent
+should read what they're looking at.
+
 ### Pricing (as of 2026 — verify live before launch)
 
 WhatsApp moved from conversation-based to **per-message pricing on 1 July 2025**. Each delivered **template** message is billed by **category × recipient country**:

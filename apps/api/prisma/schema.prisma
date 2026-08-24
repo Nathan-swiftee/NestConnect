@@ -386,6 +386,9 @@ model Message {
   reactions      Json?
   // Id of the message this one quotes/replies to (same conversation).
   quotedMsgId    String?
+  // Passed on from elsewhere rather than written here: set when an agent forwards
+  // a message, and when WhatsApp flags an inbound one as forwarded to us.
+  forwarded      Boolean          @default(false)
   // ---- durable outbound delivery bookkeeping (out messages only) ----
   // How many provider send attempts have been made, and when the last one ran.
   attemptCount   Int              @default(0)

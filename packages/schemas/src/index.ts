@@ -275,6 +275,11 @@ export const messageSchema = z.object({
   reactions: z.array(reactionSchema).default([]),
   /** Id of the message this one quotes/replies to (resolved within the thread). */
   quotedMsgId: z.string().nullable().optional(),
+  /** This message is a forward — it was passed on from somewhere else rather than
+   *  written here. Set on our own sends when an agent forwards, and on inbound
+   *  when WhatsApp tells us the customer forwarded it to us. Rendered as the
+   *  "Forwarded" label WhatsApp users already read as "this isn't their words". */
+  forwarded: z.boolean().optional(),
   /** Outbound send attempts made so far (absent for inbound/internal). */
   attemptCount: z.number().int().nonnegative().optional(),
   /** Human-readable reason shown in the UI once an outbound send has failed. */
@@ -673,6 +678,33 @@ export const reactionInputSchema = z.object({
   emoji: z.string().max(16),
 });
 export type ReactionInput = z.infer<typeof reactionInputSchema>;
+
+/** WhatsApp's own limit on how many chats one message can be forwarded to at
+ *  once. Mirrored here so an agent isn't offered a bulk-send WhatsApp would
+ *  read as spam — the number is theirs, and the reason for it is theirs too. */
+export const FORWARD_MAX_TARGETS = 5;
+
+/** Pass a message on to other customers' WhatsApp chats. Targets are customers,
+ *  not addresses: a WhatsApp forward lands in a chat, and the thread it lands in
+ *  is opened (or reused) as part of the send. */
+export const forwardMessageInputSchema = z.object({
+  contactIds: z.array(z.string()).min(1).max(FORWARD_MAX_TARGETS),
+});
+export type ForwardMessageInput = z.infer<typeof forwardMessageInputSchema>;
+
+/** What happened for one forward target. Reported per target rather than as a
+ *  single pass/fail, because the common failure — a closed 24-hour window — is
+ *  per chat, and an agent needs to know *which* ones didn't go. */
+export interface ForwardResult {
+  contactId: string;
+  /** Display name, so the caller can report the outcome without a second lookup. */
+  name: string;
+  ok: boolean;
+  /** The thread it landed in (present on success) — lets the UI offer to open it. */
+  conversationId?: string;
+  /** Why it didn't go, in words an agent can act on. */
+  error?: string;
+}
 
 /** Reach a customer on a channel — opens their thread there, or starts one. */
 export const reachInputSchema = z.object({

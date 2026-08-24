@@ -1518,6 +1518,26 @@ input,textarea{font:inherit}
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
 .fwd-go{display:inline-flex;align-items:center;gap:7px}
 .fwd-go svg{width:16px;height:16px}
+/* Past the WhatsApp cap: the row stays readable but stops responding, rather
+   than swallowing the tap and looking broken. */
+.bpick__row--off{opacity:.42;cursor:not-allowed}
+.bpick__row--off:hover{background:none}
+/* "Forwarded" above a bubble's content — deliberately quiet (faint, italic, no
+   fill): it qualifies the message, it isn't part of it. Pitched at the same
+   weight as the timestamp inside each bubble, so it reads as chrome rather than
+   content on both the green sent bubble and the neutral received one. */
+/* Block-level flex, not inline-flex: `.bubble` is a plain block, so an inline
+   label would sit on the same line as the message text and read as its first
+   word. `width:fit-content` keeps it from stretching to the bubble's width. */
+.fwdmark{display:flex;align-items:center;gap:4px;width:fit-content;
+  font-size:var(--fs-2xs);font-style:italic;font-weight:500;letter-spacing:.01em;
+  color:var(--text-faint);margin-bottom:3px}
+.fwdmark svg{width:12px;height:12px}
+.msg.out .bubble .fwdmark{color:rgba(17,27,33,.5)}
+:root[data-theme="dark"] .msg.out .bubble .fwdmark{color:rgba(233,237,239,.62)}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .msg.out .bubble .fwdmark{color:rgba(233,237,239,.62)}
+}
 /* Personal settings holds a lot (profile, availability, signature, password, 2FA,
    sessions), so it's split into sub-tabs — only one focused group shows at a
    time, keeping the modal short instead of one long scroll. */

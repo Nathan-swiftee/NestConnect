@@ -118,6 +118,9 @@ export interface AppendInboundInput {
   attachments?: AttachmentInput[];
   /** Id of the message this inbound one quotes/replies to (already resolved). */
   quotedMsgId?: string;
+  /** The customer forwarded this to us rather than writing it (WhatsApp tells us).
+   *  Worth showing: it changes how an agent should read the message. */
+  forwarded?: boolean;
 }
 
 /** What the media-serving endpoint needs to stream a stored file. */
@@ -469,9 +472,22 @@ export abstract class Store {
       idempotencyKey?: string;
       /** Channel-specific send hints, persisted for restart-safe (re)delivery. */
       deliveryMeta?: OutboundDeliveryMeta;
+      /** This send is passing on someone else's message — show it as "Forwarded". */
+      forwarded?: boolean;
     },
     author: User,
   ): Promise<Message | undefined>;
+
+  /**
+   * Stage copies of a message's attachments for re-sending, returning ids that
+   * `addMessage` can claim exactly like fresh composer uploads.
+   *
+   * The copies point at the *same* stored object — forwarding a 12MB video
+   * shouldn't move a byte of it — so this is a row clone, not a file copy. That
+   * makes the blob shared by two messages, which is fine for reads and is why
+   * media is never deleted on a per-message basis.
+   */
+  abstract stageAttachmentCopies(messageId: string): Promise<string[]>;
 
   /** Resolve a provider message id (WhatsApp wamid) to our stored message. */
   abstract getMessageRefByChannelId(

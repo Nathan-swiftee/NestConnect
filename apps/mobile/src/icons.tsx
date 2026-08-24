@@ -151,6 +151,8 @@ export const SparkleIcon = stroke(
   1.7,
 );
 export const ReplyIcon = stroke("M9 8 4 12l5 4M4.5 12H14a6 6 0 0 1 6 6v1", 1.9);
+/** Reply's mirror image, same as the web's — the pair has to read as a pair. */
+export const ForwardIcon = stroke("m15 8 5 4-5 4M19.5 12H10a6 6 0 0 0-6 6v1", 1.9);
 export const TrashIcon = stroke(
   "M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M10 11v6M14 11v6",
 );
