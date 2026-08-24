@@ -22,6 +22,7 @@ import {
   useSession,
   useSetStatus,
   useSnooze,
+  useTeams,
 } from "@ding/client";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { ActionSheet, type SheetAction } from "../../../src/components/ActionSheet";
@@ -79,7 +80,10 @@ export default function Thread() {
   const retry = useRetryMessage();
   const react = useReact();
   const queue = useSendQueue();
+  const teams = useTeams();
   const toast = useToast();
+  const teamName = (id: string | null) =>
+    (id ? teams.data?.find((t) => t.id === id)?.name : undefined) ?? "the team";
   const [sheet, setSheet] = useState<null | "assign" | "snooze" | "more" | "details">(null);
   // The message a long-press opened the action sheet for, and the one the
   // composer is quoting. Separate: acting on a message doesn't quote it.
@@ -197,39 +201,80 @@ export default function Thread() {
    * person is one mis-tap in a list of names, and this is the only moment the
    * previous assignee is still known without a round trip.
    */
-  const restoreAssignee = () => {
-    const previous = data.assigneeUserId ?? null;
-    return () => assign.mutate({ id: data.id, input: { assigneeUserId: previous } });
+  /**
+   * Both halves of an assignment restored together.
+   *
+   * Person and team are separate fields, and routing to a team clears the
+   * person — so an undo that only put the person back would leave the
+   * conversation on the new team with its old owner, a state nobody chose.
+   */
+  const restoreAssignment = () => {
+    const assigneeUserId = data.assigneeUserId ?? null;
+    const assignedTeamId = data.assignedTeamId ?? null;
+    return () => assign.mutate({ id: data.id, input: { assigneeUserId, assignedTeamId } });
   };
-  const doAssign = (assigneeUserId: string | null, said: string) => {
-    const undo = restoreAssignee();
+  const doAssign = (input: { assigneeUserId?: string | null; assignedTeamId?: string | null }, said: string) => {
+    const undo = restoreAssignment();
     haptics.success();
-    assign.mutate({ id: data.id, input: { assigneeUserId } });
+    assign.mutate({ id: data.id, input });
     toast({ text: said, undo });
   };
+
+  /**
+   * Who can take this, and where it can be sent.
+   *
+   * Two different acts, so two groups. Assigning names a person who now owns
+   * it; routing hands it to a team's queue for whoever picks it up. They were
+   * one undivided list of names before, with no way to do the second at all —
+   * which meant a conversation could only ever move sideways between
+   * individuals, never back to a team that should own it.
+   *
+   * People are ordered by the team the conversation is already on: if it sits
+   * with Support, Support's members are the ones you're realistically handing
+   * it to, and they shouldn't be interleaved with everyone else.
+   */
+  const currentTeam = data.assignedTeamId ?? null;
+  const inTeam = (m: { teamIds: string[] }) => !!currentTeam && m.teamIds.includes(currentTeam);
+  const others = (people ?? []).filter((m) => m.user.id !== me?.id);
+  const ranked = [...others].sort((a, b) => Number(inTeam(b)) - Number(inTeam(a)));
 
   const assignActions: SheetAction[] = [
     {
       key: "me",
+      section: "Assign to a person",
       label: "Assign to me",
       selected: data.assigneeUserId === me?.id,
-      onPress: () => doAssign(me?.id ?? null, "Assigned to you"),
+      onPress: () => doAssign({ assigneeUserId: me?.id ?? null }, "Assigned to you"),
     },
-    ...(people ?? [])
-      .filter((m) => m.user.id !== me?.id)
-      .map((m) => ({
-        key: m.user.id,
-        label: m.user.name,
-        detail: m.user.available ? undefined : "Not accepting work",
-        selected: data.assigneeUserId === m.user.id,
-        onPress: () => doAssign(m.user.id, `Assigned to ${m.user.name}`),
-      })),
+    ...ranked.map((m) => ({
+      key: m.user.id,
+      label: m.user.name,
+      detail: !m.user.available
+        ? "Not accepting work"
+        : inTeam(m)
+          ? teamName(currentTeam)
+          : undefined,
+      selected: data.assigneeUserId === m.user.id,
+      onPress: () => doAssign({ assigneeUserId: m.user.id }, `Assigned to ${m.user.name}`),
+    })),
+    ...(teams.data ?? []).map((t, i) => ({
+      key: `team:${t.id}`,
+      // Only the first row carries the caption; the rest continue the group.
+      section: i === 0 ? "Route to a team" : undefined,
+      label: t.name,
+      detail: t.id === currentTeam ? "Already here" : "Unassigns, leaves it for the team",
+      selected: t.id === currentTeam && !data.assigneeUserId,
+      // Routing clears the person on purpose: it means "nobody in particular
+      // owns this, the team does", which is what puts it up for grabs.
+      onPress: () => doAssign({ assigneeUserId: null, assignedTeamId: t.id }, `Routed to ${t.name}`),
+    })),
     {
       key: "queue",
+      section: "Or",
       label: "Back to the queue",
-      detail: "Unassign, leave it for the team",
+      detail: currentTeam ? `Unassign, leave it with ${teamName(currentTeam)}` : "Unassign, leave it for the team",
       selected: !data.assigneeUserId,
-      onPress: () => doAssign(null, "Back in the queue"),
+      onPress: () => doAssign({ assigneeUserId: null }, "Back in the queue"),
     },
   ];
 

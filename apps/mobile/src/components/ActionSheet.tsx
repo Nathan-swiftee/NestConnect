@@ -14,6 +14,10 @@ export interface SheetAction {
    *  makes you guess. */
   selected?: boolean;
   destructive?: boolean;
+  /** A caption above this row, starting a group. Once a sheet offers two kinds
+   *  of thing — people and teams — an undivided list makes you read every row
+   *  to find out which kind each one is. */
+  section?: string;
   onPress: () => void;
 }
 
@@ -48,6 +52,11 @@ export function ActionSheet({
           // is dealt out — and it reinforces the reading order at the moment
           // you're deciding which one to hit.
           <Animated.View key={a.key} entering={rowIn(i)}>
+            {a.section ? (
+              <Text className="pb-1 pt-4 text-2xs font-semibold uppercase tracking-wide text-faint">
+                {a.section}
+              </Text>
+            ) : null}
             <Pressable
               onPress={() => {
                 // One place for every sheet action. Actions that finish

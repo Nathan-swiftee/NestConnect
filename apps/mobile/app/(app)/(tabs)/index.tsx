@@ -29,7 +29,7 @@ import { PushGate, useDelayedPrompt } from "../../../src/components/PushGate";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { clearBadge, usePushRegistration } from "../../../src/push";
 import { haptics } from "../../../src/haptics";
-import { ChevronRight, SearchIcon } from "../../../src/icons";
+import { ChevronRight, PlusIcon, SearchIcon } from "../../../src/icons";
 import { rowIn, spring, springTo } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
 
@@ -78,12 +78,17 @@ function matchesFilter(c: Conversation, f: FilterKey, myId?: string): boolean {
 const Row = memo(function Row({
   conv,
   teamName,
+  mine,
   onPress,
 }: {
   conv: Conversation;
   /** The team this conversation is routed to, or undefined to omit it — inside
    *  a team's own inbox it's the same word on every row. */
   teamName?: string;
+  /** Whether this one is assigned to the signed-in agent. A boolean rather than
+   *  the user id, so the memo isn't defeated by a prop only one row cares
+   *  about changing. */
+  mine: boolean;
   onPress: (id: string) => void;
 }) {
   const { c } = useTheme();
@@ -123,17 +128,31 @@ const Row = memo(function Row({
         </View>
 
         <View className="flex-row items-center gap-2">
-          <Text className="text-2xs text-faint">
-            {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
-          </Text>
-          {/* Where it was routed, in the web's position: after who has it,
-              before anything time-critical. Kept faint and unpilled on purpose
-              — the team is context for the row, not a state of it, and giving
-              it a background would make it compete with the SLA warning
-              sitting right beside it. Shrinks and truncates rather than
-              pushing "Overdue" off the row. */}
+          {/* Ownership: a dot you can scan down the column, then the label —
+              the web's `.convmeta__own`. The dot is what makes the assignee
+              read as a *state* of the row rather than more description of it,
+              and it's the difference between this and the team beside it. */}
+          <View className="flex-row items-center gap-1.5">
+            <View
+              style={{ backgroundColor: mine ? c.brand : conv.assigneeUserId ? c.textMuted : c.textFaint }}
+              className="h-1.5 w-1.5 flex-none rounded-full"
+            />
+            <Text
+              style={{ color: mine ? c.brandStrong : c.textMuted }}
+              className={`text-2xs ${mine ? "font-semibold" : "font-medium"}`}
+            >
+              {/* First name only. "Assigned to" is the same three words on every
+                  row, and at this size the name is the only part carrying
+                  anything — the web reached the same conclusion. */}
+              {mine ? "Yours" : (conv.assigneeName?.split(" ")[0] ?? "Queue")}
+            </Text>
+          </View>
+          {/* Where it was routed. Deliberately quieter and dotless: the team is
+              context for the row, not a state of it. Same split the web makes
+              — ownership gets colour and a marker, routing gets neither.
+              Shrinks and truncates rather than pushing "Overdue" off the row. */}
           {teamName ? (
-            <Text numberOfLines={1} className="min-w-0 shrink text-2xs font-medium text-faint">
+            <Text numberOfLines={1} className="min-w-0 shrink text-2xs text-faint">
               {teamName}
             </Text>
           ) : null}
@@ -312,6 +331,24 @@ export default function Inbox() {
             </Text>
           </View>
         </Pressable>
+
+        {/* Start one, rather than only ever answering one. Beside the title
+            because that's where the inbox's own actions belong, and filled
+            because it's the only thing on this screen that creates something
+            rather than navigating to it. */}
+        <Pressable
+          onPress={() => {
+            haptics.select();
+            router.push("/(app)/compose");
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="New conversation"
+          hitSlop={10}
+          style={{ backgroundColor: c.brand }}
+          className="h-10 w-10 flex-none items-center justify-center rounded-full active:opacity-80"
+        >
+          <PlusIcon size={22} color="#fff" />
+        </Pressable>
       </View>
 
       {/* Search carries its glyph inside the field, as on the web — the icon is
@@ -371,15 +408,17 @@ export default function Inbox() {
         // scroll, and animating those means every flick brings a wave of
         // fading rows — which reads as the list struggling to keep up rather
         // than as polish.
-        renderItem={({ item, index }) =>
-          index < 8 ? (
-            <Animated.View entering={rowIn(index)}>
-              <Row conv={item} teamName={teamFor(item)} onPress={openThread} />
-            </Animated.View>
-          ) : (
-            <Row conv={item} teamName={teamFor(item)} onPress={openThread} />
-          )
-        }
+        renderItem={({ item, index }) => {
+          const row = (
+            <Row
+              conv={item}
+              teamName={teamFor(item)}
+              mine={!!myId && item.assigneeUserId === myId}
+              onPress={openThread}
+            />
+          );
+          return index < 8 ? <Animated.View entering={rowIn(index)}>{row}</Animated.View> : row;
+        }}
         ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-[80px] h-px" />}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardDismissMode="on-drag"

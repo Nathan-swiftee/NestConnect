@@ -2412,6 +2412,12 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setMenu(false);
     onToast("Assigned to you");
   };
+  /** Hand it to a named person, keeping whichever team it's routed to. */
+  const assignTo = (userId: string, name: string) => {
+    assign.mutate({ id: conv.id, input: { assigneeUserId: userId, assignedTeamId: conv.assignedTeamId } });
+    setMenu(false);
+    onToast(`Assigned to ${name}`);
+  };
   const routeTeam = (teamId: string, name: string) => {
     assign.mutate({ id: conv.id, input: { assigneeUserId: null, assignedTeamId: teamId } });
     setMenu(false);
@@ -2422,6 +2428,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setMenu(false);
     onToast("Sent back to queue");
   };
+
+  /** Everyone this could be handed to — the routed team's members when it's on
+   *  a team, otherwise the whole workspace. Never yourself (that's "Assign to
+   *  me") and never whoever already has it. */
+  const assignable = (people ?? []).filter(
+    (m) =>
+      m.user.id !== me?.user.id &&
+      m.user.id !== conv.assigneeUserId &&
+      (!conv.assignedTeamId || m.teamIds.includes(conv.assignedTeamId)),
+  );
   const closeConversation = () => {
     setMenu(false);
     setStatus.mutate(
@@ -2654,6 +2670,22 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <ProfileIcon /> Assign to me
               </button>
             )}
+            {/* Hand it to someone specific.
+                Routing to a team said who *should* deal with it; this says who
+                actually will, which is the step that was missing — the menu
+                offered teams and yourself and no one else, so a manager
+                triaging a queue could route work to a group but never to the
+                person in it who ought to pick it up.
+                Scoped to the routed team's members when there is one: those are
+                the people it's realistically going to, and dropping the whole
+                org in makes the common case a scroll. Everyone shows when it's
+                on no team. */}
+            {assignable.map((m) => (
+              <button key={m.user.id} onClick={() => assignTo(m.user.id, m.user.name)}>
+                <ProfileIcon /> Assign to {m.user.name}
+                {!m.user.available && <span className="menu__hint">away</span>}
+              </button>
+            ))}
             {(teams ?? [])
               .filter((t) => t.id !== conv.assignedTeamId)
               .map((t) => (

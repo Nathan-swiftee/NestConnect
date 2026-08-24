@@ -365,6 +365,12 @@ input,textarea{font:inherit}
 .menu-backdrop{position:fixed;inset:0;z-index:23}
 .menu button{width:100%;display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-2);border-radius:var(--r-8);text-align:left;font-size:var(--fs-sm);color:var(--text);position:relative;z-index:1;transition:background var(--t-fast),color var(--t-fast)}
 .menu button svg{width:17px;height:17px;flex:0 0 17px}
+/* A trailing aside on a menu row — "away" beside someone not taking work. Not a
+   reason to hide them (you may still need them to have it), just a reason to
+   pause. Pushed right so the names stay a scannable column. */
+.menu__hint{margin-left:auto;padding-left:var(--sp-2);font-size:var(--fs-2xs);
+  font-weight:500;color:var(--text-faint)}
+.menu button:hover .menu__hint{color:inherit;opacity:.7}
 .menu button:hover{background:var(--brand-tint);color:var(--brand-strong)}
 /* Pointer-glide highlight (same feel as the sidebar nav): a capsule that slides
    under the cursor across items. On glide menus it IS the hover background, so
