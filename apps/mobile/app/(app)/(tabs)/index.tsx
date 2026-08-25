@@ -111,7 +111,11 @@ const Row = memo(function Row({
             {conv.contact.displayName}
           </Text>
           <ChannelDot channel={conv.lastChannel ?? conv.channel} />
-          <Text className={`ml-auto text-xs ${unread ? "font-semibold text-brand" : "text-faint"}`}>
+          {/* A spacer rather than `ml-auto` on the time, so the glyph keeps
+              hugging the name. Auto margins cost us the action sheet's position
+              on Android once; they're not worth a second look. */}
+          <View className="flex-1" />
+          <Text className={`text-xs ${unread ? "font-semibold text-brand" : "text-faint"}`}>
             {listTime(conv.lastActivityAt)}
           </Text>
         </View>

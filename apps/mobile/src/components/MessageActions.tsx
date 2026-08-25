@@ -135,8 +135,18 @@ export function MessageActions({
       statusBarTranslucent
     >
       {/* A Modal renders outside the root that publishes the palette, so the
-          scheme's variables are re-applied here. */}
-      <View style={themeVars} className="flex-1">
+          scheme's variables are re-applied here.
+
+          `justify-end` — not `mt-auto` on the sheet — is what pins the bottom
+          half down, and the only in-flow child is that sheet. This is byte for
+          byte the root `Sheet` uses, which is deliberate: `mt-auto` here put the
+          sheet at the *top* on an Android device while laying out correctly in a
+          browser. Tailwind does emit the rule, NativeWind does translate it, and
+          Yoga does implement auto margins — so the cause is somewhere further
+          down and isn't reproducible off-device. Rather than keep a construction
+          that's only known to work on one of our two targets, this uses the one
+          every other sheet in the app already proves on both. */}
+      <View style={themeVars} className="flex-1 justify-end">
         <Animated.View style={[{ backgroundColor: HOLD_SCRIM[scheme] }, scrim]} className="absolute inset-0">
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" className="flex-1" />
         </Animated.View>
@@ -144,8 +154,14 @@ export function MessageActions({
         {/* ---- top: react, and what you're reacting to ---- */}
         {/* Below the thread header, not on top of it — the header stays visible
             behind the dim, and a reaction pill overlapping the back button reads
-            as a mistake. 56 is the header's height. */}
-        <Animated.View style={[top, { paddingTop: insets.top + 56 + 12 }]} className="px-4" pointerEvents="box-none">
+            as a mistake. 56 is the header's height.
+            Pinned rather than in flow because the root is now bottom-aligned for
+            the sheet; anything left in flow would ride up with it. */}
+        <Animated.View
+          style={[top, { position: "absolute", top: 0, left: 0, right: 0, paddingTop: insets.top + 56 + 12 }]}
+          className="px-4"
+          pointerEvents="box-none"
+        >
           <View
             style={{ backgroundColor: c.elevated }}
             className="flex-row items-center justify-between gap-1 self-center rounded-full px-2 py-1.5"
@@ -182,7 +198,7 @@ export function MessageActions({
         </Animated.View>
 
         {/* ---- bottom: the list you read ---- */}
-        <Animated.View style={bottom} className="mt-auto">
+        <Animated.View style={bottom}>
           <Pressable
             onPress={() => {}}
             // A sink, not a control: it exists so a tap on the sheet doesn't
@@ -192,7 +208,7 @@ export function MessageActions({
             style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 }}
             className="rounded-t-24 px-4 pt-3"
           >
-            <View style={{ backgroundColor: c.borderStrong }} className="mx-auto mb-2.5 h-1 w-9 rounded-full" />
+            <View style={{ backgroundColor: c.borderStrong }} className="mb-2.5 h-1 w-9 self-center rounded-full" />
 
             {/* What the actions below apply to. It belongs here rather than
                 floating over the thread: the real bubble is still on screen
@@ -246,8 +262,11 @@ function Row({
       className="flex-row items-center gap-3 border-t py-3.5 active:opacity-60"
     >
       {icon}
-      <Text className="text-lg font-medium text-fg">{label}</Text>
-      {trailing ? <Text className="ml-auto text-md text-muted">{trailing}</Text> : null}
+      {/* The label grows rather than the trailing text carrying `ml-auto` —
+          same reason as the sheet above: auto margins have burned us on device
+          once and nothing here needs them. */}
+      <Text className="flex-1 text-lg font-medium text-fg">{label}</Text>
+      {trailing ? <Text className="text-md text-muted">{trailing}</Text> : null}
     </Pressable>
   );
 }

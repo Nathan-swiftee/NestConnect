@@ -94,7 +94,7 @@ export function Sheet({
             style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 }}
             className="rounded-t-24 px-4 pt-3"
           >
-            <View style={{ backgroundColor: c.borderStrong }} className="mx-auto mb-3 h-1 w-9 rounded-full" />
+            <View style={{ backgroundColor: c.borderStrong }} className="mb-3 h-1 w-9 self-center rounded-full" />
             {children}
           </Pressable>
         </Animated.View>
