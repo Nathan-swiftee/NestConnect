@@ -80,15 +80,25 @@ jobs:
       - name: Build
         if: inputs.mode == 'build'
         working-directory: apps/mobile
+        # No `--no-wait`, deliberately, and it used to be there. The argument for
+        # it was that the runner shouldn't idle through the queue for a progress
+        # bar the build page already shows — which assumed someone is watching
+        # that page. Nobody is. What actually happened is that EAS accepted a job,
+        # failed it twenty minutes later, and this workflow stayed green: a run
+        # that reports success whether or not an app exists at the end of it is
+        # worse than no signal, because it's a signal people believe. Waiting
+        # costs runner minutes and turns a failed build red, which is the whole
+        # reason to have this.
+        #
+        # The build page URL is printed near the start of the command's output,
+        # so it's available in the log long before the run finishes.
+        timeout-minutes: 60
         run: |
-          # --no-wait so the runner isn't held for the whole queue: EAS builds it
-          # server-side either way, and the build page is where it's watched.
           pnpm exec eas build \
             --platform ${{ inputs.platform }} \
             --profile ${{ inputs.profile }} \
             --message "${{ steps.msg.outputs.text }}" \
-            --non-interactive \
-            --no-wait
+            --non-interactive
 
       - name: Update
         if: inputs.mode == 'update'
