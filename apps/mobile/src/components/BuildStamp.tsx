@@ -1,7 +1,9 @@
 import { Text, View } from "react-native";
 import * as Updates from "expo-updates";
 import Constants from "expo-constants";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
+import { INSET_SOURCES, useInsets } from "../insets";
 
 /**
  * Which bundle is actually running, in small grey type at the bottom of Settings.
@@ -24,6 +26,10 @@ import { useTheme } from "../theme";
  */
 export function BuildStamp() {
   const { c } = useTheme();
+  // Both the raw provider value and what the app actually ends up using, so the
+  // line shows whether the fallbacks are doing any work.
+  const live = useSafeAreaInsets();
+  const resolved = useInsets();
 
   // Available in any build with expo-updates; in Expo Go and dev they're
   // undefined rather than throwing, hence the fallbacks.
@@ -42,6 +48,17 @@ export function BuildStamp() {
       </Text>
       <Text style={{ color: c.textFaint }} className="text-2xs">
         {embedded || !update ? "Running the build installed on this phone" : `Update ${update}`}
+      </Text>
+      {/* Which source knows the safe-area insets, and which came back zero.
+          The app takes the largest of these, so a row of zeroes on the left
+          with a number on the right is working as intended — all zeroes is the
+          failure, and it says so without anyone having to guess. */}
+      <Text style={{ color: c.textFaint }} className="text-2xs">
+        top {resolved.top} = live {live.top} / start {INSET_SOURCES.atStartup?.top ?? "–"} / bar{" "}
+        {INSET_SOURCES.androidStatusBar}
+      </Text>
+      <Text style={{ color: c.textFaint }} className="text-2xs">
+        bottom {resolved.bottom} = live {live.bottom} / start {INSET_SOURCES.atStartup?.bottom ?? "–"}
       </Text>
     </View>
   );
