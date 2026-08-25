@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAnalytics } from "@ding/client";
 import type { AnalyticsRange } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { channelColor, channelMeta } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 import { EmptyState, QueryState } from "../../../src/components/States";
+import { useInsets } from "../../../src/insets";
 
 const RANGES: { key: AnalyticsRange; label: string }[] = [
   { key: "7d", label: "7 days" },
@@ -42,7 +42,7 @@ function delta(now: number, prev: number): number | null {
  * you can scan across, not scroll down.
  */
 export default function Insights() {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const [range, setRange] = useState<AnalyticsRange>("30d");
   const analytics = useAnalytics({ range, channel: "all", teamId: "all", agentUserId: "all" });

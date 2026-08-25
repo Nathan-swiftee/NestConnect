@@ -1,12 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Pressable, Text } from "react-native";
 import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReduceMotion } from "react-native-reanimated";
 import { AlertIcon, CheckCircleIcon, ReopenIcon } from "../icons";
 import { haptics } from "../haptics";
 import { useTheme } from "../theme";
 import { timing } from "../motion";
+import { useInsets } from "../insets";
 
 /**
  * Confirmation for actions that don't visibly change the screen.
@@ -86,7 +86,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 function Bar({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const { c } = useTheme();
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const tone = toast.tone ?? "success";
 
   const Icon = tone === "error" ? AlertIcon : tone === "info" ? ReopenIcon : CheckCircleIcon;

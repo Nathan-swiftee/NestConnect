@@ -3,7 +3,6 @@ import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, TextInput, Vi
 import Animated from "react-native-reanimated";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { api, useContacts, useInboxes } from "@ding/client";
 import type { ChannelType, Contact } from "@ding/schemas";
 import { Avatar } from "../../src/components/Avatar";
@@ -14,6 +13,7 @@ import { BackIcon, SearchIcon, channelColor, channelMeta } from "../../src/icons
 import { haptics } from "../../src/haptics";
 import { rowIn } from "../../src/motion";
 import { useTheme } from "../../src/theme";
+import { useInsets } from "../../src/insets";
 
 /**
  * Start a conversation with someone who hasn't written in.
@@ -36,7 +36,7 @@ import { useTheme } from "../../src/theme";
  * you're already talking to can't fork their thread.
  */
 export default function Compose() {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const { data: contacts, isLoading } = useContacts();
   const { data: inboxes } = useInboxes();

@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ConversationWithMessages, Message } from "@ding/schemas";
 import { EyeIcon, ForwardIcon, ReplyIcon } from "../icons";
 import { fadeTo, spring, springTo, timing } from "../motion";
 import { useTheme, useThemeVars } from "../theme";
 import { readSummary } from "./ReadLog";
+import { useInsets } from "../insets";
 
 /**
  * A heavier dim than the shared sheet scrim.
@@ -77,7 +77,7 @@ export function MessageActions({
   onReceipts: () => void;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c, scheme } = useTheme();
   const themeVars = useThemeVars();
 
@@ -188,7 +188,6 @@ export function MessageActions({
               );
             })}
           </View>
-
 
           {!isWhatsApp ? (
             <Text className="mt-2 self-center text-2xs text-faint">

@@ -11,7 +11,6 @@ import {
 } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   listTime,
   useConversations,
@@ -32,6 +31,7 @@ import { haptics } from "../../../src/haptics";
 import { ChevronRight, PlusIcon, SearchIcon } from "../../../src/icons";
 import { rowIn, spring, springTo } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
+import { useInsets } from "../../../src/insets";
 
 /**
  * Narrowing applied on top of the chosen view, client-side — the web's set,
@@ -172,7 +172,7 @@ const Row = memo(function Row({
 });
 
 export default function Inbox() {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const [view, setView] = useState<string>("inbound");
   const [switcher, setSwitcher] = useState(false);

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fadeTo, spring, springTo, timing } from "../motion";
 import { useTheme, useThemeVars } from "../theme";
+import { useInsets } from "../insets";
 
 /**
  * The animated bottom sheet every sheet in the app is built on.
@@ -36,7 +36,7 @@ export function Sheet({
 }) {
   const { c } = useTheme();
   const themeVars = useThemeVars();
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
 
   // Kept mounted through the exit, then torn down. Without this the Modal
   // disappears on the same frame `visible` flips and there is nothing left on

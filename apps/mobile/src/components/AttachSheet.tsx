@@ -1,7 +1,7 @@
 import { Modal, Pressable, Text } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CameraIcon, DocIcon, ImageIcon } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
+import { useInsets } from "../insets";
 
 /**
  * Where the file is coming from.
@@ -24,7 +24,7 @@ export function AttachSheet({
   onPhotos: () => void;
   onFiles: () => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const themeVars = useThemeVars();
 

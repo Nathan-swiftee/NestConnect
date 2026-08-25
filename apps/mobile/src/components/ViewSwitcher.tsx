@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTeams, useViews } from "@ding/client";
 import { ChevronRight, InboxIcon, SnoozeIcon, TeamGlyph, XIcon, channelColor, channelMeta } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
 import { haptics } from "../haptics";
+import { useInsets } from "../insets";
 
 /**
  * The inbox switcher — the web sidebar, as a sheet.
@@ -28,7 +28,7 @@ export function ViewSwitcher({
   onOpenConversation: (id: string) => void;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const themeVars = useThemeVars();
   const { data } = useViews();

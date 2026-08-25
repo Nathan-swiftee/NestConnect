@@ -1,7 +1,6 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { FlatList, Pressable, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { relativeTime, useContact, useContacts } from "@ding/client";
 import type { Contact } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
@@ -9,6 +8,7 @@ import { ChannelDot } from "../../../src/components/ChannelDot";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { ChevronRight, SearchIcon, XIcon } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
+import { useInsets } from "../../../src/insets";
 
 /**
  * The customer directory — the web's Customers section on a phone.
@@ -18,7 +18,7 @@ import { useTheme } from "../../../src/theme";
  * merging customers stay on the web, where the forms belong.
  */
 export default function Customers() {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const contacts = useContacts();
   const { data } = contacts;
@@ -124,7 +124,7 @@ function Row({ contact, onPress }: { contact: Contact; onPress: () => void }) {
  * of the directory on a phone: find the person, open the right thread.
  */
 function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const contact = useContact(id);
   const { data, isLoading } = contact;

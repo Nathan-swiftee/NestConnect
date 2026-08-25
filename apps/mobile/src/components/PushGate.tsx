@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BellIcon } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
+import { useInsets } from "../insets";
 
 /**
  * The sentence that earns the permission prompt.
@@ -26,7 +26,7 @@ export function PushGate({
   onAllow: () => void;
   onDismiss: () => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const themeVars = useThemeVars();
   const [busy, setBusy] = useState(false);

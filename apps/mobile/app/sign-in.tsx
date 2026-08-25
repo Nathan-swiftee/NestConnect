@@ -3,7 +3,6 @@ import { ScrollView, Text, TextInput, useWindowDimensions } from "react-native";
 import Animated, { FadeIn, ReduceMotion, ZoomIn } from "react-native-reanimated";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, type MeResponse } from "@ding/client";
 import type { TwoFactorChallenge } from "@ding/schemas";
@@ -13,6 +12,7 @@ import { AuthGlow, NestMark } from "../src/components/NestMark";
 import { rowIn } from "../src/motion";
 import { saveSession } from "../src/session";
 import { useTheme } from "../src/theme";
+import { useInsets } from "../src/insets";
 
 /**
  * Sign-in, including the second factor.
@@ -28,7 +28,7 @@ import { useTheme } from "../src/theme";
  */
 export default function SignIn() {
   const qc = useQueryClient();
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const win = useWindowDimensions();
   const { c } = useTheme();
   const passwordRef = useRef<TextInput>(null);

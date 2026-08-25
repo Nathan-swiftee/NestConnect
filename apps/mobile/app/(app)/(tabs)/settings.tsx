@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Switch, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useLogout,
   useMe,
@@ -14,6 +13,7 @@ import { BellIcon, LogoutIcon } from "../../../src/icons";
 import { usePushRegistration } from "../../../src/push";
 import { useTheme } from "../../../src/theme";
 import { EmptyState, QueryState } from "../../../src/components/States";
+import { useInsets } from "../../../src/insets";
 
 /**
  * Settings on a phone: who you are, whether you're taking work, and what is
@@ -30,7 +30,7 @@ import { EmptyState, QueryState } from "../../../src/components/States";
  * be reported.
  */
 export default function Settings() {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const { data } = useMe();
   const me = data?.user;

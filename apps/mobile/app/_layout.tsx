@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SafeAreaProvider, initialWindowMetrics } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -58,15 +58,32 @@ export default function RootLayout() {
       {/* Outside the providers on purpose: a boundary that needs a working
           provider to draw its own fallback has misunderstood its job. */}
       <ErrorBoundary onReset={() => router.replace("/")}>
-        {/* Android draws edge-to-edge from SDK 54 on, and there is no opting out.
-            That breaks the platform's own `adjustResize`: the window no longer
-            shrinks when the keyboard opens, so anything anchored to the bottom —
-            the composer — ends up underneath it. This provider is what restores
-            it, reading the real keyboard frame and publishing it as animated
-            values. Reanimated's useAnimatedKeyboard is deprecated in favour of
-            exactly this. */}
-        <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
-          <SafeAreaProvider>
+        {/* Safe-area first, and above the keyboard provider — the order is the
+            bug we shipped for months, not a style preference.
+
+            On Android the system bar insets arrive as WindowInsets and are
+            passed down the view tree, and a view in the middle can consume them
+            before anything below sees them. KeyboardProvider does exactly that
+            when told the bars are translucent, so with it on the outside every
+            `useSafeAreaInsets()` in the app answered zero: the chat header sat
+            under the clock and the composer under the navigation bar, on every
+            screen, since the first build. Nothing about it looks wrong in a
+            browser, where there are no system bars to inset for.
+
+            `initialMetrics` is the belt to that braces. It reads the insets
+            synchronously from the native module at startup instead of waiting
+            for the first measurement to come back, so the first frame is
+            already correct — and a screen still gets real numbers even if the
+            listener path fails again. */}
+        <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+          {/* Android draws edge-to-edge from SDK 54 on, and there is no opting
+              out. That breaks the platform's own `adjustResize`: the window no
+              longer shrinks when the keyboard opens, so anything anchored to the
+              bottom — the composer — ends up underneath it. This provider is
+              what restores it, reading the real keyboard frame and publishing it
+              as animated values. Reanimated's useAnimatedKeyboard is deprecated
+              in favour of exactly this. */}
+          <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
             {/* The palette for this scheme, published as CSS variables to everything
                 below. Every colour utility (`text-fg`, `bg-surface`, …) resolves
                 through these, so switching the phone to dark switches the whole app
@@ -97,8 +114,8 @@ export default function RootLayout() {
                 </ToastProvider>
               </QueryClientProvider>
             </View>
-          </SafeAreaProvider>
-        </KeyboardProvider>
+          </KeyboardProvider>
+        </SafeAreaProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>
   );

@@ -6,7 +6,6 @@ import {
   useReanimatedKeyboardAnimation,
 } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   clockTime,
   groupMessagesByDay,
@@ -57,6 +56,7 @@ import {
 import { haptics } from "../../../src/haptics";
 import { enter } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
+import { useInsets } from "../../../src/insets";
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
  *  means the same thing whichever one an agent reaches for. */
@@ -80,7 +80,7 @@ const SNOOZE = [
 
 export default function Thread() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const conv = useConversation(id);
   const session = useSession();
@@ -555,7 +555,7 @@ export default function Thread() {
  * instead of one snapping after the other.
  */
 function BottomInset() {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const { progress } = useReanimatedKeyboardAnimation();
   const style = useAnimatedStyle(() => ({ height: insets.bottom * (1 - progress.value) }));

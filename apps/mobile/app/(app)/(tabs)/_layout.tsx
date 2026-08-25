@@ -1,9 +1,9 @@
 import { useWindowDimensions } from "react-native";
 import { Tabs } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMe } from "@ding/client";
 import { ContactsIcon, InboxIcon, InsightsIcon, SettingsIcon } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
+import { useInsets } from "../../../src/insets";
 
 /**
  * The app's primary navigation — the web's icon rail, laid along the bottom
@@ -20,7 +20,7 @@ import { useTheme } from "../../../src/theme";
  */
 export default function TabsLayout() {
   const { c } = useTheme();
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { fontScale } = useWindowDimensions();
   const { data: me } = useMe();
 

@@ -1,5 +1,4 @@
 import { ActivityIndicator, Modal, Pressable, ScrollView, Switch, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   relativeTime,
   slaCountdown,
@@ -15,6 +14,7 @@ import { Avatar } from "./Avatar";
 import { ChannelDot } from "./ChannelDot";
 import { BellIcon, CheckIcon, ChevronRight, XIcon, channelMeta } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
+import { useInsets } from "../insets";
 
 /**
  * Who this conversation is with, and everything about it that isn't a message.
@@ -39,7 +39,7 @@ export function DetailsPanel({
   onClose: () => void;
   onOpenConversation: (id: string) => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const themeVars = useThemeVars();
   const { data: catalog } = useLabels();

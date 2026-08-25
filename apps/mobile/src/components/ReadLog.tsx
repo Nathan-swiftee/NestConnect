@@ -1,9 +1,9 @@
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { seenAt } from "@ding/client";
 import type { Message } from "@ding/schemas";
 import { CheckDouble, ClockIcon, XIcon } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
+import { useInsets } from "../insets";
 
 type Recipient = NonNullable<NonNullable<Message["email"]>["recipients"]>[number];
 
@@ -38,7 +38,7 @@ export function ReadLog({
   visible: boolean;
   onClose: () => void;
 }) {
-  const insets = useSafeAreaInsets();
+  const insets = useInsets();
   const { c } = useTheme();
   const themeVars = useThemeVars();
 
