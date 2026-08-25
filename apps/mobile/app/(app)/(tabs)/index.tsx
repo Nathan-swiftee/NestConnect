@@ -301,7 +301,7 @@ export default function Inbox() {
       {/* The title IS the inbox switcher — tap it to change view, the way Front
           does and the way the web's sidebar works. The chevron is the only cue
           that says so, so it stays visible rather than appearing on press. */}
-      <View className="flex-row items-center justify-between px-4 pb-2 pt-2">
+      <View className="flex-row items-center justify-between px-4 pb-3 pt-3">
         <Pressable
           onPress={() => {
             haptics.select();
@@ -325,7 +325,7 @@ export default function Inbox() {
                 <ChevronRight size={16} color={c.textMuted} />
               </View>
             </View>
-            <Text numberOfLines={1} className="text-sm text-muted">
+            <Text numberOfLines={1} className="pt-0.5 text-sm text-muted">
               {viewCount != null ? `${viewCount} open · ` : ""}
               {session.data?.user?.name ?? ""}
             </Text>
@@ -353,7 +353,7 @@ export default function Inbox() {
 
       {/* Search carries its glyph inside the field, as on the web — the icon is
           what makes it read as search before you've typed anything. */}
-      <View className="px-4 pb-2">
+      <View className="px-4 pb-3">
         <View
           style={{ backgroundColor: c.surface2 }}
           className="flex-row items-center gap-2 rounded-full px-3.5"
@@ -383,7 +383,7 @@ export default function Inbox() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
-          className="max-h-11 pb-2"
+          className="max-h-11 pb-2.5"
         >
           {filters.map((f) => (
             <Chip

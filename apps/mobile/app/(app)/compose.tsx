@@ -131,8 +131,7 @@ export default function Compose() {
   return (
     <KeyboardAvoidingView
       behavior="padding"
-      style={{ backgroundColor: c.bg, paddingTop: insets.top }}
-      className="flex-1"
+      style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}
     >
       <View
         style={{ borderBottomColor: c.border, backgroundColor: c.surface }}

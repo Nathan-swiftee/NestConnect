@@ -43,7 +43,17 @@ import { Tail, tailCorner } from "../../../src/components/Tail";
 import { EmailBody } from "../../../src/components/EmailBody";
 import { Ticks } from "../../../src/components/Ticks";
 import { useToast } from "../../../src/components/Toast";
-import { BackIcon, DetailsIcon, EyeIcon, ForwardIcon, MoreIcon, channelColor, channelMeta } from "../../../src/icons";
+import {
+  BackIcon,
+  DetailsIcon,
+  EyeIcon,
+  ForwardIcon,
+  InboxIcon,
+  MoreIcon,
+  TeamGlyph,
+  channelColor,
+  channelMeta,
+} from "../../../src/icons";
 import { haptics } from "../../../src/haptics";
 import { enter } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
@@ -147,6 +157,92 @@ export default function Thread() {
     const { id: convId, retry: rt } = live.current;
     rt.mutate({ conversationId: convId, messageId: m.id });
   }, []);
+
+  /**
+   * The thread as one flat list of children, plus the indices of the day
+   * separators within it.
+   *
+   * Flat because `stickyHeaderIndices` only understands direct children of the
+   * ScrollView; a per-day wrapper hides the separator from it. Built here rather
+   * than inline so the index bookkeeping lives next to the thing it indexes —
+   * getting it wrong sticks a message to the top instead of a date.
+   */
+  // Read from the session rather than the `me` derived further down: this memo
+  // is a hook, so it must run before the loading/error early returns, and `me`
+  // is only in scope after them.
+  const myId = session.data?.user?.id;
+  const { threadRows, stickyDays } = useMemo(() => {
+    const rows: React.ReactNode[] = [];
+    const sticky: number[] = [];
+    if (!data) return { threadRows: rows, stickyDays: sticky };
+    rows.push(<LoadOlder key="older" conv={data} />);
+    for (const group of days) {
+      sticky.push(rows.length);
+      rows.push(
+        // Transparent around an opaque pill, so the thread passes either side of
+        // it as it scrolls under — WhatsApp's floating date, not a full-width bar.
+        <View key={`day-${group.key}`} className="items-center py-2">
+          <View
+            style={{
+              backgroundColor: c.surface2,
+              // A lift, because this pill is sticky: while its day is on screen
+              // it sits *over* the messages scrolling under it, and flat against
+              // a bubble it reads as part of that bubble rather than as chrome
+              // floating above the thread.
+              shadowColor: "#000",
+              shadowOpacity: 0.14,
+              shadowRadius: 5,
+              shadowOffset: { width: 0, height: 1 },
+              elevation: 2,
+            }}
+            className="rounded-full px-3 py-1"
+          >
+            <Text className="text-2xs font-medium text-muted">{group.label}</Text>
+          </View>
+        </View>,
+      );
+      group.items.forEach((m, i) => {
+        const prev = group.items[i - 1];
+        const next = group.items[i + 1];
+        const who = (x: Message) => speakerKey(x, data.channel);
+        rows.push(
+          <Bubble
+            key={m.id}
+            message={m}
+            // Primitives and one resolved message rather than the whole
+            // conversation: `conv` is a new object on every refetch, and passing
+            // it would re-render every bubble for a change to one.
+            channel={data.channel}
+            contactName={data.contact.displayName}
+            quoted={m.quotedMsgId ? byId.get(m.quotedMsgId) : undefined}
+            meId={myId}
+            // Same speaker above? Part of a run: loses the name and most of the
+            // gap above it. Same speaker below? Not the last of the run, so the
+            // tail belongs to whichever bubble is.
+            continues={!!prev && who(prev) === who(m)}
+            endsRun={!next || who(next) !== who(m)}
+            onLongPress={onLongPress}
+            onReply={onReply}
+            onOpenReadLog={onOpenReadLog}
+            onRemoveReaction={onRemoveReaction}
+            onRetry={onRetry}
+          />,
+        );
+      });
+    }
+    return { threadRows: rows, stickyDays: sticky };
+  }, [
+    data,
+    days,
+    byId,
+    myId,
+    c.surface2,
+    onLongPress,
+    onReply,
+    onOpenReadLog,
+    onRemoveReaction,
+    onRetry,
+  ]);
 
   // Send `forwarding` on to the picked customers. The server reports each target
   // separately — a closed 24-hour window on one chat is the normal partial
@@ -284,12 +380,14 @@ export default function Thread() {
       key: "me",
       section: "Assign to a person",
       label: "Assign to me",
+      leading: me ? <Avatar name={me.name} color={me.avatarColor} size={34} /> : undefined,
       selected: data.assigneeUserId === me?.id,
       onPress: () => doAssign({ assigneeUserId: me?.id ?? null }, "Assigned to you"),
     },
     ...ranked.map((m) => ({
       key: m.user.id,
       label: m.user.name,
+      leading: <Avatar name={m.user.name} color={m.user.avatarColor} size={34} />,
       detail: !m.user.available
         ? "Not accepting work"
         : inTeam(m)
@@ -303,6 +401,7 @@ export default function Thread() {
       // Only the first row carries the caption; the rest continue the group.
       section: i === 0 ? "Route to a team" : undefined,
       label: t.name,
+      leading: <TeamGlyph icon={t.icon} size={21} color={c.textMuted} />,
       detail: t.id === currentTeam ? "Already here" : "Unassigns, leaves it for the team",
       selected: t.id === currentTeam && !data.assigneeUserId,
       // Routing clears the person on purpose: it means "nobody in particular
@@ -313,6 +412,7 @@ export default function Thread() {
       key: "queue",
       section: "Or",
       label: "Back to the queue",
+      leading: <InboxIcon size={21} color={c.textMuted} />,
       detail: currentTeam ? `Unassign, leave it with ${teamName(currentTeam)}` : "Unassign, leave it for the team",
       selected: !data.assigneeUserId,
       onPress: () => doAssign({ assigneeUserId: null }, "Back in the queue"),
@@ -359,51 +459,27 @@ export default function Thread() {
     <KeyboardAvoidingView
       behavior="padding"
       keyboardVerticalOffset={0}
-      style={{ backgroundColor: c.bg, paddingTop: insets.top }}
-      className="flex-1"
+      style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}
     >
       <Header conv={data} onDetails={() => setSheet("details")} onMore={() => setSheet("more")} />
 
+      {/* Flat children, not a View per day, because `stickyHeaderIndices` only
+          sticks DIRECT children of the ScrollView. Wrapping each day made its
+          separator scroll away with its group — the web keeps it pinned
+          (`position:sticky`) so you always know what day you're reading, and a
+          phone needs that more than a desktop does, not less.
+
+          No container gap: spacing is per-bubble so a run can close up. A
+          uniform gap would space every pair identically and there'd be no
+          visible grouping at all. */}
       <ScrollView
         ref={scroller}
-        contentContainerStyle={{ padding: 12, paddingBottom: 16, gap: 2 }}
+        contentContainerStyle={{ padding: 12, paddingBottom: 16 }}
         onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
         keyboardDismissMode="interactive"
+        stickyHeaderIndices={stickyDays}
       >
-        <LoadOlder conv={data} />
-        {days.map((group) => (
-          // No gap here on purpose: spacing is per-bubble, so a run can close
-          // up. A container gap would apply the same distance to every pair and
-          // there would be no visible grouping at all.
-          <View key={group.key}>
-            <View className="items-center py-2">
-              <View style={{ backgroundColor: c.surface2 }} className="rounded-full px-3 py-1">
-                <Text className="text-2xs font-medium text-muted">{group.label}</Text>
-              </View>
-            </View>
-            {group.items.map((m, i) => (
-              <Bubble
-                key={m.id}
-                message={m}
-                // Primitives and one resolved message rather than the whole
-                // conversation: `conv` is a new object on every refetch, and
-                // passing it would re-render every bubble for a change to one.
-                channel={data.channel}
-                contactName={data.contact.displayName}
-                quoted={m.quotedMsgId ? byId.get(m.quotedMsgId) : undefined}
-                meId={me?.id}
-                // Same speaker as the one above? Then it's part of a run, and
-                // loses the name and most of the gap above it.
-                continues={!!group.items[i - 1] && speakerKey(group.items[i - 1], data.channel) === speakerKey(m, data.channel)}
-                onLongPress={onLongPress}
-                onReply={onReply}
-                onOpenReadLog={onOpenReadLog}
-                onRemoveReaction={onRemoveReaction}
-                onRetry={onRetry}
-              />
-            ))}
-          </View>
-        ))}
+        {threadRows}
 
         {/* Written but not yet accepted by the server — shown in place so a
             reply composed offline doesn't look like it vanished. */}
@@ -564,6 +640,7 @@ const Bubble = memo(function Bubble({
   quoted,
   meId,
   continues,
+  endsRun,
   onRetry,
   onLongPress,
   onReply,
@@ -577,6 +654,8 @@ const Bubble = memo(function Bubble({
   quoted?: Message;
   meId?: string;
   continues: boolean;
+  /** Last of a run — i.e. not followed by the same speaker. Carries the tail. */
+  endsRun: boolean;
   onRetry: (m: Message) => void;
   onLongPress: (m: Message) => void;
   onReply: (m: Message) => void;
@@ -620,19 +699,37 @@ const Bubble = memo(function Bubble({
 
   const on = message.channel ?? channel;
   const isEmail = on === "email";
+  /**
+   * Who is talking, split the way the web splits it.
+   *
+   * Inbound gets a name above the run — in a group that's essential, and in a
+   * 1:1 it's what makes an imported or forwarded message attributable. Outbound
+   * gets its author in the stamp row instead (`sentBy` below): a shared inbox
+   * has several agents replying into one thread, and without a name every reply
+   * reads as "the business" — you can't tell your own from a colleague's, which
+   * is the first thing you need to know before answering a customer.
+   *
+   * Two different placements because they're two different questions. Inbound is
+   * "who is this?", which you need before reading. Outbound is "who handled
+   * this?", which is metadata and belongs next to the time.
+   */
+  const senderName = !mine ? (message.authorName ?? (channel === "whatsapp_group" ? contactName : null)) : null;
+  const sentBy = mine && !message.internal ? (message.authorName ?? null) : null;
   const fill = mine ? c.brandTint : c.surface;
   const line = mine ? c.brandTint : c.border;
   /**
    * A tail marks speech, so only conversation gets one — and only where a turn
-   * starts, which is what makes a run of five messages read as one person
-   * talking rather than five separate cards.
+   * *ends*, which is what makes a run of five messages read as one person
+   * talking rather than five separate cards. Last of the run, bottom outer
+   * corner: the same rule and the same corner as the web, because the two
+   * clients showing one thread differently is worse than either choice.
    *
    * Email is deliberately excluded. An email isn't an utterance, it's a
    * document: it has a subject, recipients and a signature, and drawing it as a
    * speech bubble makes a mixed thread lie about which of the two you're
    * looking at. It gets width instead, since that's what its content needs.
    */
-  const tailed = !continues && !isEmail;
+  const tailed = endsRun && !isEmail;
 
   return (
     <SwipeToReply onReply={() => onReply(message)} mine={mine} enabled={canSwipe}>
@@ -654,16 +751,28 @@ const Bubble = memo(function Bubble({
           // The tailed corner squares off. A tail growing out of a 16pt curve
           // leaves a visible sliver of background between the two shapes; at 5pt
           // they read as one outline.
-          ...(tailed ? (mine ? { borderTopRightRadius: tailCorner } : { borderTopLeftRadius: tailCorner }) : null),
+          ...(tailed
+            ? mine
+              ? { borderBottomRightRadius: tailCorner }
+              : { borderBottomLeftRadius: tailCorner }
+            : null),
         }}
         className="rounded-16 border px-3.5 py-2.5"
       >
         {tailed ? <Tail mine={mine} fill={fill} stroke={line} /> : null}
 
-        {/* In a group, who spoke matters as much as what they said. */}
-        {!continues && !mine && channel === "whatsapp_group" ? (
+        {/* Who is talking, above the first bubble of each run.
+            
+            Outbound needs this as much as inbound: a shared inbox has several
+            agents replying into the same thread, and without a name every reply
+            reads as "the business" — you can't tell your own message from a
+            colleague's, which is exactly what you need to know before you answer
+            a customer. The customer's own name is redundant in a 1:1 (the header
+            already says who they are), so it's shown only in a group, where
+            several people speak from that side. */}
+        {!continues && senderName ? (
           <Text style={{ color: c.group }} className="pb-0.5 text-2xs font-semibold">
-            {message.authorName ?? contactName}
+            {senderName}
           </Text>
         ) : null}
 
@@ -721,6 +830,15 @@ const Bubble = memo(function Bubble({
                 {read.seen}/{read.total}
               </Text>
             </Pressable>
+          ) : null}
+          {/* "Sent by Nathan A ·" — the same place and the same wording the web
+              uses, so a thread read on a phone attributes replies identically to
+              one read at a desk. Capped so a long name can't push the time and
+              ticks off the end of a narrow bubble. */}
+          {sentBy ? (
+            <Text numberOfLines={1} className="max-w-[140px] text-2xs text-faint">
+              Sent by {sentBy} ·
+            </Text>
           ) : null}
           <Text className="text-2xs text-faint">{clockTime(message.createdAt)}</Text>
           {/* One status marker, never two. Where an email has tracked

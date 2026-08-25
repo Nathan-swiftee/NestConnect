@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useViews } from "@ding/client";
+import { useTeams, useViews } from "@ding/client";
 import { ChevronRight, InboxIcon, SnoozeIcon, TeamGlyph, XIcon, channelColor, channelMeta } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
 import { haptics } from "../haptics";
@@ -32,6 +32,12 @@ export function ViewSwitcher({
   const { c } = useTheme();
   const themeVars = useThemeVars();
   const { data } = useViews();
+  // The sidebar's view items carry a title and a count but not the team's chosen
+  // icon, so it's joined here from the teams list — the same thing the web does.
+  // Without it every team rendered the identical default glyph, which is worse
+  // than no icon: it looks like a list where the icons are broken.
+  const { data: teamList } = useTeams();
+  const teamIconFor = (key: string) => teamList?.find((t) => `team:${t.id}` === key)?.icon ?? null;
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   function pick(key: string) {
@@ -189,7 +195,13 @@ export function ViewSwitcher({
                     label={t.title}
                     count={t.count}
                     onPress={() => pick(t.key)}
-                    icon={<TeamGlyph size={18} color={view === t.key ? c.brandStrong : c.textMuted} />}
+                    icon={
+                      <TeamGlyph
+                        icon={teamIconFor(t.key)}
+                        size={18}
+                        color={view === t.key ? c.brandStrong : c.textMuted}
+                      />
+                    }
                   />
                 ))}
               </>

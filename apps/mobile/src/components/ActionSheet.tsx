@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { CheckIcon } from "../icons";
@@ -18,6 +19,17 @@ export interface SheetAction {
    *  of thing — people and teams — an undivided list makes you read every row
    *  to find out which kind each one is. */
   section?: string;
+  /**
+   * Rendered at the row's leading edge — an avatar for a person, a team's own
+   * glyph for a team.
+   *
+   * Not decoration. Assign is a sheet of two different kinds of thing, and as
+   * plain text every row looks the same: you read each label to work out whether
+   * "Sales team" is a person or a team. A face and a glyph settle that before
+   * you've read anything, and the avatar is the same colour it is everywhere
+   * else in the app, so a name you know is recognisable at a glance.
+   */
+  leading?: ReactNode;
   onPress: () => void;
 }
 
@@ -68,8 +80,13 @@ export function ActionSheet({
               accessibilityRole="button"
               accessibilityState={{ selected: !!a.selected }}
               style={{ borderBottomColor: c.border }}
-              className="flex-row items-center gap-3 border-b py-3.5 active:opacity-60"
+              className="flex-row items-center gap-3 border-b py-3 active:opacity-60"
             >
+              {/* Fixed width whether or not this row has one, so labels line up
+                  down the sheet instead of stepping in and out. */}
+              {a.leading ? (
+                <View className="h-9 w-9 items-center justify-center">{a.leading}</View>
+              ) : null}
               <View className="flex-1">
                 <Text
                   style={{ color: a.destructive ? c.danger : c.text }}

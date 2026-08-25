@@ -4,12 +4,16 @@ import Svg, { Path } from "react-native-svg";
 /**
  * The little pointer that makes a rounded rectangle read as speech.
  *
- * WhatsApp puts it on the **top** outer corner of the **first** bubble in a run
- * — not the bottom, and not on every bubble. That placement is what does the
- * work: it anchors the start of each turn to its side of the thread, so a
- * column of bubbles reads as alternating speech rather than a stack of cards,
- * and a run of five messages from one person reads as one turn rather than
- * five. Putting a tail on every bubble undoes that and looks noisy.
+ * It sits on the **bottom** outer corner of the **last** bubble in a run — not
+ * every bubble, and not the first. That placement is what does the work: it
+ * anchors the end of each turn to its side of the thread, so a column reads as
+ * alternating speech rather than a stack of cards, and five messages from one
+ * person read as one turn rather than five. A tail on every bubble undoes that
+ * and looks noisy.
+ *
+ * Bottom rather than top is deliberate: it's where the web puts it (`bottom:0`
+ * on `.msg .bubble::after`) and where WhatsApp puts it, and the two clients
+ * have to agree or the same thread looks like two different products.
  *
  * Drawn as SVG rather than the usual rotated-square-with-a-border trick, for
  * two reasons that both come from these bubbles having a visible border:
@@ -18,7 +22,7 @@ import Svg, { Path } from "react-native-svg";
  * stroked on the outer edges only, and overlaps the bubble by a pixel so the
  * shared edge is covered rather than drawn twice.
  *
- * The shape hangs off the corner and curves back to the bubble wall, so its
+ * The shape hangs off the corner and curves back up to the bubble wall, so its
  * silhouette continues the bubble's own curve instead of poking out of it.
  */
 
@@ -47,19 +51,19 @@ export function Tail({
   fill: string;
   stroke: string;
 }) {
-  // Outer edge: down the side, then a curve sweeping back in to the wall.
-  // Inner edge: straight back up the bubble wall, overlapping it by a hair so
-  // the two fills meet with no seam between them.
+  // Anchored at the bubble's bottom corner (y = TAIL_H) and curving up and back
+  // to the wall, so the silhouette carries on from the bubble's own edge. The
+  // straight side is the one that meets the bubble and is hidden beneath it.
   const d = mine
-    ? `M0 0 L${TAIL_W} 0 C${TAIL_W} ${TAIL_H * 0.55} ${TAIL_W * 0.62} ${TAIL_H * 0.9} 0 ${TAIL_H} Z`
-    : `M${TAIL_W} 0 L0 0 C0 ${TAIL_H * 0.55} ${TAIL_W * 0.38} ${TAIL_H * 0.9} ${TAIL_W} ${TAIL_H} Z`;
+    ? `M0 ${TAIL_H} L${TAIL_W} ${TAIL_H} C${TAIL_W} ${TAIL_H * 0.45} ${TAIL_W * 0.62} ${TAIL_H * 0.1} 0 0 Z`
+    : `M${TAIL_W} ${TAIL_H} L0 ${TAIL_H} C0 ${TAIL_H * 0.45} ${TAIL_W * 0.38} ${TAIL_H * 0.1} ${TAIL_W} 0 Z`;
 
   return (
     <View
       pointerEvents="none"
       style={{
         position: "absolute",
-        top: 0,
+        bottom: 0,
         // A pixel of overlap: without it antialiasing leaves a hairline of
         // background between tail and bubble on some densities.
         ...(mine ? { right: -TAIL_W + 1 } : { left: -TAIL_W + 1 }),

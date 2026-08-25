@@ -89,7 +89,7 @@ export default function SignIn() {
   }
 
   return (
-    <KeyboardAvoidingView behavior="padding" style={{ backgroundColor: c.bg }} className="flex-1">
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: c.bg }}>
       <AuthGlow width={win.width} height={win.height * 0.62} brand={c.brand} warm={c.amber} />
 
       <ScrollView
