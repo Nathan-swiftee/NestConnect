@@ -13,6 +13,7 @@ import { BellIcon, LogoutIcon } from "../../../src/icons";
 import { usePushRegistration } from "../../../src/push";
 import { useTheme } from "../../../src/theme";
 import { EmptyState, QueryState } from "../../../src/components/States";
+import { BuildStamp } from "../../../src/components/BuildStamp";
 import { useInsets } from "../../../src/insets";
 
 /**
@@ -203,6 +204,8 @@ export default function Settings() {
           Sign out
         </Text>
       </Pressable>
+
+      <BuildStamp />
     </ScrollView>
   );
 }

@@ -10,7 +10,9 @@
     "newArchEnabled": true,
     "backgroundColor": "#FAFAF9",
     "updates": {
-      "url": "https://u.expo.dev/4a369ffe-af17-43ee-8304-f3ddf47565a0"
+      "url": "https://u.expo.dev/4a369ffe-af17-43ee-8304-f3ddf47565a0",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 5000
     },
     "runtimeVersion": {
       "policy": "appVersion"
