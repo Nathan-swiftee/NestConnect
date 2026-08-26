@@ -129,14 +129,13 @@ export default function Compose() {
   };
 
   return (
-    // Safe area on a plain View, keyboard avoidance on the avoiding view — see
-    // the thread screen for why. These were the only two screens that put the
-    // top inset on the KeyboardAvoidingView, and the only two that rendered
-    // underneath the system bars on an Android device.
-    <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}>
+    // Avoiding view as the screen root, header padded for the status bar — see
+    // the thread screen. Nested and given `flex: 1` this component ignores it,
+    // and everything below flexes into nothing.
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: c.bg }}>
       <View
-        style={{ borderBottomColor: c.border, backgroundColor: c.surface }}
-        className="flex-row items-center gap-2 border-b px-2 py-2"
+        style={{ borderBottomColor: c.border, backgroundColor: c.surface, paddingTop: insets.top }}
+        className="flex-row items-center gap-2 border-b px-2 pb-2 pt-2"
       >
         <Pressable onPress={back} accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} className="px-1 active:opacity-60">
           <BackIcon size={24} color={c.brand} />
@@ -145,8 +144,6 @@ export default function Compose() {
           {adding ? "New customer" : picked ? "How to reach them" : "New conversation"}
         </Text>
       </View>
-
-      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
 
       {error ? (
         <Text style={{ color: c.danger }} className="px-4 pt-3 text-md">
@@ -327,8 +324,7 @@ export default function Compose() {
           />
         </>
       )}
-      </KeyboardAvoidingView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

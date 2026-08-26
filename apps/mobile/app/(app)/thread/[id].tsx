@@ -450,24 +450,28 @@ export default function Thread() {
   ];
 
   return (
-    // The safe-area padding goes on a plain View, not on the avoiding view.
+    // The avoiding view is the screen root, which is the shape that works.
     //
-    // It used to sit on the KeyboardAvoidingView and was ignored on an Android
-    // device: header under the system clock, composer and its inset strip under
-    // the navigation bar. The insets themselves were always correct — the phone
-    // reports 35.56 top and 48 bottom, and the inbox and settings screens, which
-    // are rooted on a plain View, pad correctly with those same numbers. The two
-    // screens that were wrong were exactly the two rooted on this component.
+    // Nested inside a plain View it was given `flex: 1` and ignored it, so the
+    // message list — flexing into a parent that had no height to give — came out
+    // zero tall and the composer landed under the header. As the root it fills
+    // because the navigator hands its screen a definite height, and it doesn't
+    // have to honour anything for that to be true.
     //
-    // It renders a Reanimated view and merges its own animated style over the one
-    // it's given, so what survives that merge is its business, not ours. A View
-    // owning the safe area and the avoiding view owning only the keyboard is the
-    // right split anyway — and the header shouldn't move when the keyboard opens,
-    // which it can't now that it sits outside.
-    <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}>
-      <Header conv={data} onDetails={() => setSheet("details")} onMore={() => setSheet("more")} />
-
-      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0} style={{ flex: 1 }}>
+    // The safe area is the Header's own padding rather than this component's,
+    // for the same reason: what this component does with the style it's handed
+    // is not something to build a layout on.
+    <KeyboardAvoidingView
+      behavior="padding"
+      keyboardVerticalOffset={0}
+      style={{ flex: 1, backgroundColor: c.bg }}
+    >
+      <Header
+        conv={data}
+        insetTop={insets.top}
+        onDetails={() => setSheet("details")}
+        onMore={() => setSheet("more")}
+      />
 
       {/* Flat children, not a View per day, because `stickyHeaderIndices` only
           sticks DIRECT children of the ScrollView. Wrapping each day made its
@@ -524,8 +528,7 @@ export default function Thread() {
       ) : (
         <Composer conv={data} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
       )}
-        <BottomInset />
-      </KeyboardAvoidingView>
+      <BottomInset />
 
       <ActionSheet visible={sheet === "assign"} title="Assign this conversation" actions={assignActions} onClose={() => setSheet(null)} />
       <ActionSheet visible={sheet === "snooze"} title="Snooze until…" actions={snoozeActions} onClose={() => setSheet(null)} />
@@ -555,7 +558,7 @@ export default function Thread() {
         onClose={() => setForwarding(null)}
       />
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -579,17 +582,25 @@ function BottomInset() {
 
 function Header({
   conv,
+  insetTop,
   onDetails,
   onMore,
 }: {
   conv: ConversationWithMessages;
+  /** Status-bar height. The header owns the top safe area because it's the
+   *  topmost thing on the screen and a plain View can be relied on to apply
+   *  padding it's given. */
+  insetTop: number;
   onDetails: () => void;
   onMore: () => void;
 }) {
   const { c } = useTheme();
   const ChannelGlyph = channelMeta(conv.channel).Glyph;
   return (
-    <View style={{ borderBottomColor: c.border, backgroundColor: c.surface }} className="flex-row items-center gap-2.5 border-b px-2 py-2">
+    <View
+      style={{ borderBottomColor: c.border, backgroundColor: c.surface, paddingTop: insetTop }}
+      className="flex-row items-center gap-2.5 border-b px-2 pb-2 pt-2"
+    >
       <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back to inbox" hitSlop={12} className="px-1 active:opacity-60">
         <BackIcon size={24} color={c.brand} />
       </Pressable>
