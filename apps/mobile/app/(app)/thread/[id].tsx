@@ -450,22 +450,23 @@ export default function Thread() {
   ];
 
   return (
-    // The avoiding view is the screen root, which is the shape that works.
+    // A plain View owns the screen, and the avoiding view wraps the composer
+    // and nothing else.
     //
-    // Nested inside a plain View it was given `flex: 1` and ignored it, so the
-    // message list — flexing into a parent that had no height to give — came out
-    // zero tall and the composer landed under the header. As the root it fills
-    // because the navigator hands its screen a definite height, and it doesn't
-    // have to honour anything for that to be true.
+    // Every arrangement that put this screen's sizing through
+    // KeyboardAvoidingView has come back wrong in a different way: the padding
+    // it was given disappeared, then the flex it was given disappeared, then
+    // the message list flexed into it and came out zero tall. Whatever it does
+    // with a style prop, it is not a thing to hang a layout on.
     //
-    // The safe area is the Header's own padding rather than this component's,
-    // for the same reason: what this component does with the style it's handed
-    // is not something to build a layout on.
-    <KeyboardAvoidingView
-      behavior="padding"
-      keyboardVerticalOffset={0}
-      style={{ flex: 1, backgroundColor: c.bg }}
-    >
+    // So it doesn't hold one any more. A View fills the screen, the header pads
+    // itself for the status bar, the list flexes into the space between — all
+    // plain components that can be relied on — and the avoiding view is left
+    // with its one real job: adding padding under the composer equal to the
+    // keyboard, which is exactly what `behavior="padding"` means. It sizes to
+    // its own content there, which is correct rather than something to work
+    // around.
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
       <Header
         conv={data}
         insetTop={insets.top}
@@ -511,7 +512,8 @@ export default function Thread() {
         ))}
       </ScrollView>
 
-      {closed ? (
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+        {closed ? (
         <View style={{ backgroundColor: c.surface, borderTopColor: c.border }} className="border-t px-4 py-3">
           <Text className="text-center text-md text-muted">
             This conversation is resolved.{" "}
@@ -525,10 +527,11 @@ export default function Thread() {
             to reply.
           </Text>
         </View>
-      ) : (
-        <Composer conv={data} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
-      )}
-      <BottomInset />
+        ) : (
+          <Composer conv={data} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
+        )}
+        <BottomInset />
+      </KeyboardAvoidingView>
 
       <ActionSheet visible={sheet === "assign"} title="Assign this conversation" actions={assignActions} onClose={() => setSheet(null)} />
       <ActionSheet visible={sheet === "snooze"} title="Snooze until…" actions={snoozeActions} onClose={() => setSheet(null)} />
@@ -558,7 +561,7 @@ export default function Thread() {
         onClose={() => setForwarding(null)}
       />
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

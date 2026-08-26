@@ -129,10 +129,10 @@ export default function Compose() {
   };
 
   return (
-    // Avoiding view as the screen root, header padded for the status bar — see
-    // the thread screen. Nested and given `flex: 1` this component ignores it,
-    // and everything below flexes into nothing.
-    <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: c.bg }}>
+    // A plain View owns the screen; the avoiding view wraps only what has to
+    // move for the keyboard. See the thread screen for why nothing here hangs
+    // its sizing on that component.
+    <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View
         style={{ borderBottomColor: c.border, backgroundColor: c.surface, paddingTop: insets.top }}
         className="flex-row items-center gap-2 border-b px-2 pb-2 pt-2"
@@ -324,7 +324,13 @@ export default function Compose() {
           />
         </>
       )}
-    </KeyboardAvoidingView>
+      {/* Zero-height on purpose: with no children it contributes only the
+          padding `behavior="padding"` adds, which equals the keyboard, so the
+          scroll view above is squeezed upward by exactly that much. Nothing
+          here depends on this component sizing itself, which is the one thing
+          it has repeatedly failed to do. */}
+      <KeyboardAvoidingView behavior="padding" />
+    </View>
   );
 }
 
