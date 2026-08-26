@@ -30,6 +30,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # One structural rule about the mobile screens that neither the typechecker
+      # nor a browser can see. Takes a second. docs/11-mobile-layout.md says why
+      # it exists and why it isn't a rendering test.
+      - name: Mobile layout rules
+        run: pnpm --filter @ding/mobile check:layout
+
       # Typecheck can't see a native-only resolution break (a package Metro
       # resolves differently, a config plugin that won't load). Bundling for one
       # platform does, and takes about half a minute.

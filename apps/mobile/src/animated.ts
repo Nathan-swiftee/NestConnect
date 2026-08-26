@@ -21,25 +21,31 @@ cssInterop(Animated.Text, { className: "style" });
 cssInterop(Animated.ScrollView, { className: "style", contentContainerClassName: "contentContainerStyle" });
 
 /**
- * `KeyboardAvoidingView` is deliberately NOT registered here, and that is the
- * whole point of this note.
+ * Registering a component here is not free, so a note on the cost.
  *
- * It was, once. Every screen built on it passed `className="flex-1"`, the
- * className was being dropped, and registering it looked like the fix. Then the
- * call sites moved to `style={{ flex: 1 }}` and the registration turned from
- * unnecessary into actively harmful: `cssInterop(C, { className: "style" })`
- * means "compute styles from className and write them into `style`", so with no
- * className to read it computes nothing and *overwrites* the inline style with
- * it. The prop is still there in the source and simply never arrives.
+ * `cssInterop` doesn't add a prop — it swaps the component. The JSX runtime
+ * looks every element type up in the interop registry and substitutes the
+ * wrapper whether or not that element passes a `className`, and the wrapper
+ * renders the real component with `{ ...yourProps, ...whatTheInteropComputed }`.
+ * The interop's props win. So the moment a component is registered, `style` at
+ * its call sites stops being the last word on that component's styling.
  *
- * That cost several rounds. The screen's `paddingTop` vanished, so the header
- * sat under the clock; the fix for that leaned on `flex: 1` for sizing, which
- * vanished the same way, so the message list collapsed to nothing and the
- * composer ended up directly under the header.
+ * That is why `KeyboardAvoidingView` is deliberately not in the list above. It
+ * was for a while, and its call sites later moved from `className="flex-1"` to
+ * `style={{ flex: 1 }}` — which left a registration reading a className that no
+ * longer existed, on the one component in the app whose sizing everything else
+ * on the screen depended on.
  *
- * If a screen ever wants `className` on this component, register it again — but
- * then every call site must use className for layout, not `style`, because the
- * two cannot coexist on an interop'd component.
+ * Honest about what that did and didn't explain: un-registering it did not fix
+ * the thread screen. The composer was still at the top afterwards. What fixed it
+ * was taking `KeyboardAvoidingView` out of the layout path entirely — see the
+ * comment at the top of app/(app)/thread/[id].tsx, and docs/11-mobile-layout.md
+ * for the whole account. The registration is gone because nothing needs it, not
+ * because it was proven to be the culprit.
+ *
+ * If a screen ever does want `className` on this component, register it again —
+ * but then move that screen's layout to className too, because the interop's
+ * computed props override the call site's.
  */
 
 export {};

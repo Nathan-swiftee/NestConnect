@@ -7,6 +7,12 @@ the web app.
 Read `docs/09-mobile-app-and-push.md` for the plan this is being built to; this
 file is just how to run it.
 
+**Before changing the structure of a screen, read
+[`docs/11-mobile-layout.md`](../../docs/11-mobile-layout.md).** It's the record
+of the four rounds the thread screen took to get right, including the three
+explanations that were confidently wrong, and why a browser can't be trusted to
+tell you whether a mobile layout works.
+
 ---
 
 ## Running it
