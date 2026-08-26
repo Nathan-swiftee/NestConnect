@@ -107,6 +107,21 @@ export default function Thread() {
   const [forwarding, setForwarding] = useState<Message | null>(null);
   const scroller = useRef<ScrollView>(null);
   const marked = useRef(false);
+  /**
+   * What the scroller looked like just before older messages were prepended.
+   *
+   * Loading history makes the content taller *above* the reader, so leaving the
+   * offset alone slides everything they were reading downward. Recording the
+   * height and offset first lets the new offset be computed from the growth:
+   * the message under their eye stays under their eye, which is the whole point
+   * of the button they just pressed.
+   */
+  const anchor = useRef<{ height: number; y: number } | null>(null);
+  const scrollY = useRef(0);
+  const contentH = useRef(0);
+  const viewportH = useRef(0);
+  /** Id of the newest message, so a *prepend* can be told from an *append*. */
+  const lastMsgId = useRef<string | null>(null);
 
   useRealtime(id);
 
@@ -175,7 +190,15 @@ export default function Thread() {
     const rows: React.ReactNode[] = [];
     const sticky: number[] = [];
     if (!data) return { threadRows: rows, stickyDays: sticky };
-    rows.push(<LoadOlder key="older" conv={data} />);
+    rows.push(
+      <LoadOlder
+        key="older"
+        conv={data}
+        onBeforeLoad={() => {
+          anchor.current = { height: contentH.current, y: scrollY.current };
+        }}
+      />,
+    );
     for (const group of days) {
       sticky.push(rows.length);
       rows.push(
@@ -494,7 +517,36 @@ export default function Thread() {
         // the only one set.
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 12, paddingBottom: 16 }}
-        onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        onLayout={(e) => {
+          viewportH.current = e.nativeEvent.layout.height;
+        }}
+        onContentSizeChange={(_w, h) => {
+          const prev = contentH.current;
+          contentH.current = h;
+          // Older messages were just prepended: hold the reader's place by
+          // moving down exactly as much as the content grew above them.
+          if (anchor.current) {
+            const { height, y } = anchor.current;
+            anchor.current = null;
+            scroller.current?.scrollTo({ y: y + (h - height), animated: false });
+            return;
+          }
+          const newest = data?.messages[data.messages.length - 1]?.id ?? null;
+          const appended = newest !== lastMsgId.current;
+          lastMsgId.current = newest;
+          // Follow the bottom for a new message, and stay glued to it while
+          // content reflows if that's where the reader already was — an image
+          // finishing loading shouldn't leave the newest bubble half off the
+          // screen. Reading further up, nothing moves.
+          const wasAtBottom = prev === 0 || scrollY.current + viewportH.current >= prev - 120;
+          if (appended || wasAtBottom) {
+            scroller.current?.scrollToEnd({ animated: prev !== 0 && appended });
+          }
+        }}
         keyboardDismissMode="interactive"
         stickyHeaderIndices={stickyDays}
       >
@@ -634,14 +686,24 @@ function Header({
 
 /** Scroll-up history. The thread loads its tail; earlier messages come on
  *  request rather than pulling a year of email onto a phone unasked. */
-function LoadOlder({ conv }: { conv: ConversationWithMessages }) {
+function LoadOlder({
+  conv,
+  onBeforeLoad,
+}: {
+  conv: ConversationWithMessages;
+  /** Called before the fetch, to record where the reader is. */
+  onBeforeLoad: () => void;
+}) {
   const { c } = useTheme();
   const { loadOlder, loading } = useLoadOlderMessages(conv.id);
   if (!conv.hasMoreMessages) return null;
   return (
     <Pressable
       disabled={loading}
-      onPress={() => void loadOlder()}
+      onPress={() => {
+        onBeforeLoad();
+        void loadOlder();
+      }}
       accessibilityRole="button"
       accessibilityState={{ busy: loading }}
       className="items-center py-2 active:opacity-60"

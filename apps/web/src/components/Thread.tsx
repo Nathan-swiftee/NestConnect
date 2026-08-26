@@ -1561,6 +1561,21 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const nearBottomRef = useRef(true);
   // True from opening a thread until the restore has settled; see onMsgsScroll.
   const restoringRef = useRef(false);
+  // Set the instant "Load earlier messages" is pressed, to the reader's distance
+  // from the *bottom* of the scroller. Older messages are prepended, so every
+  // pixel of new content lands above the viewport and everything the reader was
+  // looking at slides down by exactly that much; the distance from the bottom is
+  // the one measure that survives it. Restored in the layout effect below.
+  const olderAnchorRef = useRef<{ from: number; len: number } | null>(null);
+  const olderTimersRef = useRef<number[]>([]);
+  const loadEarlier = () => {
+    const el = msgsRef.current;
+    if (el && conv) {
+      olderAnchorRef.current = { from: el.scrollHeight - el.scrollTop, len: conv.messages.length };
+      restoringRef.current = true; // don't let the reflow's scroll events overwrite the mark
+    }
+    void loadOlder();
+  };
   const onMsgsScroll = () => {
     const el = msgsRef.current;
     if (!el) return;
@@ -1643,19 +1658,22 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   //    images and email frames size up after first paint, and anything smooth
   //    or single-shot lands somewhere arbitrary when they do.
   //  • A new message in the already-open thread → smooth-scroll to the bottom.
+  //    "New" means the newest message changed, not that the list got longer:
+  //    loading earlier messages also makes it longer, and jumping to the latest
+  //    is the exact opposite of what someone reading history just asked for.
   const openedRef = useRef<string | null>(null);
-  const lastLenRef = useRef(0);
+  const lastIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!conv) return;
-    const len = conv.messages.length;
+    const newest = conv.messages[conv.messages.length - 1]?.id ?? null;
     const opening = openedRef.current !== conversationId;
     if (!opening) {
-      if (len > lastLenRef.current) endRef.current?.scrollIntoView({ behavior: "smooth" });
-      lastLenRef.current = len;
+      if (newest !== lastIdRef.current) endRef.current?.scrollIntoView({ behavior: "smooth" });
+      lastIdRef.current = newest;
       return;
     }
     openedRef.current = conversationId ?? null;
-    lastLenRef.current = len;
+    lastIdRef.current = newest;
     const saved = conversationId ? threadScroll.get(conversationId) : undefined;
     const jump = () => {
       const el = msgsRef.current;
@@ -1683,6 +1701,47 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       restoringRef.current = false;
     };
   }, [conv, conversationId]);
+
+  // The other half of loadEarlier: the older messages have landed, so put the
+  // reader back on the message they were reading. In a layout effect, before
+  // paint, so the jump is never seen. Re-applied once after a beat because
+  // images and email frames in the newly loaded messages size up after first
+  // paint and push everything down again. The length check is what makes this
+  // wait for the *prepend* specifically — any other re-render in the meantime
+  // (a socket update, a refetch) leaves the anchor alone.
+  useLayoutEffect(() => {
+    const anchor = olderAnchorRef.current;
+    if (!anchor || !conv || conv.messages.length <= anchor.len) return;
+    olderAnchorRef.current = null;
+    const el = msgsRef.current;
+    if (!el) {
+      restoringRef.current = false;
+      return;
+    }
+    const put = () => {
+      el.scrollTop = el.scrollHeight - anchor.from;
+    };
+    put();
+    olderTimersRef.current.forEach(window.clearTimeout);
+    olderTimersRef.current = [
+      window.setTimeout(put, 220),
+      window.setTimeout(() => {
+        restoringRef.current = false;
+      }, 300),
+    ];
+  }, [conv]);
+
+  // Deliberately keyed on the thread, not on `conv`: the corrections above must
+  // survive the re-renders that happen while they're pending, and only be
+  // dropped when the thread they belong to goes away.
+  useEffect(
+    () => () => {
+      olderTimersRef.current.forEach(window.clearTimeout);
+      olderTimersRef.current = [];
+      olderAnchorRef.current = null;
+    },
+    [conversationId],
+  );
 
   // Keyboard open/close (mobile): the shell shrinks to sit above the keyboard, so
   // the message scroller shrinks with it. If the reader was already at the latest
@@ -3004,7 +3063,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       <div className={"msgs" + (isClosed ? " is-closed" : "")} ref={msgsRef} onScroll={onMsgsScroll}>
         {conv.hasMoreMessages && (
           <div className="loadolder">
-            <button className="loadolder__btn" onClick={() => void loadOlder()} disabled={loadingOlder}>
+            <button className="loadolder__btn" onClick={loadEarlier} disabled={loadingOlder}>
               {loadingOlder ? "Loading earlier messages…" : "Load earlier messages"}
             </button>
           </div>
