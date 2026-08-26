@@ -1,12 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { ActivityIndicator, LayoutAnimation, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { api, useSendMessage, useTemplates, windowLeft } from "@ding/client";
+import { api, useIntegrations, useSendMessage, useTemplates, windowLeft } from "@ding/client";
 import { useStagedAttachments } from "../attachments";
 import { enqueue } from "../send-queue";
 import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
 import { VoiceRecorder, type RecordedVoice } from "./VoiceRecorder";
+import { useToast } from "./Toast";
 import { useTheme } from "../theme";
 import { haptics } from "../haptics";
 import {
@@ -15,6 +16,7 @@ import {
   ClockIcon,
   EmojiIcon,
   ReplyIcon,
+  SparkleIcon,
   XIcon,
   MicIcon,
   NoteIcon,
@@ -56,6 +58,7 @@ export function Composer({
   const { c } = useTheme();
   const send = useSendMessage();
   const { data: templates } = useTemplates();
+  const toast = useToast();
   const inputRef = useRef<TextInput>(null);
   const [body, setBody] = useState("");
   const [internal, setInternal] = useState(false);
@@ -65,6 +68,14 @@ export function Composer({
   const [attachSheet, setAttachSheet] = useState(false);
   const [recording, setRecording] = useState(false);
   const files = useStagedAttachments();
+  // AI assist. Whether the button exists at all follows the workspace's Claude
+  // key — an affordance that always fails is worse than one that isn't there.
+  const aiConfigured = Boolean(useIntegrations().data?.anthropic?.configured);
+  const [polishing, setPolishing] = useState(false);
+  // The draft as it stood before the last polish, so one tap puts it back. It
+  // also carries what Claude returned, so Undo can hide itself the moment the
+  // agent edits — restoring then would throw that edit away.
+  const [prePolish, setPrePolish] = useState<{ text: string; polished: string } | null>(null);
 
   // Which channels this customer is reachable on inside this thread. Mirrors the
   // web: a group can only be answered in the group; a 1:1 lists every channel we
@@ -117,6 +128,7 @@ export function Composer({
     }
     setError(null);
     setEmojiOpen(false);
+    setPrePolish(null);
     // Clear optimistically — the message is already on screen via useSendMessage,
     // and leaving the text behind invites an accidental double-send.
     setBody("");
@@ -163,6 +175,56 @@ export function Composer({
       onClearReply?.();
     }
   }
+
+  /* ─── AI assist: one-tap Polish ───────────────────────────────────
+     Polish only rewrites what the agent has already typed. It never sends, and
+     never writes a reply of its own — the words going to the customer are still
+     theirs, tidied. The pre-polish draft is kept so Undo restores it exactly. */
+  async function runPolish() {
+    const draft = body.trim();
+    if (!draft || polishing) return;
+    setPolishing(true);
+    setError(null);
+    try {
+      const res = await api.polishDraft({
+        text: draft,
+        channel: internal ? undefined : channel,
+        internal,
+        conversationId: conv.id,
+      });
+      if (!res.changed) {
+        toast({ text: "That already reads well — nothing to polish" });
+        return;
+      }
+      setPrePolish({ text: body, polished: res.text });
+      setBody(res.text);
+      haptics.success();
+    } catch (err) {
+      // The API client forwards the server's own message, which is written for
+      // an agent to act on ("Claude rejected the API key — check it in
+      // Settings") rather than a status code to decipher.
+      haptics.error();
+      toast({
+        text: err instanceof Error && err.message ? err.message : "Couldn't polish that draft",
+        tone: "error",
+      });
+    } finally {
+      setPolishing(false);
+    }
+  }
+
+  function undoPolish() {
+    if (!prePolish) return;
+    setBody(prePolish.text);
+    setPrePolish(null);
+  }
+
+  // Offer Undo only while the draft is still exactly what Polish produced —
+  // once the agent has edited it, putting the old one back would lose that.
+  const canUndoPolish = !!prePolish && body.trim() === prePolish.polished.trim();
+  // The offer itself: only with a draft to work on, and only once the workspace
+  // has a Claude key. Hidden while recording, where there is no draft anyway.
+  const canPolish = aiConfigured && !locked && body.trim().length > 0;
 
   /** A finished voice note: stage it, wait for the upload, then send it on its
    *  own. Unlike a picked file it isn't left in the tray — you recorded it to
@@ -367,6 +429,53 @@ export function Composer({
             className="p-1 active:opacity-60"
           >
             <XIcon size={13} color={c.textMuted} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {/* AI assist lives in one slot with two states: the offer before, and what
+          happened after. A pill rather than a fifth icon in the input row —
+          four tools and a send button already leave a phone's width with about
+          a dozen visible characters to type into. It appears with the draft it
+          would act on, so it isn't sitting there doing nothing either. */}
+      {canUndoPolish ? (
+        <View className="mb-2 flex-row items-center gap-2 px-1">
+          <SparkleIcon size={14} color={c.ai} />
+          <Text style={{ color: c.textMuted }} className="flex-1 text-2xs">
+            Polished by Claude
+          </Text>
+          <Pressable
+            onPress={undoPolish}
+            accessibilityRole="button"
+            accessibilityLabel="Undo polish"
+            hitSlop={8}
+            className="rounded-8 px-2 py-0.5 active:opacity-60"
+          >
+            <Text style={{ color: c.brandStrong }} className="text-2xs font-semibold">
+              Undo
+            </Text>
+          </Pressable>
+        </View>
+      ) : canPolish ? (
+        <View className="mb-2 flex-row px-1">
+          <Pressable
+            onPress={() => void runPolish()}
+            disabled={polishing}
+            accessibilityRole="button"
+            accessibilityLabel="Polish this draft with AI"
+            accessibilityState={{ busy: polishing }}
+            hitSlop={6}
+            style={{ backgroundColor: c.surface2 }}
+            className="flex-row items-center gap-1.5 rounded-full px-2.5 py-1 active:opacity-60"
+          >
+            {polishing ? (
+              <ActivityIndicator size="small" color={c.ai} />
+            ) : (
+              <SparkleIcon size={14} color={c.ai} />
+            )}
+            <Text style={{ color: c.ai }} className="text-2xs font-semibold">
+              {polishing ? "Polishing…" : "Polish"}
+            </Text>
           </Pressable>
         </View>
       ) : null}
