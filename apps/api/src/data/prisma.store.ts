@@ -858,14 +858,27 @@ export class PrismaStore extends Store {
 
   async searchConversations(
     query: string,
-    opts?: { cursor?: string; limit?: number },
+    opts?: { cursor?: string; limit?: number; view?: string; userId?: string },
   ): Promise<ConversationPage> {
     const q = query.trim();
     if (!q) return { items: [], nextCursor: null };
     const limit = pageLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
     const cur = decodeConvCursor(opts?.cursor);
+    // Scoped to the inbox you're searching from, when one is given — the same
+    // `buildWhere` the list uses, so a search inside a view can only return
+    // things that view would have shown you.
+    const scope =
+      opts?.view && opts.userId
+        ? this.buildWhere(
+            opts.view,
+            opts.userId,
+            await this.teamsForUser(opts.userId),
+            await this.mentionToken(opts.userId),
+          )
+        : null;
     const match: Prisma.ConversationWhereInput = {
       orgId: ORG_ID,
+      ...(scope ? { AND: [scope] } : {}),
       OR: [
         { subject: { contains: q, mode: "insensitive" } },
         { preview: { contains: q, mode: "insensitive" } },

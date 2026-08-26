@@ -187,7 +187,8 @@ export default function Inbox() {
   const views = useViews();
   const teams = useTeams();
   const list = useConversations(view);
-  const found = useSearchConversations(search, searching);
+  // Scoped to the inbox the field is sitting in, as on the web.
+  const found = useSearchConversations(search, searching, view);
   const { refresh, refreshing } = useRefresh();
 
   // Push: register on every start, and ask once the inbox has something on it.

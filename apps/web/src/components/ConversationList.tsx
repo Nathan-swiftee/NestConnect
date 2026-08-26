@@ -38,10 +38,12 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const { pull, armed, handlers } = usePullToRefresh(convsRef, refresh, refreshing);
 
   const query = q.trim();
-  // A non-empty query switches the list to a global search — spanning every
-  // conversation and message body, not just this view's loaded rows.
+  // A non-empty query switches the list to a search over message bodies too,
+  // not just the rows already loaded — but within the inbox you're in. A hit
+  // from a team you don't work, surfaced by a field that lives inside "My
+  // Inbound", is a result you can neither place nor act on.
   const searching = query.length > 0;
-  const search = useSearchConversations(query, searching);
+  const search = useSearchConversations(query, searching, view);
   const hasGroups = (data ?? []).some((c) => c.channel === "whatsapp_group");
   const shown = searching
     ? search.data ?? []

@@ -269,10 +269,13 @@ export const api = {
     get<ConversationPage>(
       `/conversations?view=${encodeURIComponent(view)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
     ),
-  // Global search across every conversation (contact, subject, preview, message body).
-  searchConversations: (q: string, cursor?: string) =>
+  // Search across conversations (contact, subject, preview, message body).
+  // `view` scopes it to one inbox; without it the search spans everything.
+  searchConversations: (q: string, view?: string, cursor?: string) =>
     get<ConversationPage>(
-      `/conversations/search?q=${encodeURIComponent(q)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      `/conversations/search?q=${encodeURIComponent(q)}` +
+        (view ? `&view=${encodeURIComponent(view)}` : "") +
+        (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""),
     ),
   conversation: (id: string) => get<ConversationWithMessages>(`/conversations/${id}`),
   // Older thread history (scroll-up), before a seq cursor.

@@ -145,7 +145,6 @@ export function Sheet({
           />
         </Animated.View>
 
-        <GestureDetector gesture={pan}>
           <Animated.View style={panel}>
             {/* Stop taps inside the sheet from reaching the scrim behind it. A
                 sink, not a control: left accessible, a screen reader announces the
@@ -158,13 +157,24 @@ export function Sheet({
               // wouldn't apply — a long sheet would grow past the top of the
               // screen instead of scrolling inside itself.
               style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12, maxHeight: height * 0.85 }}
-              className={`rounded-t-24 pt-3 ${padded ? "px-4" : ""}`}
+              className={`rounded-t-24 ${padded ? "px-4" : ""}`}
             >
-              <View style={{ backgroundColor: c.borderStrong }} className="mb-3 h-1 w-9 self-center rounded-full" />
+              {/* The handle is the drag target, and only the handle.
+                  The pan used to cover the whole panel, held off a list inside
+                  it by `activeOffsetY(12)` / `failOffsetY(-8)`. That splits the
+                  wrong way: dragging *up* failed the pan and scrolled, dragging
+                  *down* activated it and dragged the sheet — so a list scrolled
+                  one way and not the other, which is what "sometimes it works"
+                  actually was. A dedicated grabber has no such ambiguity, and
+                  it's what a phone does with a sheet that contains a list. */}
+              <GestureDetector gesture={pan}>
+                <View className="items-center pb-3 pt-3" accessible={false}>
+                  <View style={{ backgroundColor: c.borderStrong }} className="h-1 w-9 rounded-full" />
+                </View>
+              </GestureDetector>
               {children}
             </Pressable>
           </Animated.View>
-        </GestureDetector>
       </View>
       </GestureHandlerRootView>
     </Modal>

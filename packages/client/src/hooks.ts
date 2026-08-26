@@ -508,10 +508,12 @@ export const useConversations = (view: string) =>
   });
 
 /** Global conversation search (contact, subject, preview, message body), paginated. */
-export const useSearchConversations = (q: string, enabled: boolean) =>
+/** Search, scoped to `view` when one is given — the field sits inside an inbox,
+ *  so results that inbox wouldn't show you aren't results you can act on. */
+export const useSearchConversations = (q: string, enabled: boolean, view?: string) =>
   useInfiniteQuery({
-    queryKey: ["search", q],
-    queryFn: ({ pageParam }) => api.searchConversations(q, pageParam),
+    queryKey: ["search", q, view ?? "*"],
+    queryFn: ({ pageParam }) => api.searchConversations(q, view, pageParam),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: enabled && q.trim().length > 0,

@@ -38,14 +38,21 @@ export class ConversationsController {
     });
   }
 
-  /** Global search across all conversations (declared before :id so it matches). */
+  /** Search (declared before :id so it matches). Pass `view` to scope it to the
+   *  inbox the search field is sitting in; omit it to search everything. */
   @Get("search")
   search(
+    @CurrentUserId() userId: string,
     @Query("q") q?: string,
     @Query("cursor") cursor?: string,
     @Query("limit") limit?: string,
+    @Query("view") view?: string,
   ) {
-    return this.conversations.search(q ?? "", { cursor, limit: limit ? Number(limit) : undefined });
+    return this.conversations.search(q ?? "", {
+      cursor,
+      limit: limit ? Number(limit) : undefined,
+      ...(view ? { view, userId } : {}),
+    });
   }
 
   /** Older messages in a thread (scroll-up history), before a seq cursor. */

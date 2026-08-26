@@ -111,8 +111,6 @@ export function MessageActions({
   // gesture root: handlers get no touches inside a Modal without one.
   const drag = useSharedValue(0);
   const pan = Gesture.Pan()
-    .activeOffsetY(12)
-    .failOffsetY(-8)
     .onUpdate((e) => {
       drag.value = Math.max(0, e.translationY);
     })
@@ -218,7 +216,6 @@ export function MessageActions({
         </Animated.View>
 
         {/* ---- bottom: the list you read ---- */}
-        <GestureDetector gesture={pan}>
         <Animated.View style={bottom}>
           <Pressable
             onPress={() => {}}
@@ -229,7 +226,12 @@ export function MessageActions({
             style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 }}
             className="rounded-t-24 px-4 pt-3"
           >
-            <View style={{ backgroundColor: c.borderStrong }} className="mb-2.5 h-1 w-9 self-center rounded-full" />
+            {/* The handle is the drag target, as on the shared Sheet. */}
+            <GestureDetector gesture={pan}>
+              <View className="items-center pb-2.5" accessible={false}>
+                <View style={{ backgroundColor: c.borderStrong }} className="h-1 w-9 rounded-full" />
+              </View>
+            </GestureDetector>
 
             {/* What the actions below apply to. It belongs here rather than
                 floating over the thread: the real bubble is still on screen
@@ -256,7 +258,6 @@ export function MessageActions({
             ) : null}
           </Pressable>
         </Animated.View>
-        </GestureDetector>
       </View>
       </GestureHandlerRootView>
     </Modal>

@@ -805,18 +805,27 @@ export class MemoryStore extends Store {
 
   async searchConversations(
     query: string,
-    opts?: { cursor?: string; limit?: number },
+    opts?: { cursor?: string; limit?: number; view?: string; userId?: string },
   ): Promise<ConversationPage> {
     const q = query.trim().toLowerCase();
     if (!q) return { items: [], nextCursor: null };
+    // Scoped to the inbox you're searching from, when one is given. Searching
+    // inside "My Inbound" and getting a hit from a team inbox you don't work is
+    // a result you can't act on and can't explain — the field is inside the
+    // view, so its results belong to the view.
+    const teams = opts?.userId ? (this.membership[opts.userId] ?? []) : [];
+    const inView = (r: ConversationRecord) =>
+      !opts?.view || !opts.userId || this.matchesView(r, opts.view, opts.userId, teams);
     const sorted = this.conversations
       .filter(
         (r) =>
+          inView(r) &&
+          (
           r.contact.displayName.toLowerCase().includes(q) ||
           (r.contact.company ?? "").toLowerCase().includes(q) ||
           (r.subject ?? "").toLowerCase().includes(q) ||
           (r.preview ?? "").toLowerCase().includes(q) ||
-          r.messages.some((m) => (m.body ?? "").toLowerCase().includes(q)),
+            r.messages.some((m) => (m.body ?? "").toLowerCase().includes(q))),
       )
       .sort(byRecencyDesc);
     return this.pageConversations(sorted, opts);

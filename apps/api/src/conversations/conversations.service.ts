@@ -75,8 +75,13 @@ export class ConversationsService {
     return this.store.listConversations(view, userId, opts);
   }
 
-  /** Global search across all conversations (contact, subject, preview, body). */
-  search(query: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
+  /** Search across conversations (contact, subject, preview, body). Scoped to
+   *  one view when the caller names one — the search field lives inside an
+   *  inbox, so its results should belong to that inbox. */
+  search(
+    query: string,
+    opts?: { cursor?: string; limit?: number; view?: string; userId?: string },
+  ): Promise<ConversationPage> {
     return this.store.searchConversations(query, opts);
   }
 
