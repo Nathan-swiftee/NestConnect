@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import type { Attachment } from "@ding/schemas";
 import { formatDuration } from "@ding/client";
@@ -26,12 +26,31 @@ const BARS = 34;
  */
 export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) {
   const { c } = useTheme();
-  const player = useAudioPlayer(mediaSource(att.url));
+  /**
+   * Nothing is loaded until the first tap.
+   *
+   * `useAudioPlayer` isn't lazy — handing it a source creates a native player
+   * and starts fetching the file. This component renders once per audio message,
+   * so a thread with a dozen voice notes in it would open a dozen players and
+   * pull down every clip before anyone asked to hear one. On a phone that's
+   * somebody's data. A null source costs nothing; the tap arms it.
+   */
+  const [armed, setArmed] = useState(false);
+  const player = useAudioPlayer(armed ? mediaSource(att.url) : null);
   const status = useAudioPlayerStatus(player);
   const [width, setWidth] = useState(0);
   // Set once, the first time anything plays: the recorder leaves the session in
   // record mode, where playback on iOS comes out of the earpiece at a whisper.
   const modeSet = useRef(false);
+  /** The first tap arms the player; this starts it as soon as it has loaded. */
+  const autoplay = useRef(false);
+
+  useEffect(() => {
+    if (autoplay.current && status.isLoaded) {
+      autoplay.current = false;
+      player.play();
+    }
+  }, [status.isLoaded, player]);
 
   // Playing to the end leaves the player parked at the end, so the next tap
   // would do nothing. Rewind instead, which is what every player does.
@@ -44,11 +63,17 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
   const pct = total > 0 ? Math.min(1, status.currentTime / total) : 0;
   const wave = att.waveform?.length ? att.waveform : null;
   const tint = mine ? c.brandStrong : c.brand;
+  const loading = armed && !status.isLoaded;
 
   async function toggle() {
     if (!modeSet.current) {
       modeSet.current = true;
       await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
+    }
+    if (!armed) {
+      autoplay.current = true;
+      setArmed(true);
+      return;
     }
     if (status.playing) player.pause();
     else player.play();
@@ -56,7 +81,7 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
 
   /** Seek to wherever the bar was touched. */
   function scrub(x: number) {
-    if (!width || total <= 0) return;
+    if (!armed || !width || total <= 0) return;
     void player.seekTo(Math.max(0, Math.min(total, (x / width) * total)));
   }
 
@@ -72,12 +97,16 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
       <Pressable
         onPress={() => void toggle()}
         accessibilityRole="button"
-        accessibilityLabel={status.playing ? "Pause" : "Play voice message"}
+        accessibilityLabel={loading ? "Loading voice message" : status.playing ? "Pause" : "Play voice message"}
         hitSlop={6}
         style={{ backgroundColor: tint }}
         className="h-9 w-9 items-center justify-center rounded-full active:opacity-80"
       >
-        {status.playing ? (
+        {loading ? (
+          // Between the tap and the first byte. Without it the button looks
+          // pressed and dead for as long as the clip takes to reach the phone.
+          <ActivityIndicator size="small" color="#fff" />
+        ) : status.playing ? (
           <PauseIcon size={16} color="#fff" />
         ) : (
           // Nudged right: a triangle's optical centre isn't its bounding box's.

@@ -138,7 +138,10 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
         );
       })}
 
-      <MediaViewer attachment={viewing} onClose={() => setViewing(null)} />
+      {/* Mounted only while something is open. The viewer holds a video player,
+          and this component renders once per message — leaving it mounted would
+          put a native player behind every bubble in the thread. */}
+      {viewing ? <MediaViewer attachment={viewing} onClose={() => setViewing(null)} /> : null}
     </View>
   );
 }

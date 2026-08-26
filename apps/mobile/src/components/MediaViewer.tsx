@@ -28,7 +28,7 @@ export function MediaViewer({
   attachment,
   onClose,
 }: {
-  attachment: Attachment | null;
+  attachment: Attachment;
   onClose: () => void;
 }) {
   const themeVars = useThemeVars();
@@ -36,16 +36,16 @@ export function MediaViewer({
   const toast = useToast();
   const [saving, setSaving] = useState(false);
 
-  const isVideo = attachment?.kind === "video";
-  // The hook has to run every render, so the source is null when there's
-  // nothing to show and null when the attachment is a still.
-  const player = useVideoPlayer(isVideo && attachment ? mediaSource(attachment.url) : null, (p) => {
+  const isVideo = attachment.kind === "video";
+  // Null for a still: the hook has to run either way, and a player with no
+  // source costs nothing.
+  const player = useVideoPlayer(isVideo ? mediaSource(attachment.url) : null, (p) => {
     p.loop = false;
     p.play();
   });
 
   async function share() {
-    if (!attachment || saving) return;
+    if (saving) return;
     setSaving(true);
     const err = await saveAttachment(attachment);
     setSaving(false);
@@ -54,7 +54,7 @@ export function MediaViewer({
 
   return (
     <Modal
-      visible={!!attachment}
+      visible
       transparent={false}
       animationType="fade"
       statusBarTranslucent
@@ -82,9 +82,9 @@ export function MediaViewer({
 
           <View className="min-w-0 flex-1">
             <Text numberOfLines={1} className="text-md font-medium text-white">
-              {attachment?.filename || (isVideo ? "Video" : "Photo")}
+              {attachment.filename || (isVideo ? "Video" : "Photo")}
             </Text>
-            {attachment?.size ? (
+            {attachment.size ? (
               <Text className="text-2xs" style={{ color: "rgba(255,255,255,0.65)" }}>
                 {formatBytes(attachment.size)}
               </Text>
@@ -105,22 +105,20 @@ export function MediaViewer({
           </Pressable>
         </View>
 
-        {attachment ? (
-          isVideo ? (
-            <VideoView player={player} style={{ flex: 1 }} contentFit="contain" nativeControls />
-          ) : (
-            // Dismiss on tap, the way every phone gallery does — the close
-            // button is for thumbs that started at the top of the screen.
-            <Pressable onPress={onClose} accessible={false} style={{ flex: 1 }}>
-              <Image
-                source={mediaSource(attachment.url)}
-                style={{ flex: 1 }}
-                resizeMode="contain"
-                accessibilityLabel={attachment.filename || "Photo"}
-              />
-            </Pressable>
-          )
-        ) : null}
+        {isVideo ? (
+          <VideoView player={player} style={{ flex: 1 }} contentFit="contain" nativeControls />
+        ) : (
+          // Dismiss on tap, the way every phone gallery does — the close button
+          // is for thumbs that started at the top of the screen.
+          <Pressable onPress={onClose} accessible={false} style={{ flex: 1 }}>
+            <Image
+              source={mediaSource(attachment.url)}
+              style={{ flex: 1 }}
+              resizeMode="contain"
+              accessibilityLabel={attachment.filename || "Photo"}
+            />
+          </Pressable>
+        )}
       </View>
     </Modal>
   );
