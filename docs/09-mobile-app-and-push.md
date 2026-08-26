@@ -362,10 +362,13 @@ real devices and a nice touch must never take a send down with it.
   them instead of reading every row to find the next section.
 - **Dynamic Type**: nothing in the app disables font scaling, so text scales by
   default. The tab bar was the one place a fixed height would crop a scaled
-  label, and it now grows with `fontScale` (capped at 1.6×, past which iOS's
-  large-content viewer is the better answer). **Unverified on device** — React
-  Native Web reports a `fontScale` of 1 regardless of browser text size, so the
-  harness used everywhere else here cannot exercise it.
+  label, and it no longer has one: `src/components/TabBar.tsx` sets padding and
+  lets its height be whatever its contents come to, so a larger label simply
+  takes the room it needs. The cap moved with it — `maxFontSizeMultiplier` of
+  1.6 on the label, past which iOS's large-content viewer is the better answer
+  than a bar eating the inbox it exists to navigate. **Unverified on device** —
+  React Native Web reports a `fontScale` of 1 regardless of browser text size,
+  so the harness used everywhere else here cannot exercise it.
 
 **Thread performance — the expensive half fixed, the other half measured and
 left alone.**
