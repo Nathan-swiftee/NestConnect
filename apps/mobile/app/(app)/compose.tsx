@@ -129,10 +129,11 @@ export default function Compose() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior="padding"
-      style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}
-    >
+    // Safe area on a plain View, keyboard avoidance on the avoiding view — see
+    // the thread screen for why. These were the only two screens that put the
+    // top inset on the KeyboardAvoidingView, and the only two that rendered
+    // underneath the system bars on an Android device.
+    <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}>
       <View
         style={{ borderBottomColor: c.border, backgroundColor: c.surface }}
         className="flex-row items-center gap-2 border-b px-2 py-2"
@@ -144,6 +145,8 @@ export default function Compose() {
           {adding ? "New customer" : picked ? "How to reach them" : "New conversation"}
         </Text>
       </View>
+
+      <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
 
       {error ? (
         <Text style={{ color: c.danger }} className="px-4 pt-3 text-md">
@@ -323,7 +326,8 @@ export default function Compose() {
           />
         </>
       )}
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 

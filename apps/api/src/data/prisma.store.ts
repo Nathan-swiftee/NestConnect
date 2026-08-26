@@ -63,7 +63,7 @@ import {
   mapUser,
   messageTypeForKind,
   parseReactions,
-  previewForType,
+  previewFromBody, previewForType,
   sameTemplateLang,
 } from "./mappers";
 import { PrismaService } from "./prisma.service";
@@ -1799,7 +1799,7 @@ export class PrismaStore extends Store {
             : {}),
           unread: true,
           unreadCount: { increment: 1 },
-          preview: input.body || previewForType(input.messageType),
+          preview: previewFromBody(input.body) || previewForType(input.messageType),
           ...(reopen ? { status: "open", snoozedUntil: null, ...(wasClosed ? { assigneeUserId: null } : {}) } : {}),
         },
       }),
@@ -1839,7 +1839,7 @@ export class PrismaStore extends Store {
         data: {
           seq,
           lastActivityAt: new Date(),
-          preview: input.body || "Email",
+          preview: previewFromBody(input.body) || "Email",
           // A reply sent straight from Gmail is still a reply → clear the "Back
           // from Later" marker, same as an in-app reply. A still-snoozed chat's
           // future timer is left untouched.

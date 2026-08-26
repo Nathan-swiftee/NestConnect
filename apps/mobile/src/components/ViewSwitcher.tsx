@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useTeams, useViews } from "@ding/client";
 import { ChevronRight, InboxIcon, SnoozeIcon, TeamGlyph, XIcon, channelColor, channelMeta } from "../icons";
-import { useTheme, useThemeVars } from "../theme";
+import { useTheme } from "../theme";
+import { Sheet } from "./Sheet";
 import { haptics } from "../haptics";
-import { useInsets } from "../insets";
 
 /**
  * The inbox switcher — the web sidebar, as a sheet.
@@ -28,9 +28,7 @@ export function ViewSwitcher({
   onOpenConversation: (id: string) => void;
   onClose: () => void;
 }) {
-  const insets = useInsets();
   const { c } = useTheme();
-  const themeVars = useThemeVars();
   const { data } = useViews();
   // The sidebar's view items carry a title and a count but not the team's chosen
   // icon, so it's joined here from the teams list — the same thing the web does.
@@ -112,29 +110,12 @@ export function ViewSwitcher({
   const subs = (data?.my ?? []).filter((v) => v.key !== "inbound");
 
   return (
-    <Modal visible={visible} animationType="slide" transparent accessibilityViewIsModal onRequestClose={onClose}>
-      {/* A Modal renders outside the root that publishes the palette, so the
-          scheme's variables have to be re-applied here or every colour utility
-          inside resolves against nothing. */}
-      <Pressable
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        style={[themeVars, { backgroundColor: "rgba(13,21,18,0.4)" }]}
-        className="flex-1 justify-end"
-      >
-        {/* Stop taps inside the sheet from closing it. */}
-        <Pressable
-          onPress={() => {}}
-          // A sink, not a control: it exists so a tap on the sheet
-          // doesn't reach the scrim behind it. Left accessible, a
-          // screen reader announces the whole sheet as one button and
-          // can skip everything inside it.
-          accessible={false}
-          style={{ backgroundColor: c.surface, maxHeight: "85%", paddingBottom: insets.bottom + 8 }}
-          className="rounded-t-24"
-        >
-          <View className="flex-row items-center justify-between px-4 pb-1 pt-4">
+    // On the shared Sheet rather than its own Modal, so it springs in, drags
+    // down to dismiss and carries a grab handle like every other sheet. It was
+    // the one that didn't, which is exactly why it was the one that felt stuck.
+    <Sheet visible={visible} onClose={onClose} closeLabel="Close inboxes">
+      <View>
+          <View className="flex-row items-center justify-between pb-1">
             <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
               Inboxes
             </Text>
@@ -284,8 +265,7 @@ export function ViewSwitcher({
               </>
             ) : null}
           </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+      </View>
+    </Sheet>
   );
 }

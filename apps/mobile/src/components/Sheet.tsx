@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { Modal, Pressable, View, useWindowDimensions } from "react-native";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { fadeTo, spring, springTo, timing } from "../motion";
 import { useTheme, useThemeVars } from "../theme";
 import { useInsets } from "../insets";
+
+/** How far down you have to drag before letting go dismisses rather than snaps
+ *  back, and the flick speed that dismisses regardless of distance. A flick
+ *  works from the first few pixels — that's what makes the sheet feel like it
+ *  has weight rather than a threshold to clear. */
+const DISMISS_DISTANCE = 90;
+const DISMISS_VELOCITY = 700;
 
 /**
  * The animated bottom sheet every sheet in the app is built on.
@@ -21,6 +29,13 @@ import { useInsets } from "../insets";
  * the animation has finished. That's fiddly, easy to get subtly wrong, and
  * there are six sheets in this app; doing it once is the only version of this
  * that stays correct.
+ *
+ * It also drags. A sheet that rises from the bottom edge and can then only be
+ * dismissed by aiming at the scrim above it is saying two contradictory things:
+ * it arrived like something physical, and it behaves like a dialog. Everything
+ * else on a phone that comes up from the bottom goes back down when you push it
+ * there — and on a tall sheet, reaching the scrim means moving your thumb past
+ * the whole sheet to close it.
  */
 export function Sheet({
   visible,
@@ -37,29 +52,59 @@ export function Sheet({
   const { c } = useTheme();
   const themeVars = useThemeVars();
   const insets = useInsets();
+  const { height } = useWindowDimensions();
 
   // Kept mounted through the exit, then torn down. Without this the Modal
   // disappears on the same frame `visible` flips and there is nothing left on
   // screen to animate out.
   const [mounted, setMounted] = useState(visible);
   const open = useSharedValue(0);
+  // Live finger offset, in points, on top of the open/closed transform.
+  const drag = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
       setMounted(true);
+      drag.value = 0;
       open.value = springTo(1, spring.settle);
       return;
     }
     open.value = fadeTo(0, timing.base);
     const t = setTimeout(() => setMounted(false), timing.base.duration + 40);
     return () => clearTimeout(t);
-  }, [visible, open]);
+  }, [visible, open, drag]);
 
-  const scrim = useAnimatedStyle(() => ({ opacity: open.value }));
+  const pan = Gesture.Pan()
+    // Let a list inside the sheet win. Requiring 12pt downward before this
+    // activates, and failing outright on upward movement, means a sheet with a
+    // scrollable body still scrolls: the native scroll gesture claims the touch
+    // first, and the drag is left to the handle and the padding around it.
+    .activeOffsetY(12)
+    .failOffsetY(-8)
+    // Downward only: an upward drag on a sheet that can't expand should do
+    // nothing rather than lift it off the bottom edge and leave a gap under it.
+    .onUpdate((e) => {
+      drag.value = Math.max(0, e.translationY);
+    })
+    .onEnd((e) => {
+      if (e.translationY > DISMISS_DISTANCE || e.velocityY > DISMISS_VELOCITY) {
+        runOnJS(onClose)();
+        return;
+      }
+      drag.value = springTo(0, spring.settle);
+    });
+
+  // The scrim thins as the sheet is pulled down, so the background comes back
+  // as you go and the drag reads as reversing the entrance rather than sliding
+  // a panel around underneath a fixed dim.
+  const scrim = useAnimatedStyle(() => ({ opacity: open.value * Math.max(0, 1 - drag.value / 400) }));
   const panel = useAnimatedStyle(() => ({
-    // Percent of its own height, so a tall sheet and a short one travel for the
-    // same length of time rather than the tall one appearing to fall further.
-    transform: [{ translateY: `${(1 - open.value) * 100}%` }],
+    // Two translations rather than one sum: the first is a percentage of the
+    // sheet's own height, so a tall sheet and a short one travel for the same
+    // length of time rather than the tall one appearing to fall further; the
+    // second is the finger, in points. The units differ so they can't be added,
+    // but transforms compose.
+    transform: [{ translateY: `${(1 - open.value) * 100}%` }, { translateY: drag.value }],
   }));
 
   return (
@@ -84,20 +129,26 @@ export function Sheet({
           />
         </Animated.View>
 
-        <Animated.View style={panel}>
-          {/* Stop taps inside the sheet from reaching the scrim behind it. A
-              sink, not a control: left accessible, a screen reader announces the
-              whole sheet as one button and can skip everything inside it. */}
-          <Pressable
-            onPress={() => {}}
-            accessible={false}
-            style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 }}
-            className="rounded-t-24 px-4 pt-3"
-          >
-            <View style={{ backgroundColor: c.borderStrong }} className="mb-3 h-1 w-9 self-center rounded-full" />
-            {children}
-          </Pressable>
-        </Animated.View>
+        <GestureDetector gesture={pan}>
+          <Animated.View style={panel}>
+            {/* Stop taps inside the sheet from reaching the scrim behind it. A
+                sink, not a control: left accessible, a screen reader announces the
+                whole sheet as one button and can skip everything inside it. */}
+            <Pressable
+              onPress={() => {}}
+              accessible={false}
+              // A real number, not "85%": a percentage resolves against the
+              // parent, and the parent here is content-sized, so the cap simply
+              // wouldn't apply — a long sheet would grow past the top of the
+              // screen instead of scrolling inside itself.
+              style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12, maxHeight: height * 0.85 }}
+              className="rounded-t-24 px-4 pt-3"
+            >
+              <View style={{ backgroundColor: c.borderStrong }} className="mb-3 h-1 w-9 self-center rounded-full" />
+              {children}
+            </Pressable>
+          </Animated.View>
+        </GestureDetector>
       </View>
     </Modal>
   );

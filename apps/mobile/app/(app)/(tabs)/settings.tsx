@@ -9,11 +9,12 @@ import {
 } from "@ding/client";
 import type { PushPreferences } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
-import { BellIcon, LogoutIcon } from "../../../src/icons";
+import { BellIcon, ContrastIcon, LogoutIcon } from "../../../src/icons";
 import { usePushRegistration } from "../../../src/push";
 import { useTheme } from "../../../src/theme";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { BuildStamp } from "../../../src/components/BuildStamp";
+import { type Appearance, useAppearance } from "../../../src/appearance";
 import { useInsets } from "../../../src/insets";
 
 /**
@@ -39,6 +40,7 @@ export default function Settings() {
   const pushPrefs = usePushPreferences();
   const updatePush = useUpdatePushPreferences();
   const logout = useLogout();
+  const appearance = useAppearance();
   // The account's preferences and this phone's OS permission are two different
   // things, and a toggle means nothing while the second is off — hence both.
   const push = usePushRegistration(!!me);
@@ -62,7 +64,10 @@ export default function Settings() {
   return (
     <ScrollView
       style={{ backgroundColor: c.bg }}
-      contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 32 }}
+      // The tab bar sits over the scroll view, so the bottom padding has to
+      // clear the bar itself (43 plus its label) as well as the safe area —
+      // otherwise the last thing on the page is permanently half-hidden.
+      contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 96 }}
     >
       <Text accessibilityRole="header" className="px-4 pb-4 text-2xl font-semibold tracking-tight text-fg">
         Settings
@@ -187,6 +192,42 @@ export default function Settings() {
         </Text>
       ) : null}
 
+      <View className="flex-row items-center gap-2 px-5 pb-1.5 pt-6">
+        <ContrastIcon size={14} color={c.textFaint} />
+        <Text style={{ color: c.textFaint }} className="text-2xs font-semibold uppercase tracking-wider">
+          Appearance
+        </Text>
+      </View>
+      <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 rounded-16 border p-1">
+        {/* A segmented row rather than an on/off switch, because "dark mode: off"
+            can't say whether you mean permanently light or following the phone —
+            and following the phone is what most people want and what this
+            defaults to. */}
+        <View className="flex-row gap-1">
+          {(["system", "light", "dark"] as const).map((opt) => {
+            const on = appearance.preference === opt;
+            return (
+              <Pressable
+                key={opt}
+                onPress={() => appearance.set(opt)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={APPEARANCE_LABEL[opt]}
+                style={{ backgroundColor: on ? c.brandTint : "transparent" }}
+                className="flex-1 items-center rounded-12 py-2.5 active:opacity-70"
+              >
+                <Text
+                  style={{ color: on ? c.brandStrong : c.textMuted }}
+                  className={`text-md ${on ? "font-semibold" : "font-medium"}`}
+                >
+                  {APPEARANCE_LABEL[opt]}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
       <Pressable
         onPress={async () => {
           // Delete the device row *before* the session goes: the call needs the
@@ -209,6 +250,12 @@ export default function Settings() {
     </ScrollView>
   );
 }
+
+const APPEARANCE_LABEL: Record<Appearance, string> = {
+  system: "Automatic",
+  light: "Light",
+  dark: "Dark",
+};
 
 function Toggle({
   label,

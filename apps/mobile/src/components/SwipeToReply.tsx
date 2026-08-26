@@ -6,6 +6,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { useState } from "react";
 import { View } from "react-native";
 import { haptics } from "../haptics";
 import { ReplyIcon } from "../icons";
@@ -32,6 +33,9 @@ import { useTheme } from "../theme";
  */
 const FULL = 56;
 const COMMIT = 45;
+
+/** Diameter of the arrow disc. */
+const ARROW = 28;
 
 /**
  * Swipe a bubble to reply to it, the way WhatsApp does.
@@ -64,6 +68,8 @@ export function SwipeToReply({
 }) {
   const { c } = useTheme();
   const x = useSharedValue(0);
+  // Measured height of the row, so the arrow can be centred on it explicitly.
+  const [h, setH] = useState(0);
   const dir = mine ? -1 : 1;
 
   function commit() {
@@ -104,24 +110,33 @@ export function SwipeToReply({
 
   return (
     <GestureDetector gesture={pan}>
-      <View>
-        {/* The arrow sits behind, on the side the bubble is pulled away from. */}
+      <View onLayout={(e) => setH(e.nativeEvent.layout.height)}>
+        {/* The arrow sits behind, on the side the bubble is pulled away from,
+            level with the middle of it.
+
+            Positioned from a measured height rather than stretched with
+            `top: 0; bottom: 0`, because that stretch was landing the arrow at
+            the top of the row instead of its centre — on a short bubble it
+            appeared above the message it belonged to, next to the previous one.
+            An explicit offset can't be interpreted two ways. `h` is 0 until the
+            first layout, which puts the arrow at the top for one frame while it
+            is still fully transparent. */}
         <Animated.View
           pointerEvents="none"
           style={[
             hint,
             {
               position: "absolute",
-              top: 0,
-              bottom: 0,
+              top: Math.max(0, (h - ARROW) / 2),
+              height: ARROW,
               justifyContent: "center",
               ...(mine ? { right: 8 } : { left: 8 }),
             },
           ]}
         >
           <View
-            style={{ backgroundColor: c.surface2 }}
-            className="h-7 w-7 items-center justify-center rounded-full"
+            style={{ backgroundColor: c.surface2, height: ARROW, width: ARROW }}
+            className="items-center justify-center rounded-full"
           >
             <ReplyIcon size={15} color={c.textMuted} />
           </View>

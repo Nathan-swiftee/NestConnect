@@ -176,6 +176,39 @@ export function messageTypeForKind(kind: string): MessageType {
 }
 
 /** A list preview for a media message that carries no text caption. */
+/**
+ * One line of plain text for a conversation list row.
+ *
+ * A message body is not automatically safe to show as a preview. An email that
+ * arrives HTML-only has no text part to fall back to, so the body *is* the
+ * markup — and the row then reads `<html xmlns="http://www.w3.org/1999/…`,
+ * which tells you nothing about the message and wraps onto several lines,
+ * pushing the rest of the list around.
+ *
+ * Deliberately a light touch rather than a parser: strip script and style
+ * wholesale (their contents are never prose), drop the remaining tags, decode
+ * the handful of entities that show up in ordinary mail, and collapse the
+ * whitespace that formatting leaves behind. The result only ever has to survive
+ * one truncated line.
+ */
+export function previewFromBody(body?: string | null): string {
+  if (!body) return "";
+  // Tags only need stripping when there are any; entities are decoded either
+  // way, because a plain-text part can carry `&amp;` with no tag in sight.
+  const stripped = body.includes("<")
+    ? body.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]*>/g, " ")
+    : body;
+  return stripped
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function previewForType(type?: MessageType): string {
   switch (type) {
     case "image": return "📷 Photo";

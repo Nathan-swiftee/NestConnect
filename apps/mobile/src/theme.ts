@@ -1,7 +1,7 @@
-import { useColorScheme } from "react-native";
 import { vars } from "nativewind";
 import { colors, duration, fontSize, fontWeight, letterSpacing, lineHeight, radius, space } from "@ding/design/tokens";
 import type { ThemeColors } from "@ding/design/tokens";
+import { useAppearance } from "./appearance";
 
 export { duration, fontSize, fontWeight, letterSpacing, lineHeight, radius, space };
 export type { ThemeColors };
@@ -24,11 +24,14 @@ export const paletteVars = {
  * Spread this onto the Modal's outermost child.
  */
 export function useThemeVars() {
-  return paletteVars[useColorScheme() === "dark" ? "dark" : "light"];
+  return paletteVars[useAppearance().scheme];
 }
 
 /**
- * The palette for the scheme the phone is currently in.
+ * The palette for the scheme the app is currently in.
+ *
+ * "Currently in" rather than "the phone is in": this follows the appearance
+ * preference, which defaults to the phone's but can be overridden in Settings.
  *
  * These are the same values the web reads from tokens.css — generated from it,
  * not re-typed. NativeWind covers most styling through `className`, but a few
@@ -36,7 +39,7 @@ export function useThemeVars() {
  * tint, a shadow), and this is where those come from.
  */
 export function useTheme(): { scheme: "light" | "dark"; c: ThemeColors } {
-  const scheme = useColorScheme() === "dark" ? "dark" : "light";
+  const { scheme } = useAppearance();
   return { scheme, c: colors[scheme] };
 }
 

@@ -7,13 +7,13 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { colors } from "@ding/design/tokens";
-import { useColorScheme } from "react-native";
 import { configureMobileClient, setSignOutHandler } from "../src/api-config";
 import { ErrorBoundary } from "../src/components/ErrorBoundary";
 import { ToastProvider } from "../src/components/Toast";
 import { loadSession } from "../src/session";
 import { initTelemetry } from "../src/telemetry";
 import { paletteVars } from "../src/theme";
+import { AppearanceProvider, useAppearance } from "../src/appearance";
 import "../src/global.css";
 // Side effect only: registers className support on Reanimated's views. Must run
 // before any of them render, or their utility classes are silently dropped.
@@ -37,8 +37,6 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
-  const scheme = useColorScheme() === "dark" ? "dark" : "light";
-  const c = colors[scheme];
   // The stored token must be in memory before the first request, or a signed-in
   // launch would fire an unauthenticated /auth/session and bounce to sign-in.
   const [ready, setReady] = useState(false);
@@ -84,39 +82,54 @@ export default function RootLayout() {
               as animated values. Reanimated's useAnimatedKeyboard is deprecated
               in favour of exactly this. */}
           <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
-            {/* The palette for this scheme, published as CSS variables to everything
-                below. Every colour utility (`text-fg`, `bg-surface`, …) resolves
-                through these, so switching the phone to dark switches the whole app
-                rather than only the places that read useTheme() directly. */}
-            <View style={paletteVars[scheme]} className="flex-1">
-              <QueryClientProvider client={queryClient}>
-                {/* Inside the query provider so a mutation can raise a toast, and
-                    above the navigator so one survives a screen change. */}
-                <ToastProvider>
-                  <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-                  {ready ? (
-                    <Stack
-                      screenOptions={{
-                        headerShown: false,
-                        contentStyle: { backgroundColor: c.bg },
-                        animation: "slide_from_right",
-                      }}
-                    >
-                      <Stack.Screen name="index" />
-                      <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
-                      <Stack.Screen name="(app)" />
-                    </Stack>
-                  ) : (
-                    <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
-                      <ActivityIndicator color={c.brand} />
-                    </View>
-                  )}
-                </ToastProvider>
-              </QueryClientProvider>
-            </View>
+            {/* Light/dark, from the Settings preference rather than straight from
+                the OS — it defaults to following the phone but can be pinned. */}
+            <AppearanceProvider>
+              <Shell ready={ready} />
+            </AppearanceProvider>
           </KeyboardProvider>
         </SafeAreaProvider>
       </ErrorBoundary>
     </GestureHandlerRootView>
+  );
+}
+
+/**
+ * Everything below the appearance provider.
+ *
+ * Split out purely so it can read the chosen scheme: the palette variables and
+ * the status-bar style both follow the Settings preference, not the phone's, and
+ * a component can't consume a context its own parent publishes.
+ */
+function Shell({ ready }: { ready: boolean }) {
+  const { scheme } = useAppearance();
+  const c = colors[scheme];
+  return (
+    <View style={paletteVars[scheme]} className="flex-1">
+      <QueryClientProvider client={queryClient}>
+        {/* Inside the query provider so a mutation can raise a toast, and above
+            the navigator so one survives a screen change. */}
+        <ToastProvider>
+          <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+          {ready ? (
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: c.bg },
+                animation: "slide_from_right",
+              }}
+            >
+              <Stack.Screen name="index" />
+              <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
+              <Stack.Screen name="(app)" />
+            </Stack>
+      ) : (
+        <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
+          <ActivityIndicator color={c.brand} />
+        </View>
+      )}
+        </ToastProvider>
+      </QueryClientProvider>
+    </View>
   );
 }

@@ -35,7 +35,7 @@ import type {
 import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE, publicChannelConfig } from "@ding/schemas";
 import { env } from "../config/env";
 import { threadsTogether } from "./email-threading";
-import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
+import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewFromBody, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
@@ -992,7 +992,7 @@ export class MemoryStore extends Store {
     if (!input.internal) {
       // Only a real (non-note) message advances the card's time + list order.
       rec.lastActivityAt = message.createdAt;
-      rec.preview = input.body || previewForType(messageType);
+      rec.preview = previewFromBody(input.body) || previewForType(messageType);
       // Replying to a snoozed conversation wakes it back into the active queue.
       if (rec.status === "snoozed") rec.status = "open";
       // A real reply clears any snooze state: it un-snoozes a still-snoozed chat
@@ -1550,7 +1550,7 @@ export class MemoryStore extends Store {
     if (isWaChannel(input.channel ?? rec.channel)) rec.lastInboundAt = message.createdAt;
     rec.unread = true;
     rec.unreadCount = (rec.unreadCount ?? 0) + 1;
-    rec.preview = input.body || previewForType(input.messageType);
+    rec.preview = previewFromBody(input.body) || previewForType(input.messageType);
     // A new customer message on a closed or snoozed chat wakes it back up.
     if (rec.status === "closed" || rec.status === "snoozed") {
       const wasClosed = rec.status === "closed";
@@ -1587,7 +1587,7 @@ export class MemoryStore extends Store {
     };
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
-    rec.preview = input.body || "Email";
+    rec.preview = previewFromBody(input.body) || "Email";
     // A reply sent straight from Gmail is still a reply → clear the "Back from
     // Later" marker (a past snooze time left on an active chat), same as an
     // in-app reply. A still-snoozed chat's future timer is left untouched.

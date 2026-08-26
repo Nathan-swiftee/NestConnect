@@ -81,6 +81,10 @@ export const SettingsIcon = ({ size = 22, color = "currentColor", ...rest }: P) 
     <Circle cx="12" cy="12" r="2.7" stroke={color} strokeWidth={1.7} />
   </Svg>
 );
+/** A circle half-filled — the standard mark for light/dark, and the only one
+ *  that reads at 14pt without looking like a moon or a lightbulb. */
+export const ContrastIcon = stroke("M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18Zm0 0v18");
+
 export const BellIcon = stroke("M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0");
 /** Panel with a right-hand column — the web's "show details" affordance. */
 export const DetailsIcon = ({ size = 22, color = "currentColor", ...rest }: P) => (
