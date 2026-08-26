@@ -1,4 +1,4 @@
-import { ActivityIndicator, Modal, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import {ActivityIndicator, Pressable, ScrollView, Switch, Text, View} from "react-native";
 import {
   relativeTime,
   slaCountdown,
@@ -13,8 +13,8 @@ import type { ConversationWithMessages } from "@ding/schemas";
 import { Avatar } from "./Avatar";
 import { ChannelDot } from "./ChannelDot";
 import { BellIcon, CheckIcon, ChevronRight, XIcon, channelMeta } from "../icons";
-import { useTheme, useThemeVars } from "../theme";
-import { useInsets } from "../insets";
+import { useTheme } from "../theme";
+import { Sheet } from "./Sheet";
 
 /**
  * Who this conversation is with, and everything about it that isn't a message.
@@ -39,9 +39,7 @@ export function DetailsPanel({
   onClose: () => void;
   onOpenConversation: (id: string) => void;
 }) {
-  const insets = useInsets();
   const { c } = useTheme();
-  const themeVars = useThemeVars();
   const { data: catalog } = useLabels();
   const setLabels = useSetConversationLabels();
   const { data: pushPrefs } = usePushPreferences();
@@ -64,24 +62,7 @@ export function DetailsPanel({
   const muted = pushPrefs?.mutedConversationIds.includes(conv.id) ?? false;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" accessibilityViewIsModal onRequestClose={onClose}>
-      <Pressable
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        style={[themeVars, { backgroundColor: c.scrim }]}
-        className="flex-1 justify-end"
-      >
-        <Pressable
-          onPress={() => {}}
-          // A sink, not a control: it exists so a tap on the sheet
-          // doesn't reach the scrim behind it. Left accessible, a
-          // screen reader announces the whole sheet as one button and
-          // can skip everything inside it.
-          accessible={false}
-          style={{ backgroundColor: c.surface, maxHeight: "88%", paddingBottom: insets.bottom + 8 }}
-          className="rounded-t-24"
-        >
+    <Sheet visible={visible} onClose={onClose} padded={false}>
           <View className="flex-row items-center justify-between px-4 pb-1 pt-4">
             <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
               Details
@@ -296,9 +277,7 @@ export function DetailsPanel({
               <ActivityIndicator color={c.brand} className="py-4" />
             ) : null}
           </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </Sheet>
   );
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, View, useWindowDimensions } from "react-native";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { fadeTo, spring, springTo, timing } from "../motion";
 import { useTheme, useThemeVars } from "../theme";
 import { useInsets } from "../insets";
@@ -43,11 +43,16 @@ export function Sheet({
   children,
   /** Screen-reader label for the scrim, which is also the dismiss target. */
   closeLabel = "Close",
+  /** Off for sheets whose contents already carry their own horizontal padding —
+   *  a full-bleed list of rows with dividers, typically, where padding on the
+   *  panel would inset the dividers as well. */
+  padded = true,
 }: {
   visible: boolean;
   onClose: () => void;
   children: React.ReactNode;
   closeLabel?: string;
+  padded?: boolean;
 }) {
   const { c } = useTheme();
   const themeVars = useThemeVars();
@@ -116,9 +121,20 @@ export function Sheet({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      {/* A Modal renders outside the root that publishes the palette, so the
-          scheme's variables are re-applied here — otherwise the colour utilities
-          inside resolve against nothing. */}
+      {/* Two things have to be re-established inside a Modal, and both are for
+          the same underlying reason: a Modal renders into its own view
+          hierarchy, not into the app's tree.
+
+          The palette, because the variables published at the root don't reach
+          here and every colour utility inside would resolve against nothing.
+
+          And the gesture root, because handlers only receive touches under a
+          `GestureHandlerRootView` — the one at the app root is in the tree this
+          Modal isn't part of. Without it the pan below is mounted, styled and
+          completely inert, which is exactly how every sheet in the app ended up
+          undraggable while swipe-to-reply, which isn't in a Modal, worked
+          fine. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={themeVars} className="flex-1 justify-end">
         <Animated.View style={[{ backgroundColor: c.scrim }, scrim]} className="absolute inset-0">
           <Pressable
@@ -142,7 +158,7 @@ export function Sheet({
               // wouldn't apply — a long sheet would grow past the top of the
               // screen instead of scrolling inside itself.
               style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12, maxHeight: height * 0.85 }}
-              className="rounded-t-24 px-4 pt-3"
+              className={`rounded-t-24 pt-3 ${padded ? "px-4" : ""}`}
             >
               <View style={{ backgroundColor: c.borderStrong }} className="mb-3 h-1 w-9 self-center rounded-full" />
               {children}
@@ -150,6 +166,7 @@ export function Sheet({
           </Animated.View>
         </GestureDetector>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

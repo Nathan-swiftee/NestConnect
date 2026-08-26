@@ -1,7 +1,7 @@
-import { Modal, Pressable, Text } from "react-native";
+import {Pressable, Text} from "react-native";
 import { CameraIcon, DocIcon, ImageIcon } from "../icons";
-import { useTheme, useThemeVars } from "../theme";
-import { useInsets } from "../insets";
+import { useTheme } from "../theme";
+import { Sheet } from "./Sheet";
 
 /**
  * Where the file is coming from.
@@ -24,9 +24,7 @@ export function AttachSheet({
   onPhotos: () => void;
   onFiles: () => void;
 }) {
-  const insets = useInsets();
   const { c } = useTheme();
-  const themeVars = useThemeVars();
 
   const rows = [
     { key: "camera", label: "Take a photo", Icon: CameraIcon, run: onCamera },
@@ -35,24 +33,7 @@ export function AttachSheet({
   ];
 
   return (
-    <Modal visible={visible} transparent animationType="slide" accessibilityViewIsModal onRequestClose={onClose}>
-      <Pressable
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        style={[themeVars, { backgroundColor: c.scrim }]}
-        className="flex-1 justify-end"
-      >
-        <Pressable
-          onPress={() => {}}
-          // A sink, not a control: it exists so a tap on the sheet
-          // doesn't reach the scrim behind it. Left accessible, a
-          // screen reader announces the whole sheet as one button and
-          // can skip everything inside it.
-          accessible={false}
-          style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 }}
-          className="rounded-t-24 px-4 pt-2"
-        >
+    <Sheet visible={visible} onClose={onClose}>
           {rows.map(({ key, label, Icon, run }, i) => (
             <Pressable
               key={key}
@@ -70,8 +51,6 @@ export function AttachSheet({
               <Text className="text-lg font-medium text-fg">{label}</Text>
             </Pressable>
           ))}
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </Sheet>
   );
 }

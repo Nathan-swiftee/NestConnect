@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import type { ConversationWithMessages, Message } from "@ding/schemas";
 import { EyeIcon, ForwardIcon, ReplyIcon } from "../icons";
 import { fadeTo, spring, springTo, timing } from "../motion";
@@ -104,8 +105,27 @@ export function MessageActions({
     opacity: open.value,
     transform: [{ translateY: (1 - open.value) * -22 }],
   }));
+  // Same drag-to-dismiss as every other sheet. This one owns its own Modal
+  // rather than going through `Sheet` — it has a top half as well as a bottom
+  // one — so it needs its own copy of the gesture and, critically, its own
+  // gesture root: handlers get no touches inside a Modal without one.
+  const drag = useSharedValue(0);
+  const pan = Gesture.Pan()
+    .activeOffsetY(12)
+    .failOffsetY(-8)
+    .onUpdate((e) => {
+      drag.value = Math.max(0, e.translationY);
+    })
+    .onEnd((e) => {
+      if (e.translationY > 90 || e.velocityY > 700) {
+        runOnJS(onClose)();
+        return;
+      }
+      drag.value = springTo(0, spring.settle);
+    });
+
   const bottom = useAnimatedStyle(() => ({
-    transform: [{ translateY: `${(1 - open.value) * 100}%` }],
+    transform: [{ translateY: `${(1 - open.value) * 100}%` }, { translateY: drag.value }],
   }));
 
   if (!shown) return null;
@@ -146,6 +166,7 @@ export function MessageActions({
           down and isn't reproducible off-device. Rather than keep a construction
           that's only known to work on one of our two targets, this uses the one
           every other sheet in the app already proves on both. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={themeVars} className="flex-1 justify-end">
         <Animated.View style={[{ backgroundColor: HOLD_SCRIM[scheme] }, scrim]} className="absolute inset-0">
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" className="flex-1" />
@@ -197,6 +218,7 @@ export function MessageActions({
         </Animated.View>
 
         {/* ---- bottom: the list you read ---- */}
+        <GestureDetector gesture={pan}>
         <Animated.View style={bottom}>
           <Pressable
             onPress={() => {}}
@@ -234,7 +256,9 @@ export function MessageActions({
             ) : null}
           </Pressable>
         </Animated.View>
+        </GestureDetector>
       </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

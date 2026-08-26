@@ -1,9 +1,9 @@
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import {Pressable, ScrollView, Text, View} from "react-native";
 import { seenAt } from "@ding/client";
 import type { Message } from "@ding/schemas";
 import { CheckDouble, ClockIcon, XIcon } from "../icons";
-import { useTheme, useThemeVars } from "../theme";
-import { useInsets } from "../insets";
+import { useTheme } from "../theme";
+import { Sheet } from "./Sheet";
 
 type Recipient = NonNullable<NonNullable<Message["email"]>["recipients"]>[number];
 
@@ -38,32 +38,13 @@ export function ReadLog({
   visible: boolean;
   onClose: () => void;
 }) {
-  const insets = useInsets();
   const { c } = useTheme();
-  const themeVars = useThemeVars();
 
   const recipients: Recipient[] = message?.email?.recipients ?? [];
   const seen = recipients.filter((r) => r.openedAt);
 
   return (
-    <Modal visible={visible && !!message} transparent animationType="slide" accessibilityViewIsModal onRequestClose={onClose}>
-      <Pressable
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel="Close"
-        style={[themeVars, { backgroundColor: c.scrim }]}
-        className="flex-1 justify-end"
-      >
-        <Pressable
-          onPress={() => {}}
-          // A sink, not a control: it exists so a tap on the sheet
-          // doesn't reach the scrim behind it. Left accessible, a
-          // screen reader announces the whole sheet as one button and
-          // can skip everything inside it.
-          accessible={false}
-          style={{ backgroundColor: c.surface, maxHeight: "80%", paddingBottom: insets.bottom + 8 }}
-          className="rounded-t-24"
-        >
+    <Sheet visible={visible && !!message} onClose={onClose} padded={false}>
           <View className="flex-row items-center justify-between px-4 pb-1 pt-4">
             <View className="flex-1">
               <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
@@ -123,8 +104,6 @@ export function ReadLog({
               first open, not the last.
             </Text>
           </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    </Sheet>
   );
 }
