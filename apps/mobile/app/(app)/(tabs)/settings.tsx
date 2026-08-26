@@ -63,7 +63,7 @@ export default function Settings() {
 
   return (
     <ScrollView
-      style={{ backgroundColor: c.bg }}
+      style={{ flex: 1, backgroundColor: c.bg }}
       // The tab bar sits over the scroll view, so the bottom padding has to
       // clear the bar itself (43 plus its label) as well as the safe area —
       // otherwise the last thing on the page is permanently half-hidden.

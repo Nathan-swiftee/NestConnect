@@ -155,7 +155,7 @@ export default function Compose() {
       ) : null}
 
       {adding ? (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 18 }} keyboardShouldPersistTaps="handled">
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 18 }} keyboardShouldPersistTaps="handled">
           <Field label="Name" value={draft.name} onChangeText={(v) => setDraft((d) => ({ ...d, name: v }))} autoFocus />
           <Field
             label="Phone"
@@ -180,7 +180,7 @@ export default function Compose() {
         </ScrollView>
       ) : picked ? (
         // ── Step 2: which channel ──
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 12 }}>
           <View className="flex-row items-center gap-3 pb-2">
             <Avatar name={picked.displayName} color={picked.avatarColor} size={48} />
             <View className="flex-1">
@@ -248,6 +248,7 @@ export default function Compose() {
           </View>
 
           <FlatList
+            style={{ flex: 1 }}
             data={matches}
             keyExtractor={(item) => item.id}
             keyboardDismissMode="on-drag"

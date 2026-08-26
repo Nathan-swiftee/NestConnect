@@ -387,7 +387,12 @@ export default function Inbox() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
-          className="max-h-11 pb-2.5"
+          // Sized by its chips, not capped at a number. `max-h-11` was 44pt,
+          // which fits a 28pt chip at the default font size and stops fitting
+          // the moment the phone's text size is turned up — the row then clips
+          // its own chips and reads as the list cutting into the filters.
+          // `flex-none` so a long list below can't squeeze it either.
+          className="flex-none pb-2.5"
         >
           {filters.map((f) => (
             <Chip
@@ -424,6 +429,11 @@ export default function Inbox() {
           return index < 8 ? <Animated.View entering={rowIn(index)}>{row}</Animated.View> : row;
         }}
         ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-[80px] h-px" />}
+        // The same omission the thread had: without `flex: 1` the list is as
+        // tall as its rows rather than as tall as the space left for it, so a
+        // busy inbox lays out past the bottom of the screen instead of
+        // scrolling inside itself.
+        style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
         keyboardDismissMode="on-drag"
         // A shared inbox is read by pulling. `useRefresh` also fetches any new

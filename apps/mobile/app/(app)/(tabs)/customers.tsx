@@ -63,6 +63,7 @@ export default function Customers() {
       </View>
 
       <FlatList
+        style={{ flex: 1 }}
         data={items}
         keyExtractor={(ct) => ct.id}
         renderItem={({ item }) => <Row contact={item} onPress={() => setOpen(item.id)} />}

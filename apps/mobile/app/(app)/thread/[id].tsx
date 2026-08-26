@@ -480,6 +480,14 @@ export default function Thread() {
           visible grouping at all. */}
       <ScrollView
         ref={scroller}
+        // `flex: 1`, or the thread sizes itself to its messages instead of to
+        // the space between the header and the composer. Both ends of that go
+        // wrong: one message and the scroll view is short, so the composer sits
+        // halfway up the screen; a full thread and it grows past the bottom,
+        // taking the composer off the screen with it. The container style is
+        // the padding inside the scroll, which is a different thing and was
+        // the only one set.
+        style={{ flex: 1 }}
         contentContainerStyle={{ padding: 12, paddingBottom: 16 }}
         onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
         keyboardDismissMode="interactive"
