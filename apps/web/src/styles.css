@@ -427,6 +427,14 @@ input,textarea{font:inherit}
   position:sticky;top:4px;z-index:2}
 /* The very first date needs no big gap above it (nothing older precedes it). */
 .daygroup:first-child .daysep{margin-top:2px}
+/* A divider heads the day below it, so it belongs to that day: close under the
+   pill, well clear of the conversation it just ended. The first message of a
+   group therefore drops the 13px every other message carries — with it, the gap
+   under the pill (4 + 2 + 13) came to 19px against 16 above, near enough equal,
+   and the date read as trailing the day it had finished rather than starting the
+   one it was announcing. The app had the same shape and worse (12 above, 22
+   below), which is where this was reported. */
+.daygroup > .daysep + *:not(:first-child):not(.msg--cont){margin-top:0}
 /* Full-width row so the whole horizontal band is a gesture surface (swipe-to-reply
    can start in the gutter, not just on the bubble); the bubble itself is capped on
    .bubblewrap. align-items places the bubble left (in) / right (out). */

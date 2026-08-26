@@ -237,12 +237,12 @@ export default function Thread() {
         }}
       />,
     );
-    for (const group of days) {
+    days.forEach((group, gi) => {
       sticky.push(rows.length);
       rows.push(
         // Transparent around an opaque pill, so the thread passes either side of
         // it as it scrolls under — WhatsApp's floating date, not a full-width bar.
-        <View key={`day-${group.key}`} className="items-center py-2">
+        <View key={`day-${group.key}`} className="items-center pb-0.5 pt-1.5">
           <View
             style={{
               backgroundColor: c.surface2,
@@ -282,6 +282,10 @@ export default function Thread() {
             // tail belongs to whichever bubble is.
             continues={!!prev && who(prev) === who(m)}
             endsRun={!next || who(next) !== who(m)}
+            firstOfDay={i === 0}
+            // Only when another day follows: the last message in the thread
+            // wants the composer's own gap, not a divider's.
+            lastOfDay={!next && gi < days.length - 1}
             onLongPress={onLongPress}
             onReply={onReply}
             onOpenReadLog={onOpenReadLog}
@@ -290,7 +294,7 @@ export default function Thread() {
           />,
         );
       });
-    }
+    });
     return { threadRows: rows, stickyDays: sticky };
   }, [
     data,
@@ -778,6 +782,8 @@ const Bubble = memo(function Bubble({
   meId,
   continues,
   endsRun,
+  firstOfDay,
+  lastOfDay,
   onRetry,
   onLongPress,
   onReply,
@@ -793,6 +799,10 @@ const Bubble = memo(function Bubble({
   continues: boolean;
   /** Last of a run — i.e. not followed by the same speaker. Carries the tail. */
   endsRun: boolean;
+  /** Directly under a date divider, and directly above one. Between them these
+   *  put the divider's air on the side it belongs to; see `gapTop` below. */
+  firstOfDay?: boolean;
+  lastOfDay?: boolean;
   onRetry: (m: Message) => void;
   onLongPress: (m: Message) => void;
   onReply: (m: Message) => void;
@@ -802,6 +812,23 @@ const Bubble = memo(function Bubble({
   const { c } = useTheme();
   const mine = message.direction === "out";
 
+  /**
+   * The air around a bubble, including the air a date divider needs.
+   *
+   * A divider says "everything from here is a new day", so it belongs to what
+   * follows it — it should sit close under nothing and close *over* the first
+   * message of its day. It was the other way round: 12pt above, 22pt below,
+   * which read as the date trailing the conversation it had just ended rather
+   * than heading the one it was starting.
+   *
+   * The correction is here rather than on the divider's own padding because the
+   * divider is sticky: padding travels with it, so putting 20pt on top of the
+   * pill would leave a 20pt hole under the header for as long as that day is on
+   * screen. A margin on the message before it scrolls away like everything else.
+   */
+  const gapTop = firstOfDay ? 0 : continues ? 2 : 10;
+  const gapBottom = lastOfDay ? 14 : 0;
+
   if (message.internal) {
     const byMe = message.authorUserId === meId;
     return (
@@ -809,7 +836,7 @@ const Bubble = memo(function Bubble({
         testID={`msg-${message.id}`}
         entering={enter.row}
         className={byMe ? "items-end" : "items-start"}
-        style={{ marginTop: continues ? 2 : 10 }}
+        style={{ marginTop: gapTop, marginBottom: gapBottom }}
       >
         <View style={{ backgroundColor: c.amberTint, borderColor: c.amber, maxWidth: "86%" }} className="rounded-16 border px-3.5 py-2.5">
           {!continues ? (
@@ -874,7 +901,7 @@ const Bubble = memo(function Bubble({
       testID={`msg-${message.id}`}
       entering={enter.row}
       className={mine ? "items-end" : "items-start"}
-      style={{ marginTop: continues ? 2 : 10 }}
+      style={{ marginTop: gapTop, marginBottom: gapBottom }}
     >
       <Pressable
         onLongPress={() => onLongPress(message)}
