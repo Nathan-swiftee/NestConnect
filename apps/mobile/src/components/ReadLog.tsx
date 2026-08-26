@@ -66,7 +66,8 @@ export function ReadLog({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+          {/* `flexShrink: 1` is what makes this scroll at all — see Sheet.tsx. */}
+          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: 16 }}>
             <View
               style={{ backgroundColor: c.surface2, borderColor: c.border }}
               className="mx-4 mt-3 rounded-16 border"

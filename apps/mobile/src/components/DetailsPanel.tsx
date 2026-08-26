@@ -1,18 +1,21 @@
-import {ActivityIndicator, Pressable, ScrollView, Switch, Text, View} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import {
   relativeTime,
   slaCountdown,
   useContact,
-  useLabels,
+  useContacts,
+  usePeople,
   usePushPreferences,
-  useSetConversationLabels,
   useSetConversationMuted,
+  useTeams,
+  useUpdateContact,
   windowLeft,
 } from "@ding/client";
 import type { ConversationWithMessages } from "@ding/schemas";
 import { Avatar } from "./Avatar";
 import { ChannelDot } from "./ChannelDot";
-import { BellIcon, CheckIcon, ChevronRight, XIcon, channelMeta } from "../icons";
+import { TagEditor } from "./TagEditor";
+import { BellIcon, CheckIcon, ChevronRight, TeamGlyph, XIcon, channelMeta } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
 
@@ -20,13 +23,16 @@ import { Sheet } from "./Sheet";
  * Who this conversation is with, and everything about it that isn't a message.
  *
  * The web keeps this permanently docked beside the thread; a phone has no room
- * for that, so it's a sheet off the thread header. Same contents, minus the
- * blocks that are really admin forms — editing a customer's routing rules or
- * their tag list belongs on a screen with a keyboard and a mouse.
+ * for that, so it's a sheet off the thread header.
  *
- * Labels are the exception and are fully editable here, because labelling is
- * something you do *while working a thread*, not while administering the
- * workspace — it's how the next person knows what this is about.
+ * What's editable here is what belongs to the *customer*: their tags, and where
+ * their conversations get routed. Both are things you learn mid-thread — "these
+ * people are wholesale", "this one should always go to Ops" — and having to
+ * remember it until you're next at a desk is how it gets lost.
+ *
+ * Conversation labels used to be here and aren't any more. They describe the
+ * thread, not the person, so they live in the thread's own ⋯ menu; having them
+ * under the customer's face made them look like a property of the customer.
  */
 export function DetailsPanel({
   conv,
@@ -40,23 +46,30 @@ export function DetailsPanel({
   onOpenConversation: (id: string) => void;
 }) {
   const { c } = useTheme();
-  const { data: catalog } = useLabels();
-  const setLabels = useSetConversationLabels();
   const { data: pushPrefs } = usePushPreferences();
   const setMuted = useSetConversationMuted();
+  const { data: teams } = useTeams();
+  const { data: people } = usePeople();
+  const { data: allContacts } = useContacts();
+  const updateContact = useUpdateContact();
   // Only fetched while the sheet is open — the thread doesn't need it.
   const { data: contact } = useContact(visible ? conv.contact.id : null);
 
-  const applied = new Set((conv.labels ?? []).map((l) => l.id));
   const isGroup = conv.channel === "whatsapp_group";
   const meta = channelMeta(conv.channel);
 
-  function toggleLabel(id: string) {
-    const next = applied.has(id)
-      ? [...applied].filter((x) => x !== id)
-      : [...applied, id];
-    setLabels.mutate({ id: conv.id, labelIds: next });
-  }
+  // The customer as the server last confirmed them. The thread's own copy is a
+  // summary and doesn't carry routing, so edits are written against this one
+  // and read back from the same query the mutation invalidates.
+  const tags = contact?.tags ?? conv.contact.tags ?? [];
+  const ownerTeamId = contact?.ownerTeamId ?? null;
+  const ownerUserId = contact?.ownerUserId ?? null;
+  const saving = updateContact.isPending;
+  const edit = (input: Parameters<typeof updateContact.mutate>[0]["input"]) =>
+    updateContact.mutate({ id: conv.contact.id, input });
+
+  // Every tag in use across the directory, so adding an existing one is a tap.
+  const tagSuggestions = [...new Set((allContacts ?? []).flatMap((x) => x.tags ?? []))].sort();
 
   const others = (contact?.conversations ?? []).filter((x) => x.id !== conv.id);
   const muted = pushPrefs?.mutedConversationIds.includes(conv.id) ?? false;
@@ -79,7 +92,14 @@ export function DetailsPanel({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+          {/* `flexShrink: 1` is load-bearing: without it this sizes to its
+              content, overflows the sheet's 85% cap, and — being as tall as its
+              content — decides there is nothing to scroll to. See Sheet.tsx. */}
+          <ScrollView
+            style={{ flexShrink: 1 }}
+            contentContainerStyle={{ paddingBottom: 20 }}
+            keyboardShouldPersistTaps="handled"
+          >
             {/* Who */}
             <View className="items-center px-6 pb-2 pt-3">
               <Avatar name={conv.contact.displayName} color={conv.contact.avatarColor} size={64} />
@@ -91,17 +111,6 @@ export function DetailsPanel({
                 <ChannelDot channel={conv.channel} size={13} />
                 <Text className="text-sm text-muted">{meta.label}</Text>
               </View>
-              {conv.contact.tags?.length ? (
-                <View className="mt-3 flex-row flex-wrap justify-center gap-1.5">
-                  {conv.contact.tags.map((t) => (
-                    <View key={t} style={{ backgroundColor: c.surface2 }} className="rounded-full px-2.5 py-1">
-                      <Text style={{ color: c.textMuted }} className="text-2xs font-medium">
-                        {t}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
             </View>
 
             {/* Reachable on */}
@@ -175,46 +184,69 @@ export function DetailsPanel({
               </View>
             </Card>
 
-            {/* Labels — the editable one */}
-            <Section>Labels</Section>
-            {catalog?.length ? (
-              <View className="flex-row flex-wrap gap-2 px-4">
-                {catalog.map((l) => {
-                  const on = applied.has(l.id);
-                  return (
-                    <Pressable
-                      key={l.id}
-                      onPress={() => toggleLabel(l.id)}
-                      disabled={setLabels.isPending}
-                      accessibilityRole="checkbox"
-                      accessibilityState={{ checked: on }}
-                      accessibilityLabel={l.name}
-                      style={{
-                        backgroundColor: on ? (l.color ?? c.brand) + "22" : c.surface2,
-                        borderColor: on ? (l.color ?? c.brand) : "transparent",
-                      }}
-                      className="flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 active:opacity-60"
-                    >
-                      <View
-                        style={{ backgroundColor: l.color ?? c.textFaint }}
-                        className="h-2 w-2 rounded-full"
-                      />
-                      <Text
-                        style={{ color: on ? c.text : c.textMuted }}
-                        className={`text-sm ${on ? "font-semibold" : "font-medium"}`}
-                      >
-                        {l.name}
-                      </Text>
-                      {on ? <CheckIcon size={13} color={l.color ?? c.brand} /> : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : (
-              <Text className="px-5 text-md text-muted">
-                No labels yet — they're created in Settings on the web.
-              </Text>
-            )}
+            {/* Customer tags — what kind of customer this is, not what this
+                thread is about. Saved on every change: a phone has nowhere
+                sensible to put a Save button on a sheet, and an edit you have
+                to confirm is an edit you can lose by swiping the sheet away. */}
+            <Section>Tags</Section>
+            <TagEditor
+              tags={tags}
+              suggestions={tagSuggestions}
+              disabled={saving || !contact}
+              onChange={(next) => edit({ tags: next })}
+            />
+
+            {/* Where this customer's conversations land, before anyone touches
+                them. Groups excluded: a group belongs to its number, and its
+                messages are routed by the inbox, not by whoever spoke last. */}
+            {!isGroup ? (
+              <>
+                <Section>Auto-route new conversations</Section>
+                <Card>
+                  <RouteRow
+                    label="Automatic"
+                    detail="Follow the channel's own routing"
+                    selected={!ownerTeamId && !ownerUserId}
+                    disabled={saving || !contact}
+                    onPress={() => edit({ ownerTeamId: null, ownerUserId: null })}
+                  />
+                  {(teams ?? []).map((t, i, arr) => (
+                    <RouteRow
+                      key={t.id}
+                      label={t.name}
+                      leading={<TeamGlyph icon={t.icon} size={17} color={c.textMuted} />}
+                      selected={ownerTeamId === t.id}
+                      disabled={saving || !contact}
+                      last={i === arr.length - 1}
+                      onPress={() => edit({ ownerTeamId: ownerTeamId === t.id ? null : t.id })}
+                    />
+                  ))}
+                </Card>
+
+                <Section>Straight to a person</Section>
+                <Card>
+                  <RouteRow
+                    label="No one specific"
+                    selected={!ownerUserId}
+                    disabled={saving || !contact}
+                    onPress={() => edit({ ownerUserId: null })}
+                  />
+                  {(people ?? []).map((m, i, arr) => (
+                    <RouteRow
+                      key={m.user.id}
+                      label={m.user.name}
+                      leading={<Avatar name={m.user.name} color={m.user.avatarColor} size={22} />}
+                      selected={ownerUserId === m.user.id}
+                      disabled={saving || !contact}
+                      last={i === arr.length - 1}
+                      onPress={() =>
+                        edit({ ownerUserId: ownerUserId === m.user.id ? null : m.user.id })
+                      }
+                    />
+                  ))}
+                </Card>
+              </>
+            ) : null}
 
             {/* Group members */}
             {isGroup && conv.participants?.length ? (
@@ -299,6 +331,52 @@ function Card({ children }: { children: React.ReactNode }) {
     <View style={{ backgroundColor: c.surface2, borderColor: c.border }} className="mx-4 rounded-16 border">
       {children}
     </View>
+  );
+}
+
+/** One choice in a routing list: a tick on the right, a glyph on the left, and
+ *  the whole row is the target — a radio button on a phone is a 20pt hit area
+ *  for a decision that deserves the full width. */
+function RouteRow({
+  label,
+  detail,
+  leading,
+  selected,
+  disabled,
+  last,
+  onPress,
+}: {
+  label: string;
+  detail?: string;
+  leading?: React.ReactNode;
+  selected: boolean;
+  disabled?: boolean;
+  last?: boolean;
+  onPress: () => void;
+}) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="radio"
+      accessibilityState={{ selected, disabled: !!disabled }}
+      accessibilityLabel={label}
+      style={{ borderBottomColor: last ? "transparent" : c.border, opacity: disabled ? 0.5 : 1 }}
+      className={`flex-row items-center gap-3 px-4 py-2.5 active:opacity-60 ${last ? "" : "border-b"}`}
+    >
+      {leading ?? null}
+      <View className="flex-1">
+        <Text
+          style={selected ? { color: c.brandStrong } : undefined}
+          className={`text-md ${selected ? "font-semibold" : "font-medium text-fg"}`}
+        >
+          {label}
+        </Text>
+        {detail ? <Text className="text-2xs text-muted">{detail}</Text> : null}
+      </View>
+      {selected ? <CheckIcon size={16} color={c.brand} /> : null}
+    </Pressable>
   );
 }
 

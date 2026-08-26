@@ -131,7 +131,8 @@ export function ViewSwitcher({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={{ paddingBottom: 12 }}>
+          {/* `flexShrink: 1` is what makes this scroll at all — see Sheet.tsx. */}
+          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
             <SectionLabel>My space</SectionLabel>
             {inbound ? (
               <Row

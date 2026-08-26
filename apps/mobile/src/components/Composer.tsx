@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from "react";
 import { ActivityIndicator, LayoutAnimation, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { api, useIntegrations, useSendMessage, useTemplates, windowLeft } from "@ding/client";
+import { api, useIntegrations, usePeople, useSendMessage, useTemplates, windowLeft } from "@ding/client";
 import { useStagedAttachments } from "../attachments";
 import { enqueue } from "../send-queue";
+import { Avatar } from "./Avatar";
 import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
 import { VoiceRecorder, type RecordedVoice } from "./VoiceRecorder";
@@ -67,6 +68,9 @@ export function Composer({
   const [pickedChannel, setPickedChannel] = useState<ChannelType | null>(null);
   const [attachSheet, setAttachSheet] = useState(false);
   const [recording, setRecording] = useState(false);
+  /** From tapping send on a recording until it lands — the recorder is gone by
+   *  then, so without this there is nothing on screen saying it's in flight. */
+  const [sendingVoice, setSendingVoice] = useState(false);
   const files = useStagedAttachments();
   // AI assist. Whether the button exists at all follows the workspace's Claude
   // key — an affordance that always fails is worse than one that isn't there.
@@ -76,6 +80,26 @@ export function Composer({
   // also carries what Claude returned, so Undo can hide itself the moment the
   // agent edits — restoring then would throw that edit away.
   const [prePolish, setPrePolish] = useState<{ text: string; polished: string } | null>(null);
+
+  // ─── @-mention autocomplete (internal notes) ───
+  const { data: people } = usePeople();
+  /** The "@query" currently being typed, and where its "@" sits in the draft. */
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  /**
+   * Where the caret was before the current keystroke.
+   *
+   * A web `<input>` hands you `selectionStart` on the change event; React
+   * Native's `onChangeText` gives you the text and nothing else, and
+   * `onSelectionChange` fires separately with no guaranteed order. So the caret
+   * is tracked here on every selection change — taps and arrow keys included —
+   * and the position after an edit is that plus the change in length. Exact for
+   * a single-point edit, which is all a keyboard produces.
+   */
+  const caretRef = useRef(0);
+  /** Set for exactly one render, to move the caret after inserting a mention.
+   *  Left uncontrolled the rest of the time — a permanently controlled
+   *  `selection` fights the Android keyboard's own cursor handling. */
+  const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
 
   // Which channels this customer is reachable on inside this thread. Mirrors the
   // web: a group can only be answered in the group; a 1:1 lists every channel we
@@ -129,6 +153,7 @@ export function Composer({
     setError(null);
     setEmojiOpen(false);
     setPrePolish(null);
+    setMention(null);
     // Clear optimistically — the message is already on screen via useSendMessage,
     // and leaving the text behind invites an accidental double-send.
     setBody("");
@@ -174,6 +199,60 @@ export function Composer({
       files.clear();
       onClearReply?.();
     }
+  }
+
+  /**
+   * Teammates matching the open "@query" — empty unless one is being typed.
+   *
+   * Notes only. A customer can't be @-mentioned: the token is what routes the
+   * note into a teammate's Mentions inbox, and there is no such inbox for
+   * someone outside the workspace.
+   */
+  const mentionList =
+    mention && internal
+      ? (people ?? [])
+          .map((m) => m.user)
+          .filter((u) => {
+            const q = mention.query.toLowerCase();
+            if (!q) return true;
+            return (
+              u.name.toLowerCase().includes(q) || u.email.split("@")[0].toLowerCase().includes(q)
+            );
+          })
+          .slice(0, 5)
+      : [];
+
+  /** Every keystroke in the note field: keep the draft, then decide whether an
+   *  "@token" is open at the caret. */
+  function onBodyChange(next: string) {
+    const caret = Math.max(0, Math.min(next.length, caretRef.current + (next.length - body.length)));
+    setBody(next);
+    // Only ever matches when the "@" starts a word — an email address typed
+    // into a note shouldn't open a people picker.
+    const m = internal ? /(?:^|\s)@([\w.+-]*)$/.exec(next.slice(0, caret)) : null;
+    setMention(m ? { query: m[1], start: caret - m[1].length - 1 } : null);
+  }
+
+  /**
+   * Replace the open "@query" with the teammate's handle.
+   *
+   * The handle is the local part of their email, lower-cased — the same token
+   * the web inserts and the same one the server matches when it decides whose
+   * Mentions inbox this note belongs in. A display name would read better and
+   * route nowhere.
+   */
+  function insertMention(u: { name: string; email: string }) {
+    if (!mention) return;
+    const handle = "@" + u.email.split("@")[0].toLowerCase() + " ";
+    const before = body.slice(0, mention.start);
+    const after = body.slice(mention.start + 1 + mention.query.length);
+    const next = before + handle + after;
+    const caret = (before + handle).length;
+    setBody(next);
+    setMention(null);
+    caretRef.current = caret;
+    setSelection({ start: caret, end: caret });
+    inputRef.current?.focus();
   }
 
   /* ─── AI assist: one-tap Polish ───────────────────────────────────
@@ -232,10 +311,17 @@ export function Composer({
   async function sendVoice(v: RecordedVoice) {
     setRecording(false);
     setError(null);
+    // Uploading a clip takes real seconds on a phone connection, and the
+    // recorder has already gone. Without this the composer sits there looking
+    // untouched, which reads as "it didn't send" — and then gets tapped again.
+    setSendingVoice(true);
+    // One name for both the part and the stored file, rather than two
+    // `Date.now()` calls a millisecond apart that disagree.
+    const name = `voice-${Date.now()}.m4a`;
     try {
       const attachment = await api.uploadMedia(
-        { uri: v.uri, name: `voice-${Date.now()}.m4a`, type: "audio/m4a" },
-        { kind: "voice", durationMs: v.durationMs, filename: `voice-${Date.now()}.m4a` },
+        { uri: v.uri, name, type: "audio/mp4" },
+        { kind: "voice", durationMs: v.durationMs, filename: name },
       );
       await send.mutateAsync({
         id: conv.id,
@@ -250,6 +336,8 @@ export function Composer({
     } catch (err) {
       haptics.error();
       setError(err instanceof Error ? err.message : "Couldn't send the voice note.");
+    } finally {
+      setSendingVoice(false);
     }
   }
 
@@ -337,6 +425,8 @@ export function Composer({
                 onPress={() => {
                   setInternal(false);
                   setPickedChannel(ch);
+                  // A half-typed "@sam" isn't a mention on a customer reply.
+                  setMention(null);
                 }}
               >
                 <Glyph size={15} color={active ? tint : c.textFaint} />
@@ -480,6 +570,38 @@ export function Composer({
         </View>
       ) : null}
 
+      {/* The people picker, directly above the field it's completing. A list
+          rather than the web's floating popover: there's no room to float
+          anything over a phone keyboard, and the sheet-like strip reads the
+          same way the emoji row above does. */}
+      {mentionList.length ? (
+        <View
+          style={{ backgroundColor: c.surface2, maxHeight: 208 }}
+          className="mb-2 overflow-hidden rounded-16"
+        >
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }}>
+            {mentionList.map((u, i, arr) => (
+              <Pressable
+                key={u.id}
+                onPress={() => insertMention(u)}
+                accessibilityRole="button"
+                accessibilityLabel={`Mention ${u.name}`}
+                style={{ borderBottomColor: i === arr.length - 1 ? "transparent" : c.border }}
+                className={`flex-row items-center gap-2.5 px-3 py-2 active:opacity-60 ${i === arr.length - 1 ? "" : "border-b"}`}
+              >
+                <Avatar name={u.name} color={u.avatarColor} size={28} />
+                <Text numberOfLines={1} className="flex-1 text-md font-medium text-fg">
+                  {u.name}
+                </Text>
+                <Text style={{ color: c.textFaint }} className="text-2xs">
+                  @{u.email.split("@")[0].toLowerCase()}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
       {error ? <Text className="pb-1.5 text-sm text-danger">{error}</Text> : null}
 
       {emojiOpen ? (
@@ -511,6 +633,15 @@ export function Composer({
           input row's place rather than floating over it. */}
       {recording ? (
         <VoiceRecorder onSend={(v) => void sendVoice(v)} onCancel={() => setRecording(false)} />
+      ) : sendingVoice ? (
+        <View
+          style={{ backgroundColor: c.surface2 }}
+          className="flex-row items-center gap-3 rounded-24 px-4 py-3"
+          accessibilityLabel="Sending voice message"
+        >
+          <ActivityIndicator size="small" color={c.brand} />
+          <Text className="flex-1 text-md text-muted">Sending your voice note…</Text>
+        </View>
       ) : (
       <>
       <StagedAttachments items={files.staged} onRemove={files.remove} onRetry={files.retry} />
@@ -536,7 +667,14 @@ export function Composer({
         <TextInput
           ref={inputRef}
           value={body}
-          onChangeText={setBody}
+          onChangeText={onBodyChange}
+          selection={selection}
+          onSelectionChange={(e) => {
+            caretRef.current = e.nativeEvent.selection.start;
+            // Hand the caret straight back after a programmatic move, so the
+            // keyboard owns it again from the next keystroke on.
+            if (selection) setSelection(undefined);
+          }}
           multiline
           editable={!locked}
           // Not "Message {name}…": with emoji, template, attach and send in the
@@ -547,7 +685,7 @@ export function Composer({
             locked
               ? "Set a default template to reply"
               : internal
-                ? "Note for the team…"
+                ? "Note… @ to mention"
                 : "Message…"
           }
           placeholderTextColor={c.textFaint}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, View, useWindowDimensions } from "react-native";
+import { Keyboard, Modal, Platform, Pressable, View, useWindowDimensions } from "react-native";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import { fadeTo, spring, springTo, timing } from "../motion";
@@ -36,6 +36,21 @@ const DISMISS_VELOCITY = 700;
  * else on a phone that comes up from the bottom goes back down when you push it
  * there — and on a tall sheet, reaching the scrim means moving your thumb past
  * the whole sheet to close it.
+ *
+ * ── One rule for anything you put inside ──────────────────────────────────
+ *
+ * **A `ScrollView` in here must set `flexShrink: 1`** (or carry its own
+ * `maxHeight`). The panel is capped at 85% of the screen, but Yoga defaults
+ * `flexShrink` to 0, so a scroller with taller content keeps its full content
+ * height, overflows the cap, and gets clipped. Clipped is not scrolled: the
+ * ScrollView's frame equals its content, so as far as it knows there is nothing
+ * to scroll to, and every drag inside it does nothing.
+ *
+ * That's what "the customer details pop-up scrolls sometimes" was — a short
+ * contact fits inside the cap and looks fine, a long one silently can't move.
+ * `flexShrink: 1` lets the scroller give back the height it can't have, which
+ * leaves content taller than frame, which is the condition for scrolling.
+ * `check:layout` enforces it.
  */
 export function Sheet({
   visible,
@@ -66,6 +81,34 @@ export function Sheet({
   const open = useSharedValue(0);
   // Live finger offset, in points, on top of the open/closed transform.
   const drag = useSharedValue(0);
+
+  /**
+   * How much of the screen the keyboard is covering, so a sheet with a text
+   * input in it can get out of the way.
+   *
+   * React Native's own `Keyboard` events rather than the keyboard-controller's
+   * hooks, because a `Modal` renders outside the tree its provider publishes
+   * into — the same reason the palette and the gesture root are re-established
+   * below. If Android ever reports nothing here the sheet simply doesn't move,
+   * which is what it did before this existed.
+   */
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    if (!mounted) return;
+    const show = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      (e) => setKeyboard(e.endCoordinates?.height ?? 0),
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setKeyboard(0),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+      setKeyboard(0);
+    };
+  }, [mounted]);
 
   useEffect(() => {
     if (visible) {
@@ -104,12 +147,17 @@ export function Sheet({
   // a panel around underneath a fixed dim.
   const scrim = useAnimatedStyle(() => ({ opacity: open.value * Math.max(0, 1 - drag.value / 400) }));
   const panel = useAnimatedStyle(() => ({
-    // Two translations rather than one sum: the first is a percentage of the
+    // Three translations rather than one sum: the first is a percentage of the
     // sheet's own height, so a tall sheet and a short one travel for the same
     // length of time rather than the tall one appearing to fall further; the
-    // second is the finger, in points. The units differ so they can't be added,
-    // but transforms compose.
-    transform: [{ translateY: `${(1 - open.value) * 100}%` }, { translateY: drag.value }],
+    // second is the finger, in points; the third lifts the whole panel clear of
+    // the keyboard. The units differ so they can't be added, but transforms
+    // compose.
+    transform: [
+      { translateY: `${(1 - open.value) * 100}%` },
+      { translateY: drag.value },
+      { translateY: -keyboard },
+    ],
   }));
 
   return (
@@ -156,7 +204,16 @@ export function Sheet({
               // parent, and the parent here is content-sized, so the cap simply
               // wouldn't apply — a long sheet would grow past the top of the
               // screen instead of scrolling inside itself.
-              style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12, maxHeight: height * 0.85 }}
+              // Capped against what's left of the screen rather than all of it:
+              // the panel is lifted clear of the keyboard below, and an
+              // 85%-of-the-whole-screen sheet lifted that far would put its own
+              // top off the top. The system inset is only padded for when the
+              // keyboard isn't covering it anyway.
+              style={{
+                backgroundColor: c.elevated,
+                paddingBottom: keyboard ? 12 : insets.bottom + 12,
+                maxHeight: (height - keyboard) * 0.85,
+              }}
               className={`rounded-t-24 ${padded ? "px-4" : ""}`}
             >
               {/* The handle is the drag target, and only the handle.

@@ -289,13 +289,25 @@ export const api = {
   // its FormData expects `{ uri, name, type }` as the value, with no third
   // argument at all. Passing the wrong one uploads zero bytes silently, so the
   // branch is explicit rather than clever.
-  uploadMedia: (
+  uploadMedia: async (
     file: File | Blob | UploadFile,
     meta?: { filename?: string; kind?: string; durationMs?: number; width?: number; height?: number; waveform?: number[] },
   ) => {
     const form = new FormData();
     if (isUploadFile(file)) {
-      form.append("file", file as unknown as Blob);
+      // React Native's FormData understands `{ uri, name, type }` and streams
+      // the file off disk. A DOM FormData does not: it stringifies the object
+      // to "[object Object]" and posts a text field, and the server answers
+      // "No file uploaded" — which is what a voice note recorded in the web
+      // export did, every time, silently. So in a DOM the URI is fetched into a
+      // real Blob first. `document` is the reliable tell: React Native has a
+      // `window` but never a `document`.
+      if (typeof document !== "undefined") {
+        const blob = await (await fetch(file.uri)).blob();
+        form.append("file", blob, file.name);
+      } else {
+        form.append("file", file as unknown as Blob);
+      }
     } else {
       form.append("file", file, meta?.filename ?? (file instanceof File ? file.name : "file"));
     }

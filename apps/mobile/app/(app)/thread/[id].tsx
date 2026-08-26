@@ -31,6 +31,7 @@ import { Avatar } from "../../../src/components/Avatar";
 import { Composer } from "../../../src/components/Composer";
 import { useSendQueue } from "../../../src/send-queue";
 import { DetailsPanel } from "../../../src/components/DetailsPanel";
+import { LabelSheet } from "../../../src/components/LabelSheet";
 import { QueuedBubble } from "../../../src/components/QueuedBubble";
 import { MessageActions } from "../../../src/components/MessageActions";
 import { ForwardSheet } from "../../../src/components/ForwardSheet";
@@ -49,6 +50,7 @@ import {
   ForwardIcon,
   InboxIcon,
   MoreIcon,
+  TagIcon,
   TeamGlyph,
   channelColor,
   channelMeta,
@@ -78,6 +80,40 @@ const SNOOZE = [
   { label: "Next week", said: "Snoozed until next week", until: () => inMin(60 * 24 * 7) },
 ];
 
+/**
+ * A note body with its @handles picked out.
+ *
+ * Same split as the web's, on the same character class, so a note written on a
+ * laptop and read on a phone highlights the same words. The point isn't
+ * decoration: a note is often addressed to one person in a team of six, and the
+ * handle is the only thing that says which.
+ */
+function NoteBody({ body, color }: { body: string; color: string }) {
+  return (
+    <Text className="text-lg leading-snug text-fg">
+      {body.split(/(@[\w.+-]+)/g).map((part, i) =>
+        part.startsWith("@") ? (
+          <Text key={i} style={{ color }} className="font-semibold">
+            {part}
+          </Text>
+        ) : (
+          part
+        ),
+      )}
+    </Text>
+  );
+}
+
+/** What the ⋯ menu's Labels row says underneath itself: the labels already on
+ *  this conversation, so the common case (checking, not changing) needs no tap
+ *  at all. */
+function labelSummary(conv: ConversationWithMessages): string {
+  const names = (conv.labels ?? []).map((l) => l.name);
+  if (!names.length) return "None yet";
+  if (names.length <= 3) return names.join(", ");
+  return `${names.slice(0, 3).join(", ")} +${names.length - 3}`;
+}
+
 export default function Thread() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const insets = useInsets();
@@ -97,7 +133,9 @@ export default function Thread() {
   const toast = useToast();
   const teamName = (id: string | null) =>
     (id ? teams.data?.find((t) => t.id === id)?.name : undefined) ?? "the team";
-  const [sheet, setSheet] = useState<null | "assign" | "snooze" | "more" | "details">(null);
+  const [sheet, setSheet] = useState<null | "assign" | "snooze" | "more" | "details" | "labels">(
+    null,
+  );
   // The message a long-press opened the action sheet for, and the one the
   // composer is quoting. Separate: acting on a message doesn't quote it.
   const [acting, setActing] = useState<Message | null>(null);
@@ -470,6 +508,13 @@ export default function Thread() {
     },
     { key: "snooze", label: "Snooze…", detail: "Hide it until later", onPress: () => setSheet("snooze") },
     { key: "assign", label: "Assign…", onPress: () => setSheet("assign") },
+    {
+      key: "labels",
+      label: "Labels…",
+      leading: <TagIcon size={20} color={c.textMuted} />,
+      detail: labelSummary(data),
+      onPress: () => setSheet("labels"),
+    },
   ];
 
   return (
@@ -613,6 +658,7 @@ export default function Thread() {
         onClose={() => setForwarding(null)}
       />
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
+      <LabelSheet conv={data} visible={sheet === "labels"} onClose={() => setSheet(null)} />
     </View>
   );
 }
@@ -771,8 +817,8 @@ const Bubble = memo(function Bubble({
               Internal note · {message.authorName ?? "Teammate"}
             </Text>
           ) : null}
-          <Text className="text-lg leading-snug text-fg">{message.body}</Text>
-          <Attachments items={message.attachments ?? []} />
+          <NoteBody body={message.body} color={c.amber} />
+          <Attachments items={message.attachments ?? []} mine />
           <Text className="pt-1 text-right text-2xs text-faint">{clockTime(message.createdAt)}</Text>
         </View>
       </Animated.View>
@@ -899,7 +945,7 @@ const Bubble = memo(function Bubble({
         ) : message.body ? (
           <Text className="text-lg leading-snug text-fg">{message.body}</Text>
         ) : null}
-        <Attachments items={message.attachments ?? []} />
+        <Attachments items={message.attachments ?? []} mine={mine} />
 
         <View className="flex-row items-center justify-end gap-1.5 pt-1">
           {/* A sent email says how many recipients opened it, and opens the

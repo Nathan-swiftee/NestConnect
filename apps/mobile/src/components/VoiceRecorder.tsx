@@ -77,9 +77,14 @@ export function VoiceRecorder({
   async function finish() {
     try {
       await recorder.stop();
-      // Put the audio session back so playback isn't stuck in record mode.
-      await setAudioModeAsync({ allowsRecording: false });
+      // Read the file's location *before* touching the audio session. Tearing
+      // down recording mode is what releases the recorder, and a released
+      // recorder has no uri to give — which would look exactly like "the
+      // recording came back empty" while the file sat on disk perfectly fine.
       const uri = recorder.uri;
+      // Put the session back, or playback stays in record mode: on iOS that
+      // means the next voice note comes out of the earpiece at a whisper.
+      await setAudioModeAsync({ allowsRecording: false });
       if (!uri) {
         setFailed("The recording came back empty");
         return;

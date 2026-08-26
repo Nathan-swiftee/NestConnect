@@ -94,7 +94,16 @@ For any full-screen scrolling layout in this app:
    `initialWindowMetrics`, and Android's `StatusBar.currentHeight`. Not by a
    wrapper several levels up.
 4. **`KeyboardAvoidingView` wraps the composer and nothing else.**
-5. **Registering a component with `cssInterop` makes the interop's computed props
+5. **A scroll region inside a `<Sheet>` must be able to shrink** —
+   `style={{ flexShrink: 1 }}`, its own `maxHeight`, or a fixed-height wrapper.
+   The mirror image of invariant 2, and the same root cause: Yoga's `flexShrink`
+   default is 0. The sheet panel is capped at 85% of the screen, so a taller
+   scroller overflows the cap and is clipped — and a clipped `ScrollView` has a
+   frame equal to its content, so it believes there is nowhere to scroll and
+   every drag inside it does nothing. That is what "the customer details pop-up
+   scrolls sometimes and sometimes doesn't" was: a short contact fits inside the
+   cap, a long one is silently frozen.
+6. **Registering a component with `cssInterop` makes the interop's computed props
    authoritative over the call site's** — including `style`. Register only what
    needs `className`, and keep that component's call sites on `className`.
 
@@ -115,13 +124,17 @@ Two reasons, both worth knowing before trusting a web export:
 pnpm --filter @ding/mobile check:layout   # also runs in CI
 ```
 
-`apps/mobile/scripts/check-layout-rules.mjs` enforces invariant 4 — and only
-invariant 4 — by reading the source: **a `KeyboardAvoidingView` must not contain
-a scroll region that claims a bounded height** (`style={{ flex: 1 }}` or
-`className="flex-1"`).
+`apps/mobile/scripts/check-layout-rules.mjs` enforces two of the invariants — 4
+and 5 — by reading the source. They are the two that a browser cannot see, and
+they are opposites:
 
-That single rule separates all four real call sites correctly, which is why it's
-the rule and not something broader:
+1. **a `KeyboardAvoidingView` must not contain a scroll region that claims a
+   bounded height** (`style={{ flex: 1 }}` / `className="flex-1"`);
+2. **a scroll region inside a `<Sheet>` must be able to shrink**
+   (`flexShrink: 1`, its own `maxHeight`, or a fixed-height wrapper).
+
+Rule 1 separates all four real call sites correctly, which is why it's the rule
+and not something broader:
 
 | call site | shape | verdict |
 | --- | --- | --- |
@@ -131,6 +144,13 @@ the rule and not something broader:
 | `compose.tsx` | `<KeyboardAvoidingView />` as a bottom spacer | clean |
 
 Verified by running it against each of those commits, not by reasoning about it.
+
+Rule 2 was checked the same way: with `flexShrink: 1` taken back off the details
+sheet's scroller it flags that line, and with it on the whole app is clean. It
+also has to leave `ForwardSheet` alone, whose list is bounded by a
+`<View className="h-[280px]">` wrapper rather than by anything on the list
+itself — so the check looks at the enclosing element too, and a scroller whose
+height something else already decides is not flagged.
 
 ### Why it isn't a rendering test
 
