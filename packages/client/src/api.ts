@@ -289,25 +289,27 @@ export const api = {
   // its FormData expects `{ uri, name, type }` as the value, with no third
   // argument at all. Passing the wrong one uploads zero bytes silently, so the
   // branch is explicit rather than clever.
-  uploadMedia: async (
+  uploadMedia: (
     file: File | Blob | UploadFile,
     meta?: { filename?: string; kind?: string; durationMs?: number; width?: number; height?: number; waveform?: number[] },
   ) => {
     const form = new FormData();
     if (isUploadFile(file)) {
       // React Native's FormData understands `{ uri, name, type }` and streams
-      // the file off disk. A DOM FormData does not: it stringifies the object
-      // to "[object Object]" and posts a text field, and the server answers
-      // "No file uploaded" — which is what a voice note recorded in the web
-      // export did, every time, silently. So in a DOM the URI is fetched into a
-      // real Blob first. `document` is the reliable tell: React Native has a
-      // `window` but never a `document`.
-      if (typeof document !== "undefined") {
-        const blob = await (await fetch(file.uri)).blob();
-        form.append("file", blob, file.name);
-      } else {
-        form.append("file", file as unknown as Blob);
-      }
+      // the file off disk. Its `append` also takes only two arguments, so a
+      // filename passed as a third is dropped on the floor — which is one of
+      // the reasons this branch stays exactly this shape.
+      //
+      // Do not add a "are we in a browser?" test here. There was one, keyed on
+      // `typeof document`, and `document` turns out to be defined in this app's
+      // native runtime — so every upload took the DOM branch, handed RN's
+      // FormData a Blob it has no way to serialise, and the native layer
+      // rejected the request with "Unsupported form data part". Uploads and
+      // voice notes were dead in the water. Which dialect applies is a fact
+      // about the app, not something to infer from a global: each app converts
+      // to the right shape before calling this (see the mobile app's
+      // `src/upload.ts`), and this just honours what it was handed.
+      form.append("file", file as unknown as Blob);
     } else {
       form.append("file", file, meta?.filename ?? (file instanceof File ? file.name : "file"));
     }

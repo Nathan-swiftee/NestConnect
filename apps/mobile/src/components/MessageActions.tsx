@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import type { ConversationWithMessages, Message } from "@ding/schemas";
 import { EyeIcon, ForwardIcon, ReplyIcon } from "../icons";
-import { fadeTo, spring, springTo, timing } from "../motion";
-import { useTheme, useThemeVars } from "../theme";
+import { fadeTo, spring, springTo, stagger, timing } from "../motion";
+import { elevation, useTheme, useThemeVars } from "../theme";
 import { readSummary } from "./ReadLog";
 import { useInsets } from "../insets";
 
@@ -23,6 +30,17 @@ const HOLD_SCRIM = { light: "rgba(24,24,22,.55)", dark: "rgba(0,0,0,.72)" } as c
 /** The same six the web offers, in the same order — a reaction should mean the
  *  same thing to an agent whichever screen they're on. */
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+/**
+ * Gap between one emoji arriving and the next.
+ *
+ * Six of them at 26ms is 130ms end to end — long enough that the row reads left
+ * to right instead of blinking on as a block, short enough that the last one has
+ * landed before a thumb could reach it. It is the same number the web overlay
+ * uses (`animationDelay: ${i * 26}ms`), which is the point: this is the one
+ * screen the two platforms are supposed to feel identical on.
+ */
+const REACTION_STEP = 26;
 
 /** One line describing a message with no text of its own, so the preview under
  *  the reaction row still says what you're acting on. */
@@ -181,31 +199,29 @@ export function MessageActions({
           className="px-4"
           pointerEvents="box-none"
         >
+          {/* Keyed on the message so the emoji replay their entrance every time
+              the overlay opens. Without it, holding a second message while the
+              first is still animating out reuses the mounted buttons and the
+              row simply appears. */}
           <View
-            style={{ backgroundColor: c.elevated }}
-            className="flex-row items-center justify-between gap-1 self-center rounded-full px-2 py-1.5"
+            key={shown.id}
+            style={[{ backgroundColor: c.elevated, borderColor: c.border }, elevation.float]}
+            className="flex-row items-center justify-between gap-0.5 self-center rounded-full border px-2 py-1.5"
           >
-            {QUICK_REACTIONS.map((e) => {
-              // A reaction already left is a toggle — sending the same emoji
-              // again clears it, which is what the server does.
-              const on = ours.includes(e);
-              return (
-                <Pressable
-                  key={e}
-                  onPress={() => {
-                    onReact(e);
-                    onClose();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={on ? `Remove ${e} reaction` : `React with ${e}`}
-                  accessibilityState={{ selected: on }}
-                  style={on ? { backgroundColor: c.brandTint } : undefined}
-                  className="h-11 w-11 items-center justify-center rounded-full active:opacity-60"
-                >
-                  <Text className="text-2xl">{e}</Text>
-                </Pressable>
-              );
-            })}
+            {QUICK_REACTIONS.map((e, i) => (
+              <ReactionButton
+                key={e}
+                emoji={e}
+                index={i}
+                // A reaction already left is a toggle — sending the same emoji
+                // again clears it, which is what the server does.
+                on={ours.includes(e)}
+                onPress={() => {
+                  onReact(e);
+                  onClose();
+                }}
+              />
+            ))}
           </View>
 
           {!isWhatsApp ? (
@@ -223,7 +239,13 @@ export function MessageActions({
             // reach the scrim behind it. Left inaccessible, a screen reader
             // announces the whole sheet as one button and skips its contents.
             accessible={false}
-            style={{ backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 }}
+            style={[
+              { backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 },
+              // Casts upward: it's flush with the bottom of the screen, so its
+              // top edge is the only one that can show any depth against the
+              // dimmed thread behind it.
+              elevation.lift,
+            ]}
             className="rounded-t-24 px-4 pt-3"
           >
             {/* The handle is the drag target, as on the shared Sheet. */}
@@ -261,6 +283,84 @@ export function MessageActions({
       </View>
       </GestureHandlerRootView>
     </Modal>
+  );
+}
+
+/**
+ * One emoji in the reaction pill.
+ *
+ * A component rather than a loop body because each one owns two animations, and
+ * hooks can't live in a `.map`. Both are the small details that separate this
+ * from a row of buttons that merely appeared:
+ *
+ *  - **The entrance.** It pops out of nothing — scale 0 to a little past 1 and
+ *    back — a fraction of a second after the one to its left. The delay is what
+ *    makes the row read as a row; the overshoot is what makes each one read as
+ *    landing rather than fading up.
+ *  - **The press.** Scale, not opacity. A 44pt target with a 24pt glyph in it
+ *    has no visible edge to dim, so `active:opacity-60` mostly greys the emoji
+ *    — which looks like it's disabled, not pressed. Shrinking it slightly is
+ *    the same feedback WhatsApp gives and reads instantly at that size.
+ *
+ * The two multiply into one transform, so a press mid-entrance is composed with
+ * it rather than fighting it.
+ */
+function ReactionButton({
+  emoji,
+  index,
+  on,
+  onPress,
+}: {
+  emoji: string;
+  /** Position in the row; sets how long this one waits before arriving. */
+  index: number;
+  /** Already this agent's reaction — tapping clears it. */
+  on: boolean;
+  onPress: () => void;
+}) {
+  const { c } = useTheme();
+  const enter = useSharedValue(0);
+  const opacity = useSharedValue(0);
+  const press = useSharedValue(1);
+
+  useEffect(() => {
+    // `stagger` caps the delay for long lists; six never reaches the cap, and
+    // passing it explicitly keeps that true if the set ever grows.
+    const wait = stagger(index, REACTION_STEP, QUICK_REACTIONS.length);
+    enter.value = withDelay(wait, withSpring(1, spring.pop));
+    // Opacity is a fade, so it gets a curve, and a short one: the emoji should
+    // be visible for most of its own pop rather than arriving already there.
+    opacity.value = withDelay(wait, withTiming(1, timing.quick));
+  }, [index, enter, opacity]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [
+      { scale: enter.value * press.value },
+      // Starts 6pt low and rides up with the spring, so the pop has a direction.
+      { translateY: (1 - enter.value) * 6 },
+    ],
+  }));
+
+  return (
+    <Animated.View style={style}>
+      <Pressable
+        onPress={onPress}
+        onPressIn={() => {
+          press.value = springTo(0.92, spring.quick);
+        }}
+        onPressOut={() => {
+          press.value = springTo(1, spring.quick);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={on ? `Remove ${emoji} reaction` : `React with ${emoji}`}
+        accessibilityState={{ selected: on }}
+        style={on ? { backgroundColor: c.brandTint } : undefined}
+        className="h-11 w-11 items-center justify-center rounded-full"
+      >
+        <Text className="text-2xl">{emoji}</Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 

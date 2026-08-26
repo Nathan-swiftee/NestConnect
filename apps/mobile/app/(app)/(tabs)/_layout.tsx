@@ -1,9 +1,8 @@
-import { useWindowDimensions } from "react-native";
 import { Tabs } from "expo-router";
 import { useMe } from "@ding/client";
 import { ContactsIcon, InboxIcon, InsightsIcon, SettingsIcon } from "../../../src/icons";
+import { TabBar } from "../../../src/components/TabBar";
 import { useTheme } from "../../../src/theme";
-import { useInsets } from "../../../src/insets";
 
 /**
  * The app's primary navigation — the web's icon rail, laid along the bottom
@@ -20,46 +19,20 @@ import { useInsets } from "../../../src/insets";
  */
 export default function TabsLayout() {
   const { c } = useTheme();
-  const insets = useInsets();
-  const { fontScale } = useWindowDimensions();
   const { data: me } = useMe();
 
-  // Dynamic Type: the bar grows with the label instead of cropping it.
-  //
-  // A fixed-height bar sized for an 11pt label crops the descenders the moment
-  // someone turns text size up — and the people most likely to do that are the
-  // least able to guess what the cropped word said. Most apps sidestep this by
-  // pinning the label at one size (React Navigation does exactly that on iOS
-  // 13+, leaning on the long-press large-content overlay); we can afford to do
-  // the honest thing instead and give the text the room it asks for.
-  //
-  // Capped at 1.6×: past that the bar starts eating the inbox it's meant to
-  // navigate, and the large-content viewer — which stays on — is the better
-  // answer at accessibility sizes.
-  const labelHeight = Math.ceil(11 * Math.min(fontScale, 1.6) * 1.35);
   const elevated = me?.user?.role === "admin" || me?.user?.role === "manager";
 
   return (
     <Tabs
+      // The bar is ours (`src/components/TabBar.tsx`), for the travelling pill.
+      // With one supplied, the `tabBar*` styling options are dead — the stock
+      // bar is what reads them — so they're gone from here rather than left
+      // behind to look load-bearing. The one thing that still has to be set at
+      // this level is `sceneStyle`, which belongs to the screens, not the bar.
+      tabBar={(props) => <TabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: c.brandStrong,
-        tabBarInactiveTintColor: c.textFaint,
-        // Height and padding are set rather than left to the default: on a
-        // device with no home indicator the inset is 0 and the labels sit hard
-        // against the screen edge with their descenders clipped. The 43 is the
-        // measured chrome — 8 top padding, a 25pt icon box, the 4pt gap, and
-        // 6pt of slack — so at the default text size this comes to the same 68
-        // it always was, and only grows from there.
-        tabBarStyle: {
-          backgroundColor: c.surface,
-          borderTopColor: c.border,
-          height: 43 + labelHeight + (insets.bottom > 0 ? insets.bottom : 10),
-          paddingTop: 8,
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
-        },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-        tabBarAllowFontScaling: true,
         sceneStyle: { backgroundColor: c.bg },
       }}
     >

@@ -54,4 +54,25 @@ export function useTheme(): { scheme: "light" | "dark"; c: ThemeColors } {
 export const elevation = {
   card: { shadowColor: "#0D1512", shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
   sheet: { shadowColor: "#0D1512", shadowOpacity: 0.14, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
+  /**
+   * Something small floating over a dimmed screen — the reaction pill above a
+   * held message, and nothing else so far.
+   *
+   * Much heavier than `sheet`, on purpose. The other two sit on the page and
+   * only need to separate from it; this one hangs in the middle of a scrim over
+   * a backgrounded thread, and at `sheet`'s weight it reads as painted onto the
+   * dim rather than lifted off it. The web overlay makes the same jump
+   * (`0 14px 34px -10px rgba(0,0,0,.45)` on `.hold__react`).
+   */
+  float: { shadowColor: "#000000", shadowOpacity: 0.42, shadowRadius: 22, shadowOffset: { width: 0, height: 12 }, elevation: 20 },
+  /**
+   * A panel rising from the bottom edge, casting *upward*.
+   *
+   * The offset is negative because the light in every other step comes from
+   * above, and a sheet flush with the bottom of the screen has nothing below it
+   * to catch a downward shadow — the only edge that can show depth is its top
+   * one. Android ignores the direction (`elevation` is a single scalar), which
+   * is fine: there it reads as a general lift, which is still the right answer.
+   */
+  lift: { shadowColor: "#000000", shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: -10 }, elevation: 16 },
 } as const;

@@ -5,6 +5,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  type QueryClient,
 } from "@tanstack/react-query";
 import {
   ClientEvent,
@@ -38,7 +39,7 @@ import {
   type SendBroadcastInput,
   type AnalyticsRange,
 } from "@ding/schemas";
-import { api } from "./api";
+import { api, type MeResponse } from "./api";
 import { clientConfig } from "./config";
 import { getSocket, resetSocket } from "./socket";
 
@@ -64,10 +65,37 @@ export function useLogin() {
     onSuccess: (data) => {
       // A 2FA challenge isn't a session yet — the LoginScreen shows the code step.
       if ("twoFactorRequired" in data) return;
-      qc.setQueryData(["session"], data);
+      seedIdentity(qc, data);
       qc.invalidateQueries();
     },
   });
+}
+
+/**
+ * Hand a fresh login response to every cache that answers "who am I".
+ *
+ * There are two — `["session"]` from `/auth/session` and `["me"]` from `/me` —
+ * and they return the identical payload, so the answer we are already holding
+ * is the right answer for both. Seeding both means the screens that mount
+ * straight after sign-in (Settings, and the tab bar deciding whether this person
+ * may see Insights) have their answer on the first frame instead of after a
+ * round trip, and it saves a request.
+ *
+ * It also makes the pair robust in a way an invalidate is not. If `["me"]` has
+ * already been fetched and failed — signed out, or a flaky first request — it
+ * parks in an error state, and `invalidateQueries` only marks such a query
+ * stale: a stale errored query with no observer mounted does not refetch, so a
+ * screen mounting later can read `undefined` and keep reading it. Writing the
+ * value in clears the error outright.
+ *
+ * Exported because the two apps sign in differently: the web goes through
+ * `useLogin` below, while the phone has to get its token into the Keychain
+ * before any query runs and so calls `api.login` directly. Both end up here, so
+ * *which* caches hold the identity is stated once.
+ */
+export function seedIdentity(qc: QueryClient, data: MeResponse) {
+  qc.setQueryData(["session"], data);
+  qc.setQueryData(["me"], data);
 }
 
 export function useLoginTwoFactor() {
@@ -76,7 +104,7 @@ export function useLoginTwoFactor() {
     mutationFn: (v: string | { code: string; pendingToken?: string }) =>
       typeof v === "string" ? api.loginTwoFactor(v) : api.loginTwoFactor(v.code, v.pendingToken),
     onSuccess: (data) => {
-      qc.setQueryData(["session"], data);
+      seedIdentity(qc, data);
       qc.invalidateQueries();
     },
   });

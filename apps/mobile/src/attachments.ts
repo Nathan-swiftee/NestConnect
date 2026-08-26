@@ -4,6 +4,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { api } from "@ding/client";
 import type { Attachment } from "@ding/schemas";
+import { uploadable } from "./upload";
 
 /**
  * One file the agent has chosen but not yet sent.
@@ -60,7 +61,7 @@ export function useStagedAttachments() {
     async (s: Staged) => {
       try {
         const attachment = await api.uploadMedia(
-          { uri: s.uri, name: s.name, type: s.mime },
+          await uploadable(s.uri, s.name, s.mime),
           {
             filename: s.name,
             kind: s.kind,

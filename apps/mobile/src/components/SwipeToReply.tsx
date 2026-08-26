@@ -57,6 +57,7 @@ export function SwipeToReply({
   onReply,
   mine,
   enabled = true,
+  anchorCenter,
   children,
 }: {
   onReply: () => void;
@@ -64,6 +65,20 @@ export function SwipeToReply({
   mine: boolean;
   /** Off for internal notes and email, where there's nothing to reply *to*. */
   enabled?: boolean;
+  /**
+   * Where the middle of the *bubble* sits, measured from the top of this row.
+   *
+   * The row is taller than the bubble: it carries the gap above, and below the
+   * bubble it may carry a reaction chip and a retry line. Centring the arrow on
+   * the row therefore centres it on none of those things — with a reaction chip
+   * it sat low, without one it sat high, and either way it lined up with the
+   * message above or below rather than the one being swiped.
+   *
+   * The caller is the only place that knows which of its children is the bubble,
+   * so it measures that and says. Falls back to the row's own centre when it
+   * hasn't been measured yet (one frame, while the arrow is still invisible).
+   */
+  anchorCenter?: number;
   children: React.ReactNode;
 }) {
   const { c } = useTheme();
@@ -112,22 +127,24 @@ export function SwipeToReply({
     <GestureDetector gesture={pan}>
       <View onLayout={(e) => setH(e.nativeEvent.layout.height)}>
         {/* The arrow sits behind, on the side the bubble is pulled away from,
-            level with the middle of it.
+            level with the middle of the bubble.
 
-            Positioned from a measured height rather than stretched with
-            `top: 0; bottom: 0`, because that stretch was landing the arrow at
-            the top of the row instead of its centre — on a short bubble it
-            appeared above the message it belonged to, next to the previous one.
-            An explicit offset can't be interpreted two ways. `h` is 0 until the
-            first layout, which puts the arrow at the top for one frame while it
-            is still fully transparent. */}
+            "The middle of the bubble" is the whole difficulty. This row is not
+            the bubble: above it is the gap to the previous message, and below
+            it there may be a reaction chip and a retry line. Two earlier
+            versions centred on the wrong box — first by stretching
+            `top: 0; bottom: 0` over the row, then by measuring the row's own
+            height — and both put the arrow beside a neighbouring message
+            instead of this one. The caller measures its bubble and passes the
+            centre down; `h` is only the fallback for the first frame, while the
+            arrow is still fully transparent anyway. */}
         <Animated.View
           pointerEvents="none"
           style={[
             hint,
             {
               position: "absolute",
-              top: Math.max(0, (h - ARROW) / 2),
+              top: Math.max(0, (anchorCenter && anchorCenter > 0 ? anchorCenter : h / 2) - ARROW / 2),
               height: ARROW,
               justifyContent: "center",
               ...(mine ? { right: 8 } : { left: 8 }),

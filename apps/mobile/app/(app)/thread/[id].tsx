@@ -45,11 +45,15 @@ import { Ticks } from "../../../src/components/Ticks";
 import { useToast } from "../../../src/components/Toast";
 import {
   BackIcon,
+  CheckCircleIcon,
   DetailsIcon,
   EyeIcon,
   ForwardIcon,
   InboxIcon,
   MoreIcon,
+  ProfileIcon,
+  ReopenIcon,
+  SnoozeIcon,
   TagIcon,
   TeamGlyph,
   channelColor,
@@ -242,7 +246,7 @@ export default function Thread() {
       rows.push(
         // Transparent around an opaque pill, so the thread passes either side of
         // it as it scrolls under — WhatsApp's floating date, not a full-width bar.
-        <View key={`day-${group.key}`} className="items-center pb-0.5 pt-1.5">
+        <View key={`day-${group.key}`} className="items-center pb-1 pt-1.5">
           <View
             style={{
               backgroundColor: c.surface2,
@@ -496,10 +500,16 @@ export default function Thread() {
     },
   }));
 
+  // Every row carries a glyph. A list where one item has an icon and the rest
+  // don't reads as three plain rows and one mistake — the eye goes to the odd
+  // one out rather than down the list.
   const moreActions: SheetAction[] = [
     {
       key: "status",
       label: closed ? "Reopen conversation" : "Resolve conversation",
+      leading: closed
+        ? <ReopenIcon size={20} color={c.textMuted} />
+        : <CheckCircleIcon size={20} color={c.textMuted} />,
       detail: closed ? "Move it back into the inbox" : "Close it — a new message reopens it",
       onPress: () => {
         haptics.success();
@@ -510,8 +520,20 @@ export default function Thread() {
         });
       },
     },
-    { key: "snooze", label: "Snooze…", detail: "Hide it until later", onPress: () => setSheet("snooze") },
-    { key: "assign", label: "Assign…", onPress: () => setSheet("assign") },
+    {
+      key: "snooze",
+      label: "Snooze…",
+      leading: <SnoozeIcon size={20} color={c.textMuted} />,
+      detail: "Hide it until later",
+      onPress: () => setSheet("snooze"),
+    },
+    {
+      key: "assign",
+      label: "Assign…",
+      leading: <ProfileIcon size={20} color={c.textMuted} />,
+      detail: data.assigneeName ? `With ${data.assigneeName}` : "Nobody yet",
+      onPress: () => setSheet("assign"),
+    },
     {
       key: "labels",
       label: "Labels…",
@@ -827,7 +849,10 @@ const Bubble = memo(function Bubble({
    * screen. A margin on the message before it scrolls away like everything else.
    */
   const gapTop = firstOfDay ? 0 : continues ? 2 : 10;
-  const gapBottom = lastOfDay ? 14 : 0;
+  const gapBottom = lastOfDay ? 16 : 0;
+  /** Height of the bubble alone — not the row, which also carries the gap above
+   *  and any reaction chip below. The swipe-to-reply arrow lines up with this. */
+  const [bubbleH, setBubbleH] = useState(0);
 
   if (message.internal) {
     const byMe = message.authorUserId === meId;
@@ -896,7 +921,12 @@ const Bubble = memo(function Bubble({
   const tailed = endsRun && !isEmail;
 
   return (
-    <SwipeToReply onReply={() => onReply(message)} mine={mine} enabled={canSwipe}>
+    <SwipeToReply
+      onReply={() => onReply(message)}
+      mine={mine}
+      enabled={canSwipe}
+      anchorCenter={bubbleH ? gapTop + bubbleH / 2 : 0}
+    >
     <Animated.View
       testID={`msg-${message.id}`}
       entering={enter.row}
@@ -904,6 +934,7 @@ const Bubble = memo(function Bubble({
       style={{ marginTop: gapTop, marginBottom: gapBottom }}
     >
       <Pressable
+        onLayout={(e) => setBubbleH(e.nativeEvent.layout.height)}
         onLongPress={() => onLongPress(message)}
         delayLongPress={280}
         accessibilityRole="button"

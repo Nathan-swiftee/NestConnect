@@ -60,6 +60,27 @@ export const spring = {
     mass: 1,
     reduceMotion: ReduceMotion.System,
   } satisfies WithSpringConfig,
+  /**
+   * The deliberate exception to "nothing should overshoot visibly".
+   *
+   * For something small appearing from nothing, where the bounce *is* the
+   * content: the six reaction emoji popping out of the pill one after another.
+   * There the overshoot isn't a physical artefact to be damped away, it's the
+   * whole reason the row feels alive rather than merely rendered — the web
+   * mobile overlay does the same thing (`@keyframes emojiPop`, 0 → 1.22 → 1).
+   *
+   * Tuned to that peak rather than eyeballed: damping ratio
+   * ζ = damping / 2√(stiffness·mass) = 12 / 2√(260 × 0.7) ≈ 0.44, and a spring's
+   * first overshoot is exp(−πζ/√(1−ζ²)) ≈ 0.22 above the target. Use it only on
+   * scale, only on something under ~50pt, and never on a thing that travels —
+   * a bouncing panel reads as a toy.
+   */
+  pop: {
+    damping: 12,
+    stiffness: 260,
+    mass: 0.7,
+    reduceMotion: ReduceMotion.System,
+  } satisfies WithSpringConfig,
 };
 
 /** Timing curves, for opacity and colour. `Easing.out` on the way in so the

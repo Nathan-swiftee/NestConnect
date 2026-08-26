@@ -4,7 +4,7 @@ import Animated, { FadeIn, ReduceMotion, ZoomIn } from "react-native-reanimated"
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, type MeResponse } from "@ding/client";
+import { api, seedIdentity, type MeResponse } from "@ding/client";
 import type { TwoFactorChallenge } from "@ding/schemas";
 import { Button } from "../src/components/Button";
 import { Field } from "../src/components/Field";
@@ -42,10 +42,15 @@ export default function SignIn() {
   const [error, setError] = useState<string | null>(null);
   const [resent, setResent] = useState(false);
 
-  /** Store the token, seed the session, and go. Order matters — see above. */
+  /** Store the token, seed the identity, and go. Order matters — see above. */
   async function land(result: MeResponse & { token?: string }) {
     if (result.token) await saveSession(result.token);
-    qc.setQueryData(["session"], result);
+    // Both identity caches, not just the session one. `["me"]` has already
+    // failed and given up by the time anyone gets here — it fires and 401s
+    // while this screen is still on top — and an errored query with no observer
+    // is not brought back by an invalidate. Without this, Settings shows no
+    // name and an admin gets no Insights tab until the app is relaunched.
+    seedIdentity(qc, result);
     await qc.invalidateQueries();
     router.replace("/(app)/(tabs)");
   }
