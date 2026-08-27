@@ -11,6 +11,7 @@ import type { PushPreferences } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { BellIcon, ContrastIcon, LogoutIcon } from "../../../src/icons";
 import { usePushRegistration } from "../../../src/push";
+import { isSoundOn, playReceived, setSoundOn, subscribeSound } from "../../../src/sound";
 import { useTheme } from "../../../src/theme";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { BuildStamp } from "../../../src/components/BuildStamp";
@@ -44,6 +45,20 @@ export default function Settings() {
   // The account's preferences and this phone's OS permission are two different
   // things, and a toggle means nothing while the second is off — hence both.
   const push = usePushRegistration(!!me);
+
+  // Sound is a preference of this phone, not of the account, so it's read from
+  // and written to the local store rather than the API. Subscribed rather than
+  // just read once because `sound.ts` loads the stored value asynchronously at
+  // startup, which can land after this screen has already rendered.
+  const [sound, setSoundState] = useState(isSoundOn);
+  useEffect(() => subscribeSound(setSoundState), []);
+  function setSound(on: boolean) {
+    setSoundState(on);
+    setSoundOn(on);
+    // Play the cue you just turned on. A sound setting you can't hear the
+    // effect of is a setting you have to test by messaging someone.
+    if (on) playReceived();
+  }
 
   // Availability is tracked locally for an instant toggle, then synced — the
   // same arrangement the web's rail menu uses.
@@ -183,6 +198,20 @@ export default function Settings() {
             />
           </>
         )}
+      </View>
+
+      {/* Its own card, because it isn't a notification setting: these are the
+          sounds the app makes while you're looking at it, and they're kept on
+          this phone rather than on the account — the same choice the web keeps
+          in its own browser. */}
+      <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 mt-4 rounded-16 border">
+        <Toggle
+          label="In-app sounds"
+          detail="A cue when a message is sent or arrives, while the app is open"
+          value={sound}
+          onChange={setSound}
+          last
+        />
       </View>
 
       {p?.quietHours ? (

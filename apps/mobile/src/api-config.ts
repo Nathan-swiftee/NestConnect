@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import { configureClient } from "@ding/client";
 import { clearSession, sessionToken } from "./session";
+import { playReceived, playSent } from "./sound";
 import { uploadFile } from "./upload";
 
 /**
@@ -69,9 +70,10 @@ export function configureMobileClient(): void {
     // Posting a file off this phone's disk doesn't go through `fetch` at all —
     // see `upload.ts` for the two versions that did and why neither could work.
     uploadFile,
-    // No sound cues: a phone already has the OS notification sound, and a
-    // second one from inside the app is just noise.
-    cues: {},
+    // The same cues the web plays — a WhatsApp send sounds like a WhatsApp
+    // send on both. `sound.ts` keeps them to the foreground, so the OS
+    // notification is still the only thing you hear when the app is away.
+    cues: { received: playReceived, sent: playSent },
     onSignedOut: () => {
       void clearSession();
       onSignedOut();

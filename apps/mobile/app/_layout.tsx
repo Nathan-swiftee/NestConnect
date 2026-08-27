@@ -11,6 +11,7 @@ import { configureMobileClient, setSignOutHandler } from "../src/api-config";
 import { ErrorBoundary } from "../src/components/ErrorBoundary";
 import { ToastProvider } from "../src/components/Toast";
 import { loadSession } from "../src/session";
+import { loadSoundPreference } from "../src/sound";
 import { initTelemetry } from "../src/telemetry";
 import { paletteVars } from "../src/theme";
 import { AppearanceProvider, useAppearance } from "../src/appearance";
@@ -47,6 +48,10 @@ export default function RootLayout() {
       router.replace("/sign-in");
     });
     void loadSession().finally(() => setReady(true));
+    // Not awaited: nothing can make a sound before the first message arrives,
+    // and until this lands the default (on) applies — which is the answer it
+    // will give in almost every case anyway.
+    void loadSoundPreference();
   }, []);
 
   return (
