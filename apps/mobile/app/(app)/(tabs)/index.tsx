@@ -22,6 +22,7 @@ import {
 } from "@ding/client";
 import type { Conversation } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
+import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
 import { ViewSwitcher } from "../../../src/components/ViewSwitcher";
 import { PushGate, useDelayedPrompt } from "../../../src/components/PushGate";
@@ -435,7 +436,7 @@ export default function Inbox() {
         // busy inbox lays out past the bottom of the screen instead of
         // scrolling inside itself.
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 + TAB_BAR_H }}
         keyboardDismissMode="on-drag"
         // A shared inbox is read by pulling. `useRefresh` also fetches any new
         // Gmail on demand, so the gesture means "check now", not just "refetch".

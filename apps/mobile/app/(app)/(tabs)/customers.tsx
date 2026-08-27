@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { relativeTime, useContact, useContacts } from "@ding/client";
 import type { Contact } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
+import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { ChevronRight, SearchIcon, XIcon } from "../../../src/icons";
@@ -68,7 +69,7 @@ export default function Customers() {
         keyExtractor={(ct) => ct.id}
         renderItem={({ item }) => <Row contact={item} onPress={() => setOpen(item.id)} />}
         ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-[68px] h-px" />}
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 24 + TAB_BAR_H }}
         keyboardDismissMode="on-drag"
         ListEmptyComponent={
           <QueryState
@@ -214,7 +215,7 @@ function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void
           ListEmptyComponent={
             <Text className="px-6 text-md text-muted">No conversations with this customer yet.</Text>
           }
-          contentContainerStyle={{ paddingBottom: 32 }}
+          contentContainerStyle={{ paddingBottom: 32 + TAB_BAR_H }}
         />
       )}
     </View>

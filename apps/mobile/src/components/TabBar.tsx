@@ -47,15 +47,17 @@ import { elevation, useTheme } from "../theme";
  * whole number, so it's zero at rest by construction and needs no separate
  * animation to keep in sync with the travel.
  *
- * The capsule stays **in the layout** rather than being absolutely positioned
- * over the screen. WhatsApp lets its list scroll underneath; doing the same
- * here would mean every tab screen owing the bar an extra bottom inset, and a
- * screen that forgets hides its own last row behind the navigation — which is
- * the exact failure this app has already shipped twice, with the chat header
- * under the clock and the composer under the system bar. The bar occupies its
- * own space, so nothing can end up beneath it, and what shows around the
- * capsule is the page's own background — which is what a list scrolled to its
- * end would have shown there anyway.
+ * The capsule **overlays** the screen, so the list passes behind it rather than
+ * stopping on top of it. That is most of why the reference reads as floating,
+ * and it can't be faked by a bar that sits in the layout — with nothing behind
+ * it there is nothing for it to float over.
+ *
+ * The cost is that nothing reserves the bar's space any more, so a screen that
+ * scrolls has to end its content above it. That is exactly the failure this app
+ * has already shipped twice — the chat header under the clock, the composer
+ * under the system bar — so the height is a single exported constant,
+ * {@link TAB_BAR_H}, and every tab screen adds that same number rather than
+ * each picking its own and drifting.
  *
  * ---
  *
@@ -68,9 +70,9 @@ import { elevation, useTheme } from "../theme";
  * file takes the boring path.
  */
 
-/** The pill's box. Wide enough to sit under a 22pt icon with air around it. */
-const PILL_W = 58;
-const PILL_H = 34;
+/** The pill's box. Wide enough to sit under the icon with air around it. */
+const PILL_W = 54;
+const PILL_H = 30;
 
 /** Extra width, as a fraction, at the midpoint of a one-tab hop. */
 const STRETCH = 0.24;
@@ -79,20 +81,58 @@ const STRETCH = 0.24;
 const INSET = 12;
 /** The capsule's own padding, inside which the tabs and the pill sit. */
 const PAD_X = 6;
-const PAD_Y = 8;
+const PAD_Y = 5;
+
+const ICON = 21;
+/**
+ * The label's line box, pinned rather than left to the font.
+ *
+ * This is the fix for the icons visibly jumping as you switched tabs, and it is
+ * an Android-only fault that no amount of looking at it in a browser would have
+ * found — every position measures identical on react-native-web. On Android a
+ * numeric `fontWeight` selects a different *font file* (Roboto Medium vs
+ * Roboto Bold), and two files have two sets of ascent/descent metrics, so
+ * bolding the selected label made its line box a little taller. That grew the
+ * item, which grew the capsule, which — being anchored to the bottom — pushed
+ * every icon in the bar up by a pixel or two and dropped them again on the way
+ * back. An explicit `lineHeight` gives the text the same box in either weight,
+ * so the bar's height is now a constant of the layout rather than a property of
+ * whichever font Android reached for.
+ */
+const LABEL_SIZE = 10.5;
+const LABEL_LINE = 13;
+/** Between the icon's box and the label. */
+const LABEL_GAP = 1;
+
 /**
  * The capsule's corner.
  *
- * At default text size the capsule comes to about 66pt tall, so this is past
- * half its height and both platforms clamp it to a fully round end — the shape
- * in the reference. It's a fixed number rather than a computed half-height
- * because the height isn't known until layout, and turning Dynamic Type up
- * should soften the ends rather than break the radius.
+ * Past half the capsule's height, so both platforms clamp it to a fully round
+ * end — the shape in the reference. A fixed number rather than a computed
+ * half-height because the height isn't known until layout, and turning Dynamic
+ * Type up should soften the ends rather than break the radius.
  */
-const CAPSULE_R = 34;
+const CAPSULE_R = 30;
+
+/** The capsule's height, and so the room a screen owes it. See {@link TAB_BAR_H}. */
+const CAPSULE_H = PAD_Y * 2 + PILL_H + LABEL_GAP + LABEL_LINE;
+
+/**
+ * How much bottom room a tab screen has to leave for the bar.
+ *
+ * The bar overlays the screen so content passes behind it, which is what makes
+ * it read as floating rather than as a shelf the page sits on. The cost of that
+ * is this number: a screen that scrolls has to end its content above the bar
+ * itself, because nothing reserves the space any more. Exported so the screens
+ * add the same figure the bar is actually drawn at instead of each guessing.
+ *
+ * The safe-area inset is *not* included — a screen adds that itself, as it
+ * already did before the bar floated.
+ */
+export const TAB_BAR_H = CAPSULE_H + 10;
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const { c } = useTheme();
+  const { c, scheme } = useTheme();
   const insets = useInsets();
 
   // Only the routes that actually appear, and their own dense numbering.
@@ -130,7 +170,14 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       ready.value = fadeTo(0, timing.quick);
       return;
     }
-    progress.value = springTo(active, spring.base);
+    // `settle`, not `base`. The travel is the thing being looked at, and at
+    // the default stiffness it was over in about 200ms — technically a glide,
+    // in practice a cut. Softer covers the same distance in half again the
+    // time, which is long enough to actually watch the pill leave one tab and
+    // arrive at the next, and it keeps the mid-flight stretch on screen instead
+    // of flashing past. Still essentially critically damped (ζ ≈ 0.89), so it
+    // arrives without a wobble.
+    progress.value = springTo(active, spring.settle);
   }, [active, progress, ready]);
 
   const pill = useAnimatedStyle(() => {
@@ -161,13 +208,18 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   return (
     <View
+      // Out of flow, pinned to the bottom, and transparent — the screen runs the
+      // full height of the navigator and its content scrolls underneath.
+      // `pointerEvents="box-none"` on the wrapper is what keeps the transparent
+      // margin either side of the capsule from swallowing taps meant for the
+      // list behind it.
+      pointerEvents="box-none"
       style={{
-        // The ground the capsule floats on. Explicitly the page colour rather
-        // than transparent: on Android a transparent bar shows the window
-        // behind the navigator, which is black, not the screen.
-        backgroundColor: c.bg,
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
         paddingHorizontal: INSET,
-        paddingTop: 6,
         // The bar's height is whatever its contents come to, so Dynamic Type is
         // handled by construction: turn text size up and the labels take the
         // room they need instead of losing their descenders to a fixed height.
@@ -179,6 +231,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         // The floor of 8 is for a device with no home indicator, where the
         // inset is 0 and the capsule would otherwise sit hard against the glass.
         paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+        paddingTop: 0,
       }}
       testID="tabbar"
       accessibilityRole="tablist"
@@ -214,11 +267,13 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               width: PILL_W,
               height: PILL_H,
               borderRadius: PILL_H / 2,
-              // Neutral, not brand — the reference's is grey, and on a white
-              // capsule a green slab would shout over the icon it exists to
-              // frame. The green stays where it means something: the selected
-              // glyph and its label.
-              backgroundColor: c.surface2,
+              // Neutral, as in the reference — but heavier than the palette's
+              // `surface2`, which at 5% black on a white capsule was so close
+              // to invisible on a real screen in daylight that the travel it
+              // exists to show read as nothing moving at all. This is the one
+              // value in the file tuned to the surface it sits on rather than
+              // taken from the tokens, for the same reason `PILL_W` is.
+              backgroundColor: scheme === "dark" ? "rgba(255,255,255,0.10)" : "rgba(26,26,24,0.075)",
             },
             pill,
           ]}
@@ -305,7 +360,9 @@ function TabItem({
   const press = useSharedValue(1);
 
   useEffect(() => {
-    on.value = springTo(focused ? 1 : 0, spring.base);
+    // The same spring as the pill's travel, so the icon and label change hands
+    // *with* it rather than finishing early and leaving the pill to catch up.
+    on.value = springTo(focused ? 1 : 0, spring.settle);
   }, [focused, on]);
 
   // The whole item shrinks under the thumb — the pill is behind the icon, so
@@ -353,9 +410,9 @@ function TabItem({
           {/* Muted rather than faint, to match the label above it and the
               reference: an unselected destination is still a destination, and
               at `faint` the three you aren't on fade into the capsule. */}
-          <Animated.View style={idle}>{icon?.({ focused: false, color: c.textMuted, size: 23 })}</Animated.View>
+          <Animated.View style={idle}>{icon?.({ focused: false, color: c.textMuted, size: ICON })}</Animated.View>
           <Animated.View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }, active]}>
-            {icon?.({ focused: true, color: c.brandStrong, size: 23 })}
+            {icon?.({ focused: true, color: c.brandStrong, size: ICON })}
           </Animated.View>
         </View>
         <Animated.Text
@@ -365,16 +422,21 @@ function TabItem({
           maxFontSizeMultiplier={1.6}
           style={[
             {
-              fontSize: 11,
+              fontSize: LABEL_SIZE,
+              // Pinned, so the two font files Android picks for these two
+              // weights can't hand back two different line boxes. See the note
+              // on LABEL_LINE — this one line is the whole of the icons-jumping
+              // fix, and it has to stay whatever else changes here.
+              lineHeight: LABEL_LINE,
               // Weight, not just colour. The reference leans on it hard, and it
               // survives where colour doesn't — a green label and a grey one
               // are the same label to anyone who can't separate the two hues.
               // Switched rather than animated: React Native can't interpolate a
-              // font weight, and at 11pt the change reads as the label
+              // font weight, and at this size the change reads as the label
               // sharpening rather than as a jump. The item is centred in a
               // flexed cell, so the extra width moves nothing but itself.
               fontWeight: focused ? "700" : "500",
-              marginTop: 2,
+              marginTop: LABEL_GAP,
               // A tab label is a name, not a sentence: on a narrow phone with
               // large text "Customers" would otherwise be squeezed into the
               // neighbouring tabs' space rather than shrinking within its own.

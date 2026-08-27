@@ -9,6 +9,7 @@ import {
 } from "@ding/client";
 import type { PushPreferences } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
+import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { BellIcon, ContrastIcon, LogoutIcon } from "../../../src/icons";
 import { usePushRegistration } from "../../../src/push";
 import { isSoundOn, playReceived, setSoundOn, subscribeSound } from "../../../src/sound";
@@ -82,7 +83,7 @@ export default function Settings() {
       // The tab bar sits over the scroll view, so the bottom padding has to
       // clear the bar itself (43 plus its label) as well as the safe area —
       // otherwise the last thing on the page is permanently half-hidden.
-      contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 96 }}
+      contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 96 + TAB_BAR_H }}
     >
       <Text accessibilityRole="header" className="px-4 pb-4 text-2xl font-semibold tracking-tight text-fg">
         Settings
