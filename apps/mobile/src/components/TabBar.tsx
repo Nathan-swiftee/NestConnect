@@ -10,16 +10,28 @@ import type { BottomTabBarProps } from "expo-router/build/react-navigation/botto
 import { haptics } from "../haptics";
 import { useInsets } from "../insets";
 import { fadeTo, spring, springTo, timing } from "../motion";
-import { useTheme } from "../theme";
+import { elevation, useTheme } from "../theme";
 
 /**
- * The bottom navigation, with a pill that travels.
+ * The bottom navigation: a floating capsule with a pill that travels.
  *
- * The stock tab bar recolours the selected item and nothing else, so switching
- * tabs is a cut: one icon goes grey, another goes green, and the eye has to
- * find the change. Here a tinted pill slides from the old tab to the new one,
- * which does two things a colour swap can't — it says *where you came from*,
- * and it gives the tap something to land on.
+ * Shaped after WhatsApp's, which is the reference everyone on this product
+ * already has in their pocket. Two things make that bar read the way it does,
+ * and neither is the icons:
+ *
+ *  1. **It floats.** The bar is a rounded capsule inset from the screen edges
+ *     with a shadow under it, not a slab welded to the bottom with a hairline
+ *     on top. A capsule reads as a control you operate; a slab reads as the
+ *     edge of the window.
+ *  2. **The selection is behind the icon, not the whole item.** A neutral pill
+ *     sits under the glyph and the label stays outside it, which keeps the
+ *     label legible and stops the selection from looking like a button.
+ *
+ * The pill is ours. The stock tab bar recolours the selected item and nothing
+ * else, so switching tabs is a cut: one icon goes grey, another goes green, and
+ * the eye has to find the change. Here the pill slides from the old tab to the
+ * new one, which does two things a colour swap can't — it says *where you came
+ * from*, and it gives the tap something to land on.
  *
  * How it moves is the whole point, so it's worth saying what it isn't. The pill
  * doesn't fade out and in at the destination (that's a cut with extra steps),
@@ -35,6 +47,16 @@ import { useTheme } from "../theme";
  * whole number, so it's zero at rest by construction and needs no separate
  * animation to keep in sync with the travel.
  *
+ * The capsule stays **in the layout** rather than being absolutely positioned
+ * over the screen. WhatsApp lets its list scroll underneath; doing the same
+ * here would mean every tab screen owing the bar an extra bottom inset, and a
+ * screen that forgets hides its own last row behind the navigation — which is
+ * the exact failure this app has already shipped twice, with the chat header
+ * under the clock and the composer under the system bar. The bar occupies its
+ * own space, so nothing can end up beneath it, and what shows around the
+ * capsule is the page's own background — which is what a list scrolled to its
+ * end would have shown there anyway.
+ *
  * ---
  *
  * Everything here is styled with plain `style` objects rather than `className`.
@@ -47,11 +69,27 @@ import { useTheme } from "../theme";
  */
 
 /** The pill's box. Wide enough to sit under a 22pt icon with air around it. */
-const PILL_W = 62;
-const PILL_H = 32;
+const PILL_W = 58;
+const PILL_H = 34;
 
 /** Extra width, as a fraction, at the midpoint of a one-tab hop. */
 const STRETCH = 0.24;
+
+/** How far the capsule is held off the screen's left and right edges. */
+const INSET = 12;
+/** The capsule's own padding, inside which the tabs and the pill sit. */
+const PAD_X = 6;
+const PAD_Y = 8;
+/**
+ * The capsule's corner.
+ *
+ * At default text size the capsule comes to about 66pt tall, so this is past
+ * half its height and both platforms clamp it to a fully round end — the shape
+ * in the reference. It's a fixed number rather than a computed half-height
+ * because the height isn't known until layout, and turning Dynamic Type up
+ * should soften the ends rather than break the radius.
+ */
+const CAPSULE_R = 34;
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const { c } = useTheme();
@@ -124,12 +162,12 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   return (
     <View
       style={{
-        flexDirection: "row",
-        alignItems: "flex-start",
-        backgroundColor: c.surface,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: c.border,
-        paddingTop: 8,
+        // The ground the capsule floats on. Explicitly the page colour rather
+        // than transparent: on Android a transparent bar shows the window
+        // behind the navigator, which is black, not the screen.
+        backgroundColor: c.bg,
+        paddingHorizontal: INSET,
+        paddingTop: 6,
         // The bar's height is whatever its contents come to, so Dynamic Type is
         // handled by construction: turn text size up and the labels take the
         // room they need instead of losing their descenders to a fixed height.
@@ -138,79 +176,99 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         // label caps the growth before the bar starts eating the inbox it
         // exists to navigate.
         //
-        // The floor of 10 is for a device with no home indicator, where the
-        // inset is 0 and the labels would otherwise sit hard against the glass.
-        paddingBottom: insets.bottom > 0 ? insets.bottom : 10,
+        // The floor of 8 is for a device with no home indicator, where the
+        // inset is 0 and the capsule would otherwise sit hard against the glass.
+        paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
       }}
       testID="tabbar"
       accessibilityRole="tablist"
     >
-      {/* Behind the items, not between them: a tap has to reach the tab, and
-          an absolutely-positioned sibling with no `pointerEvents` would sit in
-          front of the row and swallow every press near the middle. */}
-      <Animated.View
-        pointerEvents="none"
-        testID="tabbar-pill"
-        style={[
-          {
-            position: "absolute",
-            top: 8,
-            left: 0,
-            width: PILL_W,
-            height: PILL_H,
-            borderRadius: PILL_H / 2,
-            backgroundColor: c.brandTint,
-            borderWidth: StyleSheet.hairlineWidth,
-            borderColor: c.glassLine,
-          },
-          pill,
-        ]}
-      />
+      <View
+        testID="tabbar-capsule"
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          backgroundColor: c.surface,
+          borderRadius: CAPSULE_R,
+          paddingHorizontal: PAD_X,
+          paddingVertical: PAD_Y,
+          // The ring is doing real work in dark mode, where the capsule and the
+          // page behind it are close enough in value that the shadow alone
+          // doesn't separate them.
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: c.border,
+          ...elevation.bar,
+        }}
+      >
+        {/* Behind the items, not between them: a tap has to reach the tab, and
+            an absolutely-positioned sibling with no `pointerEvents` would sit in
+            front of the row and swallow every press near the middle. */}
+        <Animated.View
+          pointerEvents="none"
+          testID="tabbar-pill"
+          style={[
+            {
+              position: "absolute",
+              top: PAD_Y,
+              left: 0,
+              width: PILL_W,
+              height: PILL_H,
+              borderRadius: PILL_H / 2,
+              // Neutral, not brand — the reference's is grey, and on a white
+              // capsule a green slab would shout over the icon it exists to
+              // frame. The green stays where it means something: the selected
+              // glyph and its label.
+              backgroundColor: c.surface2,
+            },
+            pill,
+          ]}
+        />
 
-      {shown.map((route, index) => {
-        const { options } = descriptors[route.key];
-        const label =
-          typeof options.tabBarLabel === "string"
-            ? options.tabBarLabel
-            : options.title ?? route.name;
-        const focused = index === active;
+        {shown.map((route, index) => {
+          const { options } = descriptors[route.key];
+          const label =
+            typeof options.tabBarLabel === "string"
+              ? options.tabBarLabel
+              : options.title ?? route.name;
+          const focused = index === active;
 
-        return (
-          <TabItem
-            key={route.key}
-            label={label}
-            focused={focused}
-            icon={options.tabBarIcon}
-            testID={options.tabBarButtonTestID ?? `tab-${route.name}`}
-            onLayout={(frame) => {
-              // Assigning a fresh object rather than mutating: a shared value
-              // only notifies the UI thread when it's reassigned.
-              slots.value = { ...slots.value, [index]: frame };
-              if (Object.keys(slots.value).length >= 2) ready.value = fadeTo(1, timing.quick);
-            }}
-            onPress={() => {
-              const event = navigation.emit({
-                type: "tabPress",
-                target: route.key,
-                canPreventDefault: true,
-              });
-              if (event.defaultPrevented) return;
-              if (focused) {
-                // Re-tapping the tab you're on is "go to the top of this
-                // section", which the navigator handles. No pill to move and
-                // no buzz — nothing navigated.
+          return (
+            <TabItem
+              key={route.key}
+              label={label}
+              focused={focused}
+              icon={options.tabBarIcon}
+              testID={options.tabBarButtonTestID ?? `tab-${route.name}`}
+              onLayout={(frame) => {
+                // Assigning a fresh object rather than mutating: a shared value
+                // only notifies the UI thread when it's reassigned.
+                slots.value = { ...slots.value, [index]: frame };
+                if (Object.keys(slots.value).length >= 2) ready.value = fadeTo(1, timing.quick);
+              }}
+              onPress={() => {
+                const event = navigation.emit({
+                  type: "tabPress",
+                  target: route.key,
+                  canPreventDefault: true,
+                });
+                if (event.defaultPrevented) return;
+                if (focused) {
+                  // Re-tapping the tab you're on is "go to the top of this
+                  // section", which the navigator handles. No pill to move and
+                  // no buzz — nothing navigated.
+                  navigation.navigate(route.name, route.params);
+                  return;
+                }
+                haptics.tap();
                 navigation.navigate(route.name, route.params);
-                return;
-              }
-              haptics.tap();
-              navigation.navigate(route.name, route.params);
-            }}
-            onLongPress={() => {
-              navigation.emit({ type: "tabLongPress", target: route.key });
-            }}
-          />
-        );
-      })}
+              }}
+              onLongPress={() => {
+                navigation.emit({ type: "tabLongPress", target: route.key });
+              }}
+            />
+          );
+        })}
+      </View>
     </View>
   );
 }
@@ -263,7 +321,11 @@ function TabItem({
   const idle = useAnimatedStyle(() => ({ opacity: 1 - on.value }));
 
   const text = useAnimatedStyle(() => ({
-    color: interpolateColor(on.value, [0, 1], [c.textFaint, c.brandStrong]),
+    // From muted, not faint. In the reference every label is readable and the
+    // selected one is merely *more* so — faint labels turn the four
+    // destinations into one green word and three grey smudges, which is a
+    // worse map of the app than no labels at all.
+    color: interpolateColor(on.value, [0, 1], [c.textMuted, c.brandStrong]),
   }));
 
   return (
@@ -288,9 +350,12 @@ function TabItem({
     >
       <Animated.View style={[{ alignItems: "center" }, squeeze]}>
         <View style={{ height: PILL_H, justifyContent: "center", alignItems: "center" }}>
-          <Animated.View style={idle}>{icon?.({ focused: false, color: c.textFaint, size: 22 })}</Animated.View>
+          {/* Muted rather than faint, to match the label above it and the
+              reference: an unselected destination is still a destination, and
+              at `faint` the three you aren't on fade into the capsule. */}
+          <Animated.View style={idle}>{icon?.({ focused: false, color: c.textMuted, size: 23 })}</Animated.View>
           <Animated.View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }, active]}>
-            {icon?.({ focused: true, color: c.brandStrong, size: 22 })}
+            {icon?.({ focused: true, color: c.brandStrong, size: 23 })}
           </Animated.View>
         </View>
         <Animated.Text
@@ -301,8 +366,15 @@ function TabItem({
           style={[
             {
               fontSize: 11,
-              fontWeight: "600",
-              marginTop: 1,
+              // Weight, not just colour. The reference leans on it hard, and it
+              // survives where colour doesn't — a green label and a grey one
+              // are the same label to anyone who can't separate the two hues.
+              // Switched rather than animated: React Native can't interpolate a
+              // font weight, and at 11pt the change reads as the label
+              // sharpening rather than as a jump. The item is centred in a
+              // flexed cell, so the extra width moves nothing but itself.
+              fontWeight: focused ? "700" : "500",
+              marginTop: 2,
               // A tab label is a name, not a sentence: on a narrow phone with
               // large text "Customers" would otherwise be squeezed into the
               // neighbouring tabs' space rather than shrinking within its own.

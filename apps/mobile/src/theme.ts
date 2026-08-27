@@ -75,4 +75,15 @@ export const elevation = {
    * is fine: there it reads as a general lift, which is still the right answer.
    */
   lift: { shadowColor: "#000000", shadowOpacity: 0.3, shadowRadius: 20, shadowOffset: { width: 0, height: -10 }, elevation: 16 },
+  /**
+   * A piece of chrome hovering just above the page — the floating tab bar.
+   *
+   * Between `card` and `sheet`, and closer to the page than either. It has to
+   * lift a wide capsule off a background it nearly matches in colour, without
+   * reading as a dialog: a `sheet`-weight shadow under something that never
+   * moves makes the whole screen feel like a stack of cards, and `card` under
+   * something this large disappears entirely. The offset is small because the
+   * bar sits near the bottom edge, where a long drop has nowhere to fall.
+   */
+  bar: { shadowColor: "#0D1512", shadowOpacity: 0.13, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 10 },
 } as const;
