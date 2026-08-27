@@ -2,20 +2,23 @@
   "name": "@ding/design",
   "version": "0.0.0",
   "private": true,
-  "description": "Shared design tokens for the web (Tailwind) and native (NativeWind) apps.",
+  "description": "Shared design tokens and icon geometry for the web (Tailwind) and native (NativeWind) apps.",
   "type": "module",
   "exports": {
     "./tokens.css": "./tokens.css",
     "./tokens": "./tokens.ts",
+    "./icons": "./icons.ts",
     "./tailwind-preset": "./tailwind-preset.cjs"
   },
   "files": [
     "tokens.css",
     "tokens.ts",
+    "icons.ts",
     "tailwind-preset.cjs"
   ],
   "scripts": {
     "build": "node scripts/generate-tokens.mjs",
-    "typecheck": "node scripts/generate-tokens.mjs --check"
+    "typecheck": "node scripts/generate-tokens.mjs --check",
+    "check:icons": "node --experimental-strip-types scripts/check-icons.mjs"
   }
 }

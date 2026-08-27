@@ -25,7 +25,8 @@ import type { SessionInfo } from "@ding/schemas";
 import { TwoFactorSettings } from "./TwoFactorSettings";
 import { useScrollLock } from "../lib/useScrollLock";
 import { api } from "../lib/api";
-import { XIcon } from "../lib/icons";
+import { ImageIcon, XIcon } from "../lib/icons";
+import { ICON_STROKE } from "@ding/design/icons";
 import { Avatar } from "./Avatar";
 
 declare module "@tiptap/core" {
@@ -103,27 +104,22 @@ const SizedImage = Image.extend({
   },
 });
 
-/** A picture-frame glyph for the "insert image" toolbar button. */
-function ImageGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-      <rect x="3" y="4" width="18" height="16" rx="2" />
-      <circle cx="8.5" cy="9.5" r="1.5" />
-      <path d="M4 17l4.5-4.5a2 2 0 0 1 2.8 0L17 18" />
-    </svg>
-  );
-}
-
-/** Text-alignment glyphs (the short lines shift to hint the alignment). */
+/**
+ * Text-alignment glyphs (the short lines shift to hint the alignment).
+ *
+ * The only glyphs drawn outside `@ding/design/icons`, because they're a set of
+ * three that mean nothing apart and exist solely for this toolbar. They still
+ * follow the system: same margins as `menu`, same stroke, round caps.
+ */
 function AlignGlyph({ dir }: { dir: "left" | "center" | "right" }) {
   const paths: Record<typeof dir, string> = {
-    left: "M3 6h18M3 10h11M3 14h18M3 18h11",
-    center: "M3 6h18M6 10h12M3 14h18M6 18h12",
-    right: "M3 6h18M10 10h11M3 14h18M10 18h11",
+    left: "M4 5.6h16M4 9.9h10.4M4 14.1h16M4 18.4h10.4",
+    center: "M4 5.6h16M6.8 9.9h10.4M4 14.1h16M6.8 18.4h10.4",
+    right: "M4 5.6h16M9.6 9.9h10.4M4 14.1h16M9.6 18.4h10.4",
   };
   return (
-    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-      <path d={paths[dir]} />
+    <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={paths[dir]} stroke="currentColor" strokeWidth={ICON_STROKE} />
     </svg>
   );
 }
@@ -485,7 +481,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
                 <span className="richbar__sep" aria-hidden="true" />
                 <Btn mark="bulletList" title="Bulleted list" onClick={() => editor?.chain().focus().toggleBulletList().run()}>•&nbsp;—</Btn>
                 <Btn mark="link" title="Insert link" onClick={toggleLink}>🔗</Btn>
-                <Btn title={sigUploading ? "Uploading…" : "Insert image"} disabled={sigUploading} onClick={() => fileRef.current?.click()}><ImageGlyph /></Btn>
+                <Btn title={sigUploading ? "Uploading…" : "Insert image"} disabled={sigUploading} onClick={() => fileRef.current?.click()}><ImageIcon /></Btn>
               </div>
               <EditorContent editor={editor} className="sig-host" />
               <input

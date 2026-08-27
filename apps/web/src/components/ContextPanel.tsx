@@ -23,7 +23,7 @@ import { relativeTime, slaCountdown } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { api } from "../lib/api";
 import { TagEditor } from "./TagEditor";
-import { channelMeta, CheckIcon, ChevronDown, ChevronRight, PhoneIcon, MailIcon, ProfileIcon, XIcon } from "../lib/icons";
+import { channelMeta, CheckIcon, ChevronDown, ChevronRight, PhoneIcon, MailIcon, ProfileIcon, SnoozeIcon, XIcon } from "../lib/icons";
 
 interface Props {
   conversationId: string | null;
@@ -345,10 +345,7 @@ function SlaBlock({ iso, now }: { iso: string; now: number }) {
     <Block title="First response">
       <div className="csla">
         <span className="csla__ic" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="13" r="8" />
-            <path d="M12 9v4l2.5 2.5M9 2h6" />
-          </svg>
+          <SnoozeIcon />
         </span>
         <span className="csla__b">
           <small>Due in</small>
