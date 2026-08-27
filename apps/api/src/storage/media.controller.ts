@@ -59,6 +59,11 @@ export class MediaController {
     @Body("width") width?: string,
     @Body("height") height?: string,
     @Body("waveform") waveform?: string,
+    // What the file is called, when the part's own filename isn't it. The phone
+    // uploads natively from a cache path, so the multipart filename is whatever
+    // the picker happened to write to disk — "DOC_20260827.tmp" rather than
+    // "Purchase-Order-4471.pdf". Sanitised the same way either way.
+    @Body("filename") filename?: string,
   ): Promise<Attachment> {
     if (!file?.buffer?.length) throw new BadRequestException("No file uploaded");
     if (file.size > env.media.maxBytes) throw new BadRequestException("File too large");
@@ -66,7 +71,7 @@ export class MediaController {
     const parsedKind = attachmentKindSchema.safeParse(kind);
     const input = await this.media.store(file.buffer, {
       mime: file.mimetype,
-      filename: sanitizeName(file.originalname),
+      filename: sanitizeName(filename?.trim() || file.originalname),
       kind: parsedKind.success ? (parsedKind.data as AttachmentKind) : undefined,
       durationMs: toInt(durationMs),
     });

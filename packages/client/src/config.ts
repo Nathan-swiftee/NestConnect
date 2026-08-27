@@ -33,6 +33,27 @@ export interface ClientCues {
   sent?: (channel?: string) => void;
 }
 
+/**
+ * A file already on this device's disk, named the way the multipart part should
+ * be. Only a native app can produce one; a browser has `File` instead.
+ */
+export interface UploadFile {
+  /** `file://…` — where it actually is. */
+  uri: string;
+  name: string;
+  type: string;
+}
+
+/** What the server should record about an upload beyond its bytes. */
+export interface UploadMeta {
+  filename?: string;
+  kind?: string;
+  durationMs?: number;
+  width?: number;
+  height?: number;
+  waveform?: number[];
+}
+
 export interface ClientConfig {
   /** API origin. Empty string means "same origin", which is the web's case. */
   baseUrl: string;
@@ -40,6 +61,29 @@ export interface ClientConfig {
   cues: ClientCues;
   /** Called after a successful logout, once the caches are cleared. */
   onSignedOut?: () => void;
+  /**
+   * How this platform posts a file that is already on disk.
+   *
+   * The web doesn't set this: a browser has a `File`, `FormData` takes it, and
+   * `fetch` posts it. A phone has neither of those things in a usable form, and
+   * the attempts to pretend otherwise are worth recording, because there were
+   * two and both shipped:
+   *
+   *  - Handing React Native's `FormData` a `Blob` produced a part the native
+   *    networking layer refused.
+   *  - Handing it `{ uri, name, type }` — the shape React Native's own FormData
+   *    documents — produced "Unsupported FormDataPart implementation", because
+   *    Expo replaces the global `fetch` with its own, and that implementation
+   *    builds the multipart body in JavaScript and accepts only a `Blob` or
+   *    something with `.bytes()`. Its own source says so: *"`uri` is not
+   *    supported for React Native's FormData."*
+   *
+   * There is no shape that satisfies both runtimes, so this stops trying. The
+   * app that owns a disk supplies the uploader for it — on the phone that's a
+   * native streaming multipart request, which is also the only version that
+   * doesn't read a video into JavaScript memory to send it.
+   */
+  uploadFile?: (file: UploadFile, meta: UploadMeta) => Promise<unknown>;
 }
 
 let config: ClientConfig = {

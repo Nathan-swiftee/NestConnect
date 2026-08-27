@@ -54,8 +54,16 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
 
   // Playing to the end leaves the player parked at the end, so the next tap
   // would do nothing. Rewind instead, which is what every player does.
+  //
+  // Pause first, and that order is the whole fix: at `didJustFinish` the player
+  // still considers itself playing, so seeking back to zero was read as "carry
+  // on from here" and the clip started again — a voice note on a loop until you
+  // tapped it. Stopping it before moving the playhead leaves it where a player
+  // should be when it finishes: at the start, not running.
   useEffect(() => {
-    if (status.didJustFinish) void player.seekTo(0);
+    if (!status.didJustFinish) return;
+    player.pause();
+    void player.seekTo(0);
   }, [status.didJustFinish, player]);
 
   const fallback = (att.durationMs ?? 0) / 1000;

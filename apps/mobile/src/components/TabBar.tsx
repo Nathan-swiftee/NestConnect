@@ -111,9 +111,12 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     // which is the right read: it's slowing over each one on its way past.
     const away = Math.abs(i - Math.round(i)) * 2;
 
+    // Opacity and transform only. `width` is a constant and belongs in the
+    // static style: a width in an animated style is a layout property being
+    // re-applied every frame, which on Android means the pill is laid out again
+    // sixty times a second instead of just being moved by the compositor.
     return {
       opacity: ready.value,
-      width: PILL_W,
       transform: [{ translateX: cx - PILL_W / 2 }, { scaleX: 1 + away * STRETCH }],
     };
   });
@@ -153,6 +156,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             position: "absolute",
             top: 8,
             left: 0,
+            width: PILL_W,
             height: PILL_H,
             borderRadius: PILL_H / 2,
             backgroundColor: c.brandTint,

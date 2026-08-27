@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import { configureClient } from "@ding/client";
 import { clearSession, sessionToken } from "./session";
+import { uploadFile } from "./upload";
 
 /**
  * Where this build talks to.
@@ -65,6 +66,9 @@ export function configureMobileClient(): void {
   configureClient({
     baseUrl: API_URL,
     auth: { kind: "bearer", getToken: sessionToken },
+    // Posting a file off this phone's disk doesn't go through `fetch` at all —
+    // see `upload.ts` for the two versions that did and why neither could work.
+    uploadFile,
     // No sound cues: a phone already has the OS notification sound, and a
     // second one from inside the app is just noise.
     cues: {},

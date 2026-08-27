@@ -3,7 +3,6 @@ import { ActivityIndicator, LayoutAnimation, Pressable, ScrollView, Text, TextIn
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { api, useIntegrations, usePeople, useSendMessage, useTemplates, windowLeft } from "@ding/client";
 import { useStagedAttachments } from "../attachments";
-import { uploadable } from "../upload";
 import { enqueue } from "../send-queue";
 import { Avatar } from "./Avatar";
 import { StagedAttachments } from "./StagedAttachments";
@@ -321,7 +320,7 @@ export function Composer({
     const name = `voice-${Date.now()}.m4a`;
     try {
       const attachment = await api.uploadMedia(
-        await uploadable(v.uri, name, "audio/mp4"),
+        { uri: v.uri, name, type: "audio/mp4" },
         { kind: "voice", durationMs: v.durationMs, filename: name },
       );
       await send.mutateAsync({

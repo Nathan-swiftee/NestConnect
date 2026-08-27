@@ -56,7 +56,7 @@ import type {
   SessionGrant,
   UpdatePushPreferencesInput,
 } from "@ding/schemas";
-import { authHeaders, clientConfig } from "./config";
+import { authHeaders, clientConfig, type UploadFile, type UploadMeta } from "./config";
 
 export interface ViewItem {
   key: string;
@@ -132,17 +132,6 @@ const post = <T>(path: string, body: unknown) =>
 const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
-
-/**
- * A file as React Native describes one: a local URI plus the name and MIME type
- * the multipart part should carry. RN's FormData understands this object
- * directly; a browser's does not, which is what {@link isUploadFile} separates.
- */
-export interface UploadFile {
-  uri: string;
-  name: string;
-  type: string;
-}
 
 const isUploadFile = (f: unknown): f is UploadFile =>
   typeof f === "object" && f !== null && typeof (f as UploadFile).uri === "string";
@@ -283,36 +272,28 @@ export const api = {
     get<MessagePage>(`/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`),
   // Stage a composer upload; the returned attachment id is referenced on send.
   //
-  // Two shapes because the two platforms disagree about what a file is. A
-  // browser has Blob/File and wants the filename as append()'s third argument.
-  // React Native has no Blob worth uploading — it hands you a `file://` URI and
-  // its FormData expects `{ uri, name, type }` as the value, with no third
-  // argument at all. Passing the wrong one uploads zero bytes silently, so the
-  // branch is explicit rather than clever.
-  uploadMedia: (
-    file: File | Blob | UploadFile,
-    meta?: { filename?: string; kind?: string; durationMs?: number; width?: number; height?: number; waveform?: number[] },
-  ) => {
-    const form = new FormData();
+  // Two paths, decided by what you hand it rather than by any test of the
+  // runtime. A `File`/`Blob` is a browser's idea of a file and goes out as
+  // `FormData` over `fetch`, which is exactly what a browser is good at. An
+  // {@link UploadFile} is a path on a device's disk, and posting one is
+  // something only that device's app knows how to do — see `uploadFile` in
+  // `config.ts` for the two ways of faking it that shipped and broke.
+  uploadMedia: (file: File | Blob | UploadFile, meta?: UploadMeta) => {
     if (isUploadFile(file)) {
-      // React Native's FormData understands `{ uri, name, type }` and streams
-      // the file off disk. Its `append` also takes only two arguments, so a
-      // filename passed as a third is dropped on the floor — which is one of
-      // the reasons this branch stays exactly this shape.
-      //
-      // Do not add a "are we in a browser?" test here. There was one, keyed on
-      // `typeof document`, and `document` turns out to be defined in this app's
-      // native runtime — so every upload took the DOM branch, handed RN's
-      // FormData a Blob it has no way to serialise, and the native layer
-      // rejected the request with "Unsupported form data part". Uploads and
-      // voice notes were dead in the water. Which dialect applies is a fact
-      // about the app, not something to infer from a global: each app converts
-      // to the right shape before calling this (see the mobile app's
-      // `src/upload.ts`), and this just honours what it was handed.
-      form.append("file", file as unknown as Blob);
-    } else {
-      form.append("file", file, meta?.filename ?? (file instanceof File ? file.name : "file"));
+      const upload = clientConfig().uploadFile;
+      if (!upload) {
+        // Reached only if an app hands us a disk path without having said how
+        // to post one. Better a sentence naming the missing piece than a
+        // multipart body the server can't read.
+        throw new Error(
+          "This app was given a local file to upload but has no `uploadFile` configured — see configureClient().",
+        );
+      }
+      return upload(file, meta ?? {}) as Promise<Attachment>;
     }
+
+    const form = new FormData();
+    form.append("file", file, meta?.filename ?? (file instanceof File ? file.name : "file"));
     if (meta?.kind) form.append("kind", meta.kind);
     if (meta?.durationMs != null) form.append("durationMs", String(Math.round(meta.durationMs)));
     if (meta?.width != null) form.append("width", String(Math.round(meta.width)));
