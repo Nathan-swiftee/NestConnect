@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Platform, Pressable, StyleSheet, View, type LayoutRectangle } from "react-native";
+import { BlurView } from "expo-blur";
 import Animated, {
   interpolate,
   interpolateColor,
@@ -236,23 +237,72 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       testID="tabbar"
       accessibilityRole="tablist"
     >
+      {/* The capsule is two views, and it has to be.
+          
+          `BlurView` samples what is behind it, so it can't also be the thing
+          that clips and shadows itself: `overflow: hidden` is what rounds the
+          blur to the capsule's shape, and on Android a view that clips its
+          children cannot also cast an elevation shadow. So the outer view owns
+          the shadow and the shape, the inner blur fills it, and the row sits on
+          top of both. */}
       <View
         testID="tabbar-capsule"
         style={{
-          flexDirection: "row",
-          alignItems: "flex-start",
-          backgroundColor: c.surface,
           borderRadius: CAPSULE_R,
-          paddingHorizontal: PAD_X,
-          paddingVertical: PAD_Y,
           // The ring is doing real work in dark mode, where the capsule and the
           // page behind it are close enough in value that the shadow alone
-          // doesn't separate them.
+          // doesn't separate them. On glass it does a second job: it draws the
+          // edge, which is what stops a translucent panel from reading as a
+          // smudge.
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: c.border,
+          borderColor: scheme === "dark" ? "rgba(255,255,255,0.10)" : c.border,
           ...elevation.bar,
+          // Android needs a colour under the elevation or it draws no shadow at
+          // all; the blur covers it, so this is never seen.
+          backgroundColor: c.surface,
         }}
       >
+        <BlurView
+          // Frosted, not merely see-through. Without a blur a translucent bar
+          // over a moving list is worse than an opaque one — you read the text
+          // sliding through it. The blur is what turns "you can see there is
+          // content down there" into "you can't read it", which is the whole
+          // point of the material.
+          //
+          // `dimezisBlurView` is the only Android path that actually samples the
+          // view behind it; the default there is a flat tint that looks like a
+          // bug next to iOS.
+          experimentalBlurMethod="dimezisBlurView"
+          intensity={scheme === "dark" ? 44 : 60}
+          tint={scheme === "dark" ? "dark" : "light"}
+          style={[
+            StyleSheet.absoluteFill,
+            { borderRadius: CAPSULE_R, overflow: "hidden" },
+          ]}
+        />
+        {/* A wash over the blur. Blur alone takes its value from whatever
+            happens to be underneath, so a dark photo scrolling past would drag
+            the whole bar dark and take the labels with it; this holds the
+            contrast steady while still letting the movement through. */}
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: CAPSULE_R,
+              backgroundColor:
+                scheme === "dark" ? "rgba(21,21,20,0.55)" : "rgba(255,255,255,0.55)",
+            },
+          ]}
+        />
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            paddingHorizontal: PAD_X,
+            paddingVertical: PAD_Y,
+          }}
+        >
         {/* Behind the items, not between them: a tap has to reach the tab, and
             an absolutely-positioned sibling with no `pointerEvents` would sit in
             front of the row and swallow every press near the middle. */}
@@ -323,6 +373,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             />
           );
         })}
+        </View>
       </View>
     </View>
   );
