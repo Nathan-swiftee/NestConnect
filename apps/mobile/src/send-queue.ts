@@ -24,6 +24,12 @@ export interface QueuedSend {
   attachmentIds?: string[];
   quotedMsgId?: string;
   template?: { id: string; params: string[] };
+  /** Email only: the thread's subject as it stood when this was written, and
+   *  the extra recipients it was addressed to. Persisted because a queued reply
+   *  is sent from a process that has none of the composer's state left. */
+  subject?: string;
+  cc?: string[];
+  bcc?: string[];
   /** When it was written, so the thread can show it in the right place. */
   createdAt: string;
   attempts: number;
@@ -111,6 +117,9 @@ export async function flush(): Promise<void> {
           ...(item.channel ? { channel: item.channel } : {}),
           ...(item.quotedMsgId ? { quotedMsgId: item.quotedMsgId } : {}),
           ...(item.template ? { template: item.template } : {}),
+          ...(item.subject !== undefined ? { subject: item.subject } : {}),
+          ...(item.cc?.length ? { cc: item.cc } : {}),
+          ...(item.bcc?.length ? { bcc: item.bcc } : {}),
         });
         queue = queue.filter((q) => q.id !== item.id);
         emit();

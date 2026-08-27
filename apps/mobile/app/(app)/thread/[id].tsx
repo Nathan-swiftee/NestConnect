@@ -61,7 +61,7 @@ import {
 } from "../../../src/icons";
 import { haptics } from "../../../src/haptics";
 import { enter } from "../../../src/motion";
-import { useTheme } from "../../../src/theme";
+import { elevation, useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
@@ -192,6 +192,33 @@ export default function Thread() {
     return m;
   }, [data]);
 
+  /**
+   * Which messages should print their subject.
+   *
+   * A subject on every email is what a mail client shows in a *list*, where each
+   * row is a different thread. Inside one thread it's the same line over and
+   * over — four bubbles deep it stops being information and starts being the
+   * reason you can't see the messages. The header already carries the thread's
+   * current subject persistently.
+   *
+   * So a bubble prints its subject only when it says something new: the first
+   * email in the thread, and any message where the subject changed. That turns
+   * the line into an event — "this is where it was renamed" — which is worth the
+   * space. Computed over the flat list, because a rename can happen across a day
+   * boundary and the per-day grouping would miss it.
+   */
+  const showsSubject = useMemo(() => {
+    const out = new Set<string>();
+    let last: string | null = null;
+    for (const m of data?.messages ?? []) {
+      const s = m.email?.subject?.trim();
+      if (!s) continue;
+      if (s !== last) out.add(m.id);
+      last = s;
+    }
+    return out;
+  }, [data]);
+
   const live = useRef({ id, react, retry });
   live.current = { id, react, retry };
 
@@ -286,6 +313,7 @@ export default function Thread() {
             // tail belongs to whichever bubble is.
             continues={!!prev && who(prev) === who(m)}
             endsRun={!next || who(next) !== who(m)}
+            showSubject={showsSubject.has(m.id)}
             firstOfDay={i === 0}
             // Only when another day follows: the last message in the thread
             // wants the composer's own gap, not a divider's.
@@ -741,6 +769,16 @@ function Header({
           </Text>
           <ChannelGlyph size={13} color={channelColor(conv.channel, c)} />
         </View>
+        {/* An email thread is identified by its subject, not by who it's with —
+            "Re: invoice 4471" is the thread; the customer may have five. Shown
+            above the assignee line, and only when it says something the name
+            doesn't already (a thread with no subject falls back to the contact's
+            name server-side, and repeating it twice is noise). */}
+        {conv.subject && conv.subject !== conv.contact.displayName ? (
+          <Text numberOfLines={1} className="text-2xs font-semibold leading-snug text-fg">
+            {conv.subject}
+          </Text>
+        ) : null}
         <Text numberOfLines={1} className="text-2xs leading-snug text-faint">
           {conv.status === "snoozed" ? "Snoozed · " : conv.status === "closed" ? "Resolved · " : ""}
           {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
@@ -804,6 +842,7 @@ const Bubble = memo(function Bubble({
   meId,
   continues,
   endsRun,
+  showSubject,
   firstOfDay,
   lastOfDay,
   onRetry,
@@ -821,6 +860,9 @@ const Bubble = memo(function Bubble({
   continues: boolean;
   /** Last of a run — i.e. not followed by the same speaker. Carries the tail. */
   endsRun: boolean;
+  /** Email only: whether this message's subject is news (the thread's first, or
+   *  a rename) rather than the same line as the message above it. */
+  showSubject?: boolean;
   /** Directly under a date divider, and directly above one. Between them these
    *  put the divider's air on the side it belongs to; see `gapTop` below. */
   firstOfDay?: boolean;
@@ -904,8 +946,23 @@ const Bubble = memo(function Bubble({
    */
   const senderName = !mine ? (message.authorName ?? (channel === "whatsapp_group" ? contactName : null)) : null;
   const sentBy = mine && !message.internal ? (message.authorName ?? null) : null;
-  const fill = mine ? c.brandTint : c.surface;
-  const line = mine ? c.brandTint : c.border;
+  /**
+   * Email is drawn as paper, not as speech.
+   *
+   * The web makes the same split: an email bubble drops the outbound green tint
+   * and becomes a lifted card in both directions, because an email you sent and
+   * an email you received are the same kind of object — a document with a
+   * subject and recipients — and tinting one of them green makes a mixed thread
+   * lie about which of the two you're reading.
+   *
+   * `elevated` rather than the web's literal `#fff`: the web is showing the
+   * sender's own HTML, which is authored for a white page, so it pins the card
+   * white even in dark mode. This app re-renders the email in its own type
+   * through {@link EmailBody}, so the card follows the theme — pinning it white
+   * would leave dark text on a dark ground everywhere except the card.
+   */
+  const fill = isEmail ? c.elevated : mine ? c.brandTint : c.surface;
+  const line = isEmail ? c.border : mine ? c.brandTint : c.border;
   /**
    * A tail marks speech, so only conversation gets one — and only where a turn
    * *ends*, which is what makes a run of five messages read as one person
@@ -943,6 +1000,10 @@ const Bubble = memo(function Bubble({
           backgroundColor: fill,
           borderColor: line,
           maxWidth: isEmail ? "94%" : "86%",
+          // The lift that makes the email card read as paper laid on the thread
+          // rather than another bubble in it. In light mode the surfaces are the
+          // same white, so this shadow is the whole of the distinction.
+          ...(isEmail ? elevation.card : null),
           // The tailed corner squares off. A tail growing out of a 16pt curve
           // leaves a visible sliver of background between the two shapes; at 5pt
           // they read as one outline.
@@ -999,7 +1060,7 @@ const Bubble = memo(function Bubble({
             it as one run of plain text throws all of that away and produces a
             wall nobody reads. */}
         {isEmail ? (
-          <EmailBody message={message} mine={mine} />
+          <EmailBody message={message} showSubject={showSubject} />
         ) : message.body ? (
           <Text className="text-lg leading-snug text-fg">{message.body}</Text>
         ) : null}

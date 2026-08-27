@@ -35,11 +35,18 @@ const PREVIEW_LINES = 12;
 
 export function EmailBody({
   message,
-  /** Outbound bubbles are tinted, so links and rules need the other contrast. */
-  mine,
+  /**
+   * Whether this message's subject is worth printing.
+   *
+   * The thread decides, not the bubble: a subject only earns its line when it
+   * *changed*, and a bubble can't see the one above it. Repeating it on every
+   * message turns a four-message thread into four copies of the same sentence,
+   * and the header already shows the thread's current subject.
+   */
+  showSubject = true,
 }: {
   message: Message;
-  mine: boolean;
+  showSubject?: boolean;
 }) {
   const { c } = useTheme();
   const [expanded, setExpanded] = useState(false);
@@ -54,20 +61,24 @@ export function EmailBody({
   const shown = expanded || !longEnoughToCollapse ? parsed.body : preview(parsed.body, PREVIEW_LINES);
 
   const meta = message.email;
-  const hasMeta = !!meta && !!(meta.subject || meta.cc?.length || meta.bcc?.length || meta.forwardedTo?.length);
+  // Cc, Bcc and "Forwarded to" are per-message and always worth showing — they
+  // say who else got *this* copy. Only the subject is deduped, because only the
+  // subject is the same on every message in a thread.
+  const subject = showSubject ? meta?.subject : undefined;
+  const hasMeta = !!meta && !!(subject || meta.cc?.length || meta.bcc?.length || meta.forwardedTo?.length);
 
   return (
     <Animated.View
       layout={LinearTransition.springify().damping(24).stiffness(220).reduceMotion(ReduceMotion.System)}
     >
       {hasMeta ? (
-        <View style={{ borderBottomColor: mine ? c.brandRing : c.border }} className="mb-2 gap-0.5 border-b pb-2">
+        <View style={{ borderBottomColor: c.border }} className="mb-2 gap-0.5 border-b pb-2">
           {meta!.forwardedTo?.length ? (
             <MetaRow label="Forwarded to" value={meta!.forwardedTo.join(", ")} />
           ) : null}
-          {meta!.subject ? (
+          {subject ? (
             <Text numberOfLines={2} className="text-md font-semibold leading-snug text-fg">
-              {meta!.subject}
+              {subject}
             </Text>
           ) : null}
           {meta!.cc?.length ? <MetaRow label="Cc" value={meta!.cc.join(", ")} /> : null}
@@ -77,7 +88,7 @@ export function EmailBody({
 
       <View className="gap-2">
         {shown.map((b, i) => (
-          <BlockView key={i} block={b} mine={mine} />
+          <BlockView key={i} block={b} />
         ))}
       </View>
 
@@ -92,11 +103,11 @@ export function EmailBody({
           hitSlop={8}
           className="mt-1.5 flex-row items-center gap-1 self-start active:opacity-60"
         >
-          <Text style={{ color: mine ? c.brandStrong : c.brand }} className="text-sm font-semibold">
+          <Text style={{ color: c.brand }} className="text-sm font-semibold">
             {expanded ? "Show less" : "Read more"}
           </Text>
           <View style={{ transform: [{ rotate: expanded ? "180deg" : "0deg" }] }}>
-            <ChevronDown size={13} color={mine ? c.brandStrong : c.brand} />
+            <ChevronDown size={13} color={c.brand} />
           </View>
         </Pressable>
       ) : null}
@@ -128,7 +139,7 @@ export function EmailBody({
               className="mt-2 gap-2 border-l-2 pl-2.5"
             >
               {parsed.quoted.map((b, i) => (
-                <BlockView key={i} block={b} mine={mine} quiet />
+                <BlockView key={i} block={b} quiet />
               ))}
             </View>
           ) : null}
@@ -149,9 +160,8 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BlockView({ block, mine, quiet }: { block: Block; mine: boolean; quiet?: boolean }) {
+function BlockView({ block, quiet }: { block: Block; quiet?: boolean }) {
   const { c } = useTheme();
-  const link = mine ? c.brandStrong : c.brand;
 
   const body = (
     <Text
@@ -169,7 +179,7 @@ function BlockView({ block, mine, quiet }: { block: Block; mine: boolean; quiet?
             key={i}
             onPress={() => void Linking.openURL(s.href!).catch(() => {})}
             accessibilityRole="link"
-            style={{ color: link, textDecorationLine: "underline" }}
+            style={{ color: c.brand, textDecorationLine: "underline" }}
           >
             {s.text}
           </Text>

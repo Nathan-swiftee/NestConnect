@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, LayoutAnimation, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { api, useIntegrations, usePeople, useSendMessage, useTemplates, windowLeft } from "@ding/client";
@@ -15,6 +15,7 @@ import {
   AttachIcon,
   BoltIcon,
   ClockIcon,
+  EditIcon,
   EmojiIcon,
   ReplyIcon,
   SparkleIcon,
@@ -28,6 +29,46 @@ import {
 /** The composer's own emoji row — the same curated set the web uses, so the two
  *  offer the same shortcuts. Deliberately not a picker dependency. */
 const COMPOSER_EMOJIS = ["👍", "🙏", "😀", "😅", "🎉", "❤️", "✅", "👀", "🔥", "😬", "🤝", "📎"];
+
+/**
+ * One Cc/Bcc line.
+ *
+ * `autoCapitalize`/`autoCorrect` off and the email keyboard on: a phone
+ * otherwise capitalises the first letter of every address and "corrects"
+ * domains into English words, which is how a Cc silently goes nowhere.
+ */
+function AddressRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  const { c } = useTheme();
+  return (
+    <View className="flex-row items-center gap-2">
+      <Text style={{ color: c.textFaint, width: 34 }} className="text-2xs font-semibold uppercase tracking-wide">
+        {label}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder="name@example.com, …"
+        placeholderTextColor={c.textFaint}
+        keyboardType="email-address"
+        inputMode="email"
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="email"
+        accessibilityLabel={`${label} recipients`}
+        style={{ color: c.text }}
+        className="min-w-0 flex-1 p-0 text-sm"
+      />
+    </View>
+  );
+}
 
 /**
  * The reply box — the mobile reading of the web's `.composer`.
@@ -68,6 +109,21 @@ export function Composer({
   const [pickedChannel, setPickedChannel] = useState<ChannelType | null>(null);
   const [attachSheet, setAttachSheet] = useState(false);
   const [recording, setRecording] = useState(false);
+  /**
+   * The email thread's subject, editable before every send.
+   *
+   * It's the thread's subject rather than this message's: changing it here
+   * renames the thread, which is what the web does and what every mail client
+   * does when you edit a subject mid-conversation. The server adds "Re:" on a
+   * reply, so this holds the verbatim topic.
+   */
+  const [subject, setSubject] = useState(conv.subject ?? "");
+  const [editingSubject, setEditingSubject] = useState(false);
+  /** Cc/Bcc stay folded away until asked for — most replies need neither, and
+   *  two more fields above a phone keyboard is most of the screen. */
+  const [showCc, setShowCc] = useState(false);
+  const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   /** From tapping send on a recording until it lands — the recorder is gone by
    *  then, so without this there is nothing on screen saying it's in flight. */
   const [sendingVoice, setSendingVoice] = useState(false);
@@ -124,6 +180,14 @@ export function Composer({
 
   const isWhatsApp = channel === "whatsapp" || channel === "whatsapp_group";
   const isEmail = channel === "email";
+
+  // Follow the thread's subject: it changes when this screen opens on another
+  // conversation, and when a teammate renames the thread from the web. Keyed on
+  // the value, not the object, so an ordinary refetch that returns the same
+  // subject never interrupts an edit in progress.
+  useEffect(() => {
+    setSubject(conv.subject ?? "");
+  }, [conv.id, conv.subject]);
   const windowOpen = conv.waWindow?.open ?? false;
   const windowClosed = isWhatsApp && !windowOpen;
   const msLeft = conv.waWindow?.expiresAt ? new Date(conv.waWindow.expiresAt).getTime() - Date.now() : null;
@@ -154,6 +218,9 @@ export function Composer({
     setEmojiOpen(false);
     setPrePolish(null);
     setMention(null);
+    setEditingSubject(false);
+    // The email fields, resolved once so the send and the offline queue agree.
+    const email = emailFields();
     // Clear optimistically — the message is already on screen via useSendMessage,
     // and leaving the text behind invites an accidental double-send.
     setBody("");
@@ -167,7 +234,14 @@ export function Composer({
         // A note goes to the team, so it can't quote a customer message out.
         ...(replyTo && !internal ? { quotedMsgId: replyTo.id } : {}),
         ...(files.readyIds.length ? { attachmentIds: files.readyIds } : {}),
+        ...email,
       });
+      // Cc/Bcc are per-message, the way they are in a mail client: carrying them
+      // into the next reply silently would copy people nobody asked for. The
+      // subject stays — it belongs to the thread.
+      setCc("");
+      setBcc("");
+      setShowCc(false);
       haptics.success();
       files.clear();
       onClearReply?.();
@@ -195,10 +269,38 @@ export function Composer({
         ...(templateFallback ? { template: { id: defaultTemplate!.id, params: [text || "(attachment)"] } } : {}),
         ...(replyTo && !internal ? { quotedMsgId: replyTo.id } : {}),
         ...(files.readyIds.length ? { attachmentIds: files.readyIds } : {}),
+        // The subject and recipients have to survive on the queue too: a reply
+        // written on the Tube is sent hours later, from a process that has none
+        // of this component's state left.
+        ...email,
       });
+      setCc("");
+      setBcc("");
+      setShowCc(false);
       files.clear();
       onClearReply?.();
     }
+  }
+
+  /**
+   * Subject and recipients for an email send, or nothing at all.
+   *
+   * Only an outbound email carries them — a note goes to the team and a
+   * WhatsApp reply has no such fields, and sending an empty `subject` on either
+   * would rename the thread to nothing.
+   */
+  function emailFields(): { subject?: string; cc?: string[]; bcc?: string[] } {
+    if (!isEmail || internal) return {};
+    // Commas or spaces, as typed. A phone keyboard puts a space after the comma
+    // and autocorrect adds its own, so both have to be treated as separators.
+    const addrs = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
+    const ccList = addrs(cc);
+    const bccList = addrs(bcc);
+    return {
+      subject: subject.trim(),
+      ...(ccList.length ? { cc: ccList } : {}),
+      ...(bccList.length ? { bcc: bccList } : {}),
+    };
   }
 
   /**
@@ -466,6 +568,87 @@ export function Composer({
           </Text>
         </View>
       </View>
+
+      {/* An email's envelope: subject, and Cc/Bcc on request.
+
+          Same place and same order as the web's `.emailhdr`, directly under the
+          mode switcher — the fields that decide what this message *is* sit above
+          the field where you write it, the way every mail client arranges them.
+          Only on an outbound email: a note has no recipients and WhatsApp has no
+          subject. */}
+      {isEmail && !internal ? (
+        <View
+          style={{ backgroundColor: c.surface2 }}
+          className="mb-2 gap-1 rounded-12 px-3 py-2"
+        >
+          <View className="flex-row items-center gap-2">
+            <Text style={{ color: c.textFaint }} className="text-2xs font-semibold uppercase tracking-wide">
+              Subject
+            </Text>
+            {editingSubject ? (
+              <TextInput
+                value={subject}
+                onChangeText={setSubject}
+                placeholder="Add a subject"
+                placeholderTextColor={c.textFaint}
+                autoFocus
+                returnKeyType="done"
+                onBlur={() => setEditingSubject(false)}
+                onSubmitEditing={() => setEditingSubject(false)}
+                accessibilityLabel="Email subject"
+                style={{ color: c.text }}
+                className="min-w-0 flex-1 p-0 text-sm font-semibold"
+              />
+            ) : (
+              <Pressable
+                onPress={() => {
+                  haptics.tap();
+                  setEditingSubject(true);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={subject.trim() ? `Subject: ${subject.trim()}. Edit` : "Add a subject"}
+                hitSlop={6}
+                className="min-w-0 flex-1 flex-row items-center gap-1.5 active:opacity-60"
+              >
+                <Text
+                  numberOfLines={1}
+                  style={{ color: subject.trim() ? c.text : c.textFaint }}
+                  className="min-w-0 flex-shrink text-sm font-semibold"
+                >
+                  {subject.trim() || "Add a subject"}
+                </Text>
+                <EditIcon size={13} color={c.textFaint} />
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => {
+                haptics.tap();
+                setShowCc((v) => !v);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={showCc ? "Hide Cc and Bcc" : "Add Cc or Bcc"}
+              accessibilityState={{ expanded: showCc }}
+              hitSlop={8}
+              style={{ backgroundColor: showCc ? c.brandTint : "transparent" }}
+              className="flex-none rounded-full px-2 py-0.5 active:opacity-60"
+            >
+              <Text
+                style={{ color: showCc ? c.brandStrong : c.textMuted }}
+                className="text-2xs font-semibold"
+              >
+                Cc/Bcc
+              </Text>
+            </Pressable>
+          </View>
+
+          {showCc ? (
+            <>
+              <AddressRow label="Cc" value={cc} onChange={setCc} />
+              <AddressRow label="Bcc" value={bcc} onChange={setBcc} />
+            </>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Window shut with a default template standing in: say what will actually
           be sent, rather than silently rewriting the agent's message. */}
