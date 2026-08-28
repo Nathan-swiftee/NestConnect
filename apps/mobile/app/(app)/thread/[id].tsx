@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, SectionList, Text, View } from "react-native";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import {
   KeyboardAvoidingView,
@@ -64,6 +64,11 @@ import { enter } from "../../../src/motion";
 import { elevation, useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
 import { Touchable } from "../../../src/components/Touchable";
+
+/** One day of the thread. `isLastDay` rides along because `renderItem` is told
+ *  which section it is in, but not which number — and the final day is the one
+ *  that must not draw a divider under its last message. */
+type DaySection = { key: string; label: string; data: Message[]; isLastDay: boolean };
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
  *  means the same thing whichever one an agent reaches for. */
@@ -148,22 +153,31 @@ export default function Thread() {
   const [readLog, setReadLog] = useState<Message | null>(null);
   // The message being forwarded on to other chats (drives the picker sheet).
   const [forwarding, setForwarding] = useState<Message | null>(null);
-  const scroller = useRef<ScrollView>(null);
+  const list = useRef<SectionList<Message, DaySection>>(null);
   const marked = useRef(false);
   /**
-   * What the scroller looked like just before older messages were prepended.
+   * Is the reader at the newest message?
    *
-   * Loading history makes the content taller *above* the reader, so leaving the
-   * offset alone slides everything they were reading downward. Recording the
-   * height and offset first lets the new offset be computed from the growth:
-   * the message under their eye stays under their eye, which is the whole point
-   * of the button they just pressed.
+   * The only piece of scroll state the thread still keeps. Prepend anchoring is
+   * the platform's job now (`maintainVisibleContentPosition`), which retired
+   * the height/offset/viewport trio this used to need.
+   *
+   * True to start: a thread you have just opened is showing its newest message.
    */
-  const anchor = useRef<{ height: number; y: number } | null>(null);
-  const scrollY = useRef(0);
-  const contentH = useRef(0);
-  const viewportH = useRef(0);
-  /** Id of the newest message, so a *prepend* can be told from an *append*. */
+  const atBottom = useRef(true);
+  /**
+   * Has the reader taken control of the scroll yet?
+   *
+   * A virtualised list does not arrive at its full height in one go: it renders
+   * a screenful, measures, renders more. So a single "scroll to the end" on the
+   * first layout lands at what was the end a frame ago, and the content then
+   * grows underneath it — which is how the thread opened a thousand pixels
+   * short of its newest message. Until the reader actually drags, the list is
+   * pinned to the bottom through every one of those growth steps.
+   */
+  const pinned = useRef(true);
+  /** Id of the newest message, so a genuinely new one can be told from a
+   *  reflow — the first scrolls with animation, the second must not. */
   const lastMsgId = useRef<string | null>(null);
 
   useRealtime(id);
@@ -174,12 +188,17 @@ export default function Thread() {
    * Everything below exists to keep <Bubble> from re-rendering when nothing
    * about its message changed.
    *
-   * The thread is a plain ScrollView, so every loaded message is mounted — 300
-   * of them after a few taps of "load earlier". Before this, opening the
-   * details sheet re-rendered all 300, because each bubble took a fresh arrow
-   * function for every callback and the whole conversation object besides.
-   * Measured on a 6x-throttled CPU that was a 2.5-second frozen frame: not a
-   * slow list, a hung app.
+   * This mattered more when the thread was a plain ScrollView and every loaded
+   * message was mounted — 300 of them after a few taps of "load earlier", so
+   * opening the details sheet re-rendered all 300, because each bubble took a
+   * fresh arrow function for every callback and the whole conversation object
+   * besides. Measured on a 6x-throttled CPU that was a 2.5-second frozen frame:
+   * not a slow list, a hung app.
+   *
+   * The list virtualises now, so the blast radius is a screenful rather than a
+   * thread — but the memoisation is what keeps a virtualised list cheap too: an
+   * unstable `renderItem` makes it re-render every visible row on every parent
+   * render, which is most of what virtualising was for.
    *
    * So: the derivations are memoised, the handlers take the message as an
    * argument instead of closing over it, and the mutations they need are read
@@ -244,103 +263,108 @@ export default function Thread() {
   }, []);
 
   /**
-   * The thread as one flat list of children, plus the indices of the day
-   * separators within it.
+   * The thread as sections — one per day, which is what a `SectionList` sticks.
    *
-   * Flat because `stickyHeaderIndices` only understands direct children of the
-   * ScrollView; a per-day wrapper hides the separator from it. Built here rather
-   * than inline so the index bookkeeping lives next to the thing it indexes —
-   * getting it wrong sticks a message to the top instead of a date.
+   * This used to be one flat array of elements with a parallel array of indices
+   * for `stickyHeaderIndices`, because that prop only understands *direct*
+   * children of a ScrollView and a per-day wrapper hid the separator from it.
+   * That worked, and it meant the whole thread had to be mounted at once: a
+   * 400-message conversation built 400 bubbles, their attachments, reactions,
+   * quote previews and status ticks, and kept every one of them alive.
+   *
+   * A section per day says the same thing to a list that can virtualise it, and
+   * `stickySectionHeadersEnabled` pins the date without any index bookkeeping to
+   * get wrong.
    */
   // Read from the session rather than the `me` derived further down: this memo
   // is a hook, so it must run before the loading/error early returns, and `me`
   // is only in scope after them.
   const myId = session.data?.user?.id;
-  const { threadRows, stickyDays } = useMemo(() => {
-    const rows: React.ReactNode[] = [];
-    const sticky: number[] = [];
-    if (!data) return { threadRows: rows, stickyDays: sticky };
-    rows.push(
-      <LoadOlder
-        key="older"
-        conv={data}
-        onBeforeLoad={() => {
-          anchor.current = { height: contentH.current, y: scrollY.current };
-        }}
-      />,
-    );
-    days.forEach((group, gi) => {
-      sticky.push(rows.length);
-      rows.push(
-        // Transparent around an opaque pill, so the thread passes either side of
-        // it as it scrolls under — WhatsApp's floating date, not a full-width bar.
-        <View key={`day-${group.key}`} className="items-center pb-1 pt-1.5">
-          <View
-            style={{
-              backgroundColor: c.surface2,
-              // A lift, because this pill is sticky: while its day is on screen
-              // it sits *over* the messages scrolling under it, and flat against
-              // a bubble it reads as part of that bubble rather than as chrome
-              // floating above the thread.
-              shadowColor: "#000",
-              shadowOpacity: 0.14,
-              shadowRadius: 5,
-              shadowOffset: { width: 0, height: 1 },
-              elevation: 2,
-            }}
-            className="rounded-full px-3 py-1"
-          >
-            <Text className="text-2xs font-medium text-muted">{group.label}</Text>
-          </View>
-        </View>,
+  const sections = useMemo(
+    () =>
+      days.map((group, gi) => ({
+        key: group.key,
+        label: group.label,
+        data: group.items,
+        /** The last day needs no divider below it — the composer's gap is the
+         *  end of the thread. Carried on the section because `renderItem` is
+         *  told which section it is in, but not which number. */
+        isLastDay: gi === days.length - 1,
+      })),
+    [days],
+  );
+
+  const renderDay = useCallback(
+    ({ section }: { section: { label: string } }) => (
+      // Transparent around an opaque pill, so the thread passes either side of
+      // it as it scrolls under — WhatsApp's floating date, not a full-width bar.
+      <View className="items-center pb-1 pt-1.5">
+        <View
+          style={{
+            backgroundColor: c.surface2,
+            // A lift, because this pill is sticky: while its day is on screen it
+            // sits *over* the messages scrolling under it, and flat against a
+            // bubble it reads as part of that bubble rather than as chrome
+            // floating above the thread.
+            shadowColor: "#000",
+            shadowOpacity: 0.14,
+            shadowRadius: 5,
+            shadowOffset: { width: 0, height: 1 },
+            elevation: 2,
+          }}
+          className="rounded-full px-3 py-1"
+        >
+          <Text className="text-2xs font-medium text-muted">{section.label}</Text>
+        </View>
+      </View>
+    ),
+    [c.surface2],
+  );
+
+  const renderMessage = useCallback(
+    ({
+      item: m,
+      index: i,
+      section,
+    }: {
+      item: Message;
+      index: number;
+      section: { data: Message[]; isLastDay: boolean };
+    }) => {
+      if (!data) return null;
+      const prev = section.data[i - 1];
+      const next = section.data[i + 1];
+      const who = (x: Message) => speakerKey(x, data.channel);
+      return (
+        <Bubble
+          message={m}
+          // Primitives and one resolved message rather than the whole
+          // conversation: `conv` is a new object on every refetch, and passing
+          // it would re-render every bubble for a change to one.
+          channel={data.channel}
+          contactName={data.contact.displayName}
+          quoted={m.quotedMsgId ? byId.get(m.quotedMsgId) : undefined}
+          meId={myId}
+          // Same speaker above? Part of a run: loses the name and most of the
+          // gap above it. Same speaker below? Not the last of the run, so the
+          // tail belongs to whichever bubble is.
+          continues={!!prev && who(prev) === who(m)}
+          endsRun={!next || who(next) !== who(m)}
+          showSubject={showsSubject.has(m.id)}
+          firstOfDay={i === 0}
+          // Only when another day follows: the last message in the thread wants
+          // the composer's own gap, not a divider's.
+          lastOfDay={!next && !section.isLastDay}
+          onLongPress={onLongPress}
+          onReply={onReply}
+          onOpenReadLog={onOpenReadLog}
+          onRemoveReaction={onRemoveReaction}
+          onRetry={onRetry}
+        />
       );
-      group.items.forEach((m, i) => {
-        const prev = group.items[i - 1];
-        const next = group.items[i + 1];
-        const who = (x: Message) => speakerKey(x, data.channel);
-        rows.push(
-          <Bubble
-            key={m.id}
-            message={m}
-            // Primitives and one resolved message rather than the whole
-            // conversation: `conv` is a new object on every refetch, and passing
-            // it would re-render every bubble for a change to one.
-            channel={data.channel}
-            contactName={data.contact.displayName}
-            quoted={m.quotedMsgId ? byId.get(m.quotedMsgId) : undefined}
-            meId={myId}
-            // Same speaker above? Part of a run: loses the name and most of the
-            // gap above it. Same speaker below? Not the last of the run, so the
-            // tail belongs to whichever bubble is.
-            continues={!!prev && who(prev) === who(m)}
-            endsRun={!next || who(next) !== who(m)}
-            showSubject={showsSubject.has(m.id)}
-            firstOfDay={i === 0}
-            // Only when another day follows: the last message in the thread
-            // wants the composer's own gap, not a divider's.
-            lastOfDay={!next && gi < days.length - 1}
-            onLongPress={onLongPress}
-            onReply={onReply}
-            onOpenReadLog={onOpenReadLog}
-            onRemoveReaction={onRemoveReaction}
-            onRetry={onRetry}
-          />,
-        );
-      });
-    });
-    return { threadRows: rows, stickyDays: sticky };
-  }, [
-    data,
-    days,
-    byId,
-    myId,
-    c.surface2,
-    onLongPress,
-    onReply,
-    onOpenReadLog,
-    onRemoveReaction,
-    onRetry,
-  ]);
+    },
+    [data, byId, myId, showsSubject, onLongPress, onReply, onOpenReadLog, onRemoveReaction, onRetry],
+  );
 
   // Send `forwarding` on to the picked customers. The server reports each target
   // separately — a closed 24-hour window on one chat is the normal partial
@@ -612,81 +636,124 @@ export default function Thread() {
         onMore={() => setSheet("more")}
       />
 
-      {/* Flat children, not a View per day, because `stickyHeaderIndices` only
-          sticks DIRECT children of the ScrollView. Wrapping each day made its
-          separator scroll away with its group — the web keeps it pinned
-          (`position:sticky`) so you always know what day you're reading, and a
+      {/* A section per day, so the date pill can stick without the whole thread
+          having to be mounted for it. The web keeps its separator pinned
+          (`position: sticky`) so you always know what day you're reading, and a
           phone needs that more than a desktop does, not less.
 
           No container gap: spacing is per-bubble so a run can close up. A
           uniform gap would space every pair identically and there'd be no
           visible grouping at all. */}
-      <ScrollView
-        ref={scroller}
+      <SectionList
+        ref={list}
+        sections={sections}
+        keyExtractor={(m) => m.id}
+        renderItem={renderMessage}
+        renderSectionHeader={renderDay}
+        stickySectionHeadersEnabled
         // `flex: 1`, or the thread sizes itself to its messages instead of to
         // the space between the header and the composer. Both ends of that go
-        // wrong: one message and the scroll view is short, so the composer sits
+        // wrong: one message and the list is short, so the composer sits
         // halfway up the screen; a full thread and it grows past the bottom,
         // taking the composer off the screen with it. The container style is
-        // the padding inside the scroll, which is a different thing and was
-        // the only one set.
+        // the padding inside the scroll, which is a different thing.
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 12, paddingBottom: 16 }}
+        /**
+         * What replaced the anchoring arithmetic.
+         *
+         * Loading history makes the content taller *above* the reader, which
+         * used to slide everything they were reading downward — so the old code
+         * recorded the height and offset before the fetch and re-derived the
+         * offset from the growth afterwards, across four refs. The platform
+         * does it natively: pin to the first real item and content inserted
+         * above it doesn't move the viewport at all. Index 0 is the load-older
+         * header, hence 1.
+         */
+        maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
         onScroll={(e) => {
-          scrollY.current = e.nativeEvent.contentOffset.y;
+          const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+          atBottom.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 120;
+        }}
+        // The reader is driving now, so stop pinning to the bottom. Only a drag
+        // counts: the programmatic scrolls below fire `onScroll` too, and
+        // treating those as intent is what left the thread stranded mid-history.
+        onScrollBeginDrag={() => {
+          pinned.current = false;
         }}
         scrollEventThrottle={16}
-        onLayout={(e) => {
-          viewportH.current = e.nativeEvent.layout.height;
-        }}
-        onContentSizeChange={(_w, h) => {
-          const prev = contentH.current;
-          contentH.current = h;
-          // Older messages were just prepended: hold the reader's place by
-          // moving down exactly as much as the content grew above them.
-          if (anchor.current) {
-            const { height, y } = anchor.current;
-            anchor.current = null;
-            scroller.current?.scrollTo({ y: y + (h - height), animated: false });
-            return;
-          }
+        /**
+         * Stay glued to the bottom, and only that.
+         *
+         * All three cases the old twenty-five-line handler distinguished — a new
+         * message arriving, an image finishing loading and reflowing, the first
+         * layout of a freshly opened thread — are the same question: does the
+         * reader want to be at the bottom? Until they have dragged, yes,
+         * through every step of the list measuring itself. After that, only if
+         * that is where they already were.
+         */
+        onContentSizeChange={() => {
+          if (!pinned.current && !atBottom.current) return;
           const newest = data?.messages[data.messages.length - 1]?.id ?? null;
-          const appended = newest !== lastMsgId.current;
+          // Animated only for a message that has genuinely just arrived. The
+          // first layout and an image reflowing must not glide — that reads as
+          // the thread drifting on its own.
+          const isNewMessage = lastMsgId.current !== null && newest !== lastMsgId.current;
           lastMsgId.current = newest;
-          // Follow the bottom for a new message, and stay glued to it while
-          // content reflows if that's where the reader already was — an image
-          // finishing loading shouldn't leave the newest bubble half off the
-          // screen. Reading further up, nothing moves.
-          const wasAtBottom = prev === 0 || scrollY.current + viewportH.current >= prev - 120;
-          if (appended || wasAtBottom) {
-            scroller.current?.scrollToEnd({ animated: prev !== 0 && appended });
-          }
+          // The scroll responder rather than `scrollToLocation`: the end of the
+          // content is past the last message — the queued-message footer and the
+          // container's bottom padding both live below it — and an index-based
+          // scroll would stop short of them and need guarding for a thread with
+          // no messages besides.
+          list.current?.getScrollResponder()?.scrollToEnd({ animated: isNewMessage });
         }}
         keyboardDismissMode="interactive"
-        stickyHeaderIndices={stickyDays}
-      >
-        {/* The header is already real — it came from the row that was tapped —
-            but the messages haven't landed. Say so, rather than showing what
-            looks like a conversation nobody has ever written in. */}
-        {conv.isPlaceholderData ? (
-          <View className="items-center py-10">
-            <Loading />
-          </View>
-        ) : null}
-
-        {threadRows}
-
-        {/* Written but not yet accepted by the server — shown in place so a
-            reply composed offline doesn't look like it vanished. */}
-        {queue.forConversation(id).map((q) => (
-          <QueuedBubble
-            key={q.id}
-            item={q}
-            onRetry={() => void queue.retry(q.id)}
-            onDiscard={() => void queue.discard(q.id)}
-          />
-        ))}
-      </ScrollView>
+        // Bounded work per frame. The default renders far more than a phone
+        // screen can show, which is most of the cost virtualisation was for.
+        initialNumToRender={18}
+        maxToRenderPerBatch={12}
+        windowSize={9}
+        // A thread that scrolls fast shouldn't leave the reader on blank space,
+        // and a bubble is cheap enough to keep a screen's worth either side.
+        removeClippedSubviews={false}
+        ListHeaderComponent={
+          <>
+            {/* Asking for history is as clear a statement of "I am reading up
+                here" as a drag is, and it arrives without one — so it releases
+                the bottom pin too. Otherwise the prepend's content-size change
+                would scroll the reader straight back down to the newest
+                message, which is the opposite of what they just asked for. */}
+            <LoadOlder
+              conv={data}
+              onLoad={() => {
+                pinned.current = false;
+              }}
+            />
+            {/* The header is already real — it came from the row that was
+                tapped — but the messages haven't landed. Say so, rather than
+                showing what looks like a conversation nobody has written in. */}
+            {conv.isPlaceholderData ? (
+              <View className="items-center py-10">
+                <Loading />
+              </View>
+            ) : null}
+          </>
+        }
+        ListFooterComponent={
+          // Written but not yet accepted by the server — shown in place so a
+          // reply composed offline doesn't look like it vanished.
+          <>
+            {queue.forConversation(id).map((q) => (
+              <QueuedBubble
+                key={q.id}
+                item={q}
+                onRetry={() => void queue.retry(q.id)}
+                onDiscard={() => void queue.discard(q.id)}
+              />
+            ))}
+          </>
+        }
+      />
 
       <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
         {closed ? (
@@ -819,15 +886,22 @@ function Header({
   );
 }
 
-/** Scroll-up history. The thread loads its tail; earlier messages come on
- *  request rather than pulling a year of email onto a phone unasked. */
+/**
+ * Scroll-up history. The thread loads its tail; earlier messages come on
+ * request rather than pulling a year of email onto a phone unasked.
+ *
+ * It used to have to tell the thread where the reader was standing before
+ * fetching, so the arriving history could be subtracted back out of the scroll
+ * offset. The list pins its own position now
+ * (`maintainVisibleContentPosition`), so this only has to ask for the messages.
+ */
 function LoadOlder({
   conv,
-  onBeforeLoad,
+  onLoad,
 }: {
   conv: ConversationWithMessages;
-  /** Called before the fetch, to record where the reader is. */
-  onBeforeLoad: () => void;
+  /** Fired on press — the thread reads it as "I am up here reading history". */
+  onLoad: () => void;
 }) {
   const { c } = useTheme();
   const { loadOlder, loading } = useLoadOlderMessages(conv.id);
@@ -836,7 +910,7 @@ function LoadOlder({
     <Touchable feel="chip"
       disabled={loading}
       onPress={() => {
-        onBeforeLoad();
+        onLoad();
         void loadOlder();
       }}
       accessibilityRole="button"
