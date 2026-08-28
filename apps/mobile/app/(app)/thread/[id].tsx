@@ -386,6 +386,13 @@ export default function Thread() {
     markRead.mutate(id);
   }, [id, conv.data, markRead]);
 
+  /**
+   * A conversation opened from the inbox never lands here: `useConversation`
+   * hands back the list row as placeholder data, so `isLoading` is already
+   * false and the header, avatar, channel and subject render on the first
+   * frame. This is the cold path — a push notification, a deep link, a restart
+   * — where there is genuinely nothing cached to show yet.
+   */
   if (conv.isLoading) {
     return (
       <View style={{ backgroundColor: c.bg }} className="flex-1 items-center justify-center">
@@ -446,12 +453,20 @@ export default function Thread() {
   const restoreAssignment = () => {
     const assigneeUserId = data.assigneeUserId ?? null;
     const assignedTeamId = data.assignedTeamId ?? null;
-    return () => assign.mutate({ id: data.id, input: { assigneeUserId, assignedTeamId } });
+    const assigneeName = data.assigneeName ?? null;
+    return () => assign.mutate({ id: data.id, input: { assigneeUserId, assignedTeamId }, assigneeName });
   };
-  const doAssign = (input: { assigneeUserId?: string | null; assignedTeamId?: string | null }, said: string) => {
+  /** `assigneeName` is only for the optimistic row — the server resolves the
+   *  real one — so that the list and the header don't read "Unassigned" for the
+   *  length of a round trip. Null whenever the assignment is to a team. */
+  const doAssign = (
+    input: { assigneeUserId?: string | null; assignedTeamId?: string | null },
+    said: string,
+    assigneeName?: string | null,
+  ) => {
     const undo = restoreAssignment();
     haptics.success();
-    assign.mutate({ id: data.id, input });
+    assign.mutate({ id: data.id, input, assigneeName });
     toast({ text: said, undo });
   };
 
@@ -480,7 +495,7 @@ export default function Thread() {
       label: "Assign to me",
       leading: me ? <Avatar name={me.name} color={me.avatarColor} size={34} /> : undefined,
       selected: data.assigneeUserId === me?.id,
-      onPress: () => doAssign({ assigneeUserId: me?.id ?? null }, "Assigned to you"),
+      onPress: () => doAssign({ assigneeUserId: me?.id ?? null }, "Assigned to you", me?.name ?? null),
     },
     ...ranked.map((m) => ({
       key: m.user.id,
@@ -492,7 +507,7 @@ export default function Thread() {
           ? teamName(currentTeam)
           : undefined,
       selected: data.assigneeUserId === m.user.id,
-      onPress: () => doAssign({ assigneeUserId: m.user.id }, `Assigned to ${m.user.name}`),
+      onPress: () => doAssign({ assigneeUserId: m.user.id }, `Assigned to ${m.user.name}`, m.user.name),
     })),
     ...(teams.data ?? []).map((t, i) => ({
       key: `team:${t.id}`,
@@ -650,6 +665,15 @@ export default function Thread() {
         keyboardDismissMode="interactive"
         stickyHeaderIndices={stickyDays}
       >
+        {/* The header is already real — it came from the row that was tapped —
+            but the messages haven't landed. Say so, rather than showing what
+            looks like a conversation nobody has ever written in. */}
+        {conv.isPlaceholderData ? (
+          <View className="items-center py-10">
+            <Loading />
+          </View>
+        ) : null}
+
         {threadRows}
 
         {/* Written but not yet accepted by the server — shown in place so a

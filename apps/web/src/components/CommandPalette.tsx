@@ -65,7 +65,7 @@ export function CommandPalette({ conversationId, onClose, onSelectConversation, 
           sub: "Take this conversation",
           icon: <ProfileIcon />,
           run: () => {
-            assign.mutate({ id: conversationId, input: { assigneeUserId: me?.user.id ?? null } });
+            assign.mutate({ id: conversationId, input: { assigneeUserId: me?.user.id ?? null }, assigneeName: me?.user.name ?? null });
             onToast("Assigned to you");
           },
         },

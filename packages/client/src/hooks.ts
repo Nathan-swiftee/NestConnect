@@ -10,8 +10,10 @@ import {
 import {
   ClientEvent,
   ServerEvent,
+  type Conversation,
   type ConversationStatus,
   type ConversationWithMessages,
+  type Label,
   type Priority,
   type CreateContactInput,
   type MergeContactsInput,
@@ -425,7 +427,16 @@ export function useSetConversationLabels() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: string; labelIds: string[] }) => api.setConversationLabels(v.id, v.labelIds),
-    onSuccess: (_data, v) => {
+    // The call carries ids; the conversation carries whole labels. The catalog
+    // is already cached — it's what drew the picker the tap came from — so the
+    // pills can change colour on the tap rather than on the round trip.
+    onMutate: (v) => {
+      const catalog = qc.getQueryData<Label[]>(["labels"]) ?? [];
+      const picked = v.labelIds.map((id) => catalog.find((l) => l.id === id)).filter((l): l is Label => !!l);
+      return optimisticPatch(qc, v.id, { labels: picked });
+    },
+    onError: (_e, v, undo) => undo && patchConversation(qc, v.id, undo),
+    onSettled: (_d, _e, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
@@ -550,12 +561,123 @@ export const useSearchConversations = (q: string, enabled: boolean, view?: strin
     select: (d) => d.pages.flatMap((p) => p.items),
   });
 
-export const useConversation = (id: string | null) =>
-  useQuery({
+/** One page of a cursor-paginated conversation list, as it sits in the cache. */
+type ConversationPages = { pages: { items: Conversation[] }[]; pageParams: unknown[] };
+
+/**
+ * The list row for a conversation, from whichever cache already holds it.
+ *
+ * Every conversation you can open, you opened from a list — so by the time the
+ * thread mounts, its name, avatar, channel, subject, labels and status are all
+ * already in memory. Finding them is the difference between a thread that
+ * appears and a thread that arrives.
+ */
+function cachedConversationRow(qc: QueryClient, id: string): Conversation | undefined {
+  for (const key of [["conversations"], ["search"]]) {
+    for (const [, data] of qc.getQueriesData<ConversationPages>({ queryKey: key })) {
+      for (const page of data?.pages ?? []) {
+        const hit = page.items.find((c) => c.id === id);
+        if (hit) return hit;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The open thread.
+ *
+ * `placeholderData` is what stops a conversation opening onto a blank screen.
+ * The row you just tapped carries everything the header needs, so the header,
+ * the channel badge and the subject render on the *first* frame and the
+ * messages fill in behind them. `isPlaceholderData` tells the screen it is
+ * looking at a stub, so it can show the message area as loading rather than as
+ * an empty conversation.
+ *
+ * Deliberately not synthesising a bubble out of the row's `preview`: a message
+ * with an invented id is a message reactions, retries and read receipts can all
+ * be pointed at, and a fake one would be a real bug the moment someone
+ * long-pressed it.
+ */
+export const useConversation = (id: string | null) => {
+  const qc = useQueryClient();
+  return useQuery({
     queryKey: ["conversation", id],
     queryFn: () => api.conversation(id as string),
     enabled: !!id,
+    placeholderData: () => {
+      if (!id) return undefined;
+      const row = cachedConversationRow(qc, id);
+      return row ? { ...row, messages: [], hasMoreMessages: false, participants: [] } : undefined;
+    },
   });
+};
+
+/**
+ * Start fetching a conversation before the screen that needs it exists.
+ *
+ * Called from the list row's press handler. A phone spends 250–350ms on the
+ * push transition, which is dead time the request can run inside — so by the
+ * time the thread has finished sliding in, its messages have usually landed.
+ * Cheap to be wrong: a prefetch nobody navigates to is one warm cache entry.
+ */
+export function usePrefetchConversation() {
+  const qc = useQueryClient();
+  return useCallback(
+    (id: string) => {
+      void qc.prefetchQuery({
+        queryKey: ["conversation", id],
+        queryFn: () => api.conversation(id),
+        staleTime: 10_000,
+      });
+    },
+    [qc],
+  );
+}
+
+/**
+ * Change a conversation everywhere it is cached, at once.
+ *
+ * A conversation is in several caches simultaneously — one entry per list view,
+ * any search results, and the open thread — and until all of them agree the UI
+ * contradicts itself: closing from the thread left the row sitting in the inbox
+ * behind it until the server answered and the list refetched.
+ *
+ * The inbox's filter chips recompute from these same cached rows, so patching
+ * `status` here is also what makes a closed conversation leave "All" on the tap
+ * rather than on the round trip.
+ */
+function patchConversation(qc: QueryClient, id: string, patch: Partial<Conversation>) {
+  const inPages = (d: ConversationPages | undefined) =>
+    d
+      ? {
+          ...d,
+          pages: d.pages.map((p) => ({
+            ...p,
+            items: p.items.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+          })),
+        }
+      : d;
+  qc.setQueriesData<ConversationPages>({ queryKey: ["conversations"] }, inPages);
+  qc.setQueriesData<ConversationPages>({ queryKey: ["search"] }, inPages);
+  qc.setQueryData<ConversationWithMessages>(["conversation", id], (c) => (c ? { ...c, ...patch } : c));
+}
+
+/**
+ * Apply a change now, and put it back if the server disagrees.
+ *
+ * The shape every optimistic conversation mutation below shares: snapshot the
+ * fields about to change, patch them, restore exactly those on failure, and
+ * invalidate either way so the server's version is the one that survives.
+ */
+function optimisticPatch(qc: QueryClient, id: string, patch: Partial<Conversation>) {
+  const before = cachedConversationRow(qc, id) ?? qc.getQueryData<ConversationWithMessages>(["conversation", id]);
+  const undo = before
+    ? (Object.fromEntries(Object.keys(patch).map((k) => [k, before[k as keyof Conversation]])) as Partial<Conversation>)
+    : undefined;
+  patchConversation(qc, id, patch);
+  return undo;
+}
 
 /** Load older thread history (scroll-up) and prepend it into the thread cache. */
 export function useLoadOlderMessages(conversationId: string | null) {
@@ -832,11 +954,21 @@ export function useAssign() {
     mutationFn: (v: {
       id: string;
       input: { assigneeUserId?: string | null; assignedTeamId?: string | null };
+      /** The chosen person's name, for the optimistic row. The server resolves
+       *  it authoritatively; this is only so the row doesn't say "Unassigned"
+       *  for the length of a round trip. Omit when assigning to a team. */
+      assigneeName?: string | null;
     }) => api.assign(v.id, v.input),
-    onSuccess: () => {
+    onMutate: (v) =>
+      optimisticPatch(qc, v.id, {
+        ...v.input,
+        ...(v.input.assigneeUserId !== undefined ? { assigneeName: v.assigneeName ?? null } : {}),
+      }),
+    onError: (_e, v, undo) => undo && patchConversation(qc, v.id, undo),
+    onSettled: (_d, _e, v) => {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
-      qc.invalidateQueries({ queryKey: ["conversation"] });
+      qc.invalidateQueries({ queryKey: ["conversation", v.id] });
     },
   });
 }
@@ -845,7 +977,9 @@ export function useSetStatus() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: string; status: ConversationStatus }) => api.setStatus(v.id, v.status),
-    onSuccess: (_conv, v) => {
+    onMutate: (v) => optimisticPatch(qc, v.id, { status: v.status }),
+    onError: (_e, v, undo) => undo && patchConversation(qc, v.id, undo),
+    onSettled: (_d, _e, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
@@ -857,7 +991,9 @@ export function useSetPriority() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (v: { id: string; priority: Priority }) => api.setPriority(v.id, v.priority),
-    onSuccess: (_conv, v) => {
+    onMutate: (v) => optimisticPatch(qc, v.id, { priority: v.priority }),
+    onError: (_e, v, undo) => undo && patchConversation(qc, v.id, undo),
+    onSettled: (_d, _e, v) => {
       qc.invalidateQueries({ queryKey: ["conversation", v.id] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });

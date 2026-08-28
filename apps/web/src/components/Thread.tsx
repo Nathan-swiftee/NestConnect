@@ -2739,13 +2739,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   };
 
   const take = () => {
-    assign.mutate({ id: conv.id, input: { assigneeUserId: me?.user.id ?? null, assignedTeamId: conv.assignedTeamId } });
+    assign.mutate({ id: conv.id, input: { assigneeUserId: me?.user.id ?? null, assignedTeamId: conv.assignedTeamId }, assigneeName: me?.user.name ?? null });
     setMenu(false);
     onToast("Assigned to you");
   };
   /** Hand it to a named person, keeping whichever team it's routed to. */
   const assignTo = (userId: string, name: string) => {
-    assign.mutate({ id: conv.id, input: { assigneeUserId: userId, assignedTeamId: conv.assignedTeamId } });
+    assign.mutate({ id: conv.id, input: { assigneeUserId: userId, assignedTeamId: conv.assignedTeamId }, assigneeName: name });
     setMenu(false);
     onToast(`Assigned to ${name}`);
   };

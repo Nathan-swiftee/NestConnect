@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ActivityIndicator, Image, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
+import { Image } from "expo-image";
 import type { Attachment } from "@ding/schemas";
 import { formatBytes, formatDuration } from "@ding/client";
 import { mediaSource } from "../api-config";
@@ -60,7 +61,14 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
               <Image
                 source={mediaSource(a.url)}
                 style={{ width: MAX_W, height: MAX_W / ratio, borderRadius: 12, backgroundColor: c.surface2 }}
-                resizeMode="cover"
+                contentFit="cover"
+                // React Native's own <Image> has no disk cache worth the name,
+                // so every scroll back past a photo in a long thread was a
+                // fresh download and decode, landing as a hard pop-in. This
+                // caches, and fades the image in over the placeholder tint
+                // instead of swapping it.
+                cachePolicy="memory-disk"
+                transition={180}
               />
             </Touchable>
           );

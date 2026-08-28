@@ -1,4 +1,5 @@
-import { ActivityIndicator, Image, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { formatBytes } from "@ding/client";
 import type { Staged } from "../attachments";
 import { AlertIcon, DocIcon, ImageIcon, PlayIcon, XIcon } from "../icons";
@@ -44,7 +45,7 @@ export function StagedAttachments({
             className="w-[132px] overflow-hidden rounded-12 border"
           >
             {s.kind === "image" ? (
-              <Image source={{ uri: s.uri }} style={{ width: 132, height: 76 }} resizeMode="cover" />
+              <Image source={{ uri: s.uri }} style={{ width: 132, height: 76 }} contentFit="cover" />
             ) : (
               <View style={{ height: 76 }} className="items-center justify-center">
                 {s.kind === "video" ? (

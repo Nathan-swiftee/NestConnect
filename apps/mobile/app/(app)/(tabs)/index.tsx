@@ -14,6 +14,7 @@ import { router } from "expo-router";
 import {
   listTime,
   useConversations,
+  usePrefetchConversation,
   useRefresh,
   useSearchConversations,
   useSession,
@@ -231,9 +232,19 @@ export default function Inbox() {
 
   // Stable, so <Row>'s memo isn't defeated by a new arrow on every render.
   // The row knows its own id, so the handler doesn't need to close over it.
+  //
+  // The fetch starts before the navigation does. The push transition is 250–350ms
+  // of animation the request can run underneath, so the thread has usually
+  // arrived by the time it has finished sliding in — and the row this was tapped
+  // on is the thread's own placeholder in the meantime, so there is no blank
+  // screen either way.
+  const prefetchConversation = usePrefetchConversation();
   const openThread = useCallback(
-    (id: string) => router.push({ pathname: "/(app)/thread/[id]", params: { id } }),
-    [],
+    (id: string) => {
+      prefetchConversation(id);
+      router.push({ pathname: "/(app)/thread/[id]", params: { id } });
+    },
+    [prefetchConversation],
   );
 
   const active = searching ? found : list;

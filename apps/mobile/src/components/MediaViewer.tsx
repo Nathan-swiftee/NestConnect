@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, Text, View } from "react-native";
+import { Image } from "expo-image";
 import { useVideoPlayer, VideoView } from "expo-video";
 import type { Attachment } from "@ding/schemas";
 import { formatBytes } from "@ding/client";
@@ -115,7 +116,11 @@ export function MediaViewer({
             <Image
               source={mediaSource(attachment.url)}
               style={{ flex: 1 }}
-              resizeMode="contain"
+              contentFit="contain"
+              // Almost always already on disk from the thumbnail in the thread,
+              // so the full-screen view opens on the image rather than on black.
+              cachePolicy="memory-disk"
+              transition={140}
               accessibilityLabel={attachment.filename || "Photo"}
             />
           </Pressable>
