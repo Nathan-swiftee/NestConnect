@@ -51,13 +51,10 @@ export function HoldToRecord({
   voice,
   onSend,
   onLock,
-  size = 40,
 }: {
   voice: VoiceRecording;
   onSend: () => void;
   onLock: () => void;
-  /** Matches the send button it replaces, so the row doesn't resize. */
-  size?: number;
 }) {
   const { c } = useTheme();
   const [holding, setHolding] = useState(false);
@@ -150,10 +147,7 @@ export function HoldToRecord({
         >
           <View className="flex-1 flex-row items-end justify-end pb-1 pr-3">
             <Animated.View
-              style={[
-                lockHint,
-                { backgroundColor: c.surface2, borderColor: c.border },
-              ]}
+              style={[lockHint, { backgroundColor: c.surface2, borderColor: c.border }]}
               className="mb-2 h-9 w-9 items-center justify-center rounded-full border"
             >
               <LockIcon size={16} color={c.textMuted} />
@@ -181,19 +175,25 @@ export function HoldToRecord({
         </View>
       ) : null}
 
+      {/* A plain View between the detector and the styled one, the way
+          `SwipeToReply` does it. The size and shape are classes rather than
+          style properties for the reason `SwipeRow` sets out: on this stack the
+          class-derived style is the one that lands, and putting the disc's
+          width, height and radius in `style` is what left the microphone as a
+          white glyph on no background. Only the animated transform and the
+          colour that changes while holding stay in the style. */}
       <GestureDetector gesture={hold}>
-        <Animated.View
-          style={[
-            button,
-            { backgroundColor: holding ? c.danger : c.brand, height: size, width: size },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel="Hold to record a voice message"
-          accessibilityHint="Hold to record, release to send. Slide left to cancel, up to lock."
-          className="items-center justify-center rounded-full"
-        >
-          <MicIcon size={19} color="#fff" />
-        </Animated.View>
+        <View>
+          <Animated.View
+            style={[button, { backgroundColor: holding ? c.danger : c.brand }]}
+            accessibilityRole="button"
+            accessibilityLabel="Hold to record a voice message"
+            accessibilityHint="Hold to record, release to send. Slide left to cancel, up to lock."
+            className="h-10 w-10 items-center justify-center rounded-full"
+          >
+            <MicIcon size={19} color="#fff" />
+          </Animated.View>
+        </View>
       </GestureDetector>
     </>
   );

@@ -121,10 +121,17 @@ export function SwipeRow({
   return (
     <GestureDetector gesture={pan}>
       <View>
+        {/* `absolute inset-0` in the className, not `position: absolute` in the
+            style. On this stack the class wins: NativeWind's interop drives
+            `style` from `className`, so layout put in the style prop of an
+            element that also has classes is not reliably applied — which is
+            what made this panel take up 44pt of layout above every row instead
+            of sitting behind it. `Sheet.tsx` scrim has always done it this way;
+            the style keeps only the animated colour and opacity. */}
         <Animated.View
           pointerEvents="none"
-          style={[behind, { position: "absolute", left: 0, right: 0, top: 0, bottom: 0 }]}
-          className="flex-row items-center justify-between px-6"
+          style={behind}
+          className="absolute inset-0 flex-row items-center justify-between px-6"
         >
           <Animated.View style={leftPanel}>{left?.icon}</Animated.View>
           <Animated.View style={rightPanel}>{right?.icon}</Animated.View>
