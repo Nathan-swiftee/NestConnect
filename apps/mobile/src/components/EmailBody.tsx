@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Linking, Pressable, Text, View } from "react-native";
+import { Linking, Text, View } from "react-native";
 import Animated, { LinearTransition } from "react-native-reanimated";
 import { ReduceMotion } from "react-native-reanimated";
 import type { Message } from "@ding/schemas";
@@ -7,6 +7,7 @@ import { ChevronDown } from "../icons";
 import { haptics } from "../haptics";
 import { useTheme } from "../theme";
 import { type Block, estimateLines, parseEmail } from "../email-html";
+import { Touchable } from "./Touchable";
 
 /**
  * An email, rendered as an email rather than as a very long chat message.
@@ -93,7 +94,7 @@ export function EmailBody({
       </View>
 
       {longEnoughToCollapse ? (
-        <Pressable
+        <Touchable feel="chip"
           onPress={() => {
             haptics.tap();
             setExpanded((v) => !v);
@@ -101,7 +102,7 @@ export function EmailBody({
           accessibilityRole="button"
           accessibilityState={{ expanded }}
           hitSlop={8}
-          className="mt-1.5 flex-row items-center gap-1 self-start active:opacity-60"
+          className="mt-1.5 flex-row items-center gap-1 self-start"
         >
           <Text style={{ color: c.brand }} className="text-sm font-semibold">
             {expanded ? "Show less" : "Read more"}
@@ -109,12 +110,12 @@ export function EmailBody({
           <View style={{ transform: [{ rotate: expanded ? "180deg" : "0deg" }] }}>
             <ChevronDown size={13} color={c.brand} />
           </View>
-        </Pressable>
+        </Touchable>
       ) : null}
 
       {parsed.quoted.length ? (
         <View className="mt-2">
-          <Pressable
+          <Touchable feel="chip"
             onPress={() => {
               haptics.tap();
               setShowQuoted((v) => !v);
@@ -127,12 +128,12 @@ export function EmailBody({
             // "there is more here" without claiming to be a button for anything
             // in particular, which is right — what's under it is old news.
             style={{ backgroundColor: c.surface2 }}
-            className="self-start rounded-full px-2.5 py-1 active:opacity-60"
+            className="self-start rounded-full px-2.5 py-1"
           >
             <Text style={{ color: c.textMuted }} className="text-xs font-bold leading-none">
               •••
             </Text>
-          </Pressable>
+          </Touchable>
           {showQuoted ? (
             <View
               style={{ borderLeftColor: c.borderStrong }}

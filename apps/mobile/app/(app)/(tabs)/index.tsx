@@ -33,6 +33,7 @@ import { ChevronRight, PlusIcon, SearchIcon } from "../../../src/icons";
 import { rowIn, spring, springTo } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
+import { Touchable } from "../../../src/components/Touchable";
 
 /**
  * Narrowing applied on top of the chosen view, client-side — the web's set,
@@ -96,11 +97,11 @@ const Row = memo(function Row({
   const unread = conv.unreadCount > 0 || conv.unread;
   const overdue = !!conv.slaDueAt && new Date(conv.slaDueAt).getTime() < Date.now() && conv.status !== "closed";
   return (
-    <Pressable
+    <Touchable feel="row"
       onPress={() => onPress(conv.id)}
       accessibilityRole="button"
       accessibilityLabel={`${conv.contact.displayName}. ${conv.preview ?? ""}`}
-      className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
+      className="flex-row items-center gap-3 px-4 py-3"
     >
       <Avatar name={conv.contact.displayName} color={conv.contact.avatarColor} size={52} />
 
@@ -168,7 +169,7 @@ const Row = memo(function Row({
           ))}
         </View>
       </View>
-    </Pressable>
+    </Touchable>
   );
 });
 
@@ -308,7 +309,7 @@ export default function Inbox() {
           does and the way the web's sidebar works. The chevron is the only cue
           that says so, so it stays visible rather than appearing on press. */}
       <View className="flex-row items-center justify-between px-4 pb-3 pt-3">
-        <Pressable
+        <Touchable feel="chip"
           onPress={() => {
             haptics.select();
             setSwitcher(true);
@@ -316,7 +317,7 @@ export default function Inbox() {
           accessibilityRole="button"
           accessibilityLabel={`${viewTitle}. Change inbox`}
           hitSlop={8}
-          className="flex-1 flex-row items-center gap-1.5 active:opacity-60"
+          className="flex-1 flex-row items-center gap-1.5"
         >
           <View className="flex-shrink">
             <View className="flex-row items-center gap-1.5">
@@ -336,13 +337,13 @@ export default function Inbox() {
               {session.data?.user?.name ?? ""}
             </Text>
           </View>
-        </Pressable>
+        </Touchable>
 
         {/* Start one, rather than only ever answering one. Beside the title
             because that's where the inbox's own actions belong, and filled
             because it's the only thing on this screen that creates something
             rather than navigating to it. */}
-        <Pressable
+        <Touchable feel="chip"
           onPress={() => {
             haptics.select();
             router.push("/(app)/compose");
@@ -351,10 +352,10 @@ export default function Inbox() {
           accessibilityLabel="New conversation"
           hitSlop={10}
           style={{ backgroundColor: c.brand }}
-          className="h-10 w-10 flex-none items-center justify-center rounded-full active:opacity-80"
+          className="h-10 w-10 flex-none items-center justify-center rounded-full"
         >
           <PlusIcon size={22} color="#fff" />
-        </Pressable>
+        </Touchable>
       </View>
 
       {/* Search carries its glyph inside the field, as on the web — the icon is

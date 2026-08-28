@@ -63,6 +63,7 @@ import { haptics } from "../../../src/haptics";
 import { enter } from "../../../src/motion";
 import { elevation, useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
+import { Touchable } from "../../../src/components/Touchable";
 
 /** Snooze presets. The same five the web offers, so "snooze till tomorrow"
  *  means the same thing whichever one an agent reaches for. */
@@ -398,11 +399,11 @@ export default function Thread() {
     return (
       <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1 justify-center">
         <ErrorState error={conv.error} what="this conversation" onRetry={() => void conv.refetch()} />
-        <Pressable onPress={() => router.back()} accessibilityRole="button" className="items-center py-2 active:opacity-60">
+        <Touchable feel="chip" onPress={() => router.back()} accessibilityRole="button" className="items-center py-2">
           <Text style={{ color: c.brand }} className="text-md font-medium">
             Back to inbox
           </Text>
-        </Pressable>
+        </Touchable>
       </View>
     );
   }
@@ -413,11 +414,11 @@ export default function Thread() {
         <Text className="mt-1 text-center text-md text-muted">
           It may have been merged into another thread, or you no longer have access to it.
         </Text>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" className="mt-4 active:opacity-60">
+        <Touchable feel="chip" onPress={() => router.back()} accessibilityRole="button" className="mt-4">
           <Text style={{ color: c.brand }} className="text-lg font-medium">
             Back to inbox
           </Text>
-        </Pressable>
+        </Touchable>
       </View>
     );
   }
@@ -756,9 +757,9 @@ function Header({
       style={{ borderBottomColor: c.border, backgroundColor: c.surface, paddingTop: insetTop }}
       className="flex-row items-center gap-2.5 border-b px-2 pb-2 pt-2"
     >
-      <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back to inbox" hitSlop={12} className="px-1 active:opacity-60">
+      <Touchable feel="chip" onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back to inbox" hitSlop={12} className="px-1">
         <BackIcon size={24} color={c.brand} />
-      </Pressable>
+      </Touchable>
       <Avatar name={conv.contact.displayName} color={conv.contact.avatarColor} size={38} />
       <View className="flex-1">
         {/* Name and channel sit on one line, as on the web: the glyph is the
@@ -784,12 +785,12 @@ function Header({
           {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
         </Text>
       </View>
-      <Pressable onPress={onDetails} accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={12} className="px-1.5 active:opacity-60">
+      <Touchable feel="chip" onPress={onDetails} accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={12} className="px-1.5">
         <DetailsIcon size={20} color={c.textMuted} />
-      </Pressable>
-      <Pressable onPress={onMore} accessibilityRole="button" accessibilityLabel="More actions" hitSlop={12} className="px-1.5 active:opacity-60">
+      </Touchable>
+      <Touchable feel="chip" onPress={onMore} accessibilityRole="button" accessibilityLabel="More actions" hitSlop={12} className="px-1.5">
         <MoreIcon size={20} color={c.textMuted} />
-      </Pressable>
+      </Touchable>
     </View>
   );
 }
@@ -808,7 +809,7 @@ function LoadOlder({
   const { loadOlder, loading } = useLoadOlderMessages(conv.id);
   if (!conv.hasMoreMessages) return null;
   return (
-    <Pressable
+    <Touchable feel="chip"
       disabled={loading}
       onPress={() => {
         onBeforeLoad();
@@ -816,12 +817,12 @@ function LoadOlder({
       }}
       accessibilityRole="button"
       accessibilityState={{ busy: loading }}
-      className="items-center py-2 active:opacity-60"
+      className="items-center py-2"
     >
       <Text style={{ color: c.brand }} className="text-sm font-medium">
         {loading ? "Loading…" : "Load earlier messages"}
       </Text>
-    </Pressable>
+    </Touchable>
   );
 }
 
@@ -1071,12 +1072,12 @@ const Bubble = memo(function Bubble({
               per-person log. Email has no real delivery receipt, so this is the
               only honest answer to "did they see it". */}
           {read ? (
-            <Pressable
+            <Touchable feel="chip"
               onPress={() => onOpenReadLog(message)}
               accessibilityRole="button"
               accessibilityLabel={`Read receipts: ${read.seen} of ${read.total} opened`}
               hitSlop={6}
-              className="flex-row items-center gap-1 active:opacity-60"
+              className="flex-row items-center gap-1"
             >
               <EyeIcon size={13} color={read.seen ? c.email : c.textFaint} />
               <Text
@@ -1085,7 +1086,7 @@ const Bubble = memo(function Bubble({
               >
                 {read.seen}/{read.total}
               </Text>
-            </Pressable>
+            </Touchable>
           ) : null}
           {/* "Sent by Nathan A ·" — the same place and the same wording the web
               uses, so a thread read on a phone attributes replies identically to
@@ -1113,11 +1114,11 @@ const Bubble = memo(function Bubble({
       />
 
       {mine && message.status === "failed" ? (
-        <Pressable onPress={() => onRetry(message)} accessibilityRole="button" className="px-1 pt-1 active:opacity-60">
+        <Touchable feel="chip" onPress={() => onRetry(message)} accessibilityRole="button" className="px-1 pt-1">
           <Text style={{ color: c.brand }} className="text-2xs font-medium">
             Retry{message.failureReason ? ` · ${message.failureReason}` : ""}
           </Text>
-        </Pressable>
+        </Touchable>
       ) : null}
     </Animated.View>
     </SwipeToReply>

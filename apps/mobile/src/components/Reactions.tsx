@@ -1,7 +1,8 @@
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import Animated, { ReduceMotion, ZoomIn } from "react-native-reanimated";
 import type { Reaction } from "@ding/schemas";
 import { useTheme } from "../theme";
+import { Touchable } from "./Touchable";
 
 /**
  * The reaction pill, matched to the web's.
@@ -57,7 +58,7 @@ export function Reactions({
         key={reactions.map((r) => r.emoji).join()}
         entering={ZoomIn.springify().damping(14).stiffness(320).mass(0.6).reduceMotion(ReduceMotion.System)}
       >
-        <Pressable
+        <Touchable feel="chip"
           onPress={ours ? onRemove : undefined}
           disabled={!ours || !onRemove}
           accessibilityRole={ours && onRemove ? "button" : "text"}
@@ -77,14 +78,14 @@ export function Reactions({
             shadowOffset: { width: 0, height: 1 },
             elevation: 2,
           }}
-          className="flex-row items-center gap-px rounded-full active:opacity-70"
+          className="flex-row items-center gap-px rounded-full"
         >
           {reactions.map((r, i) => (
             <Text key={`${r.emoji}-${i}`} className="text-xs leading-none">
               {r.emoji}
             </Text>
           ))}
-        </Pressable>
+        </Touchable>
       </Animated.View>
     </View>
   );

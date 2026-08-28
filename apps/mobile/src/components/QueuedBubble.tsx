@@ -1,8 +1,9 @@
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { clockTime } from "@ding/client";
 import type { QueuedSend } from "../send-queue";
 import { AlertIcon, ClockIcon } from "../icons";
 import { useTheme } from "../theme";
+import { Touchable } from "./Touchable";
 
 /**
  * A message that's been written but hasn't reached the server yet.
@@ -65,16 +66,16 @@ export function QueuedBubble({
           <Text style={{ color: c.danger }} className="text-2xs">
             {item.deadLetter}
           </Text>
-          <Pressable onPress={onRetry} accessibilityRole="button" className="active:opacity-60">
+          <Touchable feel="chip" onPress={onRetry} accessibilityRole="button" className="">
             <Text style={{ color: c.brandStrong }} className="text-2xs font-semibold">
               Retry
             </Text>
-          </Pressable>
-          <Pressable onPress={onDiscard} accessibilityRole="button" className="active:opacity-60">
+          </Touchable>
+          <Touchable feel="chip" onPress={onDiscard} accessibilityRole="button" className="">
             <Text style={{ color: c.textMuted }} className="text-2xs font-semibold">
               Discard
             </Text>
-          </Pressable>
+          </Touchable>
         </View>
       ) : (
         <Text className="px-1 pt-1 text-2xs text-faint">

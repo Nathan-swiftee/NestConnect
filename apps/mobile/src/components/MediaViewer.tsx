@@ -9,6 +9,7 @@ import { useInsets } from "../insets";
 import { useThemeVars } from "../theme";
 import { saveAttachment } from "../attachment-open";
 import { useToast } from "./Toast";
+import { Touchable } from "./Touchable";
 
 /**
  * A photo or a video, full screen.
@@ -69,16 +70,16 @@ export function MediaViewer({
           style={{ paddingTop: insets.top + 8 }}
           className="absolute left-0 right-0 top-0 z-10 flex-row items-center gap-2 px-3 pb-3"
         >
-          <Pressable
+          <Touchable feel="chip"
             onPress={onClose}
             accessibilityRole="button"
             accessibilityLabel="Close"
             hitSlop={12}
             style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-70"
+            className="h-9 w-9 items-center justify-center rounded-full"
           >
             <XIcon size={17} color="#fff" />
-          </Pressable>
+          </Touchable>
 
           <View className="min-w-0 flex-1">
             <Text numberOfLines={1} className="text-md font-medium text-white">
@@ -91,7 +92,7 @@ export function MediaViewer({
             ) : null}
           </View>
 
-          <Pressable
+          <Touchable feel="chip"
             onPress={() => void share()}
             disabled={saving}
             accessibilityRole="button"
@@ -99,10 +100,10 @@ export function MediaViewer({
             accessibilityState={{ busy: saving }}
             hitSlop={12}
             style={{ backgroundColor: "rgba(0,0,0,0.55)" }}
-            className="h-9 w-9 items-center justify-center rounded-full active:opacity-70"
+            className="h-9 w-9 items-center justify-center rounded-full"
           >
             {saving ? <ActivityIndicator size="small" color="#fff" /> : <DownloadIcon size={18} color="#fff" />}
-          </Pressable>
+          </Touchable>
         </View>
 
         {isVideo ? (

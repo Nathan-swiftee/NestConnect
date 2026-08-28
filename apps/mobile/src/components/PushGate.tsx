@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, Text, View } from "react-native";
+import { Modal, Text, View } from "react-native";
 import { BellIcon } from "../icons";
 import { useTheme, useThemeVars } from "../theme";
 import { useInsets } from "../insets";
+import { Touchable } from "./Touchable";
 
 /**
  * The sentence that earns the permission prompt.
@@ -54,7 +55,7 @@ export function PushGate({
             the rest in Settings.
           </Text>
 
-          <Pressable
+          <Touchable feel="slab"
             onPress={async () => {
               setBusy(true);
               try {
@@ -66,20 +67,20 @@ export function PushGate({
             disabled={busy}
             accessibilityRole="button"
             style={{ backgroundColor: c.brand, opacity: busy ? 0.6 : 1 }}
-            className="mt-5 items-center rounded-16 py-3.5 active:opacity-80"
+            className="mt-5 items-center rounded-16 py-3.5"
           >
             <Text className="text-lg font-semibold text-white">Turn on notifications</Text>
-          </Pressable>
+          </Touchable>
 
-          <Pressable
+          <Touchable feel="slab"
             onPress={onDismiss}
             accessibilityRole="button"
-            className="mt-1 items-center py-3 active:opacity-60"
+            className="mt-1 items-center py-3"
           >
             <Text style={{ color: c.textMuted }} className="text-md font-medium">
               Not now
             </Text>
-          </Pressable>
+          </Touchable>
         </View>
       </View>
     </Modal>

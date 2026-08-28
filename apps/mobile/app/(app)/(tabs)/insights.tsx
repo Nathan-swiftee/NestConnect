@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useAnalytics } from "@ding/client";
 import type { AnalyticsRange } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
@@ -8,6 +8,7 @@ import { channelColor, channelMeta } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { useInsets } from "../../../src/insets";
+import { Touchable } from "../../../src/components/Touchable";
 
 const RANGES: { key: AnalyticsRange; label: string }[] = [
   { key: "7d", label: "7 days" },
@@ -64,13 +65,13 @@ export default function Insights() {
         {RANGES.map((r) => {
           const on = r.key === range;
           return (
-            <Pressable
+            <Touchable feel="chip"
               key={r.key}
               onPress={() => setRange(r.key)}
               accessibilityRole="tab"
               accessibilityState={{ selected: on }}
               style={{ backgroundColor: on ? c.brandTint : c.surface2 }}
-              className="rounded-full px-3.5 py-1.5 active:opacity-70"
+              className="rounded-full px-3.5 py-1.5"
             >
               <Text
                 style={{ color: on ? c.brandStrong : c.textMuted }}
@@ -78,7 +79,7 @@ export default function Insights() {
               >
                 {r.label}
               </Text>
-            </Pressable>
+            </Touchable>
           );
         })}
       </View>

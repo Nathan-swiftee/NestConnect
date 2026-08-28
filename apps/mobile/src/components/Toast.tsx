@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Pressable, Text } from "react-native";
+import { Text } from "react-native";
 import Animated, { SlideInDown, SlideOutDown } from "react-native-reanimated";
 import { ReduceMotion } from "react-native-reanimated";
 import { AlertIcon, CheckCircleIcon, ReopenIcon } from "../icons";
@@ -7,6 +7,7 @@ import { haptics } from "../haptics";
 import { useTheme } from "../theme";
 import { timing } from "../motion";
 import { useInsets } from "../insets";
+import { Touchable } from "./Touchable";
 
 /**
  * Confirmation for actions that don't visibly change the screen.
@@ -101,7 +102,7 @@ function Bar({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
       style={{ bottom: insets.bottom + 12 }}
       className="absolute inset-x-3 z-50"
     >
-      <Pressable
+      <Touchable feel="slab"
         onPress={onDismiss}
         accessibilityRole="alert"
         accessibilityLabel={toast.text}
@@ -116,14 +117,14 @@ function Bar({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
           shadowOffset: { width: 0, height: 6 },
           elevation: 8,
         }}
-        className="flex-row items-center gap-2.5 rounded-16 border px-3.5 py-3 active:opacity-90"
+        className="flex-row items-center gap-2.5 rounded-16 border px-3.5 py-3"
       >
         <Icon size={18} color={accent} />
         <Text numberOfLines={2} className="flex-1 text-md font-medium text-fg">
           {toast.text}
         </Text>
         {toast.undo ? (
-          <Pressable
+          <Touchable feel="chip"
             onPress={() => {
               haptics.tap();
               toast.undo?.();
@@ -132,14 +133,14 @@ function Bar({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
             accessibilityRole="button"
             accessibilityLabel="Undo"
             hitSlop={10}
-            className="px-1 active:opacity-60"
+            className="px-1"
           >
             <Text style={{ color: c.brand }} className="text-md font-semibold">
               Undo
             </Text>
-          </Pressable>
+          </Touchable>
         ) : null}
-      </Pressable>
+      </Touchable>
     </Animated.View>
   );
 }

@@ -1,9 +1,10 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useLabels, useSetConversationLabels } from "@ding/client";
 import type { ConversationWithMessages } from "@ding/schemas";
 import { CheckIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
+import { Touchable } from "./Touchable";
 
 /**
  * The conversation's labels, off the thread's ⋯ menu.
@@ -46,16 +47,16 @@ export function LabelSheet({
           </Text>
           <Text className="text-2xs text-muted">What this conversation is about</Text>
         </View>
-        <Pressable
+        <Touchable feel="chip" borderless
           onPress={onClose}
           accessibilityRole="button"
           accessibilityLabel="Close"
           hitSlop={10}
           style={{ backgroundColor: c.surface2 }}
-          className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+          className="h-8 w-8 items-center justify-center rounded-full"
         >
           <XIcon size={16} color={c.textMuted} />
-        </Pressable>
+        </Touchable>
       </View>
 
       {/* `flexShrink: 1` — see Sheet.tsx. A workspace with thirty labels is
@@ -66,7 +67,7 @@ export function LabelSheet({
             {catalog.map((l) => {
               const on = applied.has(l.id);
               return (
-                <Pressable
+                <Touchable feel="chip"
                   key={l.id}
                   onPress={() => toggle(l.id)}
                   disabled={setLabels.isPending}
@@ -77,7 +78,7 @@ export function LabelSheet({
                     backgroundColor: on ? (l.color ?? c.brand) + "22" : c.surface2,
                     borderColor: on ? (l.color ?? c.brand) : "transparent",
                   }}
-                  className="flex-row items-center gap-1.5 rounded-full border px-3 py-1.5 active:opacity-60"
+                  className="flex-row items-center gap-1.5 rounded-full border px-3 py-1.5"
                 >
                   <View
                     style={{ backgroundColor: l.color ?? c.textFaint }}
@@ -90,7 +91,7 @@ export function LabelSheet({
                     {l.name}
                   </Text>
                   {on ? <CheckIcon size={13} color={l.color ?? c.brand} /> : null}
-                </Pressable>
+                </Touchable>
               );
             })}
           </View>

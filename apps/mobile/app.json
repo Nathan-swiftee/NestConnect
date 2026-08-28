@@ -15,7 +15,7 @@
       "fallbackToCacheTimeout": 5000
     },
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "fingerprint"
     },
     "ios": {
       "bundleIdentifier": "co.uk.swiftee.nestconnect",

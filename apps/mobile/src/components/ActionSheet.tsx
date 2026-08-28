@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { CheckIcon } from "../icons";
 import { rowIn } from "../motion";
 import { Sheet } from "./Sheet";
 import { useTheme } from "../theme";
 import { haptics } from "../haptics";
+import { Touchable } from "./Touchable";
 
 export interface SheetAction {
   key: string;
@@ -69,7 +70,7 @@ export function ActionSheet({
                 {a.section}
               </Text>
             ) : null}
-            <Pressable
+            <Touchable feel="row"
               onPress={() => {
                 // One place for every sheet action. Actions that finish
                 // something add their own success buzz on top.
@@ -80,7 +81,7 @@ export function ActionSheet({
               accessibilityRole="button"
               accessibilityState={{ selected: !!a.selected }}
               style={{ borderBottomColor: c.border }}
-              className="flex-row items-center gap-3 border-b py-3 active:opacity-60"
+              className="flex-row items-center gap-3 border-b py-3"
             >
               {/* Fixed width whether or not this row has one, so labels line up
                   down the sheet instead of stepping in and out. */}
@@ -97,7 +98,7 @@ export function ActionSheet({
                 {a.detail ? <Text className="text-sm text-muted">{a.detail}</Text> : null}
               </View>
               {a.selected ? <CheckIcon size={19} color={c.brand} /> : null}
-            </Pressable>
+            </Touchable>
           </Animated.View>
         ))}
       </ScrollView>

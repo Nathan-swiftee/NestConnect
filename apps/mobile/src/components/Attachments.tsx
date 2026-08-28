@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Text, View } from "react-native";
 import type { Attachment } from "@ding/schemas";
 import { formatBytes, formatDuration } from "@ding/client";
 import { mediaSource } from "../api-config";
@@ -9,6 +9,7 @@ import { useTheme } from "../theme";
 import { AudioPlayer } from "./AudioPlayer";
 import { MediaViewer } from "./MediaViewer";
 import { useToast } from "./Toast";
+import { Touchable } from "./Touchable";
 
 const MAX_W = 240;
 
@@ -49,32 +50,32 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
         if (a.kind === "image" || a.kind === "sticker") {
           const ratio = a.width && a.height ? a.width / a.height : 4 / 3;
           return (
-            <Pressable
+            <Touchable feel="chip"
               key={a.id}
               onPress={() => setViewing(a)}
               accessibilityRole="imagebutton"
               accessibilityLabel={`${a.filename || "Photo"}, tap to open`}
-              className="active:opacity-80"
+              className=""
             >
               <Image
                 source={mediaSource(a.url)}
                 style={{ width: MAX_W, height: MAX_W / ratio, borderRadius: 12, backgroundColor: c.surface2 }}
                 resizeMode="cover"
               />
-            </Pressable>
+            </Touchable>
           );
         }
 
         if (a.kind === "video") {
           const ratio = a.width && a.height ? a.width / a.height : 16 / 9;
           return (
-            <Pressable
+            <Touchable feel="chip"
               key={a.id}
               onPress={() => setViewing(a)}
               accessibilityRole="button"
               accessibilityLabel={`Video${a.durationMs ? `, ${formatDuration(a.durationMs)}` : ""}, tap to play`}
               style={{ width: MAX_W, height: MAX_W / ratio, backgroundColor: c.surface2 }}
-              className="items-center justify-center overflow-hidden rounded-12 active:opacity-80"
+              className="items-center justify-center overflow-hidden rounded-12"
             >
               {/* A play badge on the surface tint rather than a poster frame:
                   nothing in the pipeline extracts one, and a fake thumbnail is
@@ -97,7 +98,7 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
                   </Text>
                 </View>
               ) : null}
-            </Pressable>
+            </Touchable>
           );
         }
 
@@ -107,7 +108,7 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
 
         const busy = opening === a.id;
         return (
-          <Pressable
+          <Touchable feel="slab"
             key={a.id}
             onPress={() => void open(a)}
             disabled={busy}
@@ -115,7 +116,7 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
             accessibilityState={{ busy }}
             accessibilityLabel={`${a.filename || a.kind}, ${formatBytes(a.size)}. Opens the share sheet.`}
             style={{ backgroundColor: c.surface2, borderColor: c.border, maxWidth: MAX_W }}
-            className="flex-row items-center gap-2.5 rounded-12 border px-3 py-2.5 active:opacity-70"
+            className="flex-row items-center gap-2.5 rounded-12 border px-3 py-2.5"
           >
             <View
               style={{ backgroundColor: c.brandTint }}
@@ -134,7 +135,7 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
             ) : (
               <DownloadIcon size={16} color={c.textFaint} />
             )}
-          </Pressable>
+          </Touchable>
         );
       })}
 

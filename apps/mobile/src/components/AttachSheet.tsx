@@ -1,7 +1,8 @@
-import {Pressable, Text} from "react-native";
+import { Text } from "react-native";
 import { CameraIcon, DocIcon, ImageIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
+import { Touchable } from "./Touchable";
 
 /**
  * Where the file is coming from.
@@ -35,7 +36,7 @@ export function AttachSheet({
   return (
     <Sheet visible={visible} onClose={onClose}>
           {rows.map(({ key, label, Icon, run }, i) => (
-            <Pressable
+            <Touchable feel="row"
               key={key}
               onPress={() => {
                 onClose();
@@ -45,11 +46,11 @@ export function AttachSheet({
               }}
               accessibilityRole="button"
               style={{ borderBottomColor: i === rows.length - 1 ? "transparent" : c.border }}
-              className={`flex-row items-center gap-3 py-3.5 active:opacity-60 ${i === rows.length - 1 ? "" : "border-b"}`}
+              className={`flex-row items-center gap-3 py-3.5 ${i === rows.length - 1 ? "" : "border-b"}`}
             >
               <Icon size={20} color={c.textMuted} />
               <Text className="text-lg font-medium text-fg">{label}</Text>
-            </Pressable>
+            </Touchable>
           ))}
     </Sheet>
   );

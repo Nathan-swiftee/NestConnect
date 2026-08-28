@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useTeams, useViews } from "@ding/client";
 import { ChevronRight, InboxIcon, SnoozeIcon, TeamGlyph, XIcon, channelColor, channelMeta } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
 import { haptics } from "../haptics";
+import { Touchable } from "./Touchable";
 
 /**
  * The inbox switcher — the web sidebar, as a sheet.
@@ -78,12 +79,12 @@ export function ViewSwitcher({
     trailing?: React.ReactNode;
   }) {
     return (
-      <Pressable
+      <Touchable feel="row"
         onPress={onPress}
         accessibilityRole="button"
         accessibilityState={{ selected: active }}
         style={{ backgroundColor: active ? c.brandTint : "transparent" }}
-        className={`mx-2 flex-row items-center gap-2.5 rounded-12 px-2.5 py-2.5 active:opacity-60 ${sub ? "ml-9" : ""}`}
+        className={`mx-2 flex-row items-center gap-2.5 rounded-12 px-2.5 py-2.5 ${sub ? "ml-9" : ""}`}
       >
         {icon ? <View className="w-5 items-center">{icon}</View> : null}
         <Text
@@ -102,7 +103,7 @@ export function ViewSwitcher({
             {count}
           </Text>
         ) : null}
-      </Pressable>
+      </Touchable>
     );
   }
 
@@ -119,16 +120,16 @@ export function ViewSwitcher({
             <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
               Inboxes
             </Text>
-            <Pressable
+            <Touchable feel="chip" borderless
               onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel="Close"
               hitSlop={10}
               style={{ backgroundColor: c.surface2 }}
-              className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+              className="h-8 w-8 items-center justify-center rounded-full"
             >
               <XIcon size={16} color={c.textMuted} />
-            </Pressable>
+            </Touchable>
           </View>
 
           {/* `flexShrink: 1` is what makes this scroll at all — see Sheet.tsx. */}
@@ -211,16 +212,16 @@ export function ViewSwitcher({
                         }
                         trailing={
                           groups.length > 0 ? (
-                            <Pressable
+                            <Touchable feel="chip"
                               onPress={() => setExpanded((e) => ({ ...e, [i.key]: !e[i.key] }))}
                               accessibilityRole="button"
                               accessibilityLabel={open ? "Hide groups" : "Show groups"}
                               hitSlop={10}
-                              className="px-1 active:opacity-60"
+                              className="px-1"
                               style={{ transform: [{ rotate: open ? "90deg" : "0deg" }] }}
                             >
                               <ChevronRight size={14} color={c.textFaint} />
-                            </Pressable>
+                            </Touchable>
                           ) : null
                         }
                       />

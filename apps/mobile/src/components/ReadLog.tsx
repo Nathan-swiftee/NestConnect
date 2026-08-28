@@ -1,9 +1,10 @@
-import {Pressable, ScrollView, Text, View} from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { seenAt } from "@ding/client";
 import type { Message } from "@ding/schemas";
 import { CheckDouble, ClockIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
+import { Touchable } from "./Touchable";
 
 type Recipient = NonNullable<NonNullable<Message["email"]>["recipients"]>[number];
 
@@ -54,16 +55,16 @@ export function ReadLog({
                 {seen.length} of {recipients.length} opened
               </Text>
             </View>
-            <Pressable
+            <Touchable feel="chip" borderless
               onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel="Close"
               hitSlop={10}
               style={{ backgroundColor: c.surface2 }}
-              className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+              className="h-8 w-8 items-center justify-center rounded-full"
             >
               <XIcon size={16} color={c.textMuted} />
-            </Pressable>
+            </Touchable>
           </View>
 
           {/* `flexShrink: 1` is what makes this scroll at all — see Sheet.tsx. */}

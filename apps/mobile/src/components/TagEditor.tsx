@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { PlusIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
+import { Touchable } from "./Touchable";
 
 /**
  * Free-form customer tags: removable pills, an add field, and one-tap
@@ -54,16 +55,16 @@ export function TagEditor({
             <Text style={{ color: c.brandStrong }} className="text-sm font-semibold">
               {t}
             </Text>
-            <Pressable
+            <Touchable feel="chip"
               onPress={() => remove(t)}
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel={`Remove ${t}`}
               hitSlop={8}
-              className="h-5 w-5 items-center justify-center rounded-full active:opacity-60"
+              className="h-5 w-5 items-center justify-center rounded-full"
             >
               <XIcon size={11} color={c.brandStrong} />
-            </Pressable>
+            </Touchable>
           </View>
         ))}
         <TextInput
@@ -85,20 +86,20 @@ export function TagEditor({
       {open.length ? (
         <View className="flex-row flex-wrap gap-1.5">
           {open.map((s) => (
-            <Pressable
+            <Touchable feel="chip"
               key={s}
               onPress={() => add(s)}
               disabled={disabled}
               accessibilityRole="button"
               accessibilityLabel={`Add ${s}`}
               style={{ borderColor: c.border }}
-              className="flex-row items-center gap-1 rounded-full border border-dashed px-2.5 py-1 active:opacity-60"
+              className="flex-row items-center gap-1 rounded-full border border-dashed px-2.5 py-1"
             >
               <PlusIcon size={11} color={c.textFaint} />
               <Text style={{ color: c.textMuted }} className="text-2xs font-medium">
                 {s}
               </Text>
-            </Pressable>
+            </Touchable>
           ))}
         </View>
       ) : null}

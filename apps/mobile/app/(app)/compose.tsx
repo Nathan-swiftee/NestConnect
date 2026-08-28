@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, ScrollView, Text, TextInput, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
@@ -13,6 +13,7 @@ import { haptics } from "../../src/haptics";
 import { rowIn } from "../../src/motion";
 import { useTheme } from "../../src/theme";
 import { useInsets } from "../../src/insets";
+import { Touchable } from "../../src/components/Touchable";
 
 type Channel = "whatsapp" | "email";
 
@@ -201,14 +202,14 @@ export default function Compose() {
             Send from which {pickInboxFor === "whatsapp" ? "WhatsApp number" : "email inbox"}?
           </Text>
           {list.map((i) => (
-            <Pressable
+            <Touchable feel="slab"
               key={i.id}
               disabled={!!busy}
               onPress={() => void go(pickInboxFor, i.id)}
               accessibilityRole="button"
               accessibilityLabel={`Send from ${i.name}, ${i.handle}`}
               style={{ backgroundColor: c.surface, borderColor: c.border }}
-              className="flex-row items-center gap-3 rounded-16 border px-4 py-3.5 active:opacity-70"
+              className="flex-row items-center gap-3 rounded-16 border px-4 py-3.5"
             >
               <Glyph size={20} color={channelColor(pickInboxFor, c)} />
               <View className="flex-1">
@@ -218,7 +219,7 @@ export default function Compose() {
                 </Text>
               </View>
               {busy === pickInboxFor ? <ActivityIndicator color={c.brand} /> : null}
-            </Pressable>
+            </Touchable>
           ))}
         </View>
       );
@@ -231,7 +232,7 @@ export default function Compose() {
           const address = ch === "email" ? email : phone;
           const blocked = reason(address, ch);
           return (
-            <Pressable
+            <Touchable feel="slab"
               key={ch}
               disabled={!!blocked || !!busy}
               onPress={() => chooseChannel(ch, go)}
@@ -243,7 +244,7 @@ export default function Compose() {
                 borderColor: c.border,
                 opacity: blocked ? 0.55 : 1,
               }}
-              className="flex-row items-center gap-3 rounded-16 border px-4 py-3.5 active:opacity-70"
+              className="flex-row items-center gap-3 rounded-16 border px-4 py-3.5"
             >
               <Glyph size={22} color={blocked ? c.textFaint : channelColor(ch, c)} />
               <View className="flex-1">
@@ -253,7 +254,7 @@ export default function Compose() {
                 </Text>
               </View>
               {busy === ch ? <ActivityIndicator color={c.brand} /> : null}
-            </Pressable>
+            </Touchable>
           );
         })}
       </View>
@@ -269,9 +270,9 @@ export default function Compose() {
         style={{ borderBottomColor: c.border, backgroundColor: c.surface, paddingTop: insets.top }}
         className="flex-row items-center gap-2 border-b px-2 pb-2 pt-2"
       >
-        <Pressable onPress={back} accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} className="px-1 active:opacity-60">
+        <Touchable feel="chip" onPress={back} accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} className="px-1">
           <BackIcon size={24} color={c.brand} />
-        </Pressable>
+        </Touchable>
         <Text accessibilityRole="header" className="flex-1 text-lg font-semibold text-fg">
           {title}
         </Text>
@@ -323,7 +324,7 @@ export default function Compose() {
               ).map(([key, label]) => {
                 const active = tab === key;
                 return (
-                  <Pressable
+                  <Touchable feel="chip"
                     key={key}
                     onPress={() => {
                       haptics.select();
@@ -343,7 +344,7 @@ export default function Compose() {
                     aria-selected={active}
                     accessibilityLabel={label}
                     style={{ backgroundColor: active ? c.surface : "transparent" }}
-                    className={`flex-1 items-center rounded-full py-2 ${active ? "" : "active:opacity-60"}`}
+                    className={`flex-1 items-center rounded-full py-2`}
                   >
                     <Text
                       style={{ color: active ? c.text : c.textMuted }}
@@ -351,7 +352,7 @@ export default function Compose() {
                     >
                       {label}
                     </Text>
-                  </Pressable>
+                  </Touchable>
                 );
               })}
             </View>
@@ -429,7 +430,7 @@ export default function Compose() {
                 ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-[68px] h-px" />}
                 renderItem={({ item, index }) => {
                   const row = (
-                    <Pressable
+                    <Touchable feel="row"
                       onPress={() => {
                         haptics.select();
                         setError(null);
@@ -437,7 +438,7 @@ export default function Compose() {
                       }}
                       accessibilityRole="button"
                       accessibilityLabel={`${item.displayName}${item.company ? `, ${item.company}` : ""}`}
-                      className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
+                      className="flex-row items-center gap-3 px-4 py-3"
                     >
                       <Avatar name={item.displayName} color={item.avatarColor} size={40} />
                       <View className="flex-1">
@@ -455,7 +456,7 @@ export default function Compose() {
                         {item.phone ? <ChannelMark channel="whatsapp" /> : null}
                         {item.email ? <ChannelMark channel="email" /> : null}
                       </View>
-                    </Pressable>
+                    </Touchable>
                   );
                   return index < 8 ? <Animated.View entering={rowIn(index)}>{row}</Animated.View> : row;
                 }}

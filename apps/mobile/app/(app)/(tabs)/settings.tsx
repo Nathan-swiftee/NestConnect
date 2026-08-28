@@ -18,6 +18,7 @@ import { EmptyState, QueryState } from "../../../src/components/States";
 import { BuildStamp } from "../../../src/components/BuildStamp";
 import { type Appearance, useAppearance } from "../../../src/appearance";
 import { useInsets } from "../../../src/insets";
+import { Touchable } from "../../../src/components/Touchable";
 
 /**
  * Settings on a phone: who you are, whether you're taking work, and what is
@@ -142,11 +143,11 @@ export default function Settings() {
       </View>
 
       {push.supported && push.status && !push.granted ? (
-        <Pressable
+        <Touchable feel="slab"
           onPress={() => void push.requestPermission()}
           accessibilityRole="button"
           style={{ backgroundColor: c.amberTint, borderColor: c.amber }}
-          className="mx-4 mb-2 rounded-16 border px-4 py-3 active:opacity-70"
+          className="mx-4 mb-2 rounded-16 border px-4 py-3"
         >
           <Text style={{ color: c.amber }} className="text-md font-semibold">
             Notifications are off for this phone
@@ -154,7 +155,7 @@ export default function Settings() {
           <Text style={{ color: c.amber }} className="text-2xs">
             These settings have no effect until you allow them. Tap to turn them on.
           </Text>
-        </Pressable>
+        </Touchable>
       ) : null}
 
       <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 rounded-16 border">
@@ -237,14 +238,14 @@ export default function Settings() {
           {(["system", "light", "dark"] as const).map((opt) => {
             const on = appearance.preference === opt;
             return (
-              <Pressable
+              <Touchable feel="chip"
                 key={opt}
                 onPress={() => appearance.set(opt)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: on }}
                 accessibilityLabel={APPEARANCE_LABEL[opt]}
                 style={{ backgroundColor: on ? c.brandTint : "transparent" }}
-                className="flex-1 items-center rounded-12 py-2.5 active:opacity-70"
+                className="flex-1 items-center rounded-12 py-2.5"
               >
                 <Text
                   style={{ color: on ? c.brandStrong : c.textMuted }}
@@ -252,13 +253,13 @@ export default function Settings() {
                 >
                   {APPEARANCE_LABEL[opt]}
                 </Text>
-              </Pressable>
+              </Touchable>
             );
           })}
         </View>
       </View>
 
-      <Pressable
+      <Touchable feel="slab"
         onPress={async () => {
           // Delete the device row *before* the session goes: the call needs the
           // token that logging out throws away. A phone that keeps buzzing
@@ -268,13 +269,13 @@ export default function Settings() {
         }}
         accessibilityRole="button"
         style={{ backgroundColor: c.surface, borderColor: c.border }}
-        className="mx-4 mt-6 flex-row items-center justify-center gap-2 rounded-16 border py-3.5 active:opacity-70"
+        className="mx-4 mt-6 flex-row items-center justify-center gap-2 rounded-16 border py-3.5"
       >
         <LogoutIcon size={18} color={c.danger} />
         <Text style={{ color: c.danger }} className="text-md font-semibold">
           Sign out
         </Text>
-      </Pressable>
+      </Touchable>
 
       <BuildStamp />
     </ScrollView>

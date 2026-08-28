@@ -15,6 +15,7 @@ import { fadeTo, spring, springTo, stagger, timing } from "../motion";
 import { elevation, useTheme, useThemeVars } from "../theme";
 import { readSummary } from "./ReadLog";
 import { useInsets } from "../insets";
+import { Touchable } from "./Touchable";
 
 /**
  * A heavier dim than the shared sheet scrim.
@@ -379,11 +380,11 @@ function Row({
 }) {
   const { c } = useTheme();
   return (
-    <Pressable
+    <Touchable feel="row"
       onPress={onPress}
       accessibilityRole="button"
       style={{ borderTopColor: c.border }}
-      className="flex-row items-center gap-3 border-t py-3.5 active:opacity-60"
+      className="flex-row items-center gap-3 border-t py-3.5"
     >
       {icon}
       {/* The label grows rather than the trailing text carrying `ml-auto` —
@@ -391,6 +392,6 @@ function Row({
           once and nothing here needs them. */}
       <Text className="flex-1 text-lg font-medium text-fg">{label}</Text>
       {trailing ? <Text className="text-md text-muted">{trailing}</Text> : null}
-    </Pressable>
+    </Touchable>
   );
 }

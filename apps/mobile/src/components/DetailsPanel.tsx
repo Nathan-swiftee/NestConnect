@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, Switch, Text, View } from "react-native";
 import {
   relativeTime,
   slaCountdown,
@@ -18,6 +18,7 @@ import { TagEditor } from "./TagEditor";
 import { BellIcon, CheckIcon, ChevronRight, TeamGlyph, XIcon, channelMeta } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
+import { Touchable } from "./Touchable";
 
 /**
  * Who this conversation is with, and everything about it that isn't a message.
@@ -80,16 +81,16 @@ export function DetailsPanel({
             <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
               Details
             </Text>
-            <Pressable
+            <Touchable feel="chip" borderless
               onPress={onClose}
               accessibilityRole="button"
               accessibilityLabel="Close"
               hitSlop={10}
               style={{ backgroundColor: c.surface2 }}
-              className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+              className="h-8 w-8 items-center justify-center rounded-full"
             >
               <XIcon size={16} color={c.textMuted} />
-            </Pressable>
+            </Touchable>
           </View>
 
           {/* `flexShrink: 1` is load-bearing: without it this sizes to its
@@ -280,7 +281,7 @@ export function DetailsPanel({
                 <Section>Other conversations</Section>
                 <Card>
                   {others.slice(0, 6).map((x, i, arr) => (
-                    <Pressable
+                    <Touchable feel="row"
                       key={x.id}
                       onPress={() => {
                         onClose();
@@ -288,7 +289,7 @@ export function DetailsPanel({
                       }}
                       accessibilityRole="button"
                       style={{ borderBottomColor: i === arr.length - 1 ? "transparent" : c.border }}
-                      className={`flex-row items-center gap-2.5 px-4 py-2.5 active:opacity-60 ${i === arr.length - 1 ? "" : "border-b"}`}
+                      className={`flex-row items-center gap-2.5 px-4 py-2.5 ${i === arr.length - 1 ? "" : "border-b"}`}
                     >
                       <ChannelDot channel={x.lastChannel ?? x.channel} size={14} />
                       <View className="flex-1">
@@ -301,7 +302,7 @@ export function DetailsPanel({
                         </Text>
                       </View>
                       <ChevronRight size={14} color={c.textFaint} />
-                    </Pressable>
+                    </Touchable>
                   ))}
                 </Card>
               </>
@@ -356,14 +357,14 @@ function RouteRow({
 }) {
   const { c } = useTheme();
   return (
-    <Pressable
+    <Touchable feel="row"
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="radio"
       accessibilityState={{ selected, disabled: !!disabled }}
       accessibilityLabel={label}
       style={{ borderBottomColor: last ? "transparent" : c.border, opacity: disabled ? 0.5 : 1 }}
-      className={`flex-row items-center gap-3 px-4 py-2.5 active:opacity-60 ${last ? "" : "border-b"}`}
+      className={`flex-row items-center gap-3 px-4 py-2.5 ${last ? "" : "border-b"}`}
     >
       {leading ?? null}
       <View className="flex-1">
@@ -376,7 +377,7 @@ function RouteRow({
         {detail ? <Text className="text-2xs text-muted">{detail}</Text> : null}
       </View>
       {selected ? <CheckIcon size={16} color={c.brand} /> : null}
-    </Pressable>
+    </Touchable>
   );
 }
 

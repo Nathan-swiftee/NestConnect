@@ -1,8 +1,9 @@
-import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, Text, View } from "react-native";
 import { formatBytes } from "@ding/client";
 import type { Staged } from "../attachments";
 import { AlertIcon, DocIcon, ImageIcon, PlayIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
+import { Touchable } from "./Touchable";
 
 /**
  * What's about to be sent alongside the message.
@@ -61,17 +62,17 @@ export function StagedAttachments({
                 {s.name}
               </Text>
               {failed ? (
-                <Pressable
+                <Touchable feel="chip"
                   onPress={() => onRetry(s.localId)}
                   accessibilityRole="button"
                   accessibilityLabel={`Retry uploading ${s.name}`}
-                  className="flex-row items-center gap-1 pt-0.5 active:opacity-60"
+                  className="flex-row items-center gap-1 pt-0.5"
                 >
                   <AlertIcon size={11} color={c.danger} />
                   <Text style={{ color: c.danger }} className="text-2xs font-semibold">
                     Retry
                   </Text>
-                </Pressable>
+                </Touchable>
               ) : s.status === "uploading" ? (
                 <View className="flex-row items-center gap-1 pt-0.5">
                   <ActivityIndicator size="small" color={c.textFaint} />
@@ -82,16 +83,16 @@ export function StagedAttachments({
               )}
             </View>
 
-            <Pressable
+            <Touchable feel="chip"
               onPress={() => onRemove(s.localId)}
               accessibilityRole="button"
               accessibilityLabel={`Remove ${s.name}`}
               hitSlop={8}
               style={{ backgroundColor: c.scrim }}
-              className="absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full active:opacity-70"
+              className="absolute right-1 top-1 h-6 w-6 items-center justify-center rounded-full"
             >
               <XIcon size={12} color="#fff" />
-            </Pressable>
+            </Touchable>
           </View>
         );
       })}

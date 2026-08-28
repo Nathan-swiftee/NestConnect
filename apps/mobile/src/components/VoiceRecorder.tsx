@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Text, View } from "react-native";
 import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
@@ -10,6 +10,7 @@ import {
 import { formatDuration } from "@ding/client";
 import { PauseIcon, SendIcon, TrashIcon } from "../icons";
 import { useTheme } from "../theme";
+import { Touchable } from "./Touchable";
 
 /** What the recorder hands back once you send it. */
 export interface RecordedVoice {
@@ -111,11 +112,11 @@ export function VoiceRecorder({
         <Text style={{ color: c.danger }} className="flex-1 text-sm">
           {failed}
         </Text>
-        <Pressable onPress={onCancel} accessibilityRole="button" className="px-2 py-1 active:opacity-60">
+        <Touchable feel="chip" onPress={onCancel} accessibilityRole="button" className="px-2 py-1">
           <Text style={{ color: c.brandStrong }} className="text-md font-semibold">
             Close
           </Text>
-        </Pressable>
+        </Touchable>
       </View>
     );
   }
@@ -126,15 +127,15 @@ export function VoiceRecorder({
       className="flex-row items-center gap-3 rounded-24 px-2 py-1.5"
       accessibilityLabel="Recording a voice message"
     >
-      <Pressable
+      <Touchable feel="chip"
         onPress={() => void discard()}
         accessibilityRole="button"
         accessibilityLabel="Delete recording"
         hitSlop={8}
-        className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+        className="h-9 w-9 items-center justify-center rounded-full"
       >
         <TrashIcon size={19} color={c.danger} />
-      </Pressable>
+      </Touchable>
 
       <View
         style={{ backgroundColor: state.isRecording ? c.danger : c.textFaint }}
@@ -148,28 +149,28 @@ export function VoiceRecorder({
       </Text>
 
       {ready ? (
-        <Pressable
+        <Touchable feel="chip"
           onPress={() => (state.isRecording ? recorder.pause() : recorder.record())}
           accessibilityRole="button"
           accessibilityLabel={state.isRecording ? "Pause recording" : "Resume recording"}
           hitSlop={8}
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          className="h-9 w-9 items-center justify-center rounded-full"
         >
           <PauseIcon size={17} color={state.isRecording ? c.textMuted : c.brandStrong} />
-        </Pressable>
+        </Touchable>
       ) : null}
 
-      <Pressable
+      <Touchable feel="chip"
         onPress={() => void finish()}
         disabled={!ready || seconds < 0.5}
         accessibilityRole="button"
         accessibilityLabel="Send voice message"
         hitSlop={4}
         style={{ backgroundColor: c.brand, opacity: ready && seconds >= 0.5 ? 1 : 0.35 }}
-        className="h-10 w-10 items-center justify-center rounded-full active:opacity-80"
+        className="h-10 w-10 items-center justify-center rounded-full"
       >
         <SendIcon size={19} color="#fff" />
-      </Pressable>
+      </Touchable>
     </View>
   );
 }

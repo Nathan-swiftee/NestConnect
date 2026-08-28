@@ -1,7 +1,8 @@
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import { AlertIcon, InboxIcon, ReopenIcon, SearchIcon } from "../icons";
 import { useTheme } from "../theme";
 import { haptics } from "../haptics";
+import { Touchable } from "./Touchable";
 
 /** A list that is still loading. Centred and quiet — a skeleton here would be
  *  pretending to know what's coming. */
@@ -48,16 +49,16 @@ export function EmptyState({
       <Text className="text-lg font-medium text-fg">{title}</Text>
       {body ? <Text className="mt-1 text-center text-md text-muted">{body}</Text> : null}
       {action ? (
-        <Pressable
+        <Touchable feel="chip"
           onPress={action.onPress}
           accessibilityRole="button"
           style={{ backgroundColor: c.surface2 }}
-          className="mt-4 rounded-full px-4 py-2 active:opacity-60"
+          className="mt-4 rounded-full px-4 py-2"
         >
           <Text style={{ color: c.brand }} className="text-md font-medium">
             {action.label}
           </Text>
-        </Pressable>
+        </Touchable>
       ) : null}
     </View>
   );
@@ -100,7 +101,7 @@ export function ErrorState({
         {detail ?? "Check your connection and try again."}
       </Text>
       {onRetry ? (
-        <Pressable
+        <Touchable feel="chip"
           onPress={() => {
             haptics.tap();
             onRetry();
@@ -108,13 +109,13 @@ export function ErrorState({
           accessibilityRole="button"
           accessibilityLabel="Try again"
           style={{ backgroundColor: c.surface2 }}
-          className="mt-4 flex-row items-center gap-2 rounded-full px-4 py-2 active:opacity-60"
+          className="mt-4 flex-row items-center gap-2 rounded-full px-4 py-2"
         >
           <ReopenIcon size={15} color={c.brand} />
           <Text style={{ color: c.brand }} className="text-md font-medium">
             Try again
           </Text>
-        </Pressable>
+        </Touchable>
       ) : null}
     </View>
   );

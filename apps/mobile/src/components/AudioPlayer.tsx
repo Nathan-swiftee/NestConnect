@@ -6,6 +6,7 @@ import { formatDuration } from "@ding/client";
 import { mediaSource } from "../api-config";
 import { PauseIcon, PlayIcon } from "../icons";
 import { useTheme } from "../theme";
+import { Touchable } from "./Touchable";
 
 const BARS = 34;
 
@@ -102,13 +103,13 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
 
   return (
     <View className="flex-row items-center gap-2.5 pt-1" style={{ minWidth: 200 }}>
-      <Pressable
+      <Touchable feel="chip"
         onPress={() => void toggle()}
         accessibilityRole="button"
         accessibilityLabel={loading ? "Loading voice message" : status.playing ? "Pause" : "Play voice message"}
         hitSlop={6}
         style={{ backgroundColor: tint }}
-        className="h-9 w-9 items-center justify-center rounded-full active:opacity-80"
+        className="h-9 w-9 items-center justify-center rounded-full"
       >
         {loading ? (
           // Between the tap and the first byte. Without it the button looks
@@ -122,7 +123,7 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
             <PlayIcon size={15} color="#fff" />
           </View>
         )}
-      </Pressable>
+      </Touchable>
 
       <Pressable
         onLayout={(e) => setWidth(e.nativeEvent.layout.width)}

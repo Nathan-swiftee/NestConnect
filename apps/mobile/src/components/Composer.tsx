@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, LayoutAnimation, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
+import Animated from "react-native-reanimated";
+import { enter, exit } from "../motion";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { api, useIntegrations, usePeople, useSendMessage, useTemplates, windowLeft } from "@ding/client";
 import { useStagedAttachments } from "../attachments";
@@ -25,6 +27,7 @@ import {
   SendIcon,
   channelMeta,
 } from "../icons";
+import { Touchable } from "./Touchable";
 
 /** The composer's own emoji row — the same curated set the web uses, so the two
  *  offer the same shortcuts. Deliberately not a picker dependency. */
@@ -486,7 +489,7 @@ export function Composer({
     onPress: () => void;
   }) {
     return (
-      <Pressable
+      <Touchable feel="chip"
         onPress={onPress}
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
@@ -496,7 +499,7 @@ export function Composer({
         // bare. Same read as the web's sliding seg-thumb without animating a
         // measured offset on every layout.
         style={{ backgroundColor: active ? c.surface : "transparent" }}
-        className={`flex-row items-center gap-1.5 rounded-full py-1.5 ${active ? "px-3" : "px-2.5"} ${active ? "" : "active:opacity-60"}`}
+        className={`flex-row items-center gap-1.5 rounded-full py-1.5 ${active ? "px-3" : "px-2.5"}`}
       >
         {children}
         {active ? (
@@ -504,7 +507,7 @@ export function Composer({
             {label}
           </Text>
         ) : null}
-      </Pressable>
+      </Touchable>
     );
   }
 
@@ -600,7 +603,7 @@ export function Composer({
                 className="min-w-0 flex-1 p-0 text-sm font-semibold"
               />
             ) : (
-              <Pressable
+              <Touchable feel="chip"
                 onPress={() => {
                   haptics.tap();
                   setEditingSubject(true);
@@ -608,7 +611,7 @@ export function Composer({
                 accessibilityRole="button"
                 accessibilityLabel={subject.trim() ? `Subject: ${subject.trim()}. Edit` : "Add a subject"}
                 hitSlop={6}
-                className="min-w-0 flex-1 flex-row items-center gap-1.5 active:opacity-60"
+                className="min-w-0 flex-1 flex-row items-center gap-1.5"
               >
                 <Text
                   numberOfLines={1}
@@ -618,9 +621,9 @@ export function Composer({
                   {subject.trim() || "Add a subject"}
                 </Text>
                 <EditIcon size={13} color={c.textFaint} />
-              </Pressable>
+              </Touchable>
             )}
-            <Pressable
+            <Touchable feel="chip"
               onPress={() => {
                 haptics.tap();
                 setShowCc((v) => !v);
@@ -630,7 +633,7 @@ export function Composer({
               accessibilityState={{ expanded: showCc }}
               hitSlop={8}
               style={{ backgroundColor: showCc ? c.brandTint : "transparent" }}
-              className="flex-none rounded-full px-2 py-0.5 active:opacity-60"
+              className="flex-none rounded-full px-2 py-0.5"
             >
               <Text
                 style={{ color: showCc ? c.brandStrong : c.textMuted }}
@@ -638,7 +641,7 @@ export function Composer({
               >
                 Cc/Bcc
               </Text>
-            </Pressable>
+            </Touchable>
           </View>
 
           {showCc ? (
@@ -694,15 +697,15 @@ export function Composer({
               {replyTo.body?.trim() || "Attachment"}
             </Text>
           </View>
-          <Pressable
+          <Touchable feel="chip"
             onPress={onClearReply}
             accessibilityRole="button"
             accessibilityLabel="Cancel reply"
             hitSlop={10}
-            className="p-1 active:opacity-60"
+            className="p-1"
           >
             <XIcon size={13} color={c.textMuted} />
-          </Pressable>
+          </Touchable>
         </View>
       ) : null}
 
@@ -717,21 +720,21 @@ export function Composer({
           <Text style={{ color: c.textMuted }} className="flex-1 text-2xs">
             Polished by Claude
           </Text>
-          <Pressable
+          <Touchable feel="chip"
             onPress={undoPolish}
             accessibilityRole="button"
             accessibilityLabel="Undo polish"
             hitSlop={8}
-            className="rounded-8 px-2 py-0.5 active:opacity-60"
+            className="rounded-8 px-2 py-0.5"
           >
             <Text style={{ color: c.brandStrong }} className="text-2xs font-semibold">
               Undo
             </Text>
-          </Pressable>
+          </Touchable>
         </View>
       ) : canPolish ? (
         <View className="mb-2 flex-row px-1">
-          <Pressable
+          <Touchable feel="chip"
             onPress={() => void runPolish()}
             disabled={polishing}
             accessibilityRole="button"
@@ -739,7 +742,7 @@ export function Composer({
             accessibilityState={{ busy: polishing }}
             hitSlop={6}
             style={{ backgroundColor: c.surface2 }}
-            className="flex-row items-center gap-1.5 rounded-full px-2.5 py-1 active:opacity-60"
+            className="flex-row items-center gap-1.5 rounded-full px-2.5 py-1"
           >
             {polishing ? (
               <ActivityIndicator size="small" color={c.ai} />
@@ -749,7 +752,7 @@ export function Composer({
             <Text style={{ color: c.ai }} className="text-2xs font-semibold">
               {polishing ? "Polishing…" : "Polish"}
             </Text>
-          </Pressable>
+          </Touchable>
         </View>
       ) : null}
 
@@ -764,13 +767,13 @@ export function Composer({
         >
           <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }}>
             {mentionList.map((u, i, arr) => (
-              <Pressable
+              <Touchable feel="row"
                 key={u.id}
                 onPress={() => insertMention(u)}
                 accessibilityRole="button"
                 accessibilityLabel={`Mention ${u.name}`}
                 style={{ borderBottomColor: i === arr.length - 1 ? "transparent" : c.border }}
-                className={`flex-row items-center gap-2.5 px-3 py-2 active:opacity-60 ${i === arr.length - 1 ? "" : "border-b"}`}
+                className={`flex-row items-center gap-2.5 px-3 py-2 ${i === arr.length - 1 ? "" : "border-b"}`}
               >
                 <Avatar name={u.name} color={u.avatarColor} size={28} />
                 <Text numberOfLines={1} className="flex-1 text-md font-medium text-fg">
@@ -779,7 +782,7 @@ export function Composer({
                 <Text style={{ color: c.textFaint }} className="text-2xs">
                   @{u.email.split("@")[0].toLowerCase()}
                 </Text>
-              </Pressable>
+              </Touchable>
             ))}
           </ScrollView>
         </View>
@@ -788,7 +791,9 @@ export function Composer({
       {error ? <Text className="pb-1.5 text-sm text-danger">{error}</Text> : null}
 
       {emojiOpen ? (
-        <ScrollView
+        <Animated.ScrollView
+          entering={enter.soft}
+          exiting={exit.soft}
           horizontal
           showsHorizontalScrollIndicator={false}
           style={{ backgroundColor: c.surface2 }}
@@ -796,7 +801,7 @@ export function Composer({
           className="mb-2 rounded-16 py-1.5"
         >
           {COMPOSER_EMOJIS.map((e) => (
-            <Pressable
+            <Touchable feel="chip"
               key={e}
               onPress={() => {
                 setBody((b) => b + e);
@@ -804,12 +809,12 @@ export function Composer({
               }}
               accessibilityRole="button"
               accessibilityLabel={`Insert ${e}`}
-              className="px-2 py-1 active:opacity-60"
+              className="px-2 py-1"
             >
               <Text className="text-xl">{e}</Text>
-            </Pressable>
+            </Touchable>
           ))}
-        </ScrollView>
+        </Animated.ScrollView>
       ) : null}
 
       {/* While recording there is nothing else to do, so the recorder takes the
@@ -834,18 +839,19 @@ export function Composer({
         style={{ backgroundColor: c.surface2 }}
         className="flex-row items-end gap-1 rounded-24 px-1.5 py-1"
       >
-        <Pressable
-          onPress={() => {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            setEmojiOpen((v) => !v);
-          }}
+        <Touchable feel="chip"
+          // The emoji row animates itself in and out (`enter.soft`/`exit.soft`
+          // on the row above). This used to call `LayoutAnimation`, which does
+          // nothing at all on the New Architecture — so the row has always
+          // appeared instantly, while the code claimed otherwise.
+          onPress={() => setEmojiOpen((v) => !v)}
           accessibilityRole="button"
           accessibilityLabel="Emoji"
           hitSlop={6}
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          className="h-9 w-9 items-center justify-center rounded-full"
         >
           <EmojiIcon size={21} color={emojiOpen ? c.brandStrong : c.textMuted} />
-        </Pressable>
+        </Touchable>
 
         <TextInput
           ref={inputRef}
@@ -877,27 +883,27 @@ export function Composer({
         />
 
         {isWhatsApp && !internal ? (
-          <Pressable
+          <Touchable feel="chip"
             accessibilityRole="button"
             accessibilityLabel="Templates"
             hitSlop={6}
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          className="h-9 w-9 items-center justify-center rounded-full"
           >
             <BoltIcon size={19} color={c.textMuted} />
-          </Pressable>
+          </Touchable>
         ) : null}
 
-        <Pressable
+        <Touchable feel="chip"
           onPress={() => setAttachSheet(true)}
           accessibilityRole="button"
           accessibilityLabel="Attach files"
           hitSlop={6}
-          className="h-9 w-9 items-center justify-center rounded-full active:opacity-60"
+          className="h-9 w-9 items-center justify-center rounded-full"
         >
           <AttachIcon size={20} color={c.textMuted} />
-        </Pressable>
+        </Touchable>
 
-        <Pressable
+        <Touchable feel="chip"
           onPress={showMic ? () => setRecording(true) : submit}
           disabled={!showMic && !canSend}
           accessibilityRole="button"
@@ -910,7 +916,7 @@ export function Composer({
             backgroundColor: internal ? c.amber : c.brand,
             opacity: showMic || canSend ? 1 : 0.35,
           }}
-          className="h-10 w-10 items-center justify-center rounded-full active:opacity-80"
+          className="h-10 w-10 items-center justify-center rounded-full"
         >
           {send.isPending ? (
             <ActivityIndicator color="#fff" size="small" />
@@ -919,7 +925,7 @@ export function Composer({
           ) : (
             <SendIcon size={19} color="#fff" />
           )}
-        </Pressable>
+        </Touchable>
       </View>
       </>
       )}

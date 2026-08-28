@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Text, TextInput, View } from "react-native";
 import type { Contact, Message } from "@ding/schemas";
 import { FORWARD_MAX_TARGETS } from "@ding/schemas";
 import { useContacts } from "@ding/client";
@@ -9,6 +9,7 @@ import { Sheet } from "./Sheet";
 import { CheckIcon, SearchIcon } from "../icons";
 import { haptics } from "../haptics";
 import { useTheme } from "../theme";
+import { Touchable } from "./Touchable";
 
 /** One line describing what's being passed on, for the header. */
 function summarise(m: Message): string {
@@ -122,14 +123,14 @@ export function ForwardSheet({
                 const on = picked.includes(item.id);
                 const off = !on && atCap;
                 return (
-                  <Pressable
+                  <Touchable feel="row"
                     onPress={() => toggle(item)}
                     disabled={off}
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked: on, disabled: off }}
                     accessibilityLabel={item.displayName}
                     style={{ opacity: off ? 0.4 : 1 }}
-                    className="flex-row items-center gap-3 py-2.5 active:opacity-70"
+                    className="flex-row items-center gap-3 py-2.5"
                   >
                     <Avatar name={item.displayName} color={item.avatarColor} size={38} />
                     <View className="flex-1">
@@ -149,7 +150,7 @@ export function ForwardSheet({
                     >
                       {on ? <CheckIcon size={14} color="#fff" /> : null}
                     </View>
-                  </Pressable>
+                  </Touchable>
                 );
               }}
               ListEmptyComponent={

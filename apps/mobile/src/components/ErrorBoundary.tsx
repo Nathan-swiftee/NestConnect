@@ -1,7 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { colors } from "@ding/design/tokens";
 import { reportError } from "../telemetry";
+import { Touchable } from "./Touchable";
 
 /**
  * The last line of defence: an uncaught render error, caught.
@@ -56,7 +57,7 @@ export class ErrorBoundary extends Component<
           This screen hit an error and stopped. Nothing you'd sent has been lost — messages are
           queued until the server accepts them.
         </Text>
-        <Pressable
+        <Touchable feel="chip"
           onPress={() => {
             this.setState({ error: null });
             this.props.onReset?.();
@@ -64,10 +65,10 @@ export class ErrorBoundary extends Component<
           accessibilityRole="button"
           accessibilityLabel="Back to the inbox"
           style={{ backgroundColor: c.brand }}
-          className="mt-3 rounded-full px-5 py-2.5 active:opacity-80"
+          className="mt-3 rounded-full px-5 py-2.5"
         >
           <Text className="text-lg font-semibold text-white">Back to the inbox</Text>
-        </Pressable>
+        </Touchable>
         {__DEV__ ? (
           <Text style={{ color: c.textFaint }} className="mt-4 text-2xs">
             {error.message}

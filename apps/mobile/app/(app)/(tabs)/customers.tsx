@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState } from "react";
-import { FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { FlatList, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { relativeTime, useContact, useContacts } from "@ding/client";
 import type { Contact } from "@ding/schemas";
@@ -10,6 +10,7 @@ import { EmptyState, QueryState } from "../../../src/components/States";
 import { ChevronRight, SearchIcon, XIcon } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
+import { Touchable } from "../../../src/components/Touchable";
 
 /**
  * The customer directory — the web's Customers section on a phone.
@@ -94,11 +95,11 @@ export default function Customers() {
 function Row({ contact, onPress }: { contact: Contact; onPress: () => void }) {
   const { c } = useTheme();
   return (
-    <Pressable
+    <Touchable feel="row"
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={contact.displayName}
-      className="flex-row items-center gap-3 px-4 py-3 active:opacity-70"
+      className="flex-row items-center gap-3 px-4 py-3"
     >
       <Avatar name={contact.displayName} color={contact.avatarColor} size={44} />
       <View className="flex-1">
@@ -117,7 +118,7 @@ function Row({ contact, onPress }: { contact: Contact; onPress: () => void }) {
         </View>
       ) : null}
       <ChevronRight size={15} color={c.textFaint} />
-    </Pressable>
+    </Touchable>
   );
 }
 
@@ -143,16 +144,16 @@ function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void
         className="flex-row items-center gap-2 border-b px-3 py-2.5"
       >
         <Text className="flex-1 text-lg font-semibold text-fg">Customer</Text>
-        <Pressable
+        <Touchable feel="chip" borderless
           onPress={onClose}
           accessibilityRole="button"
           accessibilityLabel="Close"
           hitSlop={10}
           style={{ backgroundColor: c.surface2 }}
-          className="h-8 w-8 items-center justify-center rounded-full active:opacity-60"
+          className="h-8 w-8 items-center justify-center rounded-full"
         >
           <XIcon size={16} color={c.textMuted} />
-        </Pressable>
+        </Touchable>
       </View>
 
       {isLoading || contact.isError || !data ? (
@@ -191,13 +192,13 @@ function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void
             </View>
           }
           renderItem={({ item }) => (
-            <Pressable
+            <Touchable feel="row"
               onPress={() => {
                 onClose();
                 router.push({ pathname: "/(app)/thread/[id]", params: { id: item.id } });
               }}
               accessibilityRole="button"
-              className="flex-row items-center gap-3 px-5 py-3 active:opacity-70"
+              className="flex-row items-center gap-3 px-5 py-3"
             >
               <ChannelDot channel={item.lastChannel ?? item.channel} size={15} />
               <View className="flex-1">
@@ -210,7 +211,7 @@ function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void
                 </Text>
               </View>
               <ChevronRight size={15} color={c.textFaint} />
-            </Pressable>
+            </Touchable>
           )}
           ListEmptyComponent={
             <Text className="px-6 text-md text-muted">No conversations with this customer yet.</Text>
