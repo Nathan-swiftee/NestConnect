@@ -34,7 +34,8 @@
       "permissions": [
         "POST_NOTIFICATIONS",
         "RECORD_AUDIO"
-      ]
+      ],
+      "predictiveBackGestureEnabled": true
     },
     "plugins": [
       "expo-router",

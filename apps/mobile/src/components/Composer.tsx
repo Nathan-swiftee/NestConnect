@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
 import Animated from "react-native-reanimated";
-import { enter, exit } from "../motion";
+import { enter, exit, reflow } from "../motion";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { api, useIntegrations, usePeople, useSendMessage, useTemplates, windowLeft } from "@ding/client";
 import { useStagedAttachments } from "../attachments";
@@ -9,7 +9,9 @@ import { enqueue } from "../send-queue";
 import { Avatar } from "./Avatar";
 import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
-import { VoiceRecorder, type RecordedVoice } from "./VoiceRecorder";
+import { VoiceRecorder } from "./VoiceRecorder";
+import { HoldToRecord } from "./HoldToRecord";
+import { useVoiceRecording, type RecordedVoice } from "../voice";
 import { useToast } from "./Toast";
 import { useTheme } from "../theme";
 import { haptics } from "../haptics";
@@ -22,7 +24,6 @@ import {
   ReplyIcon,
   SparkleIcon,
   XIcon,
-  MicIcon,
   NoteIcon,
   SendIcon,
   channelMeta,
@@ -111,7 +112,13 @@ export function Composer({
   const [error, setError] = useState<string | null>(null);
   const [pickedChannel, setPickedChannel] = useState<ChannelType | null>(null);
   const [attachSheet, setAttachSheet] = useState(false);
+  /** True only for the *locked*, hands-free panel. A held recording is not a
+   *  mode — it lasts exactly as long as the thumb is down. */
   const [recording, setRecording] = useState(false);
+  // One recorder, driven by the press-and-hold button and by the locked panel
+  // alike, so sliding up to lock continues the take rather than starting a new
+  // one.
+  const voice = useVoiceRecording();
   /**
    * The email thread's subject, editable before every send.
    *
@@ -413,6 +420,20 @@ export function Composer({
   /** A finished voice note: stage it, wait for the upload, then send it on its
    *  own. Unlike a picked file it isn't left in the tray — you recorded it to
    *  say something now, not to attach it to a sentence you haven't written. */
+  /**
+   * Stop the recorder and send what it produced.
+   *
+   * Both routes end here — releasing the held microphone, and pressing send on
+   * the locked panel — because both are the same act. `stop()` returns null for
+   * a recording too short to be a message (a fumbled tap on the mic), and that
+   * is a silent discard rather than an error: nothing was said.
+   */
+  async function finishVoice() {
+    setRecording(false);
+    const v = await voice.stop();
+    if (v) await sendVoice(v);
+  }
+
   async function sendVoice(v: RecordedVoice) {
     setRecording(false);
     setError(null);
@@ -820,7 +841,14 @@ export function Composer({
       {/* While recording there is nothing else to do, so the recorder takes the
           input row's place rather than floating over it. */}
       {recording ? (
-        <VoiceRecorder onSend={(v) => void sendVoice(v)} onCancel={() => setRecording(false)} />
+        <VoiceRecorder
+          voice={voice}
+          onSend={() => void finishVoice()}
+          onCancel={() => {
+            setRecording(false);
+            void voice.cancel();
+          }}
+        />
       ) : sendingVoice ? (
         <View
           style={{ backgroundColor: c.surface2 }}
@@ -834,8 +862,23 @@ export function Composer({
       <>
       <StagedAttachments items={files.staged} onRemove={files.remove} onRetry={files.retry} />
 
-      {/* compinput: tools left, field centre, one trailing action. */}
-      <View
+      {/* compinput: tools left, field centre, one trailing action.
+
+          `layout` is what stops the composer snapping. The field is multiline,
+          so every time the draft wraps to a new line the row — and the whole
+          message list above it — jumped by one line height, instantly. The web
+          composer interpolates that growth; this one didn't.
+
+          Animating the row's layout rather than a measured height on purpose:
+          what a multiline TextInput reports through `onContentSizeChange`
+          includes its padding on one platform and not the other, and guessing
+          wrong clips the text — a worse bug than the snap. Letting the input
+          size itself and animating the resulting layout change needs no
+          measurement at all. `reflow` is the motion system's single
+          re-layout curve, so this moves at the same speed as everything else
+          that resizes. */}
+      <Animated.View
+        layout={reflow}
         style={{ backgroundColor: c.surface2 }}
         className="flex-row items-end gap-1 rounded-24 px-1.5 py-1"
       >
@@ -903,30 +946,46 @@ export function Composer({
           <AttachIcon size={20} color={c.textMuted} />
         </Touchable>
 
-        <Touchable feel="chip"
-          onPress={showMic ? () => setRecording(true) : submit}
-          disabled={!showMic && !canSend}
-          accessibilityRole="button"
-          accessibilityLabel={showMic ? "Record voice message" : internal ? "Add note" : "Send reply"}
-          hitSlop={4}
-          // Keep the send button the same shape and colour whether or not it can
-          // fire — a disabled white disc on the grey field reads as a hole. It
-          // dims instead, which says "not yet" without disappearing.
-          style={{
-            backgroundColor: internal ? c.amber : c.brand,
-            opacity: showMic || canSend ? 1 : 0.35,
-          }}
-          className="h-10 w-10 items-center justify-center rounded-full"
-        >
-          {send.isPending ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : showMic ? (
-            <MicIcon size={19} color="#fff" />
-          ) : (
-            <SendIcon size={19} color="#fff" />
-          )}
-        </Touchable>
-      </View>
+        {/* The trailing action. With nothing written it is a microphone you
+            hold; the moment there is a draft it becomes send. This is the
+            single most-watched pixel in the app — it sits directly under the
+            thumb and changes on nearly every keystroke sequence — so the two
+            cross-fade rather than swapping instantly. */}
+        {showMic ? (
+          <Animated.View key="mic" entering={enter.soft} exiting={exit.soft}>
+            <HoldToRecord
+              voice={voice}
+              onSend={() => void finishVoice()}
+              onLock={() => setRecording(true)}
+            />
+          </Animated.View>
+        ) : (
+          <Animated.View key="send" entering={enter.soft} exiting={exit.soft}>
+            <Touchable feel="chip"
+              onPress={submit}
+              disabled={!canSend}
+              haptic={canSend ? "tap" : undefined}
+              accessibilityRole="button"
+              accessibilityLabel={internal ? "Add note" : "Send reply"}
+              hitSlop={4}
+              // Keep the send button the same shape and colour whether or not it
+              // can fire — a disabled white disc on the grey field reads as a
+              // hole. It dims instead, which says "not yet" without vanishing.
+              style={{
+                backgroundColor: internal ? c.amber : c.brand,
+                opacity: canSend ? 1 : 0.35,
+              }}
+              className="h-10 w-10 items-center justify-center rounded-full"
+            >
+              {send.isPending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <SendIcon size={19} color="#fff" />
+              )}
+            </Touchable>
+          </Animated.View>
+        )}
+      </Animated.View>
       </>
       )}
 

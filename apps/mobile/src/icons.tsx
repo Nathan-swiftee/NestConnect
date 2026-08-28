@@ -108,6 +108,7 @@ export const CheckCircleIcon = glyph(icons.checkCircle);
 export const AlertIcon = glyph(icons.alert);
 export const EyeIcon = glyph(icons.eye);
 export const ProfileIcon = glyph(icons.profile);
+export const LockIcon = glyph(icons.lock);
 export const TagIcon = glyph(icons.tag);
 export const BellIcon = glyph(icons.bell);
 export const DetailsIcon = glyph(icons.details);

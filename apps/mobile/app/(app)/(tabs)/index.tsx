@@ -14,10 +14,13 @@ import { router } from "expo-router";
 import {
   listTime,
   useConversations,
+  useMarkRead,
+  useMarkUnread,
   usePrefetchConversation,
   useRefresh,
   useSearchConversations,
   useSession,
+  useSetStatus,
   useTeams,
   useViews,
 } from "@ding/client";
@@ -30,11 +33,12 @@ import { PushGate, useDelayedPrompt } from "../../../src/components/PushGate";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { clearBadge, usePushRegistration } from "../../../src/push";
 import { haptics } from "../../../src/haptics";
-import { ChevronRight, PlusIcon, SearchIcon } from "../../../src/icons";
+import { CheckCircleIcon, ChevronRight, EyeIcon, PlusIcon, ReopenIcon, SearchIcon } from "../../../src/icons";
 import { rowIn, spring, springTo } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
 import { Touchable } from "../../../src/components/Touchable";
+import { SwipeRow } from "../../../src/components/SwipeRow";
 
 /**
  * Narrowing applied on top of the chosen view, client-side — the web's set,
@@ -83,6 +87,8 @@ const Row = memo(function Row({
   teamName,
   mine,
   onPress,
+  onToggleRead,
+  onToggleClosed,
 }: {
   conv: Conversation;
   /** The team this conversation is routed to, or undefined to omit it — inside
@@ -93,15 +99,41 @@ const Row = memo(function Row({
    *  about changing. */
   mine: boolean;
   onPress: (id: string) => void;
+  /** Swipe-right: read becomes unread and back. */
+  onToggleRead: (conv: Conversation) => void;
+  /** Swipe-left: close, or reopen one that's already closed. */
+  onToggleClosed: (conv: Conversation) => void;
 }) {
   const { c } = useTheme();
   const unread = conv.unreadCount > 0 || conv.unread;
   const overdue = !!conv.slaDueAt && new Date(conv.slaDueAt).getTime() < Date.now() && conv.status !== "closed";
+  const closed = conv.status === "closed";
   return (
+    // Triage without opening anything. One action each way, because two per
+    // side on a 52pt row is a lottery: right to toggle read, left to close (or
+    // reopen what's already closed).
+    <SwipeRow
+      left={{
+        icon: <EyeIcon size={22} color="#fff" />,
+        color: c.brandStrong,
+        onCommit: () => onToggleRead(conv),
+      }}
+      right={{
+        icon: closed ? <ReopenIcon size={22} color="#fff" /> : <CheckCircleIcon size={22} color="#fff" />,
+        color: closed ? c.amber : c.brand,
+        onCommit: () => onToggleClosed(conv),
+      }}
+    >
+    {(swiped) => (
     <Touchable feel="row"
-      onPress={() => onPress(conv.id)}
+      // A swipe ends as a press as far as the pressable underneath is
+      // concerned, so without this, triaging a conversation also opened it.
+      onPress={() => {
+        if (!swiped()) onPress(conv.id);
+      }}
       accessibilityRole="button"
       accessibilityLabel={`${conv.contact.displayName}. ${conv.preview ?? ""}`}
+      style={{ backgroundColor: c.bg }}
       className="flex-row items-center gap-3 px-4 py-3"
     >
       <Avatar name={conv.contact.displayName} color={conv.contact.avatarColor} size={52} />
@@ -171,6 +203,8 @@ const Row = memo(function Row({
         </View>
       </View>
     </Touchable>
+    )}
+    </SwipeRow>
   );
 });
 
@@ -238,6 +272,26 @@ export default function Inbox() {
   // arrived by the time it has finished sliding in — and the row this was tapped
   // on is the thread's own placeholder in the meantime, so there is no blank
   // screen either way.
+  const markRead = useMarkRead();
+  const markUnread = useMarkUnread();
+  const setStatus = useSetStatus();
+
+  // Both are optimistic in the client, so the row changes on the swipe and the
+  // request follows. Stable, so <Row>'s memo survives them.
+  const onToggleRead = useCallback(
+    (conv: Conversation) => {
+      const isUnread = conv.unreadCount > 0 || conv.unread;
+      (isUnread ? markRead : markUnread).mutate(conv.id);
+    },
+    [markRead, markUnread],
+  );
+  const onToggleClosed = useCallback(
+    (conv: Conversation) => {
+      setStatus.mutate({ id: conv.id, status: conv.status === "closed" ? "open" : "closed" });
+    },
+    [setStatus],
+  );
+
   const prefetchConversation = usePrefetchConversation();
   const openThread = useCallback(
     (id: string) => {
@@ -438,6 +492,8 @@ export default function Inbox() {
               teamName={teamFor(item)}
               mine={!!myId && item.assigneeUserId === myId}
               onPress={openThread}
+              onToggleRead={onToggleRead}
+              onToggleClosed={onToggleClosed}
             />
           );
           return index < 8 ? <Animated.View entering={rowIn(index)}>{row}</Animated.View> : row;

@@ -89,6 +89,7 @@ export const CheckCircleIcon = g(icons.checkCircle);
 export const AlertIcon = g(icons.alert);
 export const EyeIcon = g(icons.eye);
 export const ProfileIcon = g(icons.profile);
+export const LockIcon = g(icons.lock);
 export const TagIcon = g(icons.tag);
 export const BellIcon = g(icons.bell);
 export const AtIcon = g(icons.at);

@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { ActivityIndicator, Modal, Pressable, Text, View } from "react-native";
 import { Image } from "expo-image";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  interpolate,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { timing } from "../motion";
 import { useVideoPlayer, VideoView } from "expo-video";
 import type { Attachment } from "@ding/schemas";
 import { formatBytes } from "@ding/client";
@@ -53,6 +62,46 @@ export function MediaViewer({
     setSaving(false);
     if (err) toast({ text: err, tone: "error" });
   }
+
+  /**
+   * Flick the photo away to close it.
+   *
+   * The gesture every phone gallery has, and the one people try first — it did
+   * nothing here, so the only way out was the small X in the corner or a tap,
+   * neither of which is what a thumb already holding the photo wants to do.
+   *
+   * Either direction, because a photo viewer has no "down": the picture is
+   * being pushed off the screen, and which way is whichever way the thumb was
+   * already moving. The image follows the finger and the black behind it thins
+   * as it goes, so the dismissal is visible before it commits rather than
+   * after.
+   */
+  const drag = useSharedValue(0);
+  const DISMISS_AT = 110;
+
+  const dismiss = Gesture.Pan()
+    .activeOffsetY([-14, 14])
+    .failOffsetX([-20, 20])
+    .onUpdate((e) => {
+      drag.value = e.translationY;
+    })
+    .onEnd((e) => {
+      // Velocity as well as distance: a fast short flick is as clear an
+      // instruction as a slow long drag, and requiring the distance from both
+      // makes the quick one feel ignored.
+      const far = Math.abs(drag.value) > DISMISS_AT;
+      const fast = Math.abs(e.velocityY) > 900 && Math.abs(drag.value) > 40;
+      if (far || fast) runOnJS(onClose)();
+      else drag.value = withTiming(0, timing.base);
+    });
+
+  const pulled = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: drag.value },
+      { scale: interpolate(Math.abs(drag.value), [0, 260], [1, 0.86], "clamp") },
+    ],
+    opacity: interpolate(Math.abs(drag.value), [0, 260], [1, 0.4], "clamp"),
+  }));
 
   return (
     <Modal
@@ -111,7 +160,11 @@ export function MediaViewer({
           <VideoView player={player} style={{ flex: 1 }} contentFit="contain" nativeControls />
         ) : (
           // Dismiss on tap, the way every phone gallery does — the close button
-          // is for thumbs that started at the top of the screen.
+          // is for thumbs that started at the top of the screen — and on a
+          // flick in either vertical direction, which is the gesture people
+          // reach for first and which did nothing at all before.
+          <GestureDetector gesture={dismiss}>
+          <Animated.View style={[{ flex: 1 }, pulled]}>
           <Pressable onPress={onClose} accessible={false} style={{ flex: 1 }}>
             <Image
               source={mediaSource(attachment.url)}
@@ -124,6 +177,8 @@ export function MediaViewer({
               accessibilityLabel={attachment.filename || "Photo"}
             />
           </Pressable>
+          </Animated.View>
+          </GestureDetector>
         )}
       </View>
     </Modal>

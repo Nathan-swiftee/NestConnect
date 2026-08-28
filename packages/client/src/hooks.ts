@@ -845,7 +845,12 @@ export function useMarkRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.markRead(id),
-    onSuccess: () => {
+    // The bold name and the count badge are what "unread" looks like, and both
+    // come off the cached row — so they clear on the swipe rather than a round
+    // trip later, which is the whole point of swiping instead of opening.
+    onMutate: (id) => optimisticPatch(qc, id, { unread: false, unreadCount: 0 }),
+    onError: (_e, id, undo) => undo && patchConversation(qc, id, undo),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["views"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
     },
@@ -856,7 +861,11 @@ export function useMarkUnread() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => api.markUnread(id),
-    onSuccess: () => {
+    // `unreadCount` is the server's to compute — it counts inbound messages, not
+    // a flag — so only the flag is set here and the refetch fills in the number.
+    onMutate: (id) => optimisticPatch(qc, id, { unread: true }),
+    onError: (_e, id, undo) => undo && patchConversation(qc, id, undo),
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["views"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
     },

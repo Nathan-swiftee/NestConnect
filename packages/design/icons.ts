@@ -136,6 +136,8 @@ export const icons = {
   alert: { d: circle(12, 12, 8.6) + "M12 7.6v4.8", fill: circle(12, 16.1, 1.15) },
   eye: { d: "M2.6 12S6 5.6 12 5.6 21.4 12 21.4 12 18 18.4 12 18.4 2.6 12 2.6 12Z" + circle(12, 12, 3.1) },
   profile: { d: circle(12, 8, 4) + "M4.2 20a7.8 7.8 0 0 1 15.6 0" },
+  /** A padlock. The lock target a held voice recording slides up onto. */
+  lock: { d: box(4.6, 10.4, 14.8, 10, 3) + "M8.4 10.4V7.6a3.6 3.6 0 0 1 7.2 0v2.8" },
   /** A luggage tag with a punched hole. */
   tag: {
     d: "M11.7 3H5.6A2.6 2.6 0 0 0 3 5.6v6.1a2.2 2.2 0 0 0 .64 1.56l7.7 7.7a2.2 2.2 0 0 0 3.12 0l6.1-6.1a2.2 2.2 0 0 0 0-3.12l-7.7-7.7A2.2 2.2 0 0 0 11.7 3Z",
