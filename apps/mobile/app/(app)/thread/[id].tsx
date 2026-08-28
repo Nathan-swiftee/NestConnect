@@ -61,7 +61,7 @@ import {
 } from "../../../src/icons";
 import { haptics } from "../../../src/haptics";
 import { enter } from "../../../src/motion";
-import { elevation, useTheme } from "../../../src/theme";
+import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
 import { Touchable } from "../../../src/components/Touchable";
 
@@ -823,8 +823,14 @@ function BottomInset() {
   const insets = useInsets();
   const { c } = useTheme();
   const { progress } = useReanimatedKeyboardAnimation();
-  const style = useAnimatedStyle(() => ({ height: insets.bottom * (1 - progress.value) }));
-  return <Animated.View style={[{ backgroundColor: c.surface }, style]} />;
+  // Colour included: an animated style is the only style that reaches an
+  // element, so a `[{ backgroundColor }, style]` pair arrives as `style` alone
+  // and the inset renders transparent. See scripts/check-layout-rules.mjs.
+  const style = useAnimatedStyle(() => ({
+    height: insets.bottom * (1 - progress.value),
+    backgroundColor: c.surface,
+  }));
+  return <Animated.View style={style} />;
 }
 
 function Header({
@@ -1098,11 +1104,13 @@ const Bubble = memo(function Bubble({
         style={{
           backgroundColor: fill,
           borderColor: line,
+          // An email gets width rather than a lift. It carried a card shadow for
+          // a while, on the theory that light mode's surfaces are too close to
+          // separate an email from a message without one — but the thing it is
+          // being separated *from* is a tinted WhatsApp bubble, and against that
+          // a plain white card is already unmistakable. The shadow only made the
+          // thread look like two apps stacked.
           maxWidth: isEmail ? "94%" : "86%",
-          // The lift that makes the email card read as paper laid on the thread
-          // rather than another bubble in it. In light mode the surfaces are the
-          // same white, so this shadow is the whole of the distinction.
-          ...(isEmail ? elevation.card : null),
           // The tailed corner squares off. A tail growing out of a 16pt curve
           // leaves a visible sliver of background between the two shapes; at 5pt
           // they read as one outline.

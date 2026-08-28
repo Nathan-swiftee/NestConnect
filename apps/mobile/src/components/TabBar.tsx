@@ -418,9 +418,23 @@ function TabItem({
 
   // The whole item shrinks under the thumb — the pill is behind the icon, so
   // dimming the icon alone would look like it had gone unavailable.
-  const squeeze = useAnimatedStyle(() => ({ transform: [{ scale: press.value }] }));
+  // The alignment lives in these two rather than in a style object beside them.
+  // An animated style is the only style that reaches an element on this stack,
+  // so `style={[{ alignItems: "center" }, squeeze]}` arrives as `squeeze` alone
+  // and the icon and its label stop being centred on each other.
+  const squeeze = useAnimatedStyle(() => ({
+    alignItems: "center",
+    transform: [{ scale: press.value }],
+  }));
 
   const active = useAnimatedStyle(() => ({
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
     opacity: on.value,
     // A hair larger when selected. Not enough to notice as growth — enough that
     // the selected tab has slightly more presence than its neighbours.
@@ -456,13 +470,13 @@ function TabItem({
       android_ripple={undefined}
       style={{ flex: 1, alignItems: "center" }}
     >
-      <Animated.View style={[{ alignItems: "center" }, squeeze]}>
+      <Animated.View style={squeeze}>
         <View style={{ height: PILL_H, justifyContent: "center", alignItems: "center" }}>
           {/* Muted rather than faint, to match the label above it and the
               reference: an unselected destination is still a destination, and
               at `faint` the three you aren't on fade into the capsule. */}
           <Animated.View style={idle}>{icon?.({ focused: false, color: c.textMuted, size: ICON })}</Animated.View>
-          <Animated.View style={[StyleSheet.absoluteFill, { alignItems: "center", justifyContent: "center" }, active]}>
+          <Animated.View style={active}>
             {icon?.({ focused: true, color: c.brandStrong, size: ICON })}
           </Animated.View>
         </View>

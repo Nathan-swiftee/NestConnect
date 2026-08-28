@@ -96,6 +96,10 @@ export function MediaViewer({
     });
 
   const pulled = useAnimatedStyle(() => ({
+    // `flex: 1` belongs here rather than in a second style object beside it: an
+    // animated style is the only style that reaches the element, so the pair
+    // arrives as `pulled` alone and the image loses its region.
+    flex: 1,
     transform: [
       { translateY: drag.value },
       { scale: interpolate(Math.abs(drag.value), [0, 260], [1, 0.86], "clamp") },
@@ -164,7 +168,7 @@ export function MediaViewer({
           // flick in either vertical direction, which is the gesture people
           // reach for first and which did nothing at all before.
           <GestureDetector gesture={dismiss}>
-          <Animated.View style={[{ flex: 1 }, pulled]}>
+          <Animated.View style={pulled}>
           <Pressable onPress={onClose} accessible={false} style={{ flex: 1 }}>
             <Image
               source={mediaSource(attachment.url)}

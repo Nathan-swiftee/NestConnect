@@ -117,10 +117,33 @@ export function MessageActions({
     return () => clearTimeout(t);
   }, [message, open]);
 
-  const scrim = useAnimatedStyle(() => ({ opacity: open.value }));
+  /**
+   * Both of these carry their own geometry rather than leaving it to a
+   * `className` alongside. An animated style in `style` displaces everything
+   * else on the element — the class-derived rules and any sibling style object
+   * — so a scrim written as `className="absolute inset-0"` plus an animated
+   * opacity had neither its position nor its colour. See
+   * `scripts/check-layout-rules.mjs`, which now refuses that shape.
+   */
+  const scrim = useAnimatedStyle(() => ({
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: HOLD_SCRIM[scheme],
+    opacity: open.value,
+  }));
   // The top half drops in a short distance — it's already near where you were
   // looking, so it needs to appear, not travel.
   const top = useAnimatedStyle(() => ({
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingTop: insets.top + 56 + 12,
+    // `px-4` was 14, not 16: NativeWind's rem on native is 14.
+    paddingHorizontal: 14,
     opacity: open.value,
     transform: [{ translateY: (1 - open.value) * -22 }],
   }));
@@ -185,7 +208,8 @@ export function MessageActions({
           every other sheet in the app already proves on both. */}
       <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={themeVars} className="flex-1 justify-end">
-        <Animated.View style={[{ backgroundColor: HOLD_SCRIM[scheme] }, scrim]} className="absolute inset-0">
+        {/* No className on either of these two — see `scrim` and `top`. */}
+        <Animated.View style={scrim}>
           <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" className="flex-1" />
         </Animated.View>
 
@@ -195,11 +219,7 @@ export function MessageActions({
             as a mistake. 56 is the header's height.
             Pinned rather than in flow because the root is now bottom-aligned for
             the sheet; anything left in flow would ride up with it. */}
-        <Animated.View
-          style={[top, { position: "absolute", top: 0, left: 0, right: 0, paddingTop: insets.top + 56 + 12 }]}
-          className="px-4"
-          pointerEvents="box-none"
-        >
+        <Animated.View style={top} pointerEvents="box-none">
           {/* Keyed on the message so the emoji replay their entrance every time
               the overlay opens. Without it, holding a second message while the
               first is still animating out reuses the mounted buttons and the

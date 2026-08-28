@@ -1,5 +1,5 @@
 /**
- * Two layout rules, both learned the hard way, both invisible to a browser.
+ * Three rules, all learned the hard way, all invisible to a browser.
  *
  * ── 1 ─────────────────────────────────────────────────────────────────────
  *
@@ -47,6 +47,29 @@
  * Also invisible in a browser, because react-native-web's ScrollView shrinks
  * where Yoga's doesn't. Same blind spot, opposite symptom.
  *
+ * ── 3 ─────────────────────────────────────────────────────────────────────
+ *
+ *   An animated style must be alone on its element — no `className`, no second
+ *   style object.
+ *
+ * `react-native-css-interop` registers every React Native primitive, and
+ * `src/animated.ts` registers `Animated.View`, `Animated.Text` and
+ * `Animated.ScrollView` on top. On a registered component, a `style` array
+ * containing a `useAnimatedStyle` value arrives as that value *alone*: the rest
+ * of the array is discarded, and a `className` on the same element goes with
+ * it. It is a bug in the interop, not in the call sites — but until it is fixed
+ * upstream, the call sites have to avoid the shape.
+ *
+ * One build shipped four visible defects from this, all at once: a swipe panel
+ * taking 44pt of layout above every inbox row rather than sitting behind it, a
+ * microphone with no disc, a reply arrow above the bubble instead of beside it,
+ * and two sheet scrims with neither position nor colour. Every one of them
+ * rendered correctly in a web export — same blind spot again, third symptom.
+ *
+ * `__tests__/interop-probe.test.tsx` is the measurement this rests on: the same
+ * style array on a registered component and on one the interop has never heard
+ * of, so the registration is the only difference between them.
+ *
  *   pnpm --filter @ding/mobile check:layout
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -58,7 +81,10 @@ const SCROLLERS = ["ScrollView", "FlatList", "SectionList", "Animated.ScrollView
 
 function sources(dir, out = []) {
   for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === ".expo" || entry === "ios" || entry === "android") continue;
+    // `__tests__` is skipped because the interop probe's whole job is to render
+    // the broken shapes and report what comes out of them.
+    const skip = ["node_modules", ".expo", "ios", "android", "__tests__"];
+    if (skip.includes(entry)) continue;
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) sources(path, out);
     else if (entry.endsWith(".tsx")) out.push(path);
@@ -140,10 +166,82 @@ function canShrink(s) {
   return heightIsBounded(s.tag) || heightIsBounded(s.wrapper);
 }
 
+/**
+ * Every JSX opening tag in a file, as source text.
+ *
+ * Not a regex, because attribute values contain `>` — arrow functions, generics
+ * and comparisons all put one inside braces. This walks forward from `<Name`
+ * tracking brace depth and string state, so the `>` it stops at is the tag's.
+ */
+function openingTags(src) {
+  const tags = [];
+  const start = /<([A-Z][A-Za-z0-9.]*)/g;
+  let m;
+  while ((m = start.exec(src))) {
+    let depth = 0;
+    let quote = "";
+    let i = m.index + m[0].length;
+    for (; i < src.length; i += 1) {
+      const ch = src[i];
+      if (quote) {
+        if (ch === "\\") i += 1;
+        else if (ch === quote) quote = "";
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+      else if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+      else if (ch === ">" && depth === 0) break;
+    }
+    if (i >= src.length) continue;
+    tags.push({
+      name: m[1],
+      tag: src.slice(m.index, i + 1),
+      line: src.slice(0, m.index).split("\n").length,
+    });
+  }
+  return tags;
+}
+
+/** The names bound to a `useAnimatedStyle(...)` in this file. */
+function animatedStyleNames(src) {
+  const names = new Set();
+  const decl = /\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*useAnimatedStyle\s*\(/g;
+  let m;
+  while ((m = decl.exec(src))) names.add(m[1]);
+  return names;
+}
+
+/**
+ * The `style={...}` expression from an opening tag, with comments stripped, or
+ * "". The stripping matters: these style arrays are heavily annotated, and a
+ * comment mentioning a "top edge" otherwise reads as a reference to an animated
+ * style named `top`.
+ */
+function styleExpression(tag) {
+  const at = tag.indexOf("style={");
+  if (at === -1) return "";
+  let depth = 0;
+  for (let i = at + 6; i < tag.length; i += 1) {
+    if (tag[i] === "{") depth += 1;
+    else if (tag[i] === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return tag
+          .slice(at + 7, i)
+          .replace(/\/\*[\s\S]*?\*\//g, " ")
+          .replace(/\/\/[^\n]*/g, " ");
+      }
+    }
+  }
+  return "";
+}
+
 const problems = [];
 let scanned = 0;
 let spansSeen = 0;
 let sheetsSeen = 0;
+let animatedSeen = 0;
 
 for (const file of sources(ROOT)) {
   const src = readFileSync(file, "utf8");
@@ -159,6 +257,29 @@ for (const file of sources(ROOT)) {
           `${relative(ROOT, file)}:${span.line} — a <${s.name}> claiming flex:1 sits inside this ` +
             `KeyboardAvoidingView. Its height cannot depend on one; move the avoiding view down ` +
             `so it wraps only the composer.`,
+        );
+      }
+    }
+  }
+
+  // Rule 3 — an animated style sharing an element with anything else.
+  if (src.includes("useAnimatedStyle")) {
+    const animated = animatedStyleNames(src);
+    if (animated.size) {
+      animatedSeen += 1;
+      for (const t of openingTags(src)) {
+        const style = styleExpression(t.tag);
+        if (!style) continue;
+        // Not preceded by a dot, so `insets.top` doesn't read as the animated
+        // style happening to be called `top`.
+        const used = [...animated].filter((n) => new RegExp(`(?<![.\\w$])${n}\\b`).test(style));
+        if (!used.length) continue;
+        const alone = style.trim() === used[0] && !/\bclassName=/.test(t.tag);
+        if (alone) continue;
+        problems.push(
+          `${relative(ROOT, file)}:${t.line} — <${t.name}> passes the animated style \`${used[0]}\` ` +
+            `alongside something else. Everything but \`${used[0]}\` is discarded before it reaches ` +
+            `the component. Fold it all into \`${used[0]}\` and leave the element with nothing else.`,
         );
       }
     }
@@ -196,11 +317,19 @@ if (sheetsSeen === 0) {
   console.error("\nCannot run: no <Sheet> found. Either it was renamed or the scan is broken.\n");
   process.exit(2);
 }
+if (animatedSeen === 0) {
+  console.error("\nCannot run: no useAnimatedStyle found. The scan is broken.\n");
+  process.exit(2);
+}
 
 if (problems.length) {
-  console.error(`\nLayout rules: ${problems.length} problem(s) in ${scanned} files\n`);
+  console.error(`\nNative rules: ${problems.length} problem(s) in ${scanned} files\n`);
   for (const p of problems) console.error(`  ✗ ${p}`);
   console.error("\nSee docs/11-mobile-layout.md.\n");
   process.exit(1);
 }
-console.log(`\nLayout rules: ${spansSeen} KeyboardAvoidingView(s) across ${scanned} files, none holding a scroll region.\n`);
+console.log(
+  `\nNative rules: ${scanned} files — ${spansSeen} KeyboardAvoidingView(s), none holding a scroll ` +
+    `region; scrollers in ${sheetsSeen} sheet(s) can shrink; every animated style is alone on its ` +
+    `element across ${animatedSeen} animating file(s).\n`,
+);

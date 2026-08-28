@@ -116,7 +116,30 @@ export function SwipeToReply({
     transform: [{ translateX: dir * x.value }],
   }));
 
+  /**
+   * The arrow behind the bubble, on the side it is pulled away from, level with
+   * the middle of it.
+   *
+   * Everything is in this one object — position, offset, size — because on this
+   * stack an animated style displaces the rest of the element's styling. A
+   * `style={[hint, { position: "absolute", top: … }]}` array arrives at the view
+   * as `hint` alone: no `position`, so the arrow falls back into the flow at the
+   * top of the row, which is what "the arrow flies higher than the bubble" was.
+   * `__tests__/interop-probe.test.tsx` measures it against an unregistered
+   * component to show the interop is what drops it.
+   *
+   * `anchorCenter` is the caller's measurement of its own bubble; `h` is only
+   * the fallback for the first frame, while the arrow is fully transparent
+   * anyway. Two earlier versions centred on the wrong box — first by stretching
+   * `top: 0; bottom: 0` over the row, then by measuring the row's own height —
+   * and both put the arrow beside a neighbouring message.
+   */
   const hint = useAnimatedStyle(() => ({
+    position: "absolute",
+    top: Math.max(0, (anchorCenter && anchorCenter > 0 ? anchorCenter : h / 2) - ARROW / 2),
+    ...(mine ? { right: 8 } : { left: 8 }),
+    height: ARROW,
+    justifyContent: "center",
     opacity: interpolate(x.value, [0, FULL], [0, 1], "clamp"),
     transform: [{ scale: interpolate(x.value, [0, FULL], [0.55, 1], "clamp") }],
   }));
@@ -126,31 +149,8 @@ export function SwipeToReply({
   return (
     <GestureDetector gesture={pan}>
       <View onLayout={(e) => setH(e.nativeEvent.layout.height)}>
-        {/* The arrow sits behind, on the side the bubble is pulled away from,
-            level with the middle of the bubble.
-
-            "The middle of the bubble" is the whole difficulty. This row is not
-            the bubble: above it is the gap to the previous message, and below
-            it there may be a reaction chip and a retry line. Two earlier
-            versions centred on the wrong box — first by stretching
-            `top: 0; bottom: 0` over the row, then by measuring the row's own
-            height — and both put the arrow beside a neighbouring message
-            instead of this one. The caller measures its bubble and passes the
-            centre down; `h` is only the fallback for the first frame, while the
-            arrow is still fully transparent anyway. */}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            hint,
-            {
-              position: "absolute",
-              top: Math.max(0, (anchorCenter && anchorCenter > 0 ? anchorCenter : h / 2) - ARROW / 2),
-              height: ARROW,
-              justifyContent: "center",
-              ...(mine ? { right: 8 } : { left: 8 }),
-            },
-          ]}
-        >
+        {/* `hint` and nothing else — see where it is defined. */}
+        <Animated.View pointerEvents="none" style={hint}>
           <View
             style={{ backgroundColor: c.surface2, height: ARROW, width: ARROW }}
             className="items-center justify-center rounded-full"

@@ -145,7 +145,25 @@ export function Sheet({
   // The scrim thins as the sheet is pulled down, so the background comes back
   // as you go and the drag reads as reversing the entrance rather than sliding
   // a panel around underneath a fixed dim.
-  const scrim = useAnimatedStyle(() => ({ opacity: open.value * Math.max(0, 1 - drag.value / 400) }));
+  /**
+   * The dim behind the panel. Its geometry is here rather than in a `className`
+   * beside it, and that is load-bearing: on this stack an animated style in
+   * `style` takes the element's whole styling with it — the class-derived rules
+   * and any second style object are both dropped, and only the animated object
+   * arrives. This scrim shipped as `className="absolute inset-0"` plus an
+   * animated opacity, which means it had neither the position nor the colour.
+   * `scripts/check-layout-rules.mjs` guards against it now; the measurement
+   * behind it is in `__tests__/interop-probe.test.tsx`.
+   */
+  const scrim = useAnimatedStyle(() => ({
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: c.scrim,
+    opacity: open.value * Math.max(0, 1 - drag.value / 400),
+  }));
   const panel = useAnimatedStyle(() => ({
     // Three translations rather than one sum: the first is a percentage of the
     // sheet's own height, so a tall sheet and a short one travel for the same
@@ -184,7 +202,8 @@ export function Sheet({
           fine. */}
       <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={themeVars} className="flex-1 justify-end">
-        <Animated.View style={[{ backgroundColor: c.scrim }, scrim]} className="absolute inset-0">
+        {/* No className, deliberately — see `scrim` above. */}
+        <Animated.View style={scrim}>
           <Pressable
             onPress={onClose}
             accessibilityRole="button"

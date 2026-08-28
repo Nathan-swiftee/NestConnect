@@ -30,11 +30,17 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      # One structural rule about the mobile screens that neither the typechecker
-      # nor a browser can see. Takes a second. docs/11-mobile-layout.md says why
-      # it exists and why it isn't a rendering test.
+      # Three structural rules about the mobile screens that neither the
+      # typechecker nor a browser can see. Takes a second. docs/11-mobile-layout.md
+      # says why they exist and why they aren't rendering tests.
       - name: Mobile layout rules
         run: pnpm --filter @ding/mobile check:layout
+
+      # The measurement the third of those rules rests on: on this stack an
+      # animated style displaces every other style on its element. If an interop
+      # release ever fixes that, this is what says so.
+      - name: Mobile native-render tests
+        run: pnpm --filter @ding/mobile test
 
       # The shared client runs in two runtimes and must not guess which. One
       # `typeof document` in here took out every upload on the phone while

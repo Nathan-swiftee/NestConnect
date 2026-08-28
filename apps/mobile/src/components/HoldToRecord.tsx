@@ -119,18 +119,53 @@ export function HoldToRecord({
       }
     });
 
+  /**
+   * The disc itself — size, shape and colour included, rather than left to a
+   * `className` beside this.
+   *
+   * On this stack a `useAnimatedStyle` value in `style` takes the whole element
+   * with it: the class-derived styles are dropped and so is any other inline
+   * style object. That is how the microphone shipped as a bare white glyph on
+   * nothing — the transform was here, `h-10 w-10 rounded-full` was in the
+   * className, and only the transform survived, collapsing the button to the
+   * size of its icon. `__tests__/interop-probe.test.tsx` holds the measurement.
+   *
+   * So: one style object per animated element, everything in it.
+   *
+   * 35, not 40: NativeWind's rem on native is 14, so the `h-10` this replaces
+   * was 2.5 × 14. Every number below is a Tailwind class converted at that rate.
+   */
   const button = useAnimatedStyle(() => ({
+    height: 35,
+    width: 35,
+    borderRadius: 9999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: holding ? c.danger : c.brand,
     transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: grow.value }],
   }));
 
   /** The hint slides with the finger and fades as the cancel point nears. */
   const cancelHint = useAnimatedStyle(() => ({
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     opacity: interpolate(dx.value, [0, -CANCEL_AT], [1, 0.15], "clamp"),
     transform: [{ translateX: dx.value * 0.55 }],
   }));
 
   /** The lock target lifts and brightens as the finger comes up to meet it. */
   const lockHint = useAnimatedStyle(() => ({
+    marginBottom: 7,
+    height: 31.5,
+    width: 31.5,
+    borderRadius: 9999,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: c.surface2,
+    borderColor: c.border,
     opacity: interpolate(dy.value, [0, -LOCK_AT], [0.45, 1], "clamp"),
     transform: [{ scale: interpolate(dy.value, [0, -LOCK_AT], [0.85, 1.1], "clamp") }],
   }));
@@ -146,10 +181,7 @@ export function HoldToRecord({
           style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: -64 }}
         >
           <View className="flex-1 flex-row items-end justify-end pb-1 pr-3">
-            <Animated.View
-              style={[lockHint, { backgroundColor: c.surface2, borderColor: c.border }]}
-              className="mb-2 h-9 w-9 items-center justify-center rounded-full border"
-            >
+            <Animated.View style={lockHint}>
               <LockIcon size={16} color={c.textMuted} />
             </Animated.View>
           </View>
@@ -165,7 +197,7 @@ export function HoldToRecord({
             <Text style={{ color: c.text }} className="ml-2.5 text-md font-semibold tabular-nums">
               {formatDuration(voice.seconds * 1000)}
             </Text>
-            <Animated.View style={cancelHint} className="flex-1 flex-row items-center justify-center">
+            <Animated.View style={cancelHint}>
               <BackIcon size={14} color={c.textFaint} />
               <Text style={{ color: c.textFaint }} className="ml-0.5 text-sm">
                 Slide to cancel
@@ -176,20 +208,15 @@ export function HoldToRecord({
       ) : null}
 
       {/* A plain View between the detector and the styled one, the way
-          `SwipeToReply` does it. The size and shape are classes rather than
-          style properties for the reason `SwipeRow` sets out: on this stack the
-          class-derived style is the one that lands, and putting the disc's
-          width, height and radius in `style` is what left the microphone as a
-          white glyph on no background. Only the animated transform and the
-          colour that changes while holding stay in the style. */}
+          `SwipeToReply` does it. No className on the disc — `button` carries the
+          whole appearance, for the reason set out where it is defined. */}
       <GestureDetector gesture={hold}>
         <View>
           <Animated.View
-            style={[button, { backgroundColor: holding ? c.danger : c.brand }]}
+            style={button}
             accessibilityRole="button"
             accessibilityLabel="Hold to record a voice message"
             accessibilityHint="Hold to record, release to send. Slide left to cancel, up to lock."
-            className="h-10 w-10 items-center justify-center rounded-full"
           >
             <MicIcon size={19} color="#fff" />
           </Animated.View>

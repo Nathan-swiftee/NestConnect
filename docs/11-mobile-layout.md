@@ -124,14 +124,15 @@ Two reasons, both worth knowing before trusting a web export:
 pnpm --filter @ding/mobile check:layout   # also runs in CI
 ```
 
-`apps/mobile/scripts/check-layout-rules.mjs` enforces two of the invariants — 4
-and 5 — by reading the source. They are the two that a browser cannot see, and
-they are opposites:
+`apps/mobile/scripts/check-layout-rules.mjs` enforces three rules by reading the
+source. All three are invisible to a browser. The first two are invariants 4 and
+5, and they are opposites:
 
 1. **a `KeyboardAvoidingView` must not contain a scroll region that claims a
    bounded height** (`style={{ flex: 1 }}` / `className="flex-1"`);
 2. **a scroll region inside a `<Sheet>` must be able to shrink**
-   (`flexShrink: 1`, its own `maxHeight`, or a fixed-height wrapper).
+   (`flexShrink: 1`, its own `maxHeight`, or a fixed-height wrapper);
+3. **an animated style must be alone on its element** — see §7.
 
 Rule 1 separates all four real call sites correctly, which is why it's the rule
 and not something broader:
@@ -172,6 +173,62 @@ correctly and has nothing to report. A browser cannot see it; the source can. Th
 harness was deleted rather than kept as reassurance, because a check that goes
 green on the exact regression it was written for is worse than no check.
 
-**So: a clean `check:layout` means this one structural trap is not present. It is
+**So: a clean `check:layout` means these structural traps are not present. It is
 not a statement that the screen renders correctly.** For any structural change to
 a mobile screen, still put a build on a phone and look at it.
+
+## 7. An animated style is the only style on its element
+
+```
+On a component `cssInterop` has registered, a `style` array containing a
+`useAnimatedStyle` value arrives at the component as that value alone.
+Everything else in the array is discarded, and a `className` on the same
+element goes with it.
+```
+
+Registered means, in practice, everything: `react-native-css-interop` registers
+every React Native primitive — `View`, `Text`, `Pressable`, `Image`,
+`ScrollView`, `TextInput`, the `Touchable*` family — and `src/animated.ts` adds
+`Animated.View`, `Animated.Text` and `Animated.ScrollView` on top. So the rule
+applies to every animated element in the app.
+
+This is a bug in `react-native-css-interop@0.2.6`, which ships inside
+`nativewind@4.2.6`. `renderComponent` splits the incoming `style` into an
+animated part and a static part and then lets the animated part overwrite the
+static one on the way out.
+
+It cost four visible defects before it was understood, all in one build:
+
+| symptom | what was lost |
+| --- | --- |
+| a 44pt column of icons above every inbox row | `SwipeRow`'s panel lost `absolute inset-0` and sat in the flow |
+| the microphone was a white glyph on nothing | `HoldToRecord`'s disc lost `h-10 w-10 rounded-full` |
+| the reply arrow floated above the bubble | `SwipeToReply`'s arrow lost its `position` and `top` |
+| sheets opened over an undimmed screen | `Sheet` and `MessageActions` scrims lost both position and colour |
+
+Each of those rendered correctly in a web export, for the same reason §5 gives:
+react-native-web resolves the interop differently. Two of them shipped to a
+phone twice.
+
+**The fix is always the same shape: put everything into the one animated style
+object and leave the element with no `className` and no second style.** Colours
+and sizes read from the theme or from React state are fine inside a worklet —
+the babel plugin picks them up as dependencies.
+
+One trap when converting a `className` into numbers: **NativeWind's rem on
+native is 14, not 16.** `h-10` is 35, `h-9` is 31.5, `px-6` is 21, `px-4` is 14.
+Reaching for the browser value silently resizes the thing being fixed. The
+values above were measured through the test harness, not calculated.
+
+`apps/mobile/__tests__/interop-probe.test.tsx` is the measurement. It gives the
+same style array to a registered component and to one the interop has never
+heard of, so reanimated and Jest are constant across the two and the
+registration is the only difference. The unregistered component keeps the static
+half; the registered one does not. Run it with:
+
+```bash
+pnpm --filter @ding/mobile test   # also runs in CI
+```
+
+It is written to fail loudly if an upstream release ever fixes this, since at
+that point rule 3 can go.

@@ -112,27 +112,47 @@ export function SwipeRow({
     transform: [{ scale: interpolate(x.value, [-FULL, 0], [1, 0.6], "clamp") }],
   }));
 
-  /** The colour behind the row: whichever side is being pulled. */
+  /**
+   * The colour behind the row: whichever side is being pulled.
+   *
+   * The positioning lives *inside* the animated style rather than in a
+   * `className` or a second style object, and that is not a stylistic choice.
+   * On this stack, the moment a `useAnimatedStyle` value enters the `style` of
+   * a `cssInterop`-registered `Animated.View`, everything else on that element
+   * is dropped — its classes and any other inline style with it. This panel
+   * shipped with `absolute inset-0` in its className and spent two builds
+   * sitting *in* the layout instead of behind the row: an invisible 44pt column
+   * of two icons above every conversation, which is what "the spacing is messed
+   * up" was. `__tests__/interop-probe.test.tsx` is the proof.
+   *
+   * One style object, nothing to merge, nothing to lose.
+   *
+   * The two colours are read out here rather than inside the worklet: `left` and
+   * `right` carry an `onCommit` callback each, and a worklet should close over
+   * two strings rather than over two objects holding JS functions.
+   */
+  const leftColor = left?.color ?? c.surface2;
+  const rightColor = right?.color ?? c.surface2;
   const behind = useAnimatedStyle(() => ({
-    backgroundColor: x.value > 0 ? (left?.color ?? c.surface2) : (right?.color ?? c.surface2),
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    // `px-6` was 21, not 24: NativeWind's rem on native is 14.
+    paddingHorizontal: 21,
+    backgroundColor: x.value > 0 ? leftColor : rightColor,
     opacity: interpolate(Math.abs(x.value), [0, 30], [0, 1], "clamp"),
   }));
 
   return (
     <GestureDetector gesture={pan}>
       <View>
-        {/* `absolute inset-0` in the className, not `position: absolute` in the
-            style. On this stack the class wins: NativeWind's interop drives
-            `style` from `className`, so layout put in the style prop of an
-            element that also has classes is not reliably applied — which is
-            what made this panel take up 44pt of layout above every row instead
-            of sitting behind it. `Sheet.tsx` scrim has always done it this way;
-            the style keeps only the animated colour and opacity. */}
-        <Animated.View
-          pointerEvents="none"
-          style={behind}
-          className="absolute inset-0 flex-row items-center justify-between px-6"
-        >
+        {/* No className on this element, deliberately — see `behind` above. */}
+        <Animated.View pointerEvents="none" style={behind}>
           <Animated.View style={leftPanel}>{left?.icon}</Animated.View>
           <Animated.View style={rightPanel}>{right?.icon}</Animated.View>
         </Animated.View>

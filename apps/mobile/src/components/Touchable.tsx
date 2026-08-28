@@ -74,7 +74,19 @@ export const Touchable = forwardRef<View, TouchableProps>(function Touchable(
   const { scheme, c } = useTheme();
   const lit = useSharedValue(0);
   const lights = feel === "row";
-  const glow = useAnimatedStyle(() => ({ opacity: lit.value }));
+  // Position and colour included. An animated style displaces every other style
+  // on its element here, so the overlay this drives has to carry its own box —
+  // as a `[{ position: "absolute", … }, glow]` pair it arrived as `glow` alone,
+  // which is an opacity animation on a zero-sized transparent view.
+  const glow = useAnimatedStyle(() => ({
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: c.surface2,
+    opacity: lit.value,
+  }));
 
   /**
    * Deliberately not the brand colour. A press is an acknowledgement, not a
@@ -111,13 +123,7 @@ export const Touchable = forwardRef<View, TouchableProps>(function Touchable(
     >
       {lights ? (
         <>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              { position: "absolute", left: 0, right: 0, top: 0, bottom: 0, backgroundColor: c.surface2 },
-              glow,
-            ]}
-          />
+          <Animated.View pointerEvents="none" style={glow} />
           {children as React.ReactNode}
         </>
       ) : (
