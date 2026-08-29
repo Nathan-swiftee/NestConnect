@@ -232,3 +232,28 @@ pnpm --filter @ding/mobile test   # also runs in CI
 
 It is written to fail loudly if an upstream release ever fixes this, since at
 that point rule 3 can go.
+
+### The check that failed open
+
+Rule 3 shipped with a hole, and it is worth recording because the failure mode
+is the dangerous one: it did not report a false problem, it reported *nothing*
+and looked like a pass.
+
+The scanner walks forward from `<Name` tracking brace and quote state to find
+the tag's closing `>`. It ran over this comment:
+
+> heavier than the palette**'s** `surface2`
+
+The apostrophe opened a string that never closed, so the walk consumed the rest
+of the file and the tag was skipped in silence. Two elements in `TabBar.tsx`
+went unchecked, and both were carrying exactly the defect the rule exists to
+catch — the sliding pill had no background, size or position, and the tab
+labels had no font size, weight or gap. They reached a phone and came back as
+"I want a background on the active one" and "the text can be smaller and closer
+to the icon", which is to say: the design was right in the source the whole
+time and was being thrown away before it rendered.
+
+`stripComments` now blanks every comment before anything else reads the source,
+preserving offsets so line numbers still point at the right place. The script
+also runs the scanner against a specimen containing that exact apostrophe on
+every invocation, and refuses to report a pass if it comes back empty.

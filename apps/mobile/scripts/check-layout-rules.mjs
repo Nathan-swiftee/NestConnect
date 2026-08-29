@@ -93,6 +93,33 @@ function sources(dir, out = []) {
 }
 
 /**
+ * Blank out every comment, preserving offsets so line numbers still line up.
+ *
+ * This has to happen before anything below looks at the source, and the reason
+ * is a bug this check shipped with. `openingTags` walks forward from `<Name`
+ * tracking quote state, and these files are heavily commented — one of those
+ * comments said "heavier than the palette's `surface2`". The apostrophe in
+ * "palette's" opened a string that never closed, so the walk ran off the end of
+ * the file and the tag was skipped in silence.
+ *
+ * Two elements went unchecked that way, both in TabBar, and both were carrying
+ * exactly the defect rule 3 exists to catch: the sliding pill had no
+ * background, position or size, and the tab labels had no font size, weight or
+ * gap. They shipped, and came back as "I want a background on the active one"
+ * and "the text can be smaller and closer to the icon" — which is to say the
+ * values were right in the source the whole time and never reached the phone.
+ *
+ * A check that can fail open is worse than no check, because it is also a claim.
+ */
+function stripComments(src) {
+  const blank = (m) => m.replace(/[^\n]/g, " ");
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    // `[^:]` guards `https://` — a URL in a string is not a comment.
+    .replace(/(^|[^:])(\/\/[^\n]*)/g, (_m, before, comment) => before + blank(comment));
+}
+
+/**
  * The source span of one `<KeyboardAvoidingView …>…</KeyboardAvoidingView>`.
  *
  * Tag counting rather than a parse: this file should not need a Babel dependency
@@ -244,7 +271,7 @@ let sheetsSeen = 0;
 let animatedSeen = 0;
 
 for (const file of sources(ROOT)) {
-  const src = readFileSync(file, "utf8");
+  const src = stripComments(readFileSync(file, "utf8"));
   scanned += 1;
 
   // Rule 1 — a KeyboardAvoidingView holding a region-claiming scroller.
@@ -320,6 +347,31 @@ if (sheetsSeen === 0) {
 if (animatedSeen === 0) {
   console.error("\nCannot run: no useAnimatedStyle found. The scan is broken.\n");
   process.exit(2);
+}
+
+/**
+ * The scanner, checked against the input that once defeated it.
+ *
+ * An apostrophe in prose — "the palette's surface2" — used to open a string the
+ * walk never closed, so it ran past the end of the tag and reported nothing.
+ * The check went green while two broken elements sat in the file it had just
+ * read. This runs on every invocation because a silent failure is the only kind
+ * this class of check has.
+ */
+{
+  const specimen = stripComments(`
+    // heavier than the palette's \`surface2\`, which isn't visible
+    const grow = useAnimatedStyle(() => ({ opacity: 1 }));
+    <Animated.View style={[{ position: "absolute" }, grow]} />
+  `);
+  const found = openingTags(specimen);
+  if (found.length !== 1 || !styleExpression(found[0].tag).includes("grow")) {
+    console.error(
+      "\nCannot run: the tag scanner lost a tag whose comment contains an apostrophe — " +
+        "the exact failure `stripComments` exists to prevent. Fix that before trusting a pass.\n",
+    );
+    process.exit(2);
+  }
 }
 
 if (problems.length) {

@@ -166,6 +166,19 @@ export default function Thread() {
    */
   const atBottom = useRef(true);
   /**
+   * How close to the end still counts as "at the end".
+   *
+   * It was 120, and 120pt is most of a message. Scroll up slowly from the
+   * newest one and you were still inside it, so the next thing that changed the
+   * content's height — an image finishing, the next batch of older messages
+   * rendering as you approached them — read you as still at the bottom and
+   * scrolled you back down. That is the "when I scroll up slowly it jumps".
+   *
+   * A number small enough that it only means "has not moved": one line of text
+   * and the padding under it.
+   */
+  const AT_BOTTOM_SLACK = 24;
+  /**
    * Has the reader taken control of the scroll yet?
    *
    * A virtualised list does not arrive at its full height in one go: it renders
@@ -673,7 +686,8 @@ export default function Thread() {
         maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
         onScroll={(e) => {
           const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-          atBottom.current = contentOffset.y + layoutMeasurement.height >= contentSize.height - 120;
+          atBottom.current =
+            contentOffset.y + layoutMeasurement.height >= contentSize.height - AT_BOTTOM_SLACK;
         }}
         // The reader is driving now, so stop pinning to the bottom. Only a drag
         // counts: the programmatic scrolls below fire `onScroll` too, and
@@ -692,14 +706,37 @@ export default function Thread() {
          * through every step of the list measuring itself. After that, only if
          * that is where they already were.
          */
+        /**
+         * Two different reasons to be at the bottom, and they are not the same
+         * rule.
+         *
+         * **Settling.** A freshly opened thread is measuring itself: a
+         * screenful renders, the list measures, another batch renders, an image
+         * loads and reflows. Every one of those fires this. Through all of them
+         * the reader has asked for nothing and belongs at the newest message,
+         * so every one of them scrolls.
+         *
+         * **Following.** Once the reader has dragged, the list is theirs. Being
+         * near the bottom is no longer permission to move them — only a message
+         * that has genuinely just arrived is, and only if they were already at
+         * the bottom to see it land.
+         *
+         * Those were one branch (`!pinned && !atBottom` → return), which meant
+         * that after a drag, *any* reflow near the bottom scrolled. Combined
+         * with `maintainVisibleContentPosition` pulling the other way, that is
+         * the thread jumping on its own several times on open.
+         */
         onContentSizeChange={() => {
-          if (!pinned.current && !atBottom.current) return;
           const newest = data?.messages[data.messages.length - 1]?.id ?? null;
+          const isNewMessage = lastMsgId.current !== null && newest !== lastMsgId.current;
+          lastMsgId.current = newest;
+
+          if (!(pinned.current || (atBottom.current && isNewMessage))) return;
+
           // Animated only for a message that has genuinely just arrived. The
           // first layout and an image reflowing must not glide — that reads as
           // the thread drifting on its own.
-          const isNewMessage = lastMsgId.current !== null && newest !== lastMsgId.current;
-          lastMsgId.current = newest;
+          //
           // The scroll responder rather than `scrollToLocation`: the end of the
           // content is past the last message — the queued-message footer and the
           // container's bottom padding both live below it — and an index-based
@@ -994,9 +1031,15 @@ const Bubble = memo(function Bubble({
    * divider is sticky: padding travels with it, so putting 20pt on top of the
    * pill would leave a 20pt hole under the header for as long as that day is on
    * screen. A margin on the message before it scrolls away like everything else.
+   *
+   * Then it overcorrected. With the pill's own `pt-1.5 pb-1` the sums came to
+   * 21pt above and 3.5pt below, and 3.5pt is not "close", it is touching — the
+   * first message of a day sat against the underside of the date. These two
+   * numbers make it 25 above and 9.5 below: still the same statement about
+   * which day the pill belongs to, without the first message crowding it.
    */
-  const gapTop = firstOfDay ? 0 : continues ? 2 : 10;
-  const gapBottom = lastOfDay ? 16 : 0;
+  const gapTop = firstOfDay ? 6 : continues ? 2 : 10;
+  const gapBottom = lastOfDay ? 20 : 0;
   /** Height of the bubble alone — not the row, which also carries the gap above
    *  and any reaction chip below. The swipe-to-reply arrow lines up with this. */
   const [bubbleH, setBubbleH] = useState(0);

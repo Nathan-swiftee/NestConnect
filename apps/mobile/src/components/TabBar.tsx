@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Platform, Pressable, StyleSheet, View, type LayoutRectangle } from "react-native";
+import { Pressable, StyleSheet, View, type LayoutRectangle } from "react-native";
 import { BlurView } from "expo-blur";
 import Animated, {
   interpolate,
@@ -100,10 +100,15 @@ const ICON = 21;
  * so the bar's height is now a constant of the layout rather than a property of
  * whichever font Android reached for.
  */
-const LABEL_SIZE = 10.5;
-const LABEL_LINE = 13;
-/** Between the icon's box and the label. */
-const LABEL_GAP = 1;
+const LABEL_SIZE = 10;
+const LABEL_LINE = 12;
+/**
+ * Between the icon's box and the label — zero, because the line box already
+ * carries 2pt of leading above the glyphs at this size, and in the reference
+ * the label sits directly under its icon as one object rather than as a caption
+ * beneath one.
+ */
+const LABEL_GAP = 0;
 
 /**
  * The capsule's corner.
@@ -181,13 +186,48 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     progress.value = springTo(active, spring.settle);
   }, [active, progress, ready]);
 
+  /**
+   * The pill's fixed geometry, spread into the animated style below.
+   *
+   * It reads as a static style and it used to be written as one, in an array
+   * beside `pill` — which is the shape that never arrives. The pill therefore
+   * had no width, no height, no radius and, most visibly, no background: the
+   * selected tab has been unmarked on the device this whole time. The travel
+   * animation was running perfectly on something invisible.
+   *
+   * The old note here argued that a constant `width` belongs in a static style
+   * so Android isn't asked to lay the pill out sixty times a second. The
+   * concern was reasonable and the conclusion was wrong, because there is no
+   * static style to put it in. It costs nothing in practice: these values never
+   * change, so the shadow-tree diff sees the same numbers every frame and
+   * nothing is re-laid out. Only `translateX` and `scaleX` actually move, and
+   * both are compositor-only.
+   */
+  const BOX = {
+    position: "absolute" as const,
+    top: PAD_Y,
+    left: 0,
+    width: PILL_W,
+    height: PILL_H,
+    borderRadius: PILL_H / 2,
+    // Neutral, as in the reference — but heavier than the palette's `surface2`,
+    // which at 5% black on a white capsule was so close to invisible on a real
+    // screen in daylight that the travel it exists to show read as nothing
+    // moving at all. This is the one value in the file tuned to the surface it
+    // sits on rather than taken from the tokens, for the same reason PILL_W is.
+    backgroundColor: scheme === "dark" ? "rgba(255,255,255,0.13)" : "rgba(26,26,24,0.085)",
+  };
+
   const pill = useAnimatedStyle(() => {
     const i = progress.value;
     const lo = Math.floor(i);
     const hi = Math.ceil(i);
     const a = slots.value[lo];
     const b = slots.value[hi] ?? a;
-    if (!a || !b) return { opacity: 0 };
+    // Still measuring. `BOX` is spread here too: an early return is a complete
+    // style like any other, and one without it would leave the pill unsized on
+    // the frames before the first layout lands.
+    if (!a || !b) return { ...BOX, opacity: 0 };
 
     const t = i - lo;
     const cx = a.x + a.width / 2 + (b.x + b.width / 2 - (a.x + a.width / 2)) * t;
@@ -197,11 +237,8 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
     // which is the right read: it's slowing over each one on its way past.
     const away = Math.abs(i - Math.round(i)) * 2;
 
-    // Opacity and transform only. `width` is a constant and belongs in the
-    // static style: a width in an animated style is a layout property being
-    // re-applied every frame, which on Android means the pill is laid out again
-    // sixty times a second instead of just being moved by the compositor.
     return {
+      ...BOX,
       opacity: ready.value,
       transform: [{ translateX: cx - PILL_W / 2 }, { scaleX: 1 + away * STRETCH }],
     };
@@ -273,7 +310,12 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           // view behind it; the default there is a flat tint that looks like a
           // bug next to iOS.
           experimentalBlurMethod="dimezisBlurView"
-          intensity={scheme === "dark" ? 44 : 60}
+          // Raised, because the wash over it came down. The two trade off: the
+          // wash is what holds the label contrast steady, and the blur is what
+          // makes the material read as glass rather than as a tinted panel.
+          // Weighted at 60/0.55 the bar was effectively opaque — see the note
+          // on the wash below.
+          intensity={scheme === "dark" ? 60 : 84}
           tint={scheme === "dark" ? "dark" : "light"}
           style={[
             StyleSheet.absoluteFill,
@@ -283,7 +325,14 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         {/* A wash over the blur. Blur alone takes its value from whatever
             happens to be underneath, so a dark photo scrolling past would drag
             the whole bar dark and take the labels with it; this holds the
-            contrast steady while still letting the movement through. */}
+            contrast steady while still letting the movement through.
+
+            It was 0.55, and 0.55 of flat white over a blur is not glass — it is
+            a white bar with a rumour of movement in it, which is how the
+            reference photo and our bar ended up looking nothing alike. 0.3 is
+            about as far down as this goes while a `textMuted` label still holds
+            its contrast over a light photo; the blur was raised to take up the
+            slack. */}
         <View
           pointerEvents="none"
           style={[
@@ -291,7 +340,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             {
               borderRadius: CAPSULE_R,
               backgroundColor:
-                scheme === "dark" ? "rgba(21,21,20,0.55)" : "rgba(255,255,255,0.55)",
+                scheme === "dark" ? "rgba(21,21,20,0.34)" : "rgba(255,255,255,0.30)",
             },
           ]}
         />
@@ -306,28 +355,8 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         {/* Behind the items, not between them: a tap has to reach the tab, and
             an absolutely-positioned sibling with no `pointerEvents` would sit in
             front of the row and swallow every press near the middle. */}
-        <Animated.View
-          pointerEvents="none"
-          testID="tabbar-pill"
-          style={[
-            {
-              position: "absolute",
-              top: PAD_Y,
-              left: 0,
-              width: PILL_W,
-              height: PILL_H,
-              borderRadius: PILL_H / 2,
-              // Neutral, as in the reference — but heavier than the palette's
-              // `surface2`, which at 5% black on a white capsule was so close
-              // to invisible on a real screen in daylight that the travel it
-              // exists to show read as nothing moving at all. This is the one
-              // value in the file tuned to the surface it sits on rather than
-              // taken from the tokens, for the same reason `PILL_W` is.
-              backgroundColor: scheme === "dark" ? "rgba(255,255,255,0.10)" : "rgba(26,26,24,0.075)",
-            },
-            pill,
-          ]}
-        />
+        {/* `pill` and nothing else — it carries BOX; see where it is built. */}
+        <Animated.View pointerEvents="none" testID="tabbar-pill" style={pill} />
 
         {shown.map((route, index) => {
           const { options } = descriptors[route.key];
@@ -442,7 +471,34 @@ function TabItem({
   }));
   const idle = useAnimatedStyle(() => ({ opacity: 1 - on.value }));
 
+  /**
+   * The label: type as well as colour, in one object.
+   *
+   * All of the type below used to sit in a static style beside this one, and
+   * none of it reached the device — the labels rendered at React Native's
+   * default 14pt, default weight, hard against the icon. "The text can be
+   * smaller and closer to the icon" was this: the values were already 10.5 and
+   * a 1pt gap, they were simply being discarded.
+   */
   const text = useAnimatedStyle(() => ({
+    fontSize: LABEL_SIZE,
+    // Pinned, so the two font files Android picks for these two weights can't
+    // hand back two different line boxes. See the note on LABEL_LINE — this one
+    // line is the whole of the icons-jumping fix, and it has to stay whatever
+    // else changes here.
+    lineHeight: LABEL_LINE,
+    // Weight, not just colour. The reference leans on it hard, and it survives
+    // where colour doesn't — a green label and a grey one are the same label to
+    // anyone who can't separate the two hues. Switched rather than animated:
+    // React Native can't interpolate a font weight, and at this size the change
+    // reads as the label sharpening rather than as a jump. The item is centred
+    // in a flexed cell, so the extra width moves nothing but itself.
+    fontWeight: focused ? ("700" as const) : ("500" as const),
+    marginTop: LABEL_GAP,
+    // A tab label is a name, not a sentence: on a narrow phone with large text
+    // "Customers" would otherwise be squeezed into the neighbouring tabs' space
+    // rather than shrinking within its own.
+    paddingHorizontal: 2,
     // From muted, not faint. In the reference every label is readable and the
     // selected one is merely *more* so — faint labels turn the four
     // destinations into one green word and three grey smudges, which is a
@@ -485,31 +541,9 @@ function TabItem({
           // Dynamic Type is honoured — the bar's height is computed from the
           // same scale, so the label has room rather than being clipped.
           maxFontSizeMultiplier={1.6}
-          style={[
-            {
-              fontSize: LABEL_SIZE,
-              // Pinned, so the two font files Android picks for these two
-              // weights can't hand back two different line boxes. See the note
-              // on LABEL_LINE — this one line is the whole of the icons-jumping
-              // fix, and it has to stay whatever else changes here.
-              lineHeight: LABEL_LINE,
-              // Weight, not just colour. The reference leans on it hard, and it
-              // survives where colour doesn't — a green label and a grey one
-              // are the same label to anyone who can't separate the two hues.
-              // Switched rather than animated: React Native can't interpolate a
-              // font weight, and at this size the change reads as the label
-              // sharpening rather than as a jump. The item is centred in a
-              // flexed cell, so the extra width moves nothing but itself.
-              fontWeight: focused ? "700" : "500",
-              marginTop: LABEL_GAP,
-              // A tab label is a name, not a sentence: on a narrow phone with
-              // large text "Customers" would otherwise be squeezed into the
-              // neighbouring tabs' space rather than shrinking within its own.
-              paddingHorizontal: 2,
-              ...Platform.select({ web: { userSelect: "none" as const } }),
-            },
-            text,
-          ]}
+          // `text` alone — it carries the type as well as the colour; see where
+          // it is built.
+          style={text}
         >
           {label}
         </Animated.Text>

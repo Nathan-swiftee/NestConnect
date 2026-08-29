@@ -213,12 +213,21 @@ export function Sheet({
         </Animated.View>
 
           <Animated.View style={panel}>
-            {/* Stop taps inside the sheet from reaching the scrim behind it. A
-                sink, not a control: left accessible, a screen reader announces the
-                whole sheet as one button and can skip everything inside it. */}
-            <Pressable
-              onPress={() => {}}
-              accessible={false}
+            {/* A plain View, and that is the fix for a sheet whose contents
+                would not scroll.
+
+                This was a `Pressable` with an empty `onPress` — a sink meant to
+                stop taps inside the sheet from reaching the scrim. On Android a
+                JS touch responder that claims on touch-down stops the native
+                scroll view beneath it from ever seeing the gesture, so the
+                details sheet could be dragged at and simply did not move.
+
+                The sink was never needed. The scrim is a *sibling* rendered
+                before this panel, not an ancestor of it, so it is behind in the
+                z-order and a tap that lands on the panel cannot reach it. It
+                was defending against something that could not happen, at the
+                cost of the one interaction the sheet exists for. */}
+            <View
               // A real number, not "85%": a percentage resolves against the
               // parent, and the parent here is content-sized, so the cap simply
               // wouldn't apply — a long sheet would grow past the top of the
@@ -249,7 +258,7 @@ export function Sheet({
                 </View>
               </GestureDetector>
               {children}
-            </Pressable>
+            </View>
           </Animated.View>
       </View>
       </GestureHandlerRootView>

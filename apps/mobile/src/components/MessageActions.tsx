@@ -254,12 +254,16 @@ export function MessageActions({
 
         {/* ---- bottom: the list you read ---- */}
         <Animated.View style={bottom}>
-          <Pressable
-            onPress={() => {}}
-            // A sink, not a control: it exists so a tap on the sheet doesn't
-            // reach the scrim behind it. Left inaccessible, a screen reader
-            // announces the whole sheet as one button and skips its contents.
-            accessible={false}
+          {/* A View, not a tap sink. This carried the same empty-`onPress`
+              `Pressable` the shared Sheet did, and for the same imagined
+              reason — stopping a tap from reaching the scrim, which is a
+              sibling behind this and cannot be reached through it. There it
+              cost the details sheet its scrolling, because a JS responder that
+              claims on touch-down blocks the native scroll view under it on
+              Android. Nothing here scrolls today, so it cost nothing here — but
+              leaving the shape in place is leaving the trap set for whoever
+              adds a list to this sheet. */}
+          <View
             style={[
               { backgroundColor: c.elevated, paddingBottom: insets.bottom + 12 },
               // Casts upward: it's flush with the bottom of the screen, so its
@@ -299,7 +303,7 @@ export function MessageActions({
                 onPress={() => { onReceipts(); onClose(); }}
               />
             ) : null}
-          </Pressable>
+          </View>
         </Animated.View>
       </View>
       </GestureHandlerRootView>
