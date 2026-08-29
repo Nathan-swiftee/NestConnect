@@ -312,21 +312,11 @@ export default function Thread() {
       // Transparent around an opaque pill, so the thread passes either side of
       // it as it scrolls under — WhatsApp's floating date, not a full-width bar.
       <View className="items-center pb-1 pt-1.5">
-        <View
-          style={{
-            backgroundColor: c.surface2,
-            // A lift, because this pill is sticky: while its day is on screen it
-            // sits *over* the messages scrolling under it, and flat against a
-            // bubble it reads as part of that bubble rather than as chrome
-            // floating above the thread.
-            shadowColor: "#000",
-            shadowOpacity: 0.14,
-            shadowRadius: 5,
-            shadowOffset: { width: 0, height: 1 },
-            elevation: 2,
-          }}
-          className="rounded-full px-3 py-1"
-        >
+        {/* No lift: a drop shadow on a small pill reads as a sticker.
+            `elevated`, not `surface2` — the thread's ground is `surface2` now,
+            and a pill in the same colour as the page it floats over is not a
+            pill. */}
+        <View style={{ backgroundColor: c.elevated }} className="rounded-full px-3 py-1">
           <Text className="text-2xs font-medium text-muted">{section.label}</Text>
         </View>
       </View>
@@ -641,7 +631,16 @@ export default function Thread() {
     // keyboard, which is exactly what `behavior="padding"` means. It sizes to
     // its own content there, which is correct rather than something to work
     // around.
-    <View style={{ flex: 1, backgroundColor: c.bg }}>
+    //
+    // The ground is `surface2`, not `bg`, and that is the counterpart to the
+    // bubbles losing their border. A bordered bubble can sit on almost
+    // anything; an unbordered one has to be separated from the page by its own
+    // fill, and `bg` (#FAFAF9) against `surface` (#FFFFFF) is a difference of
+    // about one and a half percent — an inbound message would dissolve into the
+    // thread. `surface2` gives white something to be white *against*, which is
+    // the arrangement every messaging app uses and the reason none of them need
+    // a border on a bubble.
+    <View style={{ flex: 1, backgroundColor: c.surface2 }}>
       <Header
         conv={data}
         insetTop={insets.top}
@@ -1110,7 +1109,6 @@ const Bubble = memo(function Bubble({
    * would leave dark text on a dark ground everywhere except the card.
    */
   const fill = isEmail ? c.elevated : mine ? c.brandTint : c.surface;
-  const line = isEmail ? c.border : mine ? c.brandTint : c.border;
   /**
    * A tail marks speech, so only conversation gets one — and only where a turn
    * *ends*, which is what makes a run of five messages read as one person
@@ -1146,7 +1144,6 @@ const Bubble = memo(function Bubble({
         accessibilityLabel={`Message: ${message.body || "attachment"}. Long press for actions.`}
         style={{
           backgroundColor: fill,
-          borderColor: line,
           // An email gets width rather than a lift. It carried a card shadow for
           // a while, on the theory that light mode's surfaces are too close to
           // separate an email from a message without one — but the thing it is
@@ -1155,17 +1152,21 @@ const Bubble = memo(function Bubble({
           // thread look like two apps stacked.
           maxWidth: isEmail ? "94%" : "86%",
           // The tailed corner squares off. A tail growing out of a 16pt curve
-          // leaves a visible sliver of background between the two shapes; at 5pt
-          // they read as one outline.
+          // leaves a visible sliver of background between the two shapes; at 2pt
+          // they read as one shape.
           ...(tailed
             ? mine
               ? { borderBottomRightRadius: tailCorner }
               : { borderBottomLeftRadius: tailCorner }
             : null),
         }}
-        className="rounded-16 border px-3.5 py-2.5"
+        // No border. The tail is a filled shape in this same colour, and a
+        // border is the one thing that makes it impossible for the two to read
+        // as one object — see the note at the top of Tail.tsx. The thread's
+        // ground carries the separation instead.
+        className="rounded-16 px-3.5 py-2.5"
       >
-        {tailed ? <Tail mine={mine} fill={fill} stroke={line} /> : null}
+        {tailed ? <Tail mine={mine} fill={fill} /> : null}
 
         {/* Who is talking, above the first bubble of each run.
             

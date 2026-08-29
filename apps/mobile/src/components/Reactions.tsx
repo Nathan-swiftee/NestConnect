@@ -63,6 +63,11 @@ export function Reactions({
           disabled={!ours || !onRemove}
           accessibilityRole={ours && onRemove ? "button" : "text"}
           accessibilityLabel={label}
+          // The pill is 19pt tall and about 30 wide. Nothing about "tap to
+          // remove yours" is discoverable if the target is a third of a finger,
+          // and it wasn't working for the plain reason that it was too small to
+          // hit. This takes it to roughly 43×54 without changing what is drawn.
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={{
             backgroundColor: c.elevated,
             borderColor: c.surface2,

@@ -79,36 +79,33 @@ export const Touchable = forwardRef<View, TouchableProps>(function Touchable(
   const { scheme } = useTheme();
 
   /**
-   * Deliberately not the brand colour. A press is an acknowledgement, not a
-   * state, and tinting every row green on touch would spend the brand on the
-   * thing that happens most often and means least.
-   */
-  const ripple = scheme === "dark" ? "rgba(255,255,255,0.08)" : "rgba(26,26,24,0.06)";
-
-  /**
-   * Whether the ripple is bounded, and it is a question about *shape*.
+   * The ripple goes in the **foreground** unless the caller asked for a
+   * borderless one, and that is not a stylistic choice.
    *
-   * Android draws a bounded foreground ripple inside the view's **rectangular**
-   * bounds — not its rounded outline. Every round icon button and every pill in
-   * this app therefore flashed a grey rectangle with its own corners showing
-   * outside the shape being pressed, which is exactly as cheap as it sounds and
-   * was the single most-noticed thing about pressing anything here.
+   * `useAndroidRippleForView` sends a ripple to `nativeBackgroundAndroid`
+   * whenever `foreground` isn't true — and `nativeBackgroundAndroid` *replaces*
+   * the view's background drawable. Every `Touchable` carrying a
+   * `backgroundColor` loses it.
    *
-   * So only `row` — the one feel that really is a rectangle — gets a bounded
-   * ripple. Everything else gets the unbounded one, which is a circle centred
-   * on the touch and has no corners to disagree with.
+   * That is what happened when this tried to fix a different problem: bounded
+   * foreground ripples are clipped to the view's rectangular bounds rather than
+   * its rounded outline, so round buttons flashed a grey rectangle. Sending
+   * them borderless instead did stop the rectangle — and silently erased the
+   * background of every chip in the app, which is how the emoji reaction pill
+   * lost its white and became two glyphs floating over their own shadow.
+   *
+   * So `borderless` stays what it always was: an explicit opt-in from a call
+   * site that knows it has no background to lose. The rectangle is addressed by
+   * the ripple being much fainter than it was, not by moving it.
    */
-  const bounded = feel === "row" && !borderless;
+  const ripple = scheme === "dark" ? "rgba(255,255,255,0.07)" : "rgba(26,26,24,0.05)";
 
   return (
     <Pressable
       ref={ref}
       disabled={disabled}
-      // `foreground` so the ripple draws over the row's own background instead
-      // of under it, where a filled surface would hide it completely. An
-      // unbounded ripple has no bounds to draw inside, so it can't be one.
       android_ripple={
-        disabled ? undefined : { color: ripple, borderless: !bounded, foreground: bounded }
+        disabled ? undefined : { color: ripple, borderless: !!borderless, foreground: !borderless }
       }
       {...props}
       onPressIn={(e) => {

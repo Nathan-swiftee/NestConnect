@@ -257,3 +257,48 @@ time and was being thrown away before it rendered.
 preserving offsets so line numbers still point at the right place. The script
 also runs the scanner against a specimen containing that exact apostrophe on
 every invocation, and refuses to report a pass if it comes back empty.
+
+## 8. Android's blur needs a target, and says nothing without one
+
+```
+On Android, expo-blur does not blur "whatever is behind this view". It blurs a
+*nominated subtree*, passed as `blurTarget`. Given none, the native view sets
+its blur method to NONE and renders a plain panel — no warning, no error.
+```
+
+From `ExpoBlurView.kt`:
+
+```kotlin
+val safeMethod = if (blurTarget != null) method else BlurMethod.NONE
+```
+
+So `blurMethod="dimezisBlurView"` on its own does nothing at all. The tab bar
+carried it for weeks and was reported three times as "still properly white, not
+glass at all" — correctly, because there was never a blur running to tune. Every
+adjustment to `intensity`, `tint` and the wash over it was tuning a parameter of
+something that was not happening.
+
+The fix is in two places, and both are needed:
+
+- `app/(app)/(tabs)/_layout.tsx` wraps the screens in a `<BlurTargetView>` and
+  hands its ref to the bar. The bar sits *inside* that subtree, which is the
+  library's intended arrangement — the native view skips its own drawing while
+  it captures, so it cannot photograph itself.
+- `TabBar.tsx` passes that ref as `blurTarget`.
+
+### A blur is a photograph, not a veil
+
+The second half of the same bug, and worth stating separately because it will
+catch the next glass surface too. The capsule carried `backgroundColor:
+c.surface` — solid white — with the `BlurView` filling it, on the reasoning that
+Android needs a colour under an elevation to draw a shadow and the blur would
+cover it anyway.
+
+A blur does not cover what is behind it. It *photographs* it. An opaque
+background inside a blurred container is the thing the blur will show you
+instead of your content, so the glass was a photograph of a white rectangle.
+
+That also means **an Android elevation shadow and a real blur cannot coexist on
+one view**: the shadow is cast from the view's outline, the outline comes from
+its background, and any background is what the blur will render. Glass surfaces
+get a hairline ring instead, which is what draws the edge on real glass anyway.

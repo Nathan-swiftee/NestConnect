@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type RefObject } from "react";
 import { Pressable, StyleSheet, View, type LayoutRectangle } from "react-native";
 import { BlurView } from "expo-blur";
 import Animated, {
@@ -11,7 +11,7 @@ import type { BottomTabBarProps } from "expo-router/build/react-navigation/botto
 import { haptics } from "../haptics";
 import { useInsets } from "../insets";
 import { fadeTo, spring, springTo, timing } from "../motion";
-import { elevation, useTheme } from "../theme";
+import { useTheme } from "../theme";
 
 /**
  * The bottom navigation: a floating capsule with a pill that travels.
@@ -20,10 +20,12 @@ import { elevation, useTheme } from "../theme";
  * already has in their pocket. Two things make that bar read the way it does,
  * and neither is the icons:
  *
- *  1. **It floats.** The bar is a rounded capsule inset from the screen edges
- *     with a shadow under it, not a slab welded to the bottom with a hairline
- *     on top. A capsule reads as a control you operate; a slab reads as the
- *     edge of the window.
+ *  1. **It floats.** The bar is a rounded capsule inset from the screen edges,
+ *     not a slab welded to the bottom with a hairline on top. A capsule reads
+ *     as a control you operate; a slab reads as the edge of the window. What
+ *     separates it from the page is a hairline ring and the blur behind it —
+ *     not a drop shadow, which cannot coexist with real glass; see the capsule
+ *     itself for why.
  *  2. **The selection is behind the icon, not the whole item.** A neutral pill
  *     sits under the glyph and the label stays outside it, which keeps the
  *     label legible and stops the selection from looking like a button.
@@ -137,8 +139,22 @@ const CAPSULE_H = PAD_Y * 2 + PILL_H + LABEL_GAP + LABEL_LINE;
  */
 export const TAB_BAR_H = CAPSULE_H + 10;
 
-export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const { c, scheme } = useTheme();
+export function TabBar({
+  state,
+  descriptors,
+  navigation,
+  blurTarget,
+}: BottomTabBarProps & {
+  /**
+   * The subtree the glass is a picture of, from `(tabs)/_layout.tsx`.
+   *
+   * Android's blur is not ambient: it captures a nominated view and, given
+   * none, `ExpoBlurView` sets its method to `NONE` without saying so. Optional
+   * only because iOS ignores it entirely.
+   */
+  blurTarget?: RefObject<View | null>;
+}) {
+  const { scheme } = useTheme();
   const insets = useInsets();
 
   // Only the routes that actually appear, and their own dense numbering.
@@ -274,29 +290,28 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
       testID="tabbar"
       accessibilityRole="tablist"
     >
-      {/* The capsule is two views, and it has to be.
-          
-          `BlurView` samples what is behind it, so it can't also be the thing
-          that clips and shadows itself: `overflow: hidden` is what rounds the
-          blur to the capsule's shape, and on Android a view that clips its
-          children cannot also cast an elevation shadow. So the outer view owns
-          the shadow and the shape, the inner blur fills it, and the row sits on
-          top of both. */}
+      {/* Nothing opaque anywhere in here, and that is the whole trick.
+
+          The capsule used to carry `backgroundColor: c.surface` — solid white —
+          on the theory that Android needs a colour under an elevation or it
+          draws no shadow, and that the blur would cover it anyway. A blur does
+          not cover what is behind it; it is a *photograph* of it. So the glass
+          was a photograph of a white rectangle, and no amount of tuning
+          intensity or tint was ever going to make that look like glass.
+
+          The elevation went with it, because the two cannot coexist: an Android
+          shadow is cast from the view's outline, an outline comes from its
+          background, and any background here is the thing the blur will show
+          you instead of your inbox. The hairline ring does the separating now,
+          which is what draws the edge on a real glass panel anyway. */}
       <View
         testID="tabbar-capsule"
         style={{
           borderRadius: CAPSULE_R,
-          // The ring is doing real work in dark mode, where the capsule and the
-          // page behind it are close enough in value that the shadow alone
-          // doesn't separate them. On glass it does a second job: it draws the
-          // edge, which is what stops a translucent panel from reading as a
-          // smudge.
+          // Carrying the whole job of separating the capsule from the page now,
+          // so it is a touch stronger than when it was helping a shadow.
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: scheme === "dark" ? "rgba(255,255,255,0.10)" : c.border,
-          ...elevation.bar,
-          // Android needs a colour under the elevation or it draws no shadow at
-          // all; the blur covers it, so this is never seen.
-          backgroundColor: c.surface,
+          borderColor: scheme === "dark" ? "rgba(255,255,255,0.14)" : "rgba(26,26,24,0.12)",
         }}
       >
         <BlurView
@@ -305,34 +320,35 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
           // sliding through it. The blur is what turns "you can see there is
           // content down there" into "you can't read it", which is the whole
           // point of the material.
-          //
-          // `dimezisBlurView` is the only Android path that actually samples the
-          // view behind it; the default there is a flat tint that looks like a
-          // bug next to iOS.
-          experimentalBlurMethod="dimezisBlurView"
-          // Raised, because the wash over it came down. The two trade off: the
-          // wash is what holds the label contrast steady, and the blur is what
-          // makes the material read as glass rather than as a tinted panel.
-          // Weighted at 60/0.55 the bar was effectively opaque — see the note
-          // on the wash below.
-          intensity={scheme === "dark" ? 60 : 84}
+          blurMethod="dimezisBlurView"
+          // The subtree to photograph. Android has no ambient blur: without
+          // this the native view sets its method to `NONE` and renders a plain
+          // panel, silently. See `(tabs)/_layout.tsx`.
+          blurTarget={blurTarget}
+          // Divides the blur radius on Android. The default of 4 is tuned to
+          // make Android *match* iOS at the same `intensity`; here that lands
+          // short of the reference, which is properly soft. 2 doubles the radius
+          // without touching how much white the tint lays down.
+          blurReductionFactor={2}
+          // Enough blur that a list scrolling under is unreadable, low enough
+          // that expo-blur's own tint — which scales with this — doesn't do the
+          // whitening the wash below was already blamed for.
+          intensity={scheme === "dark" ? 42 : 48}
           tint={scheme === "dark" ? "dark" : "light"}
           style={[
             StyleSheet.absoluteFill,
             { borderRadius: CAPSULE_R, overflow: "hidden" },
           ]}
         />
-        {/* A wash over the blur. Blur alone takes its value from whatever
-            happens to be underneath, so a dark photo scrolling past would drag
-            the whole bar dark and take the labels with it; this holds the
-            contrast steady while still letting the movement through.
+        {/* A wash over the blur — over, so it is never photographed by it.
+            Blur alone takes its value from whatever happens to be underneath,
+            so a dark photo scrolling past would drag the whole bar dark and
+            take the labels with it; this holds the contrast steady.
 
-            It was 0.55, and 0.55 of flat white over a blur is not glass — it is
-            a white bar with a rumour of movement in it, which is how the
-            reference photo and our bar ended up looking nothing alike. 0.3 is
-            about as far down as this goes while a `textMuted` label still holds
-            its contrast over a light photo; the blur was raised to take up the
-            slack. */}
+            It was 0.55, then 0.30, and both were treating a symptom: the bar
+            looked white because the blur was not running at all, and adding
+            white to explain that only made it worse. With a real blur behind
+            it this is doing its actual job, which needs very little. */}
         <View
           pointerEvents="none"
           style={[
@@ -340,7 +356,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
             {
               borderRadius: CAPSULE_R,
               backgroundColor:
-                scheme === "dark" ? "rgba(21,21,20,0.34)" : "rgba(255,255,255,0.30)",
+                scheme === "dark" ? "rgba(21,21,20,0.20)" : "rgba(255,255,255,0.18)",
             },
           ]}
         />

@@ -15,129 +15,94 @@ import Svg, { Path } from "react-native-svg";
  * on `.msg .bubble::after`) and where WhatsApp puts it, and the two clients
  * have to agree or the same thread looks like two different products.
  *
- * Drawn as SVG rather than the usual rotated-square-with-a-border trick, for
- * two reasons that both come from these bubbles having a visible border:
- * a rotated square shows its own border on the inside edge where it meets the
- * bubble, and the seam moves as you change radius. A path can be filled and
- * stroked on the outer edges only, and overlaps the bubble so the shared edge
- * is covered rather than drawn twice.
+ * ## Fill only, and why the bubbles lost their border
  *
- * The shape hangs off the corner and curves back up to the bubble wall, so its
- * silhouette continues the bubble's own curve instead of poking out of it.
+ * This shipped twice as a stroked shape and was reported both times as looking
+ * like a separate piece stuck onto the bubble. It was — and no adjustment of
+ * the curve was going to fix it, because the cause was the *outline*, not the
+ * shape. A tail drawn as its own path has its own outline, and that outline has
+ * to meet the bubble's border at two points; a join between two separately
+ * stroked shapes is visible at any size and at any radius.
  *
- * ## Two paths, not one
+ * Rendering it at 7× and looking at it settled in one pass what two rounds of
+ * reasoning about control points had not: every bordered variant showed the
+ * seam, every borderless one was clean.
  *
- * It was one path, `Z`-closed, filled and stroked in a single pass — and it
- * read as a separate piece stuck onto the bubble. Two seams did that:
- *
- *  - **The joint was stroked.** A closed path strokes every edge, including the
- *    straight one that meets the bubble. Because the tail renders as a child of
- *    the bubble it draws *over* the bubble's fill, so that stroke showed as a
- *    line ruled down the bubble's own face at the join.
- *  - **The outer stroke was clipped in half.** The viewBox was exactly the
- *    shape's bounding box, so a 1pt stroke centred on the boundary lost its
- *    outer half — leaving the tail outlined at half the weight of the bubble's
- *    own border, which is precisely the cue that says "different element".
- *
- * So: a filled path that reaches further under the bubble than it needs to, and
- * a separate *open* path stroking only the outer curve, inside a viewBox padded
- * enough to hold the full stroke.
+ * So the tail has no outline. It is one filled shape in the bubble's own
+ * colour, reaching back underneath it, which makes a seam impossible rather
+ * than merely small. The bubbles gave up their border to allow that, and the
+ * thread's background went a step deeper in exchange so a white bubble still
+ * reads — see the note on the thread background in `thread/[id].tsx`. That is
+ * also exactly how WhatsApp is built, which is why theirs has never had this
+ * problem.
  */
 
-/** The width the tail adds beyond the bubble, and its height down the side. */
-export const TAIL_W = 9;
-export const TAIL_H = 15;
+/**
+ * The width the tail adds beyond the bubble, and its height down the side.
+ *
+ * Small. It was 9×15 against a bubble around 30 tall, which is not a flick off
+ * the corner but a lump hanging from it — the other half of "pieced on".
+ */
+export const TAIL_W = 7;
+export const TAIL_H = 9;
 
 /**
  * How far the fill reaches back under the bubble.
  *
- * Only the fill — the outline stops at the bubble wall. Overlapping by a whole
- * radius rather than the old single pixel means no antialiasing seam can appear
- * at the join even part-way through a scroll, and nothing is visible because
- * the bubble's own fill is the same colour.
+ * Nothing depends on the exact figure: it is the same colour as what it hides
+ * beneath, and its only job is to leave no chance of a hairline of background
+ * showing at the join on any pixel density.
  */
 const UNDERLAP = 4;
-
-/** Room in the viewBox for the stroke, which would otherwise be clipped to half
- *  its width along the outer edge. */
-const BLEED = 1;
 
 /**
  * The radius the tailed corner should use.
  *
  * A tail growing out of a 16pt round corner floats — there's a visible gap of
- * background between the two curves. Squaring that one corner is what lets them
- * read as a single outline.
+ * background between the two curves. Nearly squaring that one corner is what
+ * lets them read as a single shape.
  */
-export const tailCorner = 5;
+export const tailCorner = 2;
 
 export function Tail({
   /** Which side of the thread this bubble is on. */
   mine,
-  /** The bubble's own fill, so the tail is the same object. */
+  /** The bubble's own fill, so the tail is literally the same object. */
   fill,
-  /** The bubble's border colour. Pass the fill to draw an unbordered tail. */
-  stroke,
 }: {
   mine: boolean;
   fill: string;
-  stroke: string;
 }) {
-  // The canvas holds the tail, the underlap that hides beneath the bubble, and
-  // a bleed either side so the stroke is never clipped.
-  const W = TAIL_W + UNDERLAP + BLEED * 2;
-  const H = TAIL_H + BLEED * 2;
-  // Where the bubble's wall falls inside that canvas. The tail hangs outward
-  // from here; everything on the other side is under the bubble.
-  const wall = mine ? BLEED + UNDERLAP : BLEED + TAIL_W;
-  // The far edge of the tail, and the corner it hangs from.
-  const tip = mine ? BLEED + UNDERLAP + TAIL_W : BLEED;
-  const base = BLEED + TAIL_H;
-  // The control points that bring the outer edge back up to the wall, so the
-  // silhouette carries on from the bubble's own curve rather than poking out.
-  // The first holds the tip's line briefly; the second pulls back toward the
-  // wall, 62% of the way across.
-  const c2 = wall + (mine ? 1 : -1) * TAIL_W * 0.62;
+  const W = TAIL_W + UNDERLAP;
+  // Where the bubble's wall falls inside the canvas: the tail hangs outward
+  // from here, and everything on the other side is hidden under the bubble.
+  const wall = mine ? UNDERLAP : TAIL_W;
+  const tip = mine ? UNDERLAP + TAIL_W : 0;
+  const far = mine ? 0 : W;
+  const s = mine ? 1 : -1;
 
-  /** The outer edge only: down the tail's far side and back up to the wall. */
-  const outline =
-    `M${wall} ${base} L${tip} ${base} ` +
-    `C${tip} ${BLEED + TAIL_H * 0.45} ${c2} ${BLEED + TAIL_H * 0.1} ${wall} ${BLEED}`;
-  /** The same edge, closed back through the bubble so there is a region to
-   *  fill. The closing edges are under the bubble and never drawn. */
-  const body = `${outline} L${mine ? BLEED : W - BLEED} ${BLEED} L${mine ? BLEED : W - BLEED} ${base} Z`;
+  // Out along the bottom to the tip, then back up to the wall — arriving very
+  // nearly vertically, so the curve merges into the bubble's side rather than
+  // meeting it at an angle. Closed back through the bubble, where the closing
+  // edges are never seen.
+  const d =
+    `M${wall} ${TAIL_H} L${tip} ${TAIL_H} ` +
+    `C${tip} ${TAIL_H * 0.5} ${wall + s * TAIL_W * 0.06} ${TAIL_H * 0.34} ${wall} 0 ` +
+    `L${far} 0 L${far} ${TAIL_H} Z`;
 
   return (
     <View
       pointerEvents="none"
       style={{
         position: "absolute",
-        bottom: -BLEED,
-        // Shifted by the underlap so the tail itself still starts exactly at
-        // the bubble's edge while the fill continues back underneath it.
-        ...(mine
-          ? { right: -(TAIL_W + BLEED) }
-          : { left: -(TAIL_W + BLEED) }),
+        bottom: 0,
+        ...(mine ? { right: -TAIL_W } : { left: -TAIL_W }),
         width: W,
-        height: H,
+        height: TAIL_H,
       }}
     >
-      <Svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
-        {/* Fill first, reaching under the bubble. */}
-        <Path d={body} fill={fill} />
-        {/* Then the outline, on the outer edge alone — open, so nothing is
-            stroked where the tail meets the bubble. `strokeLinecap="round"`
-            rather than butt: the two ends of this stroke meet the bubble's own
-            border, and a square cap leaves a visible corner where a round one
-            merges into it. */}
-        <Path
-          d={outline}
-          fill="none"
-          stroke={stroke}
-          strokeWidth={1}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+      <Svg width={W} height={TAIL_H} viewBox={`0 0 ${W} ${TAIL_H}`}>
+        <Path d={d} fill={fill} />
       </Svg>
     </View>
   );
