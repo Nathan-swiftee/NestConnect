@@ -39,8 +39,32 @@ export function useVoiceRecording() {
    *  prepare steps finish — so a release that beats them cancels cleanly
    *  instead of leaving a recorder running with nothing watching it. */
   const wanted = useRef(false);
+  /**
+   * Whether the native recorder is actually running.
+   *
+   * Distinct from `wanted`, and the distinction is the whole bug. `wanted` means
+   * "the thumb is down"; this means "`record()` returned". Between the two sits
+   * the permission prompt, which on the first ever press is a system dialog that
+   * takes the foreground — so the gesture ends, `stop()` runs, and it used to
+   * call `recorder.stop()` on a recorder that had never been prepared.
+   *
+   * On Android that is `MediaRecorder.stop()` in an invalid state, which throws
+   * `IllegalStateException` from inside the module's own coroutine. A `try`
+   * around the JS call does not catch that: it is a native crash, and the app
+   * goes away rather than showing an error. Hence a second flag, and nothing
+   * touching the recorder unless it is set.
+   */
+  const started = useRef(false);
 
-  const seconds = state.durationMillis ? state.durationMillis / 1000 : (recorder.currentTime ?? 0);
+  // `recorder.currentTime` is only meaningful once something is running; read it
+  // for a recorder that was never prepared and the number is meaningless at
+  // best. The poller's `durationMillis` is the real source, this is the
+  // fallback between `record()` and the first poll.
+  const seconds = state.durationMillis
+    ? state.durationMillis / 1000
+    : started.current
+      ? (recorder.currentTime ?? 0)
+      : 0;
 
   /** Put the audio session back. Skipping this leaves playback in record mode:
    *  on iOS the next voice note comes out of the earpiece at a whisper. */
@@ -68,11 +92,14 @@ export function useVoiceRecording() {
       await recorder.prepareToRecordAsync();
       if (!wanted.current) return void (await release());
       recorder.record();
+      started.current = true;
       setLive(true);
     } catch (err) {
       wanted.current = false;
+      started.current = false;
       setLive(false);
       setFailed(err instanceof Error ? err.message : "Couldn't start recording");
+      await release();
     }
   }, [recorder, release]);
 
@@ -81,6 +108,15 @@ export function useVoiceRecording() {
     if (!wanted.current) return null;
     wanted.current = false;
     setLive(false);
+    // Let go before the permission prompt was answered, or before `prepare`
+    // finished: there is no recording, and asking the native recorder to stop
+    // one is the crash described on `started`. Put the session back and say
+    // nothing — the agent lifted their thumb, which is not an error.
+    if (!started.current) {
+      await release();
+      return null;
+    }
+    started.current = false;
     try {
       const ms = Math.round(seconds * 1000);
       await recorder.stop();
@@ -107,30 +143,49 @@ export function useVoiceRecording() {
     if (!wanted.current) return;
     wanted.current = false;
     setLive(false);
+    // Same guard as `stop` — see `started`. Nothing to throw away, and asking
+    // anyway is what took the app down.
+    if (!started.current) {
+      await release();
+      return;
+    }
+    started.current = false;
     try {
       await recorder.stop();
     } catch {
-      /* already stopped, or never started */
+      /* already stopped by the OS (a call arriving, the app backgrounding) */
     }
     await release();
   }, [recorder, release]);
 
-  const pause = useCallback(() => recorder.pause(), [recorder]);
-  const resume = useCallback(() => recorder.record(), [recorder]);
+  // Guarded for the same reason as `stop`. The locked panel's buttons are only
+  // reachable after a successful hold — but "only reachable after" is exactly
+  // what was assumed about `stop()`, and a slide-up that locks while the
+  // permission prompt is still open gets there with nothing running.
+  const pause = useCallback(() => {
+    if (started.current) recorder.pause();
+  }, [recorder]);
+  const resume = useCallback(() => {
+    if (started.current) recorder.record();
+  }, [recorder]);
 
   // A screen torn down mid-recording must not leave the microphone open and the
   // session in record mode for whatever comes next.
   useEffect(
     () => () => {
-      if (wanted.current) {
-        wanted.current = false;
+      wanted.current = false;
+      // Only a recorder that actually started may be stopped; see `started`.
+      // A screen torn down while the permission prompt is still up has nothing
+      // running, and stopping it would crash on the way out of the screen.
+      if (started.current) {
+        started.current = false;
         try {
           recorder.stop();
         } catch {
           /* nothing to do while unmounting */
         }
-        void setAudioModeAsync({ allowsRecording: false }).catch(() => {});
       }
+      void setAudioModeAsync({ allowsRecording: false }).catch(() => {});
     },
     [recorder],
   );
