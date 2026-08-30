@@ -7,7 +7,24 @@ import { ChevronDown } from "../icons";
 import { haptics } from "../haptics";
 import { useTheme } from "../theme";
 import { type Block, estimateLines, parseEmail } from "../email-html";
+import { EmailHtml } from "./EmailHtml";
 import { Touchable } from "./Touchable";
+
+/**
+ * Is there anything in this HTML the block parser would lose?
+ *
+ * Deliberately narrow. A picture, a table layout, or an element carrying its
+ * own styling is a design decision the sender made and the parser has no way to
+ * keep; anything else — a `<p>`, a `<b>`, a link — it renders natively and
+ * better, with the app's own type and colours and no WebView underneath.
+ *
+ * `data-blocked-src` counts because that is what the sanitizer leaves behind
+ * when it parks a remote image, so a newsletter whose every picture is blocked
+ * still reads as rich rather than as the handful of words between them.
+ */
+function hasRichMarkup(html: string): boolean {
+  return /<(img|table|picture|video|svg)\b/i.test(html) || /\b(data-blocked-src|background-image)\b/i.test(html);
+}
 
 /**
  * An email, rendered as an email rather than as a very long chat message.
@@ -58,6 +75,18 @@ export function EmailBody({
     [message.bodyHtml, message.body],
   );
 
+  /**
+   * Does this email have a design worth honouring, or is it just text?
+   *
+   * The block renderer below is the right answer for a plain reply — native
+   * type, the app's own colours, no WebView to pay for. It is the wrong answer
+   * for anything a designer touched: it has no image block at all, so every
+   * picture disappeared, and a table layout came out as loose sentences. So the
+   * two split on whether the HTML actually carries structure the parser would
+   * throw away.
+   */
+  const rich = !!message.bodyHtml && hasRichMarkup(message.bodyHtml);
+
   const longEnoughToCollapse = estimateLines(parsed.body) > PREVIEW_LINES;
   const shown = expanded || !longEnoughToCollapse ? parsed.body : preview(parsed.body, PREVIEW_LINES);
 
@@ -87,13 +116,19 @@ export function EmailBody({
         </View>
       ) : null}
 
-      <View className="gap-2">
-        {shown.map((b, i) => (
-          <BlockView key={i} block={b} />
-        ))}
-      </View>
+      {rich ? (
+        // The message as it was written — see `EmailHtml` for what stops it
+        // doing anything other than being read.
+        <EmailHtml html={message.bodyHtml!} />
+      ) : (
+        <View className="gap-2">
+          {shown.map((b, i) => (
+            <BlockView key={i} block={b} />
+          ))}
+        </View>
+      )}
 
-      {longEnoughToCollapse ? (
+      {!rich && longEnoughToCollapse ? (
         <Touchable feel="chip"
           onPress={() => {
             haptics.tap();
