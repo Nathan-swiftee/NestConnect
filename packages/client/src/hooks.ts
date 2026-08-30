@@ -257,6 +257,21 @@ export function useUpdatePushPreferences() {
   });
 }
 
+/**
+ * Send a real push to your own devices and report what happened.
+ *
+ * The only question worth asking while setting notifications up is "did it
+ * arrive?", and no amount of reading configuration answers it. The server side
+ * of this deliberately bypasses preferences and quiet hours, so a silent result
+ * means something is actually broken rather than merely switched off.
+ *
+ * The three numbers separate the three failures that otherwise look identical
+ * from the outside: `devices` at zero is a registration that never happened,
+ * `failed` is the push service rejecting the token or the credentials, and
+ * `sent` with nothing arriving is the phone or the OS.
+ */
+export const useTestPush = () => useMutation({ mutationFn: () => api.testPush() });
+
 /** Update the current user's own profile (name, login email, photo). */
 export function useUpdateMyProfile() {
   const qc = useQueryClient();

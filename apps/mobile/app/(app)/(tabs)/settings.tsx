@@ -4,6 +4,7 @@ import {
   useLogout,
   useMe,
   usePushPreferences,
+  useTestPush,
   useUpdateMyPreferences,
   useUpdatePushPreferences,
 } from "@ding/client";
@@ -13,7 +14,7 @@ import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { BellIcon, ContrastIcon, LogoutIcon } from "../../../src/icons";
 import { usePushRegistration } from "../../../src/push";
 import { isSoundOn, playReceived, setSoundOn, subscribeSound } from "../../../src/sound";
-import { useTheme } from "../../../src/theme";
+import { useTheme, type ThemeColors } from "../../../src/theme";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { BuildStamp } from "../../../src/components/BuildStamp";
 import { type Appearance, useAppearance } from "../../../src/appearance";
@@ -77,6 +78,22 @@ export default function Settings() {
 
   const p = pushPrefs.data;
   const setPush = (key: keyof PushPreferences, value: boolean) => updatePush.mutate({ [key]: value });
+
+  // The test's verdict, held here rather than read off the mutation, so it stays
+  // on screen after the request settles instead of blinking away.
+  const testPush = useTestPush();
+  const [verdict, setVerdict] = useState<Verdict | null>(null);
+  function runTest() {
+    setVerdict(null);
+    testPush.mutate(undefined, {
+      onSuccess: (r) => setVerdict(readResult(r)),
+      onError: () =>
+        setVerdict({
+          tone: "danger",
+          text: "Couldn't reach the server. Check your connection and try again.",
+        }),
+    });
+  }
 
   return (
     <ScrollView
@@ -202,6 +219,44 @@ export default function Settings() {
         )}
       </View>
 
+      {/* Does it actually arrive?
+          Every switch above is a statement of intent, and none of them can tell
+          you whether a notification reaches this phone. This does, and the
+          server side of it ignores the switches and quiet hours on purpose, so
+          a silent result means something is broken rather than merely off. */}
+      <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 mt-4 rounded-16 border">
+        <Touchable
+          feel="slab"
+          onPress={runTest}
+          disabled={testPush.isPending}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: testPush.isPending }}
+          className="flex-row items-center gap-3 px-4 py-3"
+        >
+          <View className="flex-1">
+            <Text className="text-md font-medium text-fg">
+              {testPush.isPending ? "Sending…" : "Send a test notification"}
+            </Text>
+            <Text className="text-2xs text-muted">
+              Goes to this phone now, whatever the settings above say
+            </Text>
+          </View>
+          <BellIcon size={18} color={testPush.isPending ? c.textFaint : c.brand} />
+        </Touchable>
+
+        {verdict ? (
+          <View
+            accessibilityLiveRegion="polite"
+            style={{ borderTopColor: c.border }}
+            className="border-t px-4 py-3"
+          >
+            <Text style={{ color: TONE[verdict.tone](c) }} className="text-2xs">
+              {verdict.text}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
       {/* Its own card, because it isn't a notification setting: these are the
           sounds the app makes while you're looking at it, and they're kept on
           this phone rather than on the account — the same choice the web keeps
@@ -287,6 +342,65 @@ const APPEARANCE_LABEL: Record<Appearance, string> = {
   light: "Light",
   dark: "Dark",
 };
+
+/* ─────────────────────────────────────────── the test push's three outcomes ── */
+
+type Tone = "ok" | "warn" | "danger";
+interface Verdict {
+  tone: Tone;
+  text: string;
+}
+
+const TONE: Record<Tone, (c: ThemeColors) => string> = {
+  ok: (c) => c.brandStrong,
+  warn: (c) => c.amber,
+  danger: (c) => c.danger,
+};
+
+/**
+ * Turn the server's three numbers into the one sentence that says what to do.
+ *
+ * They exist to separate failures that are indistinguishable from the outside —
+ * "I pressed it and nothing happened" is true of all of them:
+ *
+ *  - `devices: 0` — no push token ever reached the server, so nothing was even
+ *    attempted. Either the OS permission was refused or registration failed.
+ *  - `failed` — the push service took the request and rejected it: a bad FCM
+ *    credential, or a token that has since been revoked.
+ *  - `sent` with nothing arriving — the app's side worked and the problem is
+ *    downstream, in the phone's own notification settings or battery policy.
+ *    Worth saying out loud, because that is the one case where more fiddling
+ *    inside this app cannot help.
+ */
+function readResult(r: { devices: number; sent: number; failed: number }): Verdict {
+  if (r.devices === 0)
+    return {
+      tone: "warn",
+      text:
+        "This phone isn't registered for push. Allow notifications above; if they're already " +
+        "allowed, sign out and back in to register it.",
+    };
+  if (r.sent === 0 && r.failed > 0)
+    return {
+      tone: "danger",
+      text: `The push service rejected all ${r.failed} ${plural(r.failed, "device")}. That's a credential or a stale token, not a setting.`,
+    };
+  if (r.sent === 0)
+    return {
+      tone: "danger",
+      text: `${r.devices} ${plural(r.devices, "device")} registered, but nothing was sent.`,
+    };
+  return {
+    tone: "ok",
+    text:
+      `Sent to ${r.sent} ${plural(r.sent, "device")}` +
+      (r.failed ? `, ${r.failed} rejected` : "") +
+      ". If it doesn't appear within a few seconds, the block is in this phone's own " +
+      "notification or battery settings.",
+  };
+}
+
+const plural = (n: number, word: string) => (n === 1 ? word : `${word}s`);
 
 function Toggle({
   label,
