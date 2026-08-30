@@ -10,7 +10,7 @@ import { Avatar } from "./Avatar";
 import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
 import { VoiceRecorder } from "./VoiceRecorder";
-import { HoldToRecord } from "./HoldToRecord";
+import { HoldMic, HoldOverlay, useHoldToRecord } from "./HoldToRecord";
 import { useVoiceRecording, type RecordedVoice } from "../voice";
 import { useToast } from "./Toast";
 import { useTheme } from "../theme";
@@ -129,6 +129,14 @@ export function Composer({
   // alike, so sliding up to lock continues the take rather than starting a new
   // one.
   const voice = useVoiceRecording();
+  // The hold's state lives up here because it is drawn in two places that
+  // cannot be siblings: the microphone at the end of the row, and the recording
+  // bar that has to span the row. See `useHoldToRecord`.
+  const hold = useHoldToRecord({
+    voice,
+    onSend: () => void finishVoice(),
+    onLock: () => setRecording(true),
+  });
   /**
    * The email thread's subject, editable before every send.
    *
@@ -896,6 +904,12 @@ export function Composer({
           measurement at all. `reflow` is the motion system's single
           re-layout curve, so this moves at the same speed as everything else
           that resizes. */}
+      {/* A plain wrapper so the recording bar has something the width of the
+          row to position against. It used to render inside the microphone, and
+          React Native clips an absolute child to its parent — so the clock and
+          the red dot were confined to the button's 35 points and appeared as a
+          stub tucked underneath it. */}
+      <View>
       <Animated.View
         layout={reflow}
         style={{ backgroundColor: c.surface2 }}
@@ -972,11 +986,7 @@ export function Composer({
             cross-fade rather than swapping instantly. */}
         {showMic ? (
           <Animated.View key="mic" entering={enter.soft} exiting={exit.soft}>
-            <HoldToRecord
-              voice={voice}
-              onSend={() => void finishVoice()}
-              onLock={() => setRecording(true)}
-            />
+            <HoldMic hold={hold} />
           </Animated.View>
         ) : (
           <Animated.View key="send" entering={enter.soft} exiting={exit.soft}>
@@ -1005,6 +1015,8 @@ export function Composer({
           </Animated.View>
         )}
       </Animated.View>
+      {showMic ? <HoldOverlay hold={hold} voice={voice} /> : null}
+      </View>
       </>
       )}
 

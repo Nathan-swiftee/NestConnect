@@ -27,6 +27,8 @@ const LOCK_AT = 74;
 /** Where the "slide to cancel" hint has faded out completely. */
 const CANCEL_FULL = 120;
 
+export type Hold = ReturnType<typeof useHoldToRecord>;
+
 /**
  * Press and hold to record; release to send.
  *
@@ -43,11 +45,15 @@ const CANCEL_FULL = 120;
  *  - **Slide up** past `LOCK_AT`: the recording locks and carries on hands-free,
  *    handing over to the full panel with its pause, delete and send.
  *
- * The touch is handled by React Native's responder system rather than a
- * gesture handler — see the handlers below for why, which is a debugging story
- * rather than a preference.
+ * Split into a hook and two views because the hold is drawn in two places that
+ * cannot be siblings. The microphone is one small element at the end of the
+ * composer row; the recording bar has to span the whole row. React Native
+ * positions an absolute child against its parent, with no way to escape it, so
+ * a bar rendered next to the button is confined to the button's 35 points and
+ * appears as a stub underneath it. The state lives in the hook, and the two
+ * views read it from where each of them actually belongs in the tree.
  */
-export function HoldToRecord({
+export function useHoldToRecord({
   voice,
   onSend,
   onLock,
@@ -56,7 +62,6 @@ export function HoldToRecord({
   onSend: () => void;
   onLock: () => void;
 }) {
-  const { c } = useTheme();
   const [holding, setHolding] = useState(false);
   const dx = useSharedValue(0);
   const dy = useSharedValue(0);
@@ -72,21 +77,18 @@ export function HoldToRecord({
   /**
    * Touch down: say so, and nothing else.
    *
-   * The microphone used to be started from right here, inside the callback the
-   * gesture hands to JavaScript. That is one of the structural differences
-   * between this and the tap-to-record version that worked — the audio calls
-   * themselves are identical, in the same order, with the same arguments; what
-   * changed is that they ran from inside a live gesture rather than from a
-   * committed React effect. So the trigger stays a hold and the driving goes
-   * back to what worked: this flips a flag, and the effect below starts the
-   * recorder once React has committed.
+   * The microphone used to be started from inside the callback a gesture
+   * handler hands to JavaScript. The audio calls were identical to the
+   * tap-to-record version that worked — same functions, same order, same
+   * arguments; what changed was that they ran from inside a live gesture rather
+   * than from a committed React effect. So the trigger stays a hold and the
+   * driving goes back to what worked: this flips a flag, and the effect below
+   * starts the recorder once React has committed.
    *
-   * The `await` before anything else is the point of the whole diagnostic and
-   * it was briefly lost. A fire-and-forget write makes "no `press` on disk"
-   * ambiguous — it could mean the press never arrived, or that it arrived and
-   * the app died in the two lines below before the write landed. Those want
-   * opposite investigations. Waiting first costs one small write and buys a
-   * reading that means exactly one thing.
+   * The `await` before anything else is deliberate. A fire-and-forget write
+   * makes "no `press` on disk" ambiguous — it could mean the press never
+   * arrived, or that it arrived and the app died in the two lines below before
+   * the write landed. Those want opposite investigations.
    */
   const begin = async () => {
     await mark("press");
@@ -116,10 +118,9 @@ export function HoldToRecord({
    *
    * This is where `VoiceRecorder` used to do it, back when tapping the
    * microphone mounted a panel and the panel's mount effect began the take.
-   * That arrangement worked; driving the same calls from a gesture callback
-   * never has. An effect runs after the commit, so by the time the recorder is
-   * touched the render that mounts the recording overlay has already survived,
-   * and nothing is being asked of the audio stack from inside a live gesture.
+   * An effect runs after the commit, so by the time the recorder is touched the
+   * render that shows the recording bar has already survived, and nothing is
+   * being asked of the audio stack from inside a live touch.
    *
    * `voice` is deliberately not a dependency: it is a fresh object on every
    * render, and the clock re-renders this four times a second while recording —
@@ -144,31 +145,27 @@ export function HoldToRecord({
    * The hold, on React Native's own touch responder rather than a gesture
    * handler.
    *
-   * This is where the evidence led. The breadcrumb trail comes back reading
-   * `armed` and nothing else: the microphone mounted, and then the press
-   * produced no record of ever reaching JavaScript. Everything above this line
-   * — the permission call, the audio mode, prepare, record — is downstream of a
-   * step that never happens, which is why four readings of expo-audio found
-   * nothing wrong. They were readings of code that does not run.
+   * This is where the evidence led, and it is the fix. The breadcrumb trail
+   * came back reading `armed` and nothing after it: the microphone had mounted,
+   * and the press left no record of ever reaching JavaScript. Everything
+   * downstream — permission, audio mode, prepare, record — was being read for
+   * four rounds, and none of it runs.
    *
-   * What sits between a finger touching the screen and `runOnJS` delivering is
+   * What sat between a finger touching the screen and `runOnJS` delivering was
    * a native gesture handler and a worklet. `Gesture.Pan().minDistance(0)`
-   * claims the touch on contact and, being the only gesture in the app whose
-   * `onBegin` changes React state, does so at the exact moment React is
-   * re-rendering the subtree it lives in. Making the gesture stable did not
-   * help. So rather than keep guessing at what it does down there, this stops
-   * using it.
+   * claims the touch on contact, and this was the only gesture in the app whose
+   * `onBegin` changed React state, so it did that while React re-rendered the
+   * subtree it lived in. Making the gesture stable did not help; removing it
+   * did.
    *
-   * `onPressIn` / `onPressOut` on a plain `Pressable` are the same
-   * press-and-release, delivered by the responder system that every button in
-   * the app already uses and that the tap-to-record microphone used when
-   * recording last worked. `onTouchMove` carries the slide. No worklet, no
-   * native handler, no thread hop: the callbacks are ordinary JavaScript, so if
-   * this still fails the trail will finally say where.
+   * `onPressIn` / `onPressOut` are the same press and release, carried by the
+   * responder system every other button in this app already uses — and the one
+   * the tap-to-record microphone used when recording last worked. `onTouchMove`
+   * carries the slide. No worklet, no native handler, no thread hop.
    *
-   * `pressRetentionOffset` is what makes the slide survive. Without it the
+   * `pressRetentionOffset` is what makes the slide survive: without it the
    * responder gives up as soon as the finger leaves the button and reports a
-   * release the moment you start sliding to cancel — which is the whole
+   * release the moment you start sliding to cancel, which is the whole
    * interaction.
    */
   const origin = useRef({ x: 0, y: 0 });
@@ -211,164 +208,162 @@ export function HoldToRecord({
     else send();
   };
 
-  /**
-   * The disc itself — size, shape and colour included, rather than left to a
-   * `className` beside this.
-   *
-   * On this stack a `useAnimatedStyle` value in `style` takes the whole element
-   * with it: the class-derived styles are dropped and so is any other inline
-   * style object. That is how the microphone shipped as a bare white glyph on
-   * nothing — the transform was here, `h-10 w-10 rounded-full` was in the
-   * className, and only the transform survived, collapsing the button to the
-   * size of its icon. `__tests__/interop-probe.test.tsx` holds the measurement.
-   *
-   * So: one style object per animated element, everything in it.
-   *
-   * 35, not 40: NativeWind's rem on native is 14, so the `h-10` this replaces
-   * was 2.5 × 14. Every number below is a Tailwind class converted at that rate.
-   */
+  return { holding, dx, dy, grow, onIn, onMove, onOut };
+}
+
+/**
+ * The microphone itself, in its place at the end of the composer row.
+ *
+ * The animated view carries nothing but a transform and a plain child carries
+ * the disc. That split is load-bearing rather than tidy, for two reasons that
+ * pull in the same direction. On this stack a `useAnimatedStyle` value in
+ * `style` takes the whole element with it — a `className` beside it is dropped,
+ * which is what once shipped the microphone as a white glyph on nothing
+ * (`__tests__/interop-probe.test.tsx` holds the measurement). And touch-down
+ * springs `grow`, so with width, height and radius in that same style every
+ * frame of the spring asked for a layout pass on a flex child of the row from
+ * the UI thread. Nesting satisfies both: nothing sits beside an animated style,
+ * and the animated one only asks for a transform.
+ *
+ * 35, not 40: NativeWind's rem on native is 14, so the `h-10` these numbers
+ * replace was 2.5 × 14.
+ */
+export function HoldMic({ hold }: { hold: Hold }) {
+  const { c } = useTheme();
   const button = useAnimatedStyle(() => ({
-    transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: grow.value }],
+    transform: [
+      { translateX: hold.dx.value },
+      { translateY: hold.dy.value },
+      { scale: hold.grow.value },
+    ],
   }));
+
+  return (
+    <Pressable
+      onPressIn={hold.onIn}
+      onPressOut={hold.onOut}
+      onTouchMove={hold.onMove}
+      onTouchEnd={hold.onOut}
+      onTouchCancel={hold.onOut}
+      // Generous, because the interaction *is* leaving the button: slide left
+      // to cancel, up to lock. Without this the responder reports a release the
+      // moment the finger travels, and every slide sends instead.
+      pressRetentionOffset={{ top: 240, bottom: 240, left: 240, right: 240 }}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel="Hold to record a voice message"
+      accessibilityHint="Hold to record, release to send. Slide left to cancel, up to lock."
+    >
+      <Animated.View style={button}>
+        <View
+          style={{
+            height: 35,
+            width: 35,
+            borderRadius: 9999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: hold.holding ? c.danger : c.brand,
+          }}
+        >
+          <MicIcon size={19} color="#fff" />
+        </View>
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+/**
+ * What the composer row becomes while the microphone is held: a running clock
+ * on the left, the cancel hint in the middle, the lock target floating above.
+ *
+ * It renders beside the row rather than inside the microphone, and that is the
+ * whole reason this file has three exports. React Native positions an absolute
+ * child against its parent and gives it no way out, so while this lived next to
+ * the button it was clipped to the button's 35 points — the clock and the red
+ * dot appearing as a stub tucked under the microphone instead of a bar across
+ * the composer. The locked panel looked right because it replaces the row
+ * outright and never had the problem.
+ *
+ * Hidden rather than absent. It used to mount on touch-down, which created two
+ * animated views mid-touch while the values their styles read were already
+ * being written. Mounting once and fading in removes that question; at zero
+ * opacity it draws nothing, and it never took touches.
+ */
+export function HoldOverlay({ hold, voice }: { hold: Hold; voice: VoiceRecording }) {
+  const { c } = useTheme();
 
   /** The hint slides with the finger and fades as the cancel point nears. */
   const cancelHint = useAnimatedStyle(() => ({
-    opacity: interpolate(dx.value, [0, -CANCEL_AT], [1, 0.15], "clamp"),
-    transform: [{ translateX: dx.value * 0.55 }],
+    opacity: interpolate(hold.dx.value, [0, -CANCEL_AT], [1, 0.15], "clamp"),
+    transform: [{ translateX: hold.dx.value * 0.55 }],
   }));
 
   /** The lock target lifts and brightens as the finger comes up to meet it. */
   const lockHint = useAnimatedStyle(() => ({
-    opacity: interpolate(dy.value, [0, -LOCK_AT], [0.45, 1], "clamp"),
-    transform: [{ scale: interpolate(dy.value, [0, -LOCK_AT], [0.85, 1.1], "clamp") }],
+    opacity: interpolate(hold.dy.value, [0, -LOCK_AT], [0.45, 1], "clamp"),
+    transform: [{ scale: interpolate(hold.dy.value, [0, -LOCK_AT], [0.85, 1.1], "clamp") }],
   }));
 
-  /**
-   * The appearance, on a plain view *inside* each animated one.
-   *
-   * These three used to carry their size, shape and colour in the animated
-   * style itself, because an animated style displaces anything beside it —
-   * a `className` on the same element is dropped, which is what once left the
-   * microphone as a white glyph on nothing.
-   *
-   * Nesting satisfies both rules at once, and it is the arrangement the tab
-   * bar's travelling pill already uses on this same device: the animated view
-   * carries nothing but `transform` and `opacity`, which the compositor can
-   * apply on its own, and a plain child carries the layout, which it cannot.
-   * Nothing is beside an animated style, so nothing is displaced.
-   *
-   * Why it matters here rather than being tidiness: touch-down springs `grow`
-   * before a single line of our JavaScript runs. With width, height and radius
-   * in that same style, every frame of that spring asked for a layout pass on a
-   * flex child of the composer row, driven from the UI thread. Now it asks for
-   * a transform on a view whose size never changes.
-   *
-   * 35, not 40: NativeWind's rem on native is 14, so the `h-10` these numbers
-   * replace was 2.5 × 14.
-   */
-  const disc = {
-    height: 35,
-    width: 35,
-    borderRadius: 9999,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    backgroundColor: holding ? c.danger : c.brand,
-  };
-  const lockTarget = {
-    marginBottom: 7,
-    height: 31.5,
-    width: 31.5,
-    borderRadius: 9999,
-    borderWidth: 1,
-    alignItems: "center" as const,
-    justifyContent: "center" as const,
-    backgroundColor: c.surface2,
-    borderColor: c.border,
-  };
-
   return (
-    <>
-      {/* The whole composer row becomes the recording state while held: a
-          running clock on the left, the cancel hint in the middle, the lock
-          target above the thumb.
-
-          Hidden rather than absent, which is not a style preference. This used
-          to be `{holding ? … : null}`, so the two animated views inside it were
-          *created* on touch-down — mounted mid-gesture, while the shared values
-          their styles read were already being written from the UI thread. That
-          has no counterpart in the tap-to-record version that worked, and it
-          happens on every single press. Mounting them once and fading them in
-          removes the question entirely; they are inert at zero opacity and the
-          container never took touches anyway. */}
-      <View
-          pointerEvents="none"
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            top: -64,
-            opacity: holding ? 1 : 0,
-          }}
-        >
-          <View className="flex-1 flex-row items-end justify-end pb-1 pr-3">
-            <Animated.View style={lockHint}>
-              <View style={lockTarget}>
-                <LockIcon size={16} color={c.textMuted} />
-              </View>
-            </Animated.View>
-          </View>
-
+    <View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        top: -64,
+        opacity: hold.holding ? 1 : 0,
+      }}
+    >
+      <View className="flex-1 flex-row items-end justify-end pb-1 pr-3">
+        <Animated.View style={lockHint}>
           <View
-            style={{ backgroundColor: c.surface2 }}
-            className="absolute bottom-0 left-0 right-0 h-11 flex-row items-center rounded-24 px-3"
+            style={{
+              marginBottom: 7,
+              height: 31.5,
+              width: 31.5,
+              borderRadius: 9999,
+              borderWidth: 1,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: c.surface2,
+              borderColor: c.border,
+            }}
           >
-            <View
-              style={{ backgroundColor: voice.isRecording ? c.danger : c.textFaint }}
-              className="h-2 w-2 rounded-full"
-            />
-            <Text style={{ color: c.text }} className="ml-2.5 text-md font-semibold tabular-nums">
-              {formatDuration(voice.seconds * 1000)}
-            </Text>
-            {/* The flex lives on a plain parent so the animated view in the
-                middle carries only what the compositor can apply by itself. */}
-            <View className="flex-1 flex-row items-center justify-center">
-              <Animated.View style={cancelHint}>
-                <View className="flex-row items-center">
-                  <BackIcon size={14} color={c.textFaint} />
-                  <Text style={{ color: c.textFaint }} className="ml-0.5 text-sm">
-                    Slide to cancel
-                  </Text>
-                </View>
-              </Animated.View>
-            </View>
-          </View>
-        </View>
-
-      {/* The animated view carries nothing but a transform, and a plain one
-          inside it carries the disc. See `disc` for why that split is
-          load-bearing rather than tidy. */}
-      <Pressable
-        onPressIn={onIn}
-        onPressOut={onOut}
-        onTouchMove={onMove}
-        onTouchEnd={onOut}
-        onTouchCancel={onOut}
-        // Generous, because the interaction *is* leaving the button: slide left
-        // to cancel, up to lock. Without this the responder reports a release
-        // the moment the finger travels, and every slide sends instead.
-        pressRetentionOffset={{ top: 240, bottom: 240, left: 240, right: 240 }}
-        hitSlop={6}
-        accessibilityRole="button"
-        accessibilityLabel="Hold to record a voice message"
-        accessibilityHint="Hold to record, release to send. Slide left to cancel, up to lock."
-      >
-        <Animated.View style={button}>
-          <View style={disc}>
-            <MicIcon size={19} color="#fff" />
+            <LockIcon size={16} color={c.textMuted} />
           </View>
         </Animated.View>
-      </Pressable>
-    </>
+      </View>
+
+      <View
+        style={{ backgroundColor: c.surface2 }}
+        className="absolute bottom-0 left-0 right-0 h-11 flex-row items-center rounded-24 px-3"
+      >
+        <View
+          style={{ backgroundColor: voice.isRecording ? c.danger : c.textFaint }}
+          className="h-2 w-2 rounded-full"
+        />
+        <Text style={{ color: c.text }} className="ml-2.5 text-md font-semibold tabular-nums">
+          {formatDuration(voice.seconds * 1000)}
+        </Text>
+        {/* The flex lives on a plain parent so the animated view in the middle
+            carries only what the compositor can apply by itself. */}
+        <View className="flex-1 flex-row items-center justify-center">
+          <Animated.View style={cancelHint}>
+            <View className="flex-row items-center">
+              <BackIcon size={14} color={c.textFaint} />
+              <Text style={{ color: c.textFaint }} className="ml-0.5 text-sm">
+                Slide to cancel
+              </Text>
+            </View>
+          </Animated.View>
+        </View>
+        {/* The microphone sits at the right-hand end of the row underneath, and
+            the bar must not cover it — it is still under the finger, and
+            covering it is what would make the hold end mid-recording. */}
+        <View style={{ width: 41 }} />
+      </View>
+    </View>
   );
 }
