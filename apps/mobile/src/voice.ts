@@ -5,7 +5,6 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
-  useAudioRecorderState,
 } from "expo-audio";
 import { endTrail, mark } from "./diagnostics";
 
@@ -31,10 +30,67 @@ export interface RecordedVoice {
  */
 export const MIN_MS = 500;
 
+/**
+ * The running clock, read from the recorder only while it is running.
+ *
+ * expo-audio ships `useAudioRecorderState` for this and it is the wrong tool
+ * here, for a reason that only appeared when the engine moved. That hook starts
+ * a `setInterval` on mount and never stops it, and its effect depends on the
+ * recorder's id alone — so the interval it opens polls `getStatus()` forever, at
+ * whatever rate it was first given, whether or not anything is being recorded.
+ *
+ * While the recorder lived inside the panel you tapped open, that was harmless:
+ * the hook mounted with the recording and unmounted with it, so it polled for
+ * exactly as long as there was something to report. Hoisting the engine up to
+ * the composer so a *held* button could drive it moved that interval up with it,
+ * and it has been calling into the native recorder four times a second for the
+ * whole life of every open conversation ever since, to report that nothing is
+ * happening.
+ *
+ * That is worth undoing on its own — but the sharper point is what it does to
+ * the start of a recording. `getStatus()` is a synchronous call on the JS
+ * thread; `prepareToRecordAsync` runs `MediaRecorder.prepare()` on a coroutine.
+ * A free-running interval means those two can land on the same non-thread-safe
+ * `MediaRecorder` at once, which the old arrangement made almost impossible —
+ * its first tick came 250ms after the same mount that began preparing, by which
+ * point preparing was long done.
+ *
+ * So: poll while live, and not otherwise. Nothing reads a recorder that isn't
+ * running, and there is no interval open when one is being prepared.
+ */
+function useRecorderClock(recorder: ReturnType<typeof useAudioRecorder>, live: boolean) {
+  const [status, setStatus] = useState({ durationMillis: 0, isRecording: false });
+
+  useEffect(() => {
+    if (!live) {
+      // Back to zero for the next take, rather than leaving the last one's
+      // final duration on the clock.
+      setStatus({ durationMillis: 0, isRecording: false });
+      return;
+    }
+    const read = () => {
+      const s = recorder.getStatus();
+      setStatus((prev) =>
+        // Same guard the upstream hook uses: a poll that says nothing changed
+        // must not re-render the composer four times a second.
+        prev.isRecording === s.isRecording &&
+        Math.abs(prev.durationMillis - s.durationMillis) <= 50
+          ? prev
+          : { durationMillis: s.durationMillis, isRecording: s.isRecording },
+      );
+    };
+    read();
+    const id = setInterval(read, 250);
+    return () => clearInterval(id);
+  }, [recorder, live]);
+
+  return status;
+}
+
 export function useVoiceRecording() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const state = useAudioRecorderState(recorder, 250);
   const [live, setLive] = useState(false);
+  const state = useRecorderClock(recorder, live);
   const [failed, setFailed] = useState<string | null>(null);
   /** Set the instant `start()` is called, before the async permission and
    *  prepare steps finish — so a release that beats them cancels cleanly
@@ -60,10 +116,12 @@ export function useVoiceRecording() {
   // `recorder.currentTime` is only meaningful once something is running; read it
   // for a recorder that was never prepared and the number is meaningless at
   // best. The poller's `durationMillis` is the real source, this is the
-  // fallback between `record()` and the first poll.
+  // fallback between `record()` and the first poll — and it is gated on `live`
+  // rather than on `started`, so nothing reaches into the recorder during a
+  // render that happens while it is being prepared.
   const seconds = state.durationMillis
     ? state.durationMillis / 1000
-    : started.current
+    : live
       ? (recorder.currentTime ?? 0)
       : 0;
 
