@@ -30,6 +30,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Where an inbound message lands. This shipped wrong — a reply to a snoozed
+      # chat opened a second conversation with the same customer — and nothing
+      # else here would have noticed: it typechecks, it builds, no request fails,
+      # and the duplicate looks like a customer starting a new conversation.
+      - name: Inbound threading rule
+        run: pnpm check:threading
+
       # Three structural rules about the mobile screens that neither the
       # typechecker nor a browser can see. Takes a second. docs/11-mobile-layout.md
       # says why they exist and why they aren't rendering tests.

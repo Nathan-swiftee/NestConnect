@@ -32,7 +32,13 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
-import { CONVERSATIONS_PAGE_SIZE, isInboxConnected, MESSAGES_PAGE_SIZE, publicChannelConfig } from "@ding/schemas";
+import {
+  CONVERSATIONS_PAGE_SIZE,
+  isInboxConnected,
+  MESSAGES_PAGE_SIZE,
+  publicChannelConfig,
+  THREADABLE_STATUSES,
+} from "@ding/schemas";
 import { env } from "../config/env";
 import { threadsTogether } from "./email-threading";
 import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewFromBody, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
@@ -1480,10 +1486,14 @@ export class MemoryStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
   }): Promise<{ conversation: Conversation; created: boolean }> {
-    // One open conversation per contact PER INBOX (channel endpoint): a different
+    // One live conversation per contact PER INBOX (channel endpoint): a different
     // inbox — another number, email address, or channel — starts a separate
     // conversation, and a closed thread starts a new one. (Agents still reply
     // cross-channel inside a thread via the send path; this governs inbound + reach.)
+    //
+    // "Live" includes snoozed — see THREADABLE_STATUSES. That is the whole rule,
+    // and it lives in the schemas package because this used to be written out
+    // here and again in the Prisma store, and both copies left snoozed out.
     //
     // Email adds a second condition: the subject has to match. A mailbox thread
     // is a topic, not a person, so a customer writing about something new gets a
@@ -1498,7 +1508,7 @@ export class MemoryStore extends Store {
           c.orgId === params.orgId &&
           c.inboxId === params.inboxId &&
           c.contact.id === params.contact.id &&
-          (c.status === "open" || c.status === "pending") &&
+          (THREADABLE_STATUSES as readonly string[]).includes(c.status) &&
           threadsTogether(params.channel, params.subject, c.subject),
       );
     if (open) return { conversation: this.summary(open), created: false };

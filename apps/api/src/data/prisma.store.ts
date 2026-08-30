@@ -34,7 +34,7 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
-import { CONVERSATIONS_PAGE_SIZE, MESSAGES_PAGE_SIZE } from "@ding/schemas";
+import { CONVERSATIONS_PAGE_SIZE, MESSAGES_PAGE_SIZE, THREADABLE_STATUSES } from "@ding/schemas";
 import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 
@@ -1740,7 +1740,16 @@ export class PrismaStore extends Store {
     // The candidate set is a single contact's open threads in one inbox, so it
     // is a handful of rows; the take() is a bound, not a page.
     const candidates = await this.prisma.conversation.findMany({
-      where: { orgId: params.orgId, inboxId: params.inboxId, contactId: params.contact.id, status: { in: ["open", "pending"] } },
+      // Snoozed included: a customer writing back is exactly the event that
+      // should end a snooze, and `appendInboundMessage` below already wakes the
+      // conversation it lands on. Leaving it out of this WHERE made that branch
+      // unreachable and opened a second thread with the same customer instead.
+      where: {
+        orgId: params.orgId,
+        inboxId: params.inboxId,
+        contactId: params.contact.id,
+        status: { in: [...THREADABLE_STATUSES] },
+      },
       include: convInclude,
       orderBy: { lastActivityAt: "desc" },
       take: 25,

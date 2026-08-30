@@ -11,6 +11,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
+    "check:threading": "tsx tools/check-threading.ts",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",
     "db:up": "docker compose up -d",

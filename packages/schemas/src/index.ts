@@ -22,6 +22,29 @@ export type ChannelType = z.infer<typeof channelTypeSchema>;
 export const conversationStatusSchema = z.enum(["open", "pending", "snoozed", "closed"]);
 export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 
+/**
+ * The statuses an inbound message may thread into.
+ *
+ * A customer writing again continues the conversation they are already in —
+ * including one an agent has put down for later. Snoozing says "not now", not
+ * "not this person"; if they come back before the timer does, the timer is what
+ * loses. The store that receives the message wakes it (see `appendInboundMessage`
+ * in either store), so the only job here is to make sure the lookup *finds* it.
+ *
+ * `closed` is deliberately absent. A resolved conversation is finished, and a
+ * new subject from the same customer deserves its own thread rather than being
+ * filed under whatever was last settled with them. Email is the exception and
+ * makes itself one: a reply carrying a `References` chain is matched by that
+ * chain instead, which has no status filter at all, so it reopens the exact
+ * thread it belongs to.
+ *
+ * Shared because it was written twice — once in each store — and the copies
+ * disagreed. Both had "open" and "pending" and neither had "snoozed", so every
+ * reply to a snoozed chat opened a *second* conversation with the same customer
+ * and the wake-it-up branch waiting in both stores could never run.
+ */
+export const THREADABLE_STATUSES = ["open", "pending", "snoozed"] as const satisfies readonly ConversationStatus[];
+
 export const messageDirectionSchema = z.enum(["in", "out"]);
 export type MessageDirection = z.infer<typeof messageDirectionSchema>;
 
