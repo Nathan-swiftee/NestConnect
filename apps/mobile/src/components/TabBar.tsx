@@ -113,6 +113,24 @@ const LABEL_LINE = 12;
 const LABEL_GAP = 0;
 
 /**
+ * What the blur radius is divided by on Android, and why it is the library's
+ * default rather than a number of ours.
+ *
+ * The radius reaching the native blur is `intensity / blurReductionFactor`, and
+ * on the RenderScript path `ScriptIntrinsicBlur.setRadius` accepts `0 < r <= 25`
+ * and throws otherwise. This was set to 2 to get a softer blur — which was
+ * harmless for exactly as long as the blur was not running, because the target
+ * had never been registered and the native view had quietly fallen back to
+ * `NONE`. The build that finally wired the target up therefore ran the radius
+ * for the first time, at 70 / 2 = 35, and the app crashed on launch.
+ *
+ * At 4, the largest radius this can ever produce is 100 / 4 = 25 — the cap
+ * exactly. Softness comes from `blurMethod` and the wash instead, neither of
+ * which can throw.
+ */
+const BLUR_REDUCTION = 4;
+
+/**
  * The capsule's corner.
  *
  * Past half the capsule's height, so both platforms clamp it to a fully round
@@ -341,22 +359,26 @@ export function TabBar({
           // sliding through it. The blur is what turns "you can see there is
           // content down there" into "you can't read it", which is the whole
           // point of the material.
-          blurMethod="dimezisBlurView"
+          //
+          // `Sdk31Plus`, not plain `dimezisBlurView`. The plain method uses
+          // RenderScript on every Android version, and `ScriptIntrinsicBlur`
+          // throws outright above a radius of 25 — see `BLUR_REDUCTION`. On
+          // Android 12 and up this uses `RenderEffect` instead, which has no
+          // such ceiling and is the path Android itself is moving to;
+          // RenderScript has been deprecated since 12 and dropped from the
+          // modern NDK. Below 12 it degrades to no blur, which is a worse bar
+          // but a bar that exists.
+          blurMethod="dimezisBlurViewSdk31Plus"
           // The subtree to photograph. Android has no ambient blur: without
           // this the native view sets its method to `NONE` and renders a plain
           // panel, silently. See `(tabs)/_layout.tsx`.
           blurTarget={blurTarget}
-          // Divides the blur radius on Android. The default of 4 is tuned to
-          // make Android *match* iOS at the same `intensity`; here that lands
-          // short of the reference, which is properly soft. 2 doubles the radius
-          // without touching how much white the tint lays down.
-          blurReductionFactor={2}
-          // Tuned for the first time against a blur that is actually running.
-          // Every previous value here — 44, 60, 84, 48 — was chosen by looking
-          // at a bar that had no blur behind it at all, so each was really a
-          // guess about how white to make an opaque panel. 70 is a firmly
-          // frosted material rather than a tinted window.
-          intensity={scheme === "dark" ? 62 : 70}
+          blurReductionFactor={BLUR_REDUCTION}
+          // Kept so that `intensity / BLUR_REDUCTION` stays well inside 25 on
+          // any path. Every earlier value here — 44, 60, 84, 48, 70 — was
+          // chosen by looking at a bar that had no blur running behind it, so
+          // each was really a guess about how white to make an opaque panel.
+          intensity={scheme === "dark" ? 52 : 60}
           tint={scheme === "dark" ? "dark" : "light"}
           style={[
             StyleSheet.absoluteFill,

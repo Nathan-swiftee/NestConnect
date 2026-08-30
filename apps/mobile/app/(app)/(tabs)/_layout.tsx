@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Tabs } from "expo-router";
 import { BlurTargetView } from "expo-blur";
 import type { View } from "react-native";
@@ -63,14 +63,21 @@ export default function TabsLayout() {
    * guard can never fire and the id is never filled in afterwards.
    *
    * Gating on state changes the prop's identity once — `undefined` to the ref —
-   * which is a difference the guard can actually see. `onLayout` fires after the
-   * ref is attached, so by the time the bar re-renders there is a node to find.
+   * which is a difference the guard can actually see.
+   *
+   * A mount effect rather than the target's `onLayout`: React attaches refs
+   * during commit and runs effects after it, so `blurTarget.current` is
+   * guaranteed to be filled in by the time this runs. `onLayout` also worked,
+   * but it meant passing an extra prop into a native Expo view on the same
+   * build that first switched the blur on — and when that build crashed on
+   * launch there were then two candidates to explain it instead of one.
    */
   const blurTarget = useRef<View>(null);
   const [attached, setAttached] = useState(false);
+  useEffect(() => setAttached(true), []);
 
   return (
-    <BlurTargetView ref={blurTarget} onLayout={() => setAttached(true)} style={{ flex: 1 }}>
+    <BlurTargetView ref={blurTarget} style={{ flex: 1 }}>
     <Tabs
       // The bar is ours (`src/components/TabBar.tsx`), for the travelling pill.
       // With one supplied, the `tabBar*` styling options are dead — the stock
