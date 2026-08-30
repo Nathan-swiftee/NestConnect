@@ -361,3 +361,32 @@ values are captured straight into the worklet from the render scope, so they
 exist the moment it does. A single `onLayout` on the row remains as a
 *correction* if the computed width is ever wrong; it can no longer hide
 anything.
+
+
+### It crashed anyway, and the blur is gone
+
+The `blurTarget` fix above is correct — it is what makes the blur run at all —
+and it is also what took the app down. The build that first registered the
+target crashed on launch, every time, before first paint.
+
+The first theory was the blur radius. `intensity / blurReductionFactor` had been
+set to 70/2 = 35, and `ScriptIntrinsicBlur.setRadius` accepts `0 < r <= 25` and
+throws above it; the value had been harmless only because no blur was running to
+apply it. That was a real mistake and worth fixing, **but it was not the crash**:
+the next build put the factor back to 4, moved to `dimezisBlurViewSdk31Plus` so
+Android 12+ uses `RenderEffect` (which has no radius ceiling at all), and it
+crashed identically.
+
+So the blur is out of `TabBar.tsx` entirely, and `BlurTargetView` with it. Three
+builds, one clean A/B: with the blur wired up the app does not start, without it
+the app is fine. A navigation bar is not worth an app that will not open.
+
+**Do not reach for `expo-blur` here again without a crash log first.** Everything
+above this line is knowledge worth keeping — the target requirement, the
+identity-comparison bug in `componentDidUpdate`, the fact that a blur
+photographs what is behind it rather than covering it. None of it identified the
+actual fault, because a native crash cannot be diagnosed from the JavaScript
+side. The app already carries Sentry (`src/telemetry.ts`); it only initialises
+when `EXPO_PUBLIC_SENTRY_DSN` is set at build time, so setting that in the EAS
+profile is the cheapest way to turn the next native crash into a stack trace
+instead of another round of guessing.
