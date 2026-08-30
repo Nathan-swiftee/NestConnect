@@ -64,25 +64,24 @@ export function HoldToRecord({
   const grow = useSharedValue(1);
 
   /**
-   * Every step of the press, written to disk before it runs.
+   * Touch down: say so, and nothing else.
    *
-   * Holding the microphone takes the app down on Android with no error and no
-   * JS stack, and three readings of the code produced three wrong causes. The
-   * trail replaces reading with measuring: whichever call kills the process,
-   * its name is the last thing written. `src/diagnostics.ts` explains why it
-   * awaits, and Settings shows what survived.
+   * The microphone used to be started from right here, inside the callback the
+   * gesture hands to JavaScript. That is the one structural difference between
+   * this and the tap-to-record version that worked — the audio calls themselves
+   * are identical, in the same order, with the same arguments. What changed is
+   * that they now run from inside a live gesture rather than from a committed
+   * React effect.
    *
-   * The awaits here delay the visual response by the length of one small
-   * key-value write. That is a few milliseconds against a bug that closes the
-   * app, and it comes out again the moment the cause is known.
+   * So the trigger stays a hold and the driving goes back to what worked: this
+   * flips a flag, and the effect below starts the recorder once React has
+   * committed. `src/diagnostics.ts` explains why the trail is awaited before
+   * the state change rather than after.
    */
   const begin = async () => {
     await beginTrail("press");
-    setHolding(true);
-    await mark("haptic");
     haptics.tap();
-    await mark("start");
-    await voice.start();
+    setHolding(true);
   };
   const send = () => {
     void mark("release:send");
@@ -103,20 +102,32 @@ export function HoldToRecord({
   };
 
   /**
-   * Proof that the recording overlay rendered.
+   * Start recording, from a committed effect.
    *
-   * An effect runs after the commit, so reaching this at all means the two
-   * animated views below mounted without taking the process with them — which
-   * is a real candidate, since they appear mid-gesture while the shared values
-   * they read are being written from the UI thread.
+   * This is where `VoiceRecorder` used to do it, back when tapping the
+   * microphone mounted a panel and the panel's mount effect began the take.
+   * That arrangement worked; driving the same calls from a gesture callback
+   * never has. An effect runs after the commit, so by the time the recorder is
+   * touched the render that mounts the recording overlay has already survived,
+   * and nothing is being asked of the audio stack from inside a live gesture.
    *
-   * Fire-and-forget is fine here and nowhere else: `mark` appends to the trail
-   * synchronously and every later step persists the whole list, so this entry
-   * lands on disk as soon as anything after it does. Its job is to say the
-   * render already survived, not to be the last word.
+   * `voice` is deliberately not a dependency: it is a fresh object on every
+   * render, and the clock re-renders this four times a second while recording —
+   * depending on it would restart the take on every tick.
    */
   useEffect(() => {
-    if (holding) void mark("overlay");
+    if (!holding) return;
+    let alive = true;
+    void (async () => {
+      await mark("committed");
+      // Released between the commit and here — rare, but a recording nobody is
+      // holding would have nothing to stop it.
+      if (alive) await voice.start();
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holding]);
 
   const hold = Gesture.Pan()
@@ -209,13 +220,28 @@ export function HoldToRecord({
 
   return (
     <>
-      {holding ? (
-        // The whole composer row becomes the recording state while held: a
-        // running clock on the left, the cancel hint in the middle, the lock
-        // target above the thumb.
-        <View
+      {/* The whole composer row becomes the recording state while held: a
+          running clock on the left, the cancel hint in the middle, the lock
+          target above the thumb.
+
+          Hidden rather than absent, which is not a style preference. This used
+          to be `{holding ? … : null}`, so the two animated views inside it were
+          *created* on touch-down — mounted mid-gesture, while the shared values
+          their styles read were already being written from the UI thread. That
+          has no counterpart in the tap-to-record version that worked, and it
+          happens on every single press. Mounting them once and fading them in
+          removes the question entirely; they are inert at zero opacity and the
+          container never took touches anyway. */}
+      <View
           pointerEvents="none"
-          style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: -64 }}
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            top: -64,
+            opacity: holding ? 1 : 0,
+          }}
         >
           <View className="flex-1 flex-row items-end justify-end pb-1 pr-3">
             <Animated.View style={lockHint}>
@@ -242,7 +268,6 @@ export function HoldToRecord({
             </Animated.View>
           </View>
         </View>
-      ) : null}
 
       {/* A plain View between the detector and the styled one, the way
           `SwipeToReply` does it. No className on the disc — `button` carries the
