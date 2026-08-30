@@ -60,6 +60,34 @@ export async function beginTrail(step: string): Promise<void> {
 }
 
 /**
+ * Put one step on disk *before* anything is pressed, so that an empty trail
+ * stops being ambiguous.
+ *
+ * The first reading of this bug came back with nothing stored at all, and that
+ * has two very different explanations: the press never reached JavaScript, or
+ * the phone was running a bundle built before any of this existed. Those need
+ * opposite next moves, and no amount of staring at an empty screen separates
+ * them.
+ *
+ * So the component that owns the microphone writes one step when it mounts.
+ * After that, "armed" on its own means the screen was alive and the press never
+ * got to us — which places the failure in the gesture, below our code — while
+ * nothing at all means the diagnostic isn't in the running bundle and the read
+ * is worthless.
+ *
+ * It never overwrites: a trail already on disk is an unfinished sequence from
+ * before the app went away, and that is the evidence. Opening a conversation
+ * again must not wipe it on the way to Settings to read it.
+ */
+export async function armTrail(): Promise<void> {
+  if (steps.length > 0) return;
+  if (await lastTrail()) return;
+  steps = ["armed"];
+  startedAt = new Date().toISOString();
+  await write();
+}
+
+/**
  * Record that we are *about to* do something, and make sure it is on disk
  * before we do it.
  *

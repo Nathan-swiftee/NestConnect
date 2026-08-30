@@ -1,4 +1,4 @@
-import { beginTrail, endTrail, lastTrail, mark } from "../src/diagnostics";
+import { armTrail, beginTrail, endTrail, lastTrail, mark } from "../src/diagnostics";
 
 /**
  * The breadcrumb trail that has to survive the app being killed.
@@ -106,6 +106,29 @@ test("it stops growing rather than filling the disk", async () => {
   // Capped at the front, not the back: the beginning of a sequence is what says
   // which path was taken, and a runaway loop only repeats the end.
   expect(steps[0]).toBe("press");
+});
+
+test("arming distinguishes a dead press from a bundle with no diagnostic", async () => {
+  await armTrail();
+  // The screen was alive and the press never reached JavaScript. Nothing at
+  // all would instead mean the phone is running a bundle from before any of
+  // this existed — a completely different conclusion.
+  expect((await lastTrail())?.steps).toEqual(["armed"]);
+
+  await mark("press");
+  expect((await lastTrail())?.steps).toEqual(["armed", "press"]);
+});
+
+test("arming never overwrites the evidence it exists to preserve", async () => {
+  // A crash left this behind. Reopening the conversation on the way to Settings
+  // to read it must not wipe it — which is exactly what a plain `beginTrail` on
+  // mount would do.
+  await beginTrail("press");
+  await mark("record");
+
+  await armTrail();
+
+  expect((await lastTrail())?.steps).toEqual(["press", "record"]);
 });
 
 test("nonsense on disk reads as no trail rather than throwing", async () => {

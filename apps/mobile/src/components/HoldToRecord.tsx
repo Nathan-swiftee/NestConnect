@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { formatDuration } from "@ding/client";
-import { beginTrail, mark } from "../diagnostics";
+import { armTrail, mark } from "../diagnostics";
 import { haptics } from "../haptics";
 import { BackIcon, LockIcon, MicIcon } from "../icons";
 import { useTheme } from "../theme";
@@ -63,23 +63,29 @@ export function HoldToRecord({
   const dy = useSharedValue(0);
   const grow = useSharedValue(1);
 
+  // One step on disk before anything is touched, so an empty reading means
+  // "this bundle has no diagnostic" rather than "the press did nothing". See
+  // `armTrail`.
+  useEffect(() => {
+    void armTrail();
+  }, []);
+
   /**
    * Touch down: say so, and nothing else.
    *
    * The microphone used to be started from right here, inside the callback the
-   * gesture hands to JavaScript. That is the one structural difference between
-   * this and the tap-to-record version that worked — the audio calls themselves
-   * are identical, in the same order, with the same arguments. What changed is
-   * that they now run from inside a live gesture rather than from a committed
-   * React effect.
+   * gesture hands to JavaScript. That is one of the structural differences
+   * between this and the tap-to-record version that worked — the audio calls
+   * themselves are identical, in the same order, with the same arguments; what
+   * changed is that they ran from inside a live gesture rather than from a
+   * committed React effect.
    *
    * So the trigger stays a hold and the driving goes back to what worked: this
    * flips a flag, and the effect below starts the recorder once React has
-   * committed. `src/diagnostics.ts` explains why the trail is awaited before
-   * the state change rather than after.
+   * committed.
    */
-  const begin = async () => {
-    await beginTrail("press");
+  const begin = () => {
+    void mark("press");
     haptics.tap();
     setHolding(true);
   };
@@ -100,6 +106,23 @@ export function HoldToRecord({
     haptics.success();
     onLock();
   };
+
+  /**
+   * One stable handle onto the four decisions, so the gesture below never has
+   * to be rebuilt.
+   *
+   * `runOnJS` needs the same function object for the life of the gesture, and
+   * the four above are fresh closures on every render — they capture `voice`,
+   * which is a new object each time. A ref holds the current set and four
+   * stable wrappers read it, so the callbacks the gesture closes over never
+   * change while what they do is always current.
+   */
+  const latest = useRef({ begin, send, discard, lock });
+  latest.current = { begin, send, discard, lock };
+  const callBegin = useCallback(() => latest.current.begin(), []);
+  const callSend = useCallback(() => latest.current.send(), []);
+  const callDiscard = useCallback(() => latest.current.discard(), []);
+  const callLock = useCallback(() => latest.current.lock(), []);
 
   /**
    * Start recording, from a committed effect.
@@ -130,42 +153,67 @@ export function HoldToRecord({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holding]);
 
-  const hold = Gesture.Pan()
-    // Claimed on touch-down rather than after any travel: this is a hold, and
-    // the drag is what modifies it. `minDistance(0)` is what makes press-and-
-    // hold-then-slide one gesture instead of a press that loses its own drag.
-    .minDistance(0)
-    .onBegin(() => {
-      grow.value = springTo(1.35, spring.quick);
-      runOnJS(begin)();
-    })
-    .onUpdate((e) => {
-      // Leftward and upward only, and never past the point the hints stop
-      // moving — a control that follows the finger across the screen reads as
-      // dragged rather than held.
-      dx.value = Math.min(0, Math.max(e.translationX, -CANCEL_FULL));
-      dy.value = Math.min(0, Math.max(e.translationY, -LOCK_AT - 20));
-    })
-    .onEnd(() => {
-      const cancelled = dx.value <= -CANCEL_AT;
-      const locked = !cancelled && dy.value <= -LOCK_AT;
-      grow.value = springTo(1, spring.base);
-      dx.value = withTiming(0, timing.quick);
-      dy.value = withTiming(0, timing.quick);
-      if (cancelled) runOnJS(discard)();
-      else if (locked) runOnJS(lock)();
-      else runOnJS(send)();
-    })
-    // A cancelled gesture (a call arriving, the app backgrounding) must not
-    // leave the microphone open.
-    .onFinalize((_e, success) => {
-      if (!success) {
-        grow.value = springTo(1, spring.base);
-        dx.value = withTiming(0, timing.quick);
-        dy.value = withTiming(0, timing.quick);
-        runOnJS(discard)();
-      }
-    });
+  /**
+   * Built once, never rebuilt.
+   *
+   * This was a bare `Gesture.Pan()` in the render body, so every render handed
+   * `GestureDetector` a brand-new gesture object and the detector reconfigured
+   * its native handler to match. react-native-gesture-handler asks for stable
+   * gestures for exactly that reason, and this component breaks the rule at the
+   * worst possible moment: the first thing touch-down does is `setHolding(true)`,
+   * so a re-render — and a native handler swap — lands a millisecond into a pan
+   * that is still live. It then happens again on every tick of the recording
+   * clock, four times a second, for as long as the thumb is down.
+   *
+   * That is also consistent with the one hard fact this bug has produced: the
+   * breadcrumb trail comes back empty. Something is ending the process on the
+   * native side before any JavaScript of ours gets to run, and a handler being
+   * torn down mid-touch is that shape of failure.
+   *
+   * `[]` is the correct dependency list, not a shortcut — everything the
+   * callbacks need is either a shared value or read through `latest`.
+   */
+  const hold = useMemo(
+    () =>
+      Gesture.Pan()
+        // Claimed on touch-down rather than after any travel: this is a hold,
+        // and the drag is what modifies it. `minDistance(0)` is what makes
+        // press-and-hold-then-slide one gesture instead of a press that loses
+        // its own drag.
+        .minDistance(0)
+        .onBegin(() => {
+          grow.value = springTo(1.35, spring.quick);
+          runOnJS(callBegin)();
+        })
+        .onUpdate((e) => {
+          // Leftward and upward only, and never past the point the hints stop
+          // moving — a control that follows the finger across the screen reads
+          // as dragged rather than held.
+          dx.value = Math.min(0, Math.max(e.translationX, -CANCEL_FULL));
+          dy.value = Math.min(0, Math.max(e.translationY, -LOCK_AT - 20));
+        })
+        .onEnd(() => {
+          const cancelled = dx.value <= -CANCEL_AT;
+          const locked = !cancelled && dy.value <= -LOCK_AT;
+          grow.value = springTo(1, spring.base);
+          dx.value = withTiming(0, timing.quick);
+          dy.value = withTiming(0, timing.quick);
+          if (cancelled) runOnJS(callDiscard)();
+          else if (locked) runOnJS(callLock)();
+          else runOnJS(callSend)();
+        })
+        // A cancelled gesture (a call arriving, the app backgrounding) must not
+        // leave the microphone open.
+        .onFinalize((_e, success) => {
+          if (!success) {
+            grow.value = springTo(1, spring.base);
+            dx.value = withTiming(0, timing.quick);
+            dy.value = withTiming(0, timing.quick);
+            runOnJS(callDiscard)();
+          }
+        }),
+    [dx, dy, grow, callBegin, callSend, callDiscard, callLock],
+  );
 
   /**
    * The disc itself — size, shape and colour included, rather than left to a
@@ -184,39 +232,63 @@ export function HoldToRecord({
    * was 2.5 × 14. Every number below is a Tailwind class converted at that rate.
    */
   const button = useAnimatedStyle(() => ({
-    height: 35,
-    width: 35,
-    borderRadius: 9999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: holding ? c.danger : c.brand,
     transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: grow.value }],
   }));
 
   /** The hint slides with the finger and fades as the cancel point nears. */
   const cancelHint = useAnimatedStyle(() => ({
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     opacity: interpolate(dx.value, [0, -CANCEL_AT], [1, 0.15], "clamp"),
     transform: [{ translateX: dx.value * 0.55 }],
   }));
 
   /** The lock target lifts and brightens as the finger comes up to meet it. */
   const lockHint = useAnimatedStyle(() => ({
+    opacity: interpolate(dy.value, [0, -LOCK_AT], [0.45, 1], "clamp"),
+    transform: [{ scale: interpolate(dy.value, [0, -LOCK_AT], [0.85, 1.1], "clamp") }],
+  }));
+
+  /**
+   * The appearance, on a plain view *inside* each animated one.
+   *
+   * These three used to carry their size, shape and colour in the animated
+   * style itself, because an animated style displaces anything beside it —
+   * a `className` on the same element is dropped, which is what once left the
+   * microphone as a white glyph on nothing.
+   *
+   * Nesting satisfies both rules at once, and it is the arrangement the tab
+   * bar's travelling pill already uses on this same device: the animated view
+   * carries nothing but `transform` and `opacity`, which the compositor can
+   * apply on its own, and a plain child carries the layout, which it cannot.
+   * Nothing is beside an animated style, so nothing is displaced.
+   *
+   * Why it matters here rather than being tidiness: touch-down springs `grow`
+   * before a single line of our JavaScript runs. With width, height and radius
+   * in that same style, every frame of that spring asked for a layout pass on a
+   * flex child of the composer row, driven from the UI thread. Now it asks for
+   * a transform on a view whose size never changes.
+   *
+   * 35, not 40: NativeWind's rem on native is 14, so the `h-10` these numbers
+   * replace was 2.5 × 14.
+   */
+  const disc = {
+    height: 35,
+    width: 35,
+    borderRadius: 9999,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    backgroundColor: holding ? c.danger : c.brand,
+  };
+  const lockTarget = {
     marginBottom: 7,
     height: 31.5,
     width: 31.5,
     borderRadius: 9999,
     borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
     backgroundColor: c.surface2,
     borderColor: c.border,
-    opacity: interpolate(dy.value, [0, -LOCK_AT], [0.45, 1], "clamp"),
-    transform: [{ scale: interpolate(dy.value, [0, -LOCK_AT], [0.85, 1.1], "clamp") }],
-  }));
+  };
 
   return (
     <>
@@ -245,7 +317,9 @@ export function HoldToRecord({
         >
           <View className="flex-1 flex-row items-end justify-end pb-1 pr-3">
             <Animated.View style={lockHint}>
-              <LockIcon size={16} color={c.textMuted} />
+              <View style={lockTarget}>
+                <LockIcon size={16} color={c.textMuted} />
+              </View>
             </Animated.View>
           </View>
 
@@ -260,18 +334,25 @@ export function HoldToRecord({
             <Text style={{ color: c.text }} className="ml-2.5 text-md font-semibold tabular-nums">
               {formatDuration(voice.seconds * 1000)}
             </Text>
-            <Animated.View style={cancelHint}>
-              <BackIcon size={14} color={c.textFaint} />
-              <Text style={{ color: c.textFaint }} className="ml-0.5 text-sm">
-                Slide to cancel
-              </Text>
-            </Animated.View>
+            {/* The flex lives on a plain parent so the animated view in the
+                middle carries only what the compositor can apply by itself. */}
+            <View className="flex-1 flex-row items-center justify-center">
+              <Animated.View style={cancelHint}>
+                <View className="flex-row items-center">
+                  <BackIcon size={14} color={c.textFaint} />
+                  <Text style={{ color: c.textFaint }} className="ml-0.5 text-sm">
+                    Slide to cancel
+                  </Text>
+                </View>
+              </Animated.View>
+            </View>
           </View>
         </View>
 
-      {/* A plain View between the detector and the styled one, the way
-          `SwipeToReply` does it. No className on the disc — `button` carries the
-          whole appearance, for the reason set out where it is defined. */}
+      {/* A plain View between the detector and the animated one, the way
+          `SwipeToReply` does it — and a second plain one inside carrying the
+          disc, so the animated view in between holds nothing but a transform.
+          See `disc` for why that split is load-bearing rather than tidy. */}
       <GestureDetector gesture={hold}>
         <View>
           <Animated.View
@@ -280,7 +361,9 @@ export function HoldToRecord({
             accessibilityLabel="Hold to record a voice message"
             accessibilityHint="Hold to record, release to send. Slide left to cancel, up to lock."
           >
-            <MicIcon size={19} color="#fff" />
+            <View style={disc}>
+              <MicIcon size={19} color="#fff" />
+            </View>
           </Animated.View>
         </View>
       </GestureDetector>
