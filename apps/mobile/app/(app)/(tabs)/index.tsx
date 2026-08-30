@@ -159,10 +159,27 @@ const Row = memo(function Row({
           <Text numberOfLines={1} className={`flex-1 text-md ${unread ? "text-fg" : "text-muted"}`}>
             {conv.preview || "No messages yet"}
           </Text>
-          {conv.unreadCount > 0 ? (
-            <View style={{ backgroundColor: c.brand }} className="min-w-[20px] items-center rounded-full px-1.5 py-0.5">
-              <Text className="text-2xs font-bold text-white">{conv.unreadCount}</Text>
-            </View>
+          {/* Two ways to be unread, and the web draws both. A count when there
+              is one to give, and a plain dot when the row is unread without a
+              number behind it — a thread you marked unread yourself, or one
+              whose messages arrived without a count.
+
+              Only the first was ever written here, so a row in the second state
+              was bold with nothing on the right to say why. `unread` was already
+              being computed for the name's weight; it just never reached this
+              line. 11pt and `brand`, matching `.conv .unread` on the web. */}
+          {unread ? (
+            conv.unreadCount > 0 ? (
+              <View style={{ backgroundColor: c.brand }} className="min-w-[20px] items-center rounded-full px-1.5 py-0.5">
+                <Text className="text-2xs font-bold text-white">{conv.unreadCount}</Text>
+              </View>
+            ) : (
+              <View
+                accessibilityLabel="Unread"
+                style={{ backgroundColor: c.brand, height: 11, width: 11 }}
+                className="rounded-full"
+              />
+            )
           ) : null}
         </View>
 

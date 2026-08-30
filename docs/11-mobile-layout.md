@@ -302,3 +302,62 @@ That also means **an Android elevation shadow and a real blur cannot coexist on
 one view**: the shadow is cast from the view's outline, the outline comes from
 its background, and any background is what the blur will render. Glass surfaces
 get a hairline ring instead, which is what draws the edge on real glass anyway.
+
+### The target has to arrive twice
+
+Wrapping the screens in a `BlurTargetView` and passing the ref is not enough,
+and this cost a whole extra round. From `BlurView.js`:
+
+```js
+componentDidMount() { this._updateBlurTargetId(); }
+componentDidUpdate(prev) {
+  if (prev.blurTarget?.current !== this.props.blurTarget?.current) { … }
+}
+```
+
+Two things defeat it together. React attaches refs bottom-up, so the `BlurView`
+— a descendant of the target — mounts and reads `.current` while the ancestor's
+ref is still `null`. And the update guard reads `.current` from
+`prevProps.blurTarget` and from `props.blurTarget`, which for a `useRef` is the
+*same object*: the two readings are always identical, so the guard can never
+fire and the id is never filled in afterwards.
+
+The prop's **identity** has to change once the target attaches. Gating it on
+state (`blurTarget={attached ? ref : undefined}`, with `attached` set from the
+target's `onLayout`) makes the transition `undefined` → ref, which the guard can
+see.
+
+Everything downstream of this was being tuned blind. Four separate passes at
+`intensity` and the wash — 44, 60, 84, 48 — were each chosen by looking at a bar
+that had no blur running at all, so each was really a guess about how white to
+make an opaque panel. Do not tune a glass surface until you can confirm the blur
+is on.
+
+## 9. Never gate a control's visibility on a measurement
+
+The tab bar's pill carried its position *and* its opacity on a handshake: every
+tab reported its frame through `onLayout` into a `slots` shared value, and a
+second shared value held the pill at `opacity: 0` until two frames had landed.
+Rendered through the native path, the pill came out with its full box, radius
+and background colour, and `opacity: 0`.
+
+It had never been visible on a device. The travelling pill this file is built
+around, the spring, the mid-flight stretch — none of it had ever been seen, and
+three rounds of feedback about the nav bar were partly about that.
+
+The tabs are `flex: 1` in a row whose width is known from
+`useWindowDimensions()`, so every centre is arithmetic:
+
+```
+rowW      = screenW − 2·INSET − 2·hairline
+slotW     = (rowW − 2·PAD_X) / tabCount
+centre(i) = PAD_X + slotW·(i + 0.5)
+```
+
+No shared value, no effect, no opacity gate — and note that the first attempt at
+this fix moved the wait into a `useEffect` instead of removing it, which
+`__tests__/tabbar.test.tsx` caught by still reporting `translateX: 0`. The
+values are captured straight into the worklet from the render scope, so they
+exist the moment it does. A single `onLayout` on the row remains as a
+*correction* if the computed width is ever wrong; it can no longer hide
+anything.

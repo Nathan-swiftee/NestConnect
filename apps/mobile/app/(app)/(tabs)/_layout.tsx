@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Tabs } from "expo-router";
 import { BlurTargetView } from "expo-blur";
 import type { View } from "react-native";
@@ -44,18 +44,40 @@ export default function TabsLayout() {
    * The bar sits inside this subtree, which is the library's intended
    * arrangement — the native view skips its own drawing while it captures, so
    * it cannot photograph itself.
+   *
+   * ## Why the ref is gated on `attached`
+   *
+   * Wrapping the screens and passing the ref was not enough, and the reason is
+   * in `BlurView.js`:
+   *
+   *     componentDidMount() { this._updateBlurTargetId(); }
+   *     componentDidUpdate(prev) {
+   *       if (prev.blurTarget?.current !== this.props.blurTarget?.current) …
+   *     }
+   *
+   * Two things defeat it together. React attaches refs bottom-up, so the
+   * BlurView — a descendant of this target — mounts and reads `.current` while
+   * this ref is still null. And the update guard compares `.current` on
+   * `prevProps.blurTarget` against `.current` on `props.blurTarget`, which for a
+   * `useRef` is the *same object*: the two readings are always identical, so the
+   * guard can never fire and the id is never filled in afterwards.
+   *
+   * Gating on state changes the prop's identity once — `undefined` to the ref —
+   * which is a difference the guard can actually see. `onLayout` fires after the
+   * ref is attached, so by the time the bar re-renders there is a node to find.
    */
   const blurTarget = useRef<View>(null);
+  const [attached, setAttached] = useState(false);
 
   return (
-    <BlurTargetView ref={blurTarget} style={{ flex: 1 }}>
+    <BlurTargetView ref={blurTarget} onLayout={() => setAttached(true)} style={{ flex: 1 }}>
     <Tabs
       // The bar is ours (`src/components/TabBar.tsx`), for the travelling pill.
       // With one supplied, the `tabBar*` styling options are dead — the stock
       // bar is what reads them — so they're gone from here rather than left
       // behind to look load-bearing. The one thing that still has to be set at
       // this level is `sceneStyle`, which belongs to the screens, not the bar.
-      tabBar={(props) => <TabBar {...props} blurTarget={blurTarget} />}
+      tabBar={(props) => <TabBar {...props} blurTarget={attached ? blurTarget : undefined} />}
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: c.bg },

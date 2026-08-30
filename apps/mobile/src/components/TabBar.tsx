@@ -1,5 +1,5 @@
-import { useEffect, type RefObject } from "react";
-import { Pressable, StyleSheet, View, type LayoutRectangle } from "react-native";
+import { useEffect, useState, type RefObject } from "react";
+import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { BlurView } from "expo-blur";
 import Animated, {
   interpolate,
@@ -10,7 +10,7 @@ import Animated, {
 import type { BottomTabBarProps } from "expo-router/build/react-navigation/bottom-tabs/types";
 import { haptics } from "../haptics";
 import { useInsets } from "../insets";
-import { fadeTo, spring, springTo, timing } from "../motion";
+import { spring, springTo } from "../motion";
 import { useTheme } from "../theme";
 
 /**
@@ -179,19 +179,38 @@ export function TabBar({
   // Where the pill is, in visible-tab units. Fractional while travelling, which
   // is what lets position, width and stretch all be read off one value.
   const progress = useSharedValue(Math.max(0, active));
-  // Each tab's measured frame, keyed by its position in `shown`. A shared value
-  // rather than state because the pill's style reads it on the UI thread every
-  // frame.
-  const slots = useSharedValue<Record<number, LayoutRectangle>>({});
-  // Suppressed until at least two tabs have reported their frames — otherwise
-  // the pill paints at x=0 on the first frame and visibly jumps into place.
-  const ready = useSharedValue(0);
 
+  /**
+   * Where each tab's centre is, computed rather than measured.
+   *
+   * This used to be a handshake: every tab reported its frame through
+   * `onLayout` into a `slots` shared value, and a second shared value held the
+   * pill at `opacity: 0` until at least two of them had arrived. Rendering the
+   * bar through the native path showed what that cost — the pill came out with
+   * its full box and colour and `opacity: 0`. Both its visibility *and* its
+   * position hung on a four-way measurement crossing the JS/UI thread boundary,
+   * and when that didn't complete the pill was invisible **and** parked at x=0.
+   * Which is also why the glide has never been seen: there was nothing to
+   * glide.
+   *
+   * None of it was necessary. The tabs are `flex: 1` in a row of known width,
+   * so every centre is arithmetic. `left: 0` on an absolute child resolves
+   * against the row's padding box — its outer edge — so the row's own
+   * `paddingHorizontal` has to be added back.
+   *
+   * `measured` is a correction, not a gate: the computed width is used from the
+   * first frame and only replaced if the row ever reports something different.
+   */
+  // The focused route isn't one of the tabs — reachable by deep link, e.g. an
+  // agent opening /insights directly. Nothing to point at.
+  const hidden = active < 0;
+  const { width: screenW } = useWindowDimensions();
+  const [measured, setMeasured] = useState(0);
+  const rowW = measured || screenW - INSET * 2 - StyleSheet.hairlineWidth * 2;
+  const count = Math.max(1, shown.length);
+  const slotW = (rowW - PAD_X * 2) / count;
   useEffect(() => {
-    if (active < 0) {
-      ready.value = fadeTo(0, timing.quick);
-      return;
-    }
+    if (active < 0) return;
     // `settle`, not `base`. The travel is the thing being looked at, and at
     // the default stiffness it was over in about 200ms — technically a glide,
     // in practice a cut. Softer covers the same distance in half again the
@@ -200,7 +219,7 @@ export function TabBar({
     // of flashing past. Still essentially critically damped (ζ ≈ 0.89), so it
     // arrives without a wobble.
     progress.value = springTo(active, spring.settle);
-  }, [active, progress, ready]);
+  }, [active, progress]);
 
   /**
    * The pill's fixed geometry, spread into the animated style below.
@@ -235,18 +254,20 @@ export function TabBar({
   };
 
   const pill = useAnimatedStyle(() => {
-    const i = progress.value;
-    const lo = Math.floor(i);
-    const hi = Math.ceil(i);
-    const a = slots.value[lo];
-    const b = slots.value[hi] ?? a;
-    // Still measuring. `BOX` is spread here too: an early return is a complete
-    // style like any other, and one without it would leave the pill unsized on
-    // the frames before the first layout lands.
-    if (!a || !b) return { ...BOX, opacity: 0 };
+    // Nothing to point at: the focused route isn't one of the tabs, reachable
+    // by deep link. This is the *only* thing that hides the pill now. An
+    // opacity that waited on anything — a measurement, an effect, a shared
+    // value being filled in — is what made it invisible before, and the first
+    // attempt at this fix moved that wait into a `useEffect` rather than
+    // removing it. `slotW` and `count` are plain values from the render scope,
+    // so the worklet has them the moment it exists.
+    if (hidden) return { ...BOX, opacity: 0 };
 
-    const t = i - lo;
-    const cx = a.x + a.width / 2 + (b.x + b.width / 2 - (a.x + a.width / 2)) * t;
+    const i = Math.min(Math.max(progress.value, 0), count - 1);
+    // Interpolating the index and then converting to a position, rather than
+    // interpolating between two positions: the tabs are evenly spaced, so the
+    // two are identical, and this needs no table to look anything up in.
+    const cx = PAD_X + slotW * (i + 0.5);
     // Distance from the nearest tab, 0 at rest and 0.5 mid-hop. Doubling it
     // makes the stretch peak at exactly the halfway point of any single hop —
     // and on a two-tab jump it peaks twice, passing through each tab it crosses,
@@ -255,7 +276,7 @@ export function TabBar({
 
     return {
       ...BOX,
-      opacity: ready.value,
+      opacity: 1,
       transform: [{ translateX: cx - PILL_W / 2 }, { scaleX: 1 + away * STRETCH }],
     };
   });
@@ -330,10 +351,12 @@ export function TabBar({
           // short of the reference, which is properly soft. 2 doubles the radius
           // without touching how much white the tint lays down.
           blurReductionFactor={2}
-          // Enough blur that a list scrolling under is unreadable, low enough
-          // that expo-blur's own tint — which scales with this — doesn't do the
-          // whitening the wash below was already blamed for.
-          intensity={scheme === "dark" ? 42 : 48}
+          // Tuned for the first time against a blur that is actually running.
+          // Every previous value here — 44, 60, 84, 48 — was chosen by looking
+          // at a bar that had no blur behind it at all, so each was really a
+          // guess about how white to make an opaque panel. 70 is a firmly
+          // frosted material rather than a tinted window.
+          intensity={scheme === "dark" ? 62 : 70}
           tint={scheme === "dark" ? "dark" : "light"}
           style={[
             StyleSheet.absoluteFill,
@@ -345,10 +368,13 @@ export function TabBar({
             so a dark photo scrolling past would drag the whole bar dark and
             take the labels with it; this holds the contrast steady.
 
-            It was 0.55, then 0.30, and both were treating a symptom: the bar
-            looked white because the blur was not running at all, and adding
-            white to explain that only made it worse. With a real blur behind
-            it this is doing its actual job, which needs very little. */}
+            It has been 0.55, 0.30 and 0.18, and none of those were really
+            decisions: the bar looked white because no blur was running, so
+            every value was compensating for the wrong thing — first by adding
+            white to a white panel, then by taking so much away that the bar
+            became a window you could read straight through. With the blur
+            running it does its own job, which is to keep a `textMuted` label
+            legible when something dark scrolls underneath. */}
         <View
           pointerEvents="none"
           style={[
@@ -356,11 +382,15 @@ export function TabBar({
             {
               borderRadius: CAPSULE_R,
               backgroundColor:
-                scheme === "dark" ? "rgba(21,21,20,0.20)" : "rgba(255,255,255,0.18)",
+                scheme === "dark" ? "rgba(21,21,20,0.32)" : "rgba(255,255,255,0.34)",
             },
           ]}
         />
         <View
+          // The one measurement left, and it corrects rather than gates: the
+          // pill is already drawn from the computed width by the time this
+          // arrives, and this only matters if the two ever disagree.
+          onLayout={(e) => setMeasured(e.nativeEvent.layout.width)}
           style={{
             flexDirection: "row",
             alignItems: "flex-start",
@@ -389,12 +419,6 @@ export function TabBar({
               focused={focused}
               icon={options.tabBarIcon}
               testID={options.tabBarButtonTestID ?? `tab-${route.name}`}
-              onLayout={(frame) => {
-                // Assigning a fresh object rather than mutating: a shared value
-                // only notifies the UI thread when it's reassigned.
-                slots.value = { ...slots.value, [index]: frame };
-                if (Object.keys(slots.value).length >= 2) ready.value = fadeTo(1, timing.quick);
-              }}
               onPress={() => {
                 const event = navigation.emit({
                   type: "tabPress",
@@ -441,7 +465,6 @@ function TabItem({
   testID,
   onPress,
   onLongPress,
-  onLayout,
 }: {
   label: string;
   focused: boolean;
@@ -449,7 +472,6 @@ function TabItem({
   testID?: string;
   onPress: () => void;
   onLongPress: () => void;
-  onLayout: (frame: LayoutRectangle) => void;
 }) {
   const { c } = useTheme();
   const on = useSharedValue(focused ? 1 : 0);
@@ -532,7 +554,6 @@ function TabItem({
       onPressOut={() => {
         press.value = springTo(1, spring.quick);
       }}
-      onLayout={(e) => onLayout(e.nativeEvent.layout)}
       testID={testID}
       accessibilityRole="tab"
       accessibilityState={{ selected: focused }}
