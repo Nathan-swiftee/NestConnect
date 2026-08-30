@@ -28,6 +28,7 @@
     },
     "android": {
       "package": "co.uk.swiftee.nestconnect",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#0FA47A"
       },

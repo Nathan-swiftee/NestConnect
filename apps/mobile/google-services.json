@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "186082168787",
+    "project_id": "nestconnect-d5489",
+    "storage_bucket": "nestconnect-d5489.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:186082168787:android:ac58af1d0a112c2f0d2926",
+        "android_client_info": {
+          "package_name": "co.uk.swiftee.nestconnect"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD3lH9-EEY_oo1TCx2ckgiCRaOfkU6ct0E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
