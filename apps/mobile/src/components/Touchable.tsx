@@ -1,7 +1,6 @@
 import { forwardRef } from "react";
 import { Pressable, type PressableProps, type View } from "react-native";
 import { haptics } from "../haptics";
-import { useTheme } from "../theme";
 
 /**
  * Everything in the app you can press.
@@ -32,19 +31,24 @@ import { useTheme } from "../theme";
  * before, and therefore styles exactly as they did before. What is added is the
  * part that needed no animation to be worth having:
  *
- *  - **A real Android ripple**, on every pressable rather than the one that had
- *    it. It is the platform's own answer to "was that press received", and its
- *    absence is something Android users notice without being able to name.
  *  - **Haptics**, by intent rather than intensity.
  *
  * ## What was taken back out
  *
- * `feel="row"` used to fade a full-bleed `surface2` panel in under the content
- * on press and take 220ms to fade it back out. Together with a bounded ripple
- * that drew a grey rectangle over every rounded shape (see `bounded` below),
- * that is what "every button has this grey background that gets activated for a
- * second — remove it, it's cheap" was about. Both are gone. `feel` now decides
- * only the ripple's shape.
+ * Every visual press treatment, in three passes, because each one was reported
+ * as cheap or annoying and each time the answer was to soften it rather than to
+ * remove it.
+ *
+ * First `feel="row"` faded a full-bleed `surface2` panel in under the content
+ * and took 220ms to fade out. Then the Android ripple was reshaped, because a
+ * bounded foreground ripple is clipped to a view's *rectangular* bounds rather
+ * than its rounded outline, so every round button flashed a grey rectangle with
+ * corners outside the shape being pressed. Then it was made fainter. Then it
+ * was reported again.
+ *
+ * So there is no press visual at all now — no ripple, no tint, no overlay. The
+ * haptic is the acknowledgement, and it is the one that does not put a colour
+ * over the thing being pressed.
  *
  * The press *scale* that `chip` and `slab` once carried is still not here. It
  * needs the whole button — background included — inside an animated element,
@@ -57,8 +61,14 @@ import { useTheme } from "../theme";
 export type PressFeel = "chip" | "slab" | "row" | "none";
 
 export type TouchableProps = PressableProps & {
-  /** What shape this is, which decides the ripple's bounds. `row` is the only
-   *  rectangular one; see `bounded`. */
+  /**
+   * **Inert.** It used to choose the ripple's bounds; there is no ripple now.
+   *
+   * Kept only because 86 call sites pass it, and editing 86 files to delete a
+   * prop that costs nothing is a worse trade than a comment saying so. If a
+   * press treatment ever comes back this is the seam it goes through — until
+   * then, passing it changes nothing.
+   */
   feel?: PressFeel;
   /**
    * What the press *means*, felt in the hardware. Omit for the many presses
@@ -67,7 +77,7 @@ export type TouchableProps = PressableProps & {
    * with the rest.
    */
   haptic?: "tap" | "select" | "success" | "warning" | "error";
-  /** Ripple without bounds — for a round icon button that has no background. */
+  /** **Inert**, for the same reason as `feel` — it chose the ripple's bounds. */
   borderless?: boolean;
   className?: string;
 };
@@ -76,37 +86,27 @@ export const Touchable = forwardRef<View, TouchableProps>(function Touchable(
   { feel = "chip", haptic, borderless, disabled, children, ...props },
   ref,
 ) {
-  const { scheme } = useTheme();
-
-  /**
-   * The ripple goes in the **foreground** unless the caller asked for a
-   * borderless one, and that is not a stylistic choice.
-   *
-   * `useAndroidRippleForView` sends a ripple to `nativeBackgroundAndroid`
-   * whenever `foreground` isn't true — and `nativeBackgroundAndroid` *replaces*
-   * the view's background drawable. Every `Touchable` carrying a
-   * `backgroundColor` loses it.
-   *
-   * That is what happened when this tried to fix a different problem: bounded
-   * foreground ripples are clipped to the view's rectangular bounds rather than
-   * its rounded outline, so round buttons flashed a grey rectangle. Sending
-   * them borderless instead did stop the rectangle — and silently erased the
-   * background of every chip in the app, which is how the emoji reaction pill
-   * lost its white and became two glyphs floating over their own shadow.
-   *
-   * So `borderless` stays what it always was: an explicit opt-in from a call
-   * site that knows it has no background to lose. The rectangle is addressed by
-   * the ripple being much fainter than it was, not by moving it.
-   */
-  const ripple = scheme === "dark" ? "rgba(255,255,255,0.07)" : "rgba(26,26,24,0.05)";
 
   return (
     <Pressable
       ref={ref}
       disabled={disabled}
-      android_ripple={
-        disabled ? undefined : { color: ripple, borderless: !!borderless, foreground: !borderless }
-      }
+      /**
+       * No `android_ripple`, and none of the tint that came before it.
+       *
+       * The grey wash Android draws on press was reported as cheap-looking
+       * twice and annoying once, and each time the answer was to make it
+       * fainter or reshape it rather than to take it out. It is out. What
+       * remains is the haptic below, which is the feedback people actually
+       * notice and the one that does not put a colour over the thing they are
+       * pressing.
+       *
+       * The prop is gone entirely rather than set to `undefined`, because
+       * `useAndroidRippleForView` routes a ripple to `nativeBackgroundAndroid`
+       * whenever `foreground` is not true, and that *replaces* the view's
+       * background drawable — which is how the emoji reaction pill silently
+       * lost its white. There is nothing here to get that wrong now.
+       */
       {...props}
       onPressIn={(e) => {
         if (!disabled && haptic) haptics[haptic]();

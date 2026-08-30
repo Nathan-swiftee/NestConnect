@@ -73,9 +73,16 @@ import { useTheme } from "../theme";
  * file takes the boring path.
  */
 
-/** The pill's box. Wide enough to sit under the icon with air around it. */
-const PILL_W = 54;
+/**
+ * The icon's box — the pill used to be this size too, which is why it sat
+ * behind the glyph with the label outside and below it, looking like it had
+ * slipped. The pill is derived from the destination it marks now; see `pillW`
+ * and `pillH`.
+ */
 const PILL_H = 30;
+
+/** Air either side of the pill inside its destination's slot. */
+const PILL_GUTTER = 5;
 
 /** Extra width, as a fraction, at the midpoint of a one-tab hop. */
 const STRETCH = 0.24;
@@ -245,6 +252,18 @@ export function TabBar({
   const rowW = measured || screenW - INSET * 2 - StyleSheet.hairlineWidth * 2;
   const count = Math.max(1, shown.length);
   const slotW = (rowW - PAD_X * 2) / count;
+  /**
+   * The pill's size, derived rather than fixed.
+   *
+   * It was 54 × 30 — the icon's box — so it sat behind the glyph with the label
+   * hanging outside it, which reads as a pill that has slipped rather than a
+   * destination that is selected. Taking the width from the slot means it is
+   * centred on its destination by construction (the same arithmetic places it),
+   * and taking the height from the icon box plus the label's line box means it
+   * covers the whole item with the capsule's own padding as its margin.
+   */
+  const pillW = Math.max(44, slotW - PILL_GUTTER * 2);
+  const pillH = PILL_H + LABEL_GAP + LABEL_LINE;
   useEffect(() => {
     if (active < 0) return;
     // `settle`, not `base`. The travel is the thing being looked at, and at
@@ -283,9 +302,9 @@ export function TabBar({
     position: "absolute" as const,
     top: PAD_Y,
     left: 0,
-    width: PILL_W,
-    height: PILL_H,
-    borderRadius: PILL_H / 2,
+    width: pillW,
+    height: pillH,
+    borderRadius: pillH / 2,
     // Neutral, as in the reference — but heavier than the palette's `surface2`,
     // which at 5% black on a white capsule was so close to invisible on a real
     // screen in daylight that the travel it exists to show read as nothing
@@ -312,7 +331,7 @@ export function TabBar({
 
     return {
       opacity: hidden ? 0 : 1,
-      transform: [{ translateX: cx - PILL_W / 2 }, { scaleX: 1 + away * STRETCH }],
+      transform: [{ translateX: cx - pillW / 2 }, { scaleX: 1 + away * STRETCH }],
     };
   });
 
@@ -421,7 +440,7 @@ export function TabBar({
             {
               borderRadius: CAPSULE_R,
               backgroundColor:
-                scheme === "dark" ? "rgba(21,21,20,0.32)" : "rgba(255,255,255,0.34)",
+                scheme === "dark" ? "rgba(21,21,20,0.24)" : "rgba(255,255,255,0.26)",
             },
           ]}
         />

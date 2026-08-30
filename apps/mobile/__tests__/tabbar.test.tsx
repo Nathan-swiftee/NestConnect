@@ -88,8 +88,12 @@ describe("the tab bar's selected-tab pill", () => {
     // pill was invisible.
     expect(animated.opacity).toBe(1);
     expect(box.backgroundColor).toBe("rgba(26,26,24,0.085)");
-    expect(box.width).toBe(54);
-    expect(box.height).toBe(30);
+    // Sized from the destination rather than fixed, so the assertion is that
+    // it is big enough to sit behind an icon *and* its label — the shape it
+    // had when it covered only the glyph is what "doesn't cover the tab with
+    // the text" was.
+    expect(box.width as number).toBeGreaterThan(60);
+    expect(box.height).toBe(42);
     expect(box.position).toBe("absolute");
   });
 
