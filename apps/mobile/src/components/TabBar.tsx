@@ -288,20 +288,39 @@ export function TabBar({
    * `transform` through one updater on every frame — layout properties, which
    * go through the shadow tree, mixed with compositor-only ones.
    *
-   * That combination had never run before: in the builds where it was present
-   * the pill was invisible, so the branch carrying the transform was never
-   * taken. The first build in which it actually executed is the first build
-   * that crashed on launch.
-   *
    * So they are separated by structure instead. The static view owns the box.
    * The animated view owns only `opacity` and `transform`, both of which the
    * compositor can apply without touching layout — which is also what makes the
    * travel cheap.
+   *
+   * ## Where this is measured from, and the offset that came out of the split
+   *
+   * `position: absolute` used to be on the animated view; splitting the box out
+   * moved it to the *inner* view, which left the animated one an ordinary flex
+   * child of the row. That is not a bug in itself — being in flow puts it at the
+   * row's content origin, first in the line and zero-sized, which is exactly the
+   * corner every tab is measured from. It is a *better* anchor than an absolute
+   * one, because flow can't disagree with itself about whether the parent's
+   * padding counts, and Yoga and CSS have not always agreed about that for
+   * absolute children.
+   *
+   * What it did break is that the origin was then counted twice: this box added
+   * `top: PAD_Y` on top of a view already sitting at `PAD_Y`, and the worklet
+   * added `PAD_X` on top of a view already sitting at `PAD_X`. The pill came out
+   * 6 to the right and 5 low — flush with the bottom of the capsule with a
+   * double gap above it, which is what "doesn't sit straight" was. So both
+   * offsets are gone from here and from `cx`; the anchor already carries them.
+   *
+   * `left` is minus half the width rather than zero so the box straddles the
+   * anchor point. A `scaleX` pivots on its view's centre, and the animated view
+   * is zero-wide — so its centre *is* the anchor. Centring the box on it means
+   * the mid-flight stretch grows evenly to both sides instead of pushing the
+   * pill along as it widens.
    */
   const box = {
     position: "absolute" as const,
-    top: PAD_Y,
-    left: 0,
+    top: 0,
+    left: -pillW / 2,
     width: pillW,
     height: pillH,
     borderRadius: pillH / 2,
@@ -322,16 +341,21 @@ export function TabBar({
     // Interpolating the index and then converting to a position, rather than
     // interpolating between two positions: the tabs are evenly spaced, so the
     // two are identical, and this needs no table to look anything up in.
-    const cx = PAD_X + slotW * (i + 0.5);
+    //
+    // Measured from the row's *content* origin, with no `PAD_X` added: the view
+    // this drives is a flex child sitting at that origin already. See `box`.
+    const cx = slotW * (i + 0.5);
     // Distance from the nearest tab, 0 at rest and 0.5 mid-hop. Doubling it
     // makes the stretch peak at exactly the halfway point of any single hop —
     // and on a two-tab jump it peaks twice, passing through each tab it crosses,
     // which is the right read: it's slowing over each one on its way past.
     const away = Math.abs(i - Math.round(i)) * 2;
 
+    // The box straddles the anchor, so this moves its *centre* onto the tab's
+    // centre — no half-width correction, and the scale below pivots there too.
     return {
       opacity: hidden ? 0 : 1,
-      transform: [{ translateX: cx - pillW / 2 }, { scaleX: 1 + away * STRETCH }],
+      transform: [{ translateX: cx }, { scaleX: 1 + away * STRETCH }],
     };
   });
 
@@ -456,11 +480,15 @@ export function TabBar({
             paddingVertical: PAD_Y,
           }}
         >
-        {/* Behind the items, not between them: a tap has to reach the tab, and
-            an absolutely-positioned sibling with no `pointerEvents` would sit in
-            front of the row and swallow every press near the middle. */}
         {/* Two views, on purpose: the animated one carries only opacity and a
-            transform, the plain one inside it carries the box. See `box`. */}
+            transform, the plain one inside it carries the box. See `box`.
+
+            The animated view is a zero-sized flex child, first in the row, so
+            flow parks it exactly on the row's content origin — the same corner
+            every tab's centre is measured from. It costs the layout nothing (an
+            absolute child contributes no size, and the four tabs are `flex: 1`
+            around it) and it is `pointerEvents="none"`, so the box it carries
+            draws behind the items without taking a press meant for one. */}
         <Animated.View pointerEvents="none" testID="tabbar-pill" style={pill}>
           <View style={box} />
         </Animated.View>

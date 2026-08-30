@@ -81,6 +81,10 @@ async function pill(activeIndex: number) {
   return { animated, box: child?.props?.style ?? {} };
 }
 
+/** The pill's travel, off the animated style. */
+const translateX = (s: Record<string, unknown>) =>
+  (s.transform as { translateX?: number }[])?.find((t) => "translateX" in t)?.translateX ?? 0;
+
 describe("the tab bar's selected-tab pill", () => {
   it("is visible on the very first render, with no measurement to wait for", async () => {
     const { animated, box } = await pill(0);
@@ -112,11 +116,58 @@ describe("the tab bar's selected-tab pill", () => {
   it("sits over a different tab depending on which is selected", async () => {
     const first = (await pill(0)).animated;
     const last = (await pill(2)).animated;
-    const x = (s: Record<string, unknown>) =>
-      (s.transform as { translateX?: number }[])?.find((t) => "translateX" in t)?.translateX ?? 0;
     // Both placed, and not in the same place — the pill travels rather than
     // sitting at x=0 for want of a frame that never arrived.
-    expect(x(first)).toBeGreaterThan(0);
-    expect(x(last)).toBeGreaterThan(x(first));
+    expect(translateX(first)).toBeGreaterThan(0);
+    expect(translateX(last)).toBeGreaterThan(translateX(first));
+  });
+
+  /**
+   * The assertion the old one was missing.
+   *
+   * "Sits over a different tab" is equally true of a pill that is over the right
+   * tab and one that is uniformly six points to the right of every tab, which is
+   * exactly what shipped: splitting the box out of the animated style left the
+   * animated view in flow at the row's content origin, and both the box's `top`
+   * and the worklet's `cx` went on adding that origin a second time. So this
+   * checks the pill is *centred on its slot*, which is the property that was
+   * actually broken.
+   *
+   * Everything here is arithmetic the component does from a known window width,
+   * so it can be recomputed rather than measured — and stepping it across every
+   * tab catches a constant offset, which comparing two tabs to each other cannot.
+   */
+  it("is centred on the tab it marks, at every tab", async () => {
+    // Mirrors the component: INSET 12 either side, one hairline of border per
+    // side, then PAD_X 6 of padding inside the capsule.
+    const { width } = jest.requireActual("react-native").Dimensions.get("window");
+    const { StyleSheet } = jest.requireActual("react-native");
+    const rowW = width - 12 * 2 - StyleSheet.hairlineWidth * 2;
+    const slotW = (rowW - 6 * 2) / TABS.length;
+
+    for (let i = 0; i < TABS.length; i++) {
+      const { animated, box } = await pill(i);
+      // The box straddles the anchor so the stretch pivots on the pill's middle,
+      // so its own centre is at `left + width / 2` ≈ 0 …
+      const boxCentre = (box.left as number) + (box.width as number) / 2;
+      expect(boxCentre).toBeCloseTo(0, 6);
+      // … and the transform is what puts that centre on the tab's centre.
+      expect(translateX(animated)).toBeCloseTo(slotW * (i + 0.5), 6);
+    }
+  });
+
+  /**
+   * The vertical half of the same fault, asserted separately because it had a
+   * separate symptom: the pill sat flush with the bottom of the capsule with
+   * twice the gap above it.
+   *
+   * The capsule's padding is the pill's margin, and the anchor already carries
+   * it — so the box starts at its parent's top, not at `PAD_Y` again.
+   */
+  it("starts at the top of the row's content, not a second padding down", async () => {
+    const { box } = await pill(0);
+    expect(box.top).toBe(0);
+    // 30 for the icon's box + 12 for the label's line box: the item, exactly.
+    expect(box.height).toBe(42);
   });
 });
