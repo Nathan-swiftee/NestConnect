@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Linking, Text, View } from "react-native";
+import { Linking, Text, useWindowDimensions, View } from "react-native";
 import { WebView } from "react-native-webview";
 import { haptics } from "../haptics";
 import { ChevronDown } from "../icons";
@@ -52,6 +52,30 @@ const COLLAPSED_MAX = 320;
  *  the thread rather than to one message inside it. */
 const MAX_HEIGHT = 2000;
 
+/* ── how wide the email gets, and why it has to be said out loud ──────────── */
+
+/**
+ * A `WebView` has no intrinsic width.
+ *
+ * That one fact is the whole bug. The bubble around it is `maxWidth: "94%"` —
+ * a *maximum*, so it shrinks to fit its contents — and a child that reports no
+ * width contributes nothing to shrink-to-fit. So the bubble collapsed to almost
+ * nothing and took the rest of the component with it: even the plain "Remote
+ * images shown" row wrapped one syllable per line, because it was inside a box
+ * a few points wide.
+ *
+ * The old text renderer never hit this because text has an intrinsic width. A
+ * WebView has to be told, so the chain from the screen edge is spelled out here
+ * rather than being a magic number:
+ *
+ *   the list's `contentContainerStyle: { padding: 12 }`   → −24
+ *   the bubble's own `maxWidth: "94%"`                    → ×0.94
+ *   the bubble's `px-3.5`, at NativeWind's native rem of 14 → −24.5
+ */
+const LIST_PADDING = 12 * 2;
+const BUBBLE_MAX = 0.94;
+const BUBBLE_PADDING = 12.25 * 2;
+
 /**
  * Report the document height, then keep reporting it as the layout settles.
  *
@@ -84,6 +108,10 @@ true;
 
 export function EmailHtml({ html }: { html: string }) {
   const { c, scheme } = useTheme();
+  const { width: screenW } = useWindowDimensions();
+  // See the note above the constants: computed, not measured, because measuring
+  // a box that has already collapsed just reports the collapse.
+  const width = Math.max(200, Math.round((screenW - LIST_PADDING) * BUBBLE_MAX - BUBBLE_PADDING));
   const [height, setHeight] = useState(120);
   const [expanded, setExpanded] = useState(false);
   // Shown by default, as on the web — an agent reading a customer's email is
@@ -124,7 +152,7 @@ export function EmailHtml({ html }: { html: string }) {
   }, [html, showImages]);
 
   return (
-    <View>
+    <View style={{ width }}>
       {hasBlocked ? (
         <Touchable
           feel="chip"
@@ -147,6 +175,7 @@ export function EmailHtml({ html }: { html: string }) {
 
       <View
         style={{
+          width,
           height: collapsed ? COLLAPSED_MAX : height,
           // The email's own page is white; rounding the container keeps it from
           // reading as a raw rectangle pasted into the bubble.
