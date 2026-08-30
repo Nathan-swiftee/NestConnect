@@ -7,12 +7,13 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
 import { ClientEvent, ServerEvent, FORWARD_MAX_TARGETS } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
 import { getSocket } from "../lib/socket";
 import { relativeTime, seenAt, lastActive, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg, groupMessagesByDay, speakerKey } from "../lib/format";
+import { hasOtherRecipients, replyAllRecipients } from "@ding/client";
 import { Avatar } from "./Avatar";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { unlock } from "../lib/sound";
@@ -45,6 +46,7 @@ import {
   AlertIcon,
   ReplyIcon,
   ForwardIcon,
+  ReplyAllIcon,
   ImageIcon,
   PlayIcon,
   PauseIcon,
@@ -854,6 +856,9 @@ interface MsgActions {
   onReact: (emoji: string) => void;
   /** Start a quoted reply to this message. */
   onReply: () => void;
+  /** Reply, copying everyone else on the original. Absent when there is nobody
+   *  else — two menu items that do the same thing is a decoy. */
+  onReplyAll?: () => void;
   /** Forward this email on to someone else (email messages only; absent otherwise). */
   onForward?: () => void;
   /** Open the read-receipts view for this sent email (email with recipients only). */
@@ -1233,6 +1238,12 @@ function MessageBubble({
                   <ReplyIcon />
                   <span>Reply</span>
                 </button>
+                {actions.onReplyAll && (
+                  <button type="button" className="msg__menuitem" role="menuitem" onClick={actions.onReplyAll}>
+                    <ReplyAllIcon />
+                    <span>Reply all</span>
+                  </button>
+                )}
                 {actions.onForward && (
                   <button type="button" className="msg__menuitem" role="menuitem" onClick={actions.onForward}>
                     <ForwardIcon />
@@ -2231,12 +2242,30 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
 
   // Start (or switch) a quoted reply to a message: force Reply mode and focus
   // the composer. Notes can't quote a customer message out to WhatsApp.
+  /** Our address on this inbox, so reply-all never copies the inbox into its
+   *  own thread. */
+  const inboxes = useInboxes();
+  const ourAddress = inboxes.data?.find((i) => i.id === conv.inboxId)?.handle;
+
   const startReply = (m: Message) => {
     setReplyTo(m);
     setReactFor(null);
     setMenuFor(null);
     setInternal(false);
     requestAnimationFrame(() => taRef.current?.focus());
+  };
+
+  /**
+   * Reply, copying everyone else who was on the original.
+   *
+   * Same send as Reply — the only difference is the Cc, which is why this is
+   * `startReply` plus two lines rather than a second path. The list comes from
+   * the shared `replyAllRecipients` so the phone copies exactly the same people.
+   */
+  const startReplyAll = (m: Message) => {
+    startReply(m);
+    setCc(replyAllRecipients(m, { exclude: [ourAddress] }).join(", "));
+    setShowCc(true);
   };
 
   // Open the forward modal for a message (which one depends on its channel).
@@ -3134,6 +3163,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     //
                     // Not offered on an internal note — that's the team talking to
                     // itself, and the server refuses it too.
+                    onReplyAll:
+                      !m.internal && hasOtherRecipients(m, { exclude: [ourAddress] })
+                        ? () => startReplyAll(m)
+                        : undefined,
                     onForward: m.internal ? undefined : () => startForward(m),
                     // Read receipts — only on a sent email that has tracked recipients.
                     onReceipts:

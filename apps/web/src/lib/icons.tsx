@@ -73,6 +73,7 @@ export const ChevronRight = g(icons.chevronRight);
 export const ChevronsLeftIcon = g(icons.chevronsLeft);
 export const SendIcon = g(icons.send);
 export const ReplyIcon = g(icons.reply);
+export const ReplyAllIcon = g(icons.replyAll);
 export const ForwardIcon = g(icons.forward);
 export const DownloadIcon = g(icons.download);
 export const RefreshIcon = g(icons.refresh);

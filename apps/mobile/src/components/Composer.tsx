@@ -95,11 +95,21 @@ export function Composer({
   conv,
   replyTo,
   onClearReply,
+  ccPrefill,
 }: {
   conv: ConversationWithMessages;
   /** The message this reply quotes, chosen by long-pressing a bubble. */
   replyTo?: Message | null;
   onClearReply?: () => void;
+  /**
+   * Addresses to copy, set by Reply all on an email.
+   *
+   * A *request* rather than a value: it seeds the Cc field and unfolds it, then
+   * the agent owns what's in there. Bound as a `{ at, addresses }` token rather
+   * than a bare array so pressing Reply all twice re-seeds — an array would be
+   * a new identity on every render and would fight the typing.
+   */
+  ccPrefill?: { at: number; addresses: string[] } | null;
 }) {
   const { c } = useTheme();
   const send = useSendMessage();
@@ -198,6 +208,15 @@ export function Composer({
   useEffect(() => {
     setSubject(conv.subject ?? "");
   }, [conv.id, conv.subject]);
+
+  // Reply all: seed the Cc and open the row so what's about to happen is
+  // visible before sending, not after. Keyed on the token's timestamp so a
+  // second Reply all re-seeds even if the addresses are identical.
+  useEffect(() => {
+    if (!ccPrefill) return;
+    setCc(ccPrefill.addresses.join(", "));
+    setShowCc(true);
+  }, [ccPrefill?.at]);
   const windowOpen = conv.waWindow?.open ?? false;
   const windowClosed = isWhatsApp && !windowOpen;
   const msLeft = conv.waWindow?.expiresAt ? new Date(conv.waWindow.expiresAt).getTime() - Date.now() : null;

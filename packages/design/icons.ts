@@ -116,6 +116,10 @@ export const icons = {
   chevronsLeft: { d: "m11 6.6-5.4 5.4 5.4 5.4M18 6.6 12.6 12l5.4 5.4" },
   send: { d: "M4.4 12h14.2M12.8 6.2 18.6 12l-5.8 5.8" },
   reply: { d: "M9 7.8 4.2 12 9 16.2M4.6 12h9.6a5.8 5.8 0 0 1 5.8 5.8v1.4" },
+  // Reply, with a second arrowhead behind it — the one difference every mail
+  // client draws, so it reads without a label. Same tail as `reply`, shifted
+  // right to make room, so the two sit together in a menu.
+  replyAll: { d: "M7.4 7.8 2.6 12l4.8 4.2M12.2 7.8 7.4 12l4.8 4.2M7.8 12h6.4a5.8 5.8 0 0 1 5.8 5.8v1.4" },
   /** Reply's mirror. The pair has to read as a pair. */
   forward: { d: "m15 7.8 4.8 4.2-4.8 4.2M19.4 12H9.8A5.8 5.8 0 0 0 4 17.8v1.4" },
   // Arrowhead as one polyline through the tip, so the vertex gets a real round

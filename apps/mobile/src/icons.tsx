@@ -93,6 +93,7 @@ export const ChevronDown = glyph(icons.chevronDown);
 export const ChevronRight = glyph(icons.chevronRight);
 export const SendIcon = glyph(icons.send);
 export const ReplyIcon = glyph(icons.reply);
+export const ReplyAllIcon = glyph(icons.replyAll);
 export const ForwardIcon = glyph(icons.forward);
 export const DownloadIcon = glyph(icons.download);
 export const ReopenIcon = glyph(icons.reopen);

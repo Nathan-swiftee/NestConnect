@@ -14,4 +14,5 @@ export * from "./config";
 export * from "./api";
 export * from "./socket";
 export * from "./format";
+export * from "./email";
 export * from "./hooks";

@@ -7,6 +7,7 @@ import {
 } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import {
+  buildForwardedEmail,
   clockTime,
   groupMessagesByDay,
   speakerKey,
@@ -20,6 +21,8 @@ import {
   useRealtime,
   useRetryMessage,
   useSession,
+  useInboxes,
+  useSendMessage,
   useSetStatus,
   useSnooze,
   useTeams,
@@ -35,6 +38,7 @@ import { LabelSheet } from "../../../src/components/LabelSheet";
 import { QueuedBubble } from "../../../src/components/QueuedBubble";
 import { MessageActions } from "../../../src/components/MessageActions";
 import { ForwardSheet } from "../../../src/components/ForwardSheet";
+import { EmailForwardSheet } from "../../../src/components/EmailForwardSheet";
 import { ReadLog, readSummary } from "../../../src/components/ReadLog";
 import { Reactions } from "../../../src/components/Reactions";
 import { SwipeToReply } from "../../../src/components/SwipeToReply";
@@ -140,6 +144,13 @@ export default function Thread() {
   const retry = useRetryMessage();
   const react = useReact();
   const forward = useForwardMessage();
+  /** Email forward goes through the ordinary send path with `forwardTo` set —
+   *  it is a new outbound email, not the WhatsApp "drop into another chat". */
+  const sendEmail = useSendMessage();
+  /** Our own address on this inbox, so reply-all never copies the inbox back
+   *  into itself — a support address answering its own email is a loop with a
+   *  customer watching. */
+  const inboxes = useInboxes();
   const queue = useSendQueue();
   const teams = useTeams();
   const toast = useToast();
@@ -155,6 +166,12 @@ export default function Thread() {
   const [readLog, setReadLog] = useState<Message | null>(null);
   // The message being forwarded on to other chats (drives the picker sheet).
   const [forwarding, setForwarding] = useState<Message | null>(null);
+  /** The same, for email — a different sheet, because it forwards to typed
+   *  addresses rather than to customers. See `EmailForwardSheet`. */
+  const [emailForwarding, setEmailForwarding] = useState<Message | null>(null);
+  /** Reply-all's request to the composer: seed the Cc with these and unfold it.
+   *  A token rather than an array so pressing it twice re-seeds. */
+  const [ccPrefill, setCcPrefill] = useState<{ at: number; addresses: string[] } | null>(null);
   const list = useRef<SectionList<Message, DaySection>>(null);
   const marked = useRef(false);
   /**
@@ -809,7 +826,12 @@ export default function Thread() {
           </Text>
         </View>
         ) : (
-          <Composer conv={data} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
+          <Composer
+            conv={data}
+            replyTo={replyTo}
+            onClearReply={() => setReplyTo(null)}
+            ccPrefill={ccPrefill}
+          />
         )}
         <BottomInset />
       </KeyboardAvoidingView>
@@ -831,15 +853,46 @@ export default function Thread() {
           react.mutate({ conversationId: data.id, messageId: acting!.id, emoji });
         }}
         onReply={() => setReplyTo(acting)}
-        onForward={() => setForwarding(acting)}
+        onReplyAll={(cc) => setCcPrefill({ at: Date.now(), addresses: cc })}
+        onForward={() => {
+          // Two different acts behind one word: a WhatsApp forward drops this
+          // into another customer's chat, an email forward sends it to typed
+          // addresses. The channel decides which sheet opens.
+          if ((acting?.channel ?? data.channel) === "email") setEmailForwarding(acting);
+          else setForwarding(acting);
+        }}
         onReceipts={() => setReadLog(acting)}
         onClose={() => setActing(null)}
+        selfAddresses={[inboxes.data?.find((i) => i.id === data.inboxId)?.handle]}
       />
       <ForwardSheet
         message={forwarding}
         busy={forward.isPending}
         onSubmit={submitForward}
         onClose={() => setForwarding(null)}
+      />
+      <EmailForwardSheet
+        message={emailForwarding}
+        busy={sendEmail.isPending}
+        onSubmit={(to, note) => {
+          const m = emailForwarding;
+          if (!m) return;
+          // Same body the web builds, from the same function — see
+          // `buildForwardedEmail`. `forwardTo` makes the server send it as a
+          // fresh "Fwd:" rather than as a reply to the customer.
+          sendEmail.mutate({
+            id: data.id,
+            body: note.trim(),
+            bodyHtml: buildForwardedEmail(m, {
+              note,
+              fallbackSubject: data.subject,
+              fromLabel: data.contact.displayName,
+            }),
+            forwardTo: to,
+          });
+          setEmailForwarding(null);
+        }}
+        onClose={() => setEmailForwarding(null)}
       />
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
       <LabelSheet conv={data} visible={sheet === "labels"} onClose={() => setSheet(null)} />

@@ -10,7 +10,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import type { ConversationWithMessages, Message } from "@ding/schemas";
-import { EyeIcon, ForwardIcon, ReplyIcon } from "../icons";
+import { replyAllRecipients } from "@ding/client";
+import { EyeIcon, ForwardIcon, ReplyAllIcon, ReplyIcon } from "../icons";
 import { fadeTo, spring, springTo, stagger, timing } from "../motion";
 import { elevation, useTheme, useThemeVars } from "../theme";
 import { readSummary } from "./ReadLog";
@@ -85,17 +86,24 @@ export function MessageActions({
   conv,
   onReact,
   onReply,
+  onReplyAll,
   onForward,
   onReceipts,
   onClose,
+  selfAddresses,
 }: {
   message: Message | null;
   conv: ConversationWithMessages;
   onReact: (emoji: string) => void;
   onReply: () => void;
+  /** Reply, copying everyone else who was on this email. Only offered when
+   *  there *is* somebody else — see `hasOtherRecipients`. */
+  onReplyAll: (cc: string[]) => void;
   onForward: () => void;
   onReceipts: () => void;
   onClose: () => void;
+  /** Our own addresses, so reply-all never copies the inbox back into itself. */
+  selfAddresses?: (string | null | undefined)[];
 }) {
   const insets = useInsets();
   const { c, scheme } = useTheme();
@@ -174,10 +182,24 @@ export function MessageActions({
   // Quoting threads on WhatsApp and nowhere else — an email "quote" is just
   // pasted text, which the composer already does.
   const canQuote = isWhatsApp && !shown.internal;
-  // Forwarding sends this content to another customer, so an internal note is
-  // never forwardable (the server refuses it too) and neither is an email —
-  // that forward is an addressed one, and it lives on the web.
-  const canForward = isWhatsApp && !shown.internal;
+  const isEmail = (shown.channel ?? conv.channel) === "email";
+  /**
+   * Forwarding sends this content somewhere else, so an internal note is never
+   * forwardable — the server refuses it too.
+   *
+   * Email used to be excluded here with the note that "that forward is an
+   * addressed one, and it lives on the web". It doesn't any more: an addressed
+   * forward is a sheet with a recipients field, which a phone can show as
+   * readily as a laptop, and being able to pass a customer's email to a
+   * colleague only from a desk is the sort of gap that sends people back to
+   * Gmail.
+   */
+  const canForward = (isWhatsApp || isEmail) && !shown.internal;
+  // Reply-all only when it differs from reply. Two rows that do the same thing
+  // is a menu with a decoy in it.
+  const replyAllCc = isEmail && !shown.internal
+    ? replyAllRecipients(shown, { exclude: selfAddresses })
+    : [];
   // Read receipts: only a sent email has tracked recipients to report on.
   const receipts = shown.direction === "out" && !shown.internal ? readSummary(shown) : null;
   // "by: user" is our side of the conversation — an agent's reaction, as opposed
@@ -289,8 +311,20 @@ export function MessageActions({
               {summarise(shown)}
             </Text>
 
-            {canQuote ? (
-              <Row icon={<ReplyIcon size={19} color={c.textMuted} />} label="Reply" onPress={() => { onReply(); onClose(); }} />
+            {canQuote || isEmail ? (
+              <Row
+                icon={<ReplyIcon size={19} color={c.textMuted} />}
+                label="Reply"
+                onPress={() => { onReply(); onClose(); }}
+              />
+            ) : null}
+            {replyAllCc.length ? (
+              <Row
+                icon={<ReplyAllIcon size={19} color={c.textMuted} />}
+                label="Reply all"
+                trailing={`+${replyAllCc.length}`}
+                onPress={() => { onReplyAll(replyAllCc); onClose(); }}
+              />
             ) : null}
             {canForward ? (
               <Row icon={<ForwardIcon size={19} color={c.textMuted} />} label="Forward" onPress={() => { onForward(); onClose(); }} />
