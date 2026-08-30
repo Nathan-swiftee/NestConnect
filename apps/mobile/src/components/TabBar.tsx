@@ -7,7 +7,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
 } from "react-native-reanimated";
-import type { BottomTabBarProps } from "expo-router/build/react-navigation/bottom-tabs/types";
+import { router, useSegments } from "expo-router";
 import { haptics } from "../haptics";
 import { useInsets } from "../insets";
 import { spring, springTo } from "../motion";
@@ -157,12 +157,24 @@ const CAPSULE_H = PAD_Y * 2 + PILL_H + LABEL_GAP + LABEL_LINE;
  */
 export const TAB_BAR_H = CAPSULE_H + 10;
 
+/** One destination. The layout owns the list, because the layout is also where
+ *  the matching `<Tabs.Screen>`s are declared and the two must not drift. */
+export type Tab = {
+  /** The route file's name — `index`, `customers`, … — and what a segment
+   *  matches against. */
+  name: string;
+  label: string;
+  /** Where a tap goes. Groups are invisible in the URL, so this is `/` or
+   *  `/customers`, not the on-disk path. */
+  href: string;
+  icon: (props: { focused: boolean; color: string; size: number }) => React.ReactNode;
+};
+
 export function TabBar({
-  state,
-  descriptors,
-  navigation,
+  tabs,
   blurTarget,
-}: BottomTabBarProps & {
+}: {
+  tabs: Tab[];
   /**
    * The subtree the glass is a picture of, from `(tabs)/_layout.tsx`.
    *
@@ -174,25 +186,31 @@ export function TabBar({
 }) {
   const { scheme } = useTheme();
   const insets = useInsets();
+  const segments = useSegments();
 
-  // Only the routes that actually appear, and their own dense numbering.
-  //
-  // The two differ, and the pill has to travel in the second. Not every route
-  // in the navigator's state is a tab: expo-router says which are withheld by
-  // stamping `tabBarItemStyle: { display: "none" }`, and it does that in two
-  // places — for `href: null` (how Insights is kept from agents) and for its
-  // own generated screens (`_sitemap`, `+not-found`), which would otherwise
-  // show up here as tabs named after their files.
-  //
-  // Numbering by the navigator's index instead would leave holes: with Insights
-  // withheld, a hop from Customers to Settings passes through an index that was
-  // never measured, and the pill blinks out halfway across.
-  const shown = state.routes.filter(
-    (route) => StyleSheet.flatten(descriptors[route.key].options.tabBarItemStyle)?.display !== "none",
-  );
-  // -1 while the focused route isn't a tab at all — reachable by deep link, e.g.
-  // an agent opening /insights directly. Nothing to point at, so nothing shows.
-  const active = shown.findIndex((route) => route.key === state.routes[state.index]?.key);
+  const shown = tabs;
+  /**
+   * Which destination is showing, read from the URL rather than handed down by
+   * the navigator.
+   *
+   * This bar used to be the navigator's `tabBar` render prop, which gave it
+   * `state`, `descriptors` and `navigation` for free. It cannot be any more:
+   * that prop renders the bar *inside* the navigator, and the navigator is
+   * inside the `BlurTargetView` the bar's own glass is a picture of. A blur
+   * view that is a descendant of the subtree it photographs is a loop, and it
+   * is the one structural mistake that survived every other change while the
+   * app crashed on launch. See `(tabs)/_layout.tsx`.
+   *
+   * So the bar sits outside the navigator now and works out the rest itself.
+   * The last segment is the route file's name — except on the index route,
+   * where the group is the last thing in the path and there is no file name to
+   * read.
+   */
+  const leaf = segments[segments.length - 1];
+  const current = !leaf || leaf.startsWith("(") ? "index" : leaf;
+  // -1 while the route showing isn't one of the tabs — reachable by deep link,
+  // e.g. an agent opening /insights directly. Nothing to point at.
+  const active = shown.findIndex((t) => t.name === current);
 
   // Where the pill is, in visible-tab units. Fractional while travelling, which
   // is what lets position, width and stretch all be read off one value.
@@ -428,40 +446,23 @@ export function TabBar({
           <View style={box} />
         </Animated.View>
 
-        {shown.map((route, index) => {
-          const { options } = descriptors[route.key];
-          const label =
-            typeof options.tabBarLabel === "string"
-              ? options.tabBarLabel
-              : options.title ?? route.name;
+        {shown.map((tab, index) => {
           const focused = index === active;
-
           return (
             <TabItem
-              key={route.key}
-              label={label}
+              key={tab.name}
+              label={tab.label}
               focused={focused}
-              icon={options.tabBarIcon}
-              testID={options.tabBarButtonTestID ?? `tab-${route.name}`}
+              icon={tab.icon}
+              testID={`tab-${tab.name}`}
               onPress={() => {
-                const event = navigation.emit({
-                  type: "tabPress",
-                  target: route.key,
-                  canPreventDefault: true,
-                });
-                if (event.defaultPrevented) return;
-                if (focused) {
-                  // Re-tapping the tab you're on is "go to the top of this
-                  // section", which the navigator handles. No pill to move and
-                  // no buzz — nothing navigated.
-                  navigation.navigate(route.name, route.params);
-                  return;
-                }
+                // Nothing to do, and nothing to feel, when you tap where you
+                // already are. The navigator used to turn this into "scroll to
+                // the top of this section" through its `tabPress` event; that
+                // event belongs to the render prop this bar no longer uses.
+                if (focused) return;
                 haptics.tap();
-                navigation.navigate(route.name, route.params);
-              }}
-              onLongPress={() => {
-                navigation.emit({ type: "tabLongPress", target: route.key });
+                router.navigate(tab.href);
               }}
             />
           );
@@ -488,14 +489,12 @@ function TabItem({
   icon,
   testID,
   onPress,
-  onLongPress,
 }: {
   label: string;
   focused: boolean;
   icon?: (props: { focused: boolean; color: string; size: number }) => React.ReactNode;
   testID?: string;
   onPress: () => void;
-  onLongPress: () => void;
 }) {
   const { c } = useTheme();
   const on = useSharedValue(focused ? 1 : 0);
@@ -571,7 +570,6 @@ function TabItem({
   return (
     <Pressable
       onPress={onPress}
-      onLongPress={onLongPress}
       onPressIn={() => {
         press.value = springTo(0.9, spring.quick);
       }}

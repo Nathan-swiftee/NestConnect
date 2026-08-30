@@ -25,33 +25,28 @@ jest.mock("react-native-safe-area-context", () => ({
   initialWindowMetrics: { insets: { top: 24, bottom: 16, left: 0, right: 0 } },
   SafeAreaProvider: ({ children }: { children: unknown }) => children,
 }));
+// The bar reads its own position from the URL now rather than being handed
+// navigator state, so the router has to answer.
+// `mock`-prefixed so jest's out-of-scope guard allows the factory to close
+// over it — the test needs to move the app between tabs between renders.
+const mockSegments: { at: string[] } = { at: ["(app)", "(tabs)"] };
+jest.mock("expo-router", () => ({
+  useSegments: () => mockSegments.at,
+  router: { navigate: () => {} },
+}));
 import { render } from "nativewind/dist/test";
 import "../src/animated";
 import { TabBar } from "../src/components/TabBar";
 
-const routes = [
-  { key: "index-1", name: "index", params: undefined },
-  { key: "customers-1", name: "customers", params: undefined },
-  { key: "settings-1", name: "settings", params: undefined },
+const TABS = [
+  { name: "index", label: "Inbox", href: "/", icon: () => null },
+  { name: "customers", label: "Customers", href: "/customers", icon: () => null },
+  { name: "settings", label: "Settings", href: "/settings", icon: () => null },
 ];
 
-/** The minimum a bottom-tab navigator hands its bar. */
-function props(activeIndex: number): React.ComponentProps<typeof TabBar> {
-  return {
-    state: {
-      index: activeIndex,
-      routes,
-      type: "tab",
-      key: "tab-1",
-      routeNames: routes.map((r) => r.name),
-      history: [],
-      stale: false,
-    },
-    descriptors: Object.fromEntries(
-      routes.map((r) => [r.key, { options: { title: r.name, tabBarIcon: () => null } }]),
-    ),
-    navigation: { emit: () => ({ defaultPrevented: false }), navigate: () => {} },
-  } as unknown as React.ComponentProps<typeof TabBar>;
+/** Put the app on one of the tabs, the way a URL would. */
+function at(index: number) {
+  mockSegments.at = index === 0 ? ["(app)", "(tabs)"] : ["(app)", "(tabs)", TABS[index].name];
 }
 
 /** Everything the element is styled by, flattened across both channels —
@@ -75,7 +70,8 @@ function styleOf(p: Record<string, unknown>) {
  * rather than flattened away.
  */
 async function pill(activeIndex: number) {
-  const r = await render(<TabBar {...props(activeIndex)} />, { config: { safelist: [] } });
+  at(activeIndex);
+  const r = await render(<TabBar tabs={TABS} />, { config: { safelist: [] } });
   const el = r.getByTestId("tabbar-pill");
   const animated = styleOf(el.props as Record<string, unknown>);
   const children = (el.props as { children?: unknown }).children;
