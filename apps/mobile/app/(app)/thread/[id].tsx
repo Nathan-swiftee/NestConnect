@@ -63,6 +63,8 @@ import { haptics } from "../../../src/haptics";
 import { enter } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
+import { useNow } from "../../../src/now";
+import { threadClocks } from "../../../src/clocks";
 import { Touchable } from "../../../src/components/Touchable";
 
 /** One day of the thread. `isLastDay` rides along because `renderItem` is told
@@ -885,6 +887,10 @@ function Header({
 }) {
   const { c } = useTheme();
   const ChannelGlyph = channelMeta(conv.channel).Glyph;
+  // One countdown on screen rather than forty, so this can afford the precise
+  // one. `slaCountdown` renders seconds, so it needs a second to tick on.
+  const { slaText, slaOver, statusText } = threadClocks(conv, useNow(1_000));
+
   return (
     <View
       style={{ borderBottomColor: c.border, backgroundColor: c.surface, paddingTop: insetTop }}
@@ -913,8 +919,18 @@ function Header({
             {conv.subject}
           </Text>
         ) : null}
+        {/* SLA first, because it's the only part of this line that expires. The
+            line truncates from the right, so what gets cut when the name is long
+            is the name — which you can also see two lines up — rather than the
+            countdown, which is nowhere else on this screen. */}
         <Text numberOfLines={1} className="text-2xs leading-snug text-faint">
-          {conv.status === "snoozed" ? "Snoozed · " : conv.status === "closed" ? "Resolved · " : ""}
+          {slaText ? (
+            <Text style={{ color: slaOver ? c.danger : c.amber }} className="font-semibold">
+              {slaText}
+              {" · "}
+            </Text>
+          ) : null}
+          {statusText}
           {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
         </Text>
       </View>

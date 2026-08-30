@@ -111,6 +111,8 @@ export const ProfileIcon = glyph(icons.profile);
 export const LockIcon = glyph(icons.lock);
 export const TagIcon = glyph(icons.tag);
 export const BellIcon = glyph(icons.bell);
+/** A mention. The geometry is the web's, so the two bells draw the same glyph. */
+export const AtIcon = glyph(icons.at);
 export const DetailsIcon = glyph(icons.details);
 
 /* ── the composer and the thread ─────────────────────────────────────────── */

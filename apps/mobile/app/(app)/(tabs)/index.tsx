@@ -33,7 +33,10 @@ import { PushGate, useDelayedPrompt } from "../../../src/components/PushGate";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { clearBadge, usePushRegistration } from "../../../src/push";
 import { haptics } from "../../../src/haptics";
-import { CheckCircleIcon, ChevronRight, EyeIcon, PlusIcon, ReopenIcon, SearchIcon } from "../../../src/icons";
+import { NotificationBell } from "../../../src/components/NotificationBell";
+import { rowClocks } from "../../../src/clocks";
+import { CheckCircleIcon, ChevronRight, EyeIcon, PlusIcon, ReopenIcon, SearchIcon, SnoozeIcon } from "../../../src/icons";
+import { useNow } from "../../../src/now";
 import { rowIn, spring, springTo } from "../../../src/motion";
 import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
@@ -86,6 +89,9 @@ const Row = memo(function Row({
   conv,
   teamName,
   mine,
+  slaText,
+  slaOver,
+  snoozeText,
   onPress,
   onToggleRead,
   onToggleClosed,
@@ -98,6 +104,13 @@ const Row = memo(function Row({
    *  the user id, so the memo isn't defeated by a prop only one row cares
    *  about changing. */
   mine: boolean;
+  /** Time left to first response, or "Overdue". Absent when the team has no SLA
+   *  or the conversation is closed. See {@link rowClocks} for why these arrive
+   *  as strings. */
+  slaText?: string;
+  slaOver?: boolean;
+  /** Time until a snoozed conversation comes back. */
+  snoozeText?: string;
   onPress: (id: string) => void;
   /** Swipe-right: read becomes unread and back. */
   onToggleRead: (conv: Conversation) => void;
@@ -106,7 +119,6 @@ const Row = memo(function Row({
 }) {
   const { c } = useTheme();
   const unread = conv.unreadCount > 0 || conv.unread;
-  const overdue = !!conv.slaDueAt && new Date(conv.slaDueAt).getTime() < Date.now() && conv.status !== "closed";
   const closed = conv.status === "closed";
   return (
     // Triage without opening anything. One action each way, because two per
@@ -212,8 +224,35 @@ const Row = memo(function Row({
               {teamName}
             </Text>
           ) : null}
-          {conv.status === "snoozed" ? <Text className="text-2xs text-faint">· Snoozed</Text> : null}
-          {overdue ? <Text style={{ color: c.danger }} className="text-2xs font-medium">Overdue</Text> : null}
+          {/* When it comes back. It used to read "· Snoozed" with no time on
+              it, which tells you the state you can already see from the row
+              being quiet and withholds the only part you'd act on. */}
+          {snoozeText ? (
+            <View className="flex-none flex-row items-center gap-1">
+              <SnoozeIcon size={11} color={c.textFaint} />
+              <Text className="text-2xs text-faint">{snoozeText}</Text>
+            </View>
+          ) : null}
+          {/* Time left to first response, and the row's only red.
+              Only the breached half of this was ever drawn — a conversation
+              inside its SLA showed nothing at all, so the countdown that decides
+              what to pick up next was invisible until it was already too late.
+              A dot rather than the word "SLA": the row already speaks in dots
+              (ownership, labels), and the word costs width the team name needs. */}
+          {slaText ? (
+            <View className="flex-none flex-row items-center gap-1">
+              <View
+                style={{ backgroundColor: slaOver ? c.danger : c.amber }}
+                className="h-1.5 w-1.5 flex-none rounded-full"
+              />
+              <Text
+                style={{ color: slaOver ? c.danger : c.amber }}
+                className="text-2xs font-medium"
+              >
+                {slaText}
+              </Text>
+            </View>
+          ) : null}
           {conv.labels?.slice(0, 2).map((l) => (
             <View key={l.id} style={{ backgroundColor: l.color }} className="h-1.5 w-1.5 rounded-full" />
           ))}
@@ -236,6 +275,11 @@ export default function Inbox() {
   // blocking on them.
   const search = useDeferredValue(query.trim());
   const searching = search.length > 0;
+
+  // Half a minute, matching the coarsest thing on screen: the rows read in
+  // whole minutes, so a faster tick would re-render the list to redraw the same
+  // characters. See `useNow` for why this stops when the app goes away.
+  const now = useNow(30_000);
 
   const session = useSession();
   const views = useViews();
@@ -390,7 +434,9 @@ export default function Inbox() {
       {/* The title IS the inbox switcher — tap it to change view, the way Front
           does and the way the web's sidebar works. The chevron is the only cue
           that says so, so it stays visible rather than appearing on press. */}
-      <View className="flex-row items-center justify-between px-4 pb-3 pt-3">
+      {/* `gap-2` because there are two round buttons on the right now, and
+          `justify-between` alone would sit them against each other. */}
+      <View className="flex-row items-center justify-between gap-2 px-4 pb-3 pt-3">
         <Touchable feel="chip"
           onPress={() => {
             haptics.select();
@@ -420,6 +466,13 @@ export default function Inbox() {
             </Text>
           </View>
         </Touchable>
+
+        {/* What happened while you were away: mentions, and snoozes come due.
+            Left of compose, and quiet — it reports, where the green button
+            acts, and the badge is the only part that should catch an eye. */}
+        <NotificationBell
+          onOpenConversation={(id) => router.push({ pathname: "/(app)/thread/[id]", params: { id } })}
+        />
 
         {/* Start one, rather than only ever answering one. Beside the title
             because that's where the inbox's own actions belong, and filled
@@ -503,11 +556,18 @@ export default function Inbox() {
         // fading rows — which reads as the list struggling to keep up rather
         // than as polish.
         renderItem={({ item, index }) => {
+          // Spread into primitives at the call site, never passed as the object
+          // it came in — see `rowClocks`. A row with no SLA and no snooze gets
+          // three `undefined`s every tick and its memo holds.
+          const { slaText, slaOver, snoozeText } = rowClocks(item, now);
           const row = (
             <Row
               conv={item}
               teamName={teamFor(item)}
               mine={!!myId && item.assigneeUserId === myId}
+              slaText={slaText}
+              slaOver={slaOver}
+              snoozeText={snoozeText}
               onPress={openThread}
               onToggleRead={onToggleRead}
               onToggleClosed={onToggleClosed}
