@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Text, View } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { useEffect, useRef, useState } from "react";
+import { Pressable, Text, View, type GestureResponderEvent } from "react-native";
 import Animated, {
   interpolate,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -45,8 +43,9 @@ const CANCEL_FULL = 120;
  *  - **Slide up** past `LOCK_AT`: the recording locks and carries on hands-free,
  *    handing over to the full panel with its pause, delete and send.
  *
- * The gesture runs on the UI thread; only the four decisions — start, send,
- * discard, lock — cross back to JS.
+ * The touch is handled by React Native's responder system rather than a
+ * gesture handler — see the handlers below for why, which is a debugging story
+ * rather than a preference.
  */
 export function HoldToRecord({
   voice,
@@ -78,14 +77,19 @@ export function HoldToRecord({
    * between this and the tap-to-record version that worked — the audio calls
    * themselves are identical, in the same order, with the same arguments; what
    * changed is that they ran from inside a live gesture rather than from a
-   * committed React effect.
+   * committed React effect. So the trigger stays a hold and the driving goes
+   * back to what worked: this flips a flag, and the effect below starts the
+   * recorder once React has committed.
    *
-   * So the trigger stays a hold and the driving goes back to what worked: this
-   * flips a flag, and the effect below starts the recorder once React has
-   * committed.
+   * The `await` before anything else is the point of the whole diagnostic and
+   * it was briefly lost. A fire-and-forget write makes "no `press` on disk"
+   * ambiguous — it could mean the press never arrived, or that it arrived and
+   * the app died in the two lines below before the write landed. Those want
+   * opposite investigations. Waiting first costs one small write and buys a
+   * reading that means exactly one thing.
    */
-  const begin = () => {
-    void mark("press");
+  const begin = async () => {
+    await mark("press");
     haptics.tap();
     setHolding(true);
   };
@@ -106,23 +110,6 @@ export function HoldToRecord({
     haptics.success();
     onLock();
   };
-
-  /**
-   * One stable handle onto the four decisions, so the gesture below never has
-   * to be rebuilt.
-   *
-   * `runOnJS` needs the same function object for the life of the gesture, and
-   * the four above are fresh closures on every render — they capture `voice`,
-   * which is a new object each time. A ref holds the current set and four
-   * stable wrappers read it, so the callbacks the gesture closes over never
-   * change while what they do is always current.
-   */
-  const latest = useRef({ begin, send, discard, lock });
-  latest.current = { begin, send, discard, lock };
-  const callBegin = useCallback(() => latest.current.begin(), []);
-  const callSend = useCallback(() => latest.current.send(), []);
-  const callDiscard = useCallback(() => latest.current.discard(), []);
-  const callLock = useCallback(() => latest.current.lock(), []);
 
   /**
    * Start recording, from a committed effect.
@@ -154,66 +141,75 @@ export function HoldToRecord({
   }, [holding]);
 
   /**
-   * Built once, never rebuilt.
+   * The hold, on React Native's own touch responder rather than a gesture
+   * handler.
    *
-   * This was a bare `Gesture.Pan()` in the render body, so every render handed
-   * `GestureDetector` a brand-new gesture object and the detector reconfigured
-   * its native handler to match. react-native-gesture-handler asks for stable
-   * gestures for exactly that reason, and this component breaks the rule at the
-   * worst possible moment: the first thing touch-down does is `setHolding(true)`,
-   * so a re-render — and a native handler swap — lands a millisecond into a pan
-   * that is still live. It then happens again on every tick of the recording
-   * clock, four times a second, for as long as the thumb is down.
+   * This is where the evidence led. The breadcrumb trail comes back reading
+   * `armed` and nothing else: the microphone mounted, and then the press
+   * produced no record of ever reaching JavaScript. Everything above this line
+   * — the permission call, the audio mode, prepare, record — is downstream of a
+   * step that never happens, which is why four readings of expo-audio found
+   * nothing wrong. They were readings of code that does not run.
    *
-   * That is also consistent with the one hard fact this bug has produced: the
-   * breadcrumb trail comes back empty. Something is ending the process on the
-   * native side before any JavaScript of ours gets to run, and a handler being
-   * torn down mid-touch is that shape of failure.
+   * What sits between a finger touching the screen and `runOnJS` delivering is
+   * a native gesture handler and a worklet. `Gesture.Pan().minDistance(0)`
+   * claims the touch on contact and, being the only gesture in the app whose
+   * `onBegin` changes React state, does so at the exact moment React is
+   * re-rendering the subtree it lives in. Making the gesture stable did not
+   * help. So rather than keep guessing at what it does down there, this stops
+   * using it.
    *
-   * `[]` is the correct dependency list, not a shortcut — everything the
-   * callbacks need is either a shared value or read through `latest`.
+   * `onPressIn` / `onPressOut` on a plain `Pressable` are the same
+   * press-and-release, delivered by the responder system that every button in
+   * the app already uses and that the tap-to-record microphone used when
+   * recording last worked. `onTouchMove` carries the slide. No worklet, no
+   * native handler, no thread hop: the callbacks are ordinary JavaScript, so if
+   * this still fails the trail will finally say where.
+   *
+   * `pressRetentionOffset` is what makes the slide survive. Without it the
+   * responder gives up as soon as the finger leaves the button and reports a
+   * release the moment you start sliding to cancel — which is the whole
+   * interaction.
    */
-  const hold = useMemo(
-    () =>
-      Gesture.Pan()
-        // Claimed on touch-down rather than after any travel: this is a hold,
-        // and the drag is what modifies it. `minDistance(0)` is what makes
-        // press-and-hold-then-slide one gesture instead of a press that loses
-        // its own drag.
-        .minDistance(0)
-        .onBegin(() => {
-          grow.value = springTo(1.35, spring.quick);
-          runOnJS(callBegin)();
-        })
-        .onUpdate((e) => {
-          // Leftward and upward only, and never past the point the hints stop
-          // moving — a control that follows the finger across the screen reads
-          // as dragged rather than held.
-          dx.value = Math.min(0, Math.max(e.translationX, -CANCEL_FULL));
-          dy.value = Math.min(0, Math.max(e.translationY, -LOCK_AT - 20));
-        })
-        .onEnd(() => {
-          const cancelled = dx.value <= -CANCEL_AT;
-          const locked = !cancelled && dy.value <= -LOCK_AT;
-          grow.value = springTo(1, spring.base);
-          dx.value = withTiming(0, timing.quick);
-          dy.value = withTiming(0, timing.quick);
-          if (cancelled) runOnJS(callDiscard)();
-          else if (locked) runOnJS(callLock)();
-          else runOnJS(callSend)();
-        })
-        // A cancelled gesture (a call arriving, the app backgrounding) must not
-        // leave the microphone open.
-        .onFinalize((_e, success) => {
-          if (!success) {
-            grow.value = springTo(1, spring.base);
-            dx.value = withTiming(0, timing.quick);
-            dy.value = withTiming(0, timing.quick);
-            runOnJS(callDiscard)();
-          }
-        }),
-    [dx, dy, grow, callBegin, callSend, callDiscard, callLock],
-  );
+  const origin = useRef({ x: 0, y: 0 });
+  const offset = useRef({ dx: 0, dy: 0 });
+  /** A release must be acted on once. `onPressOut` and `onTouchEnd` both fire,
+   *  and in either order. */
+  const done = useRef(true);
+
+  const onIn = (e: GestureResponderEvent) => {
+    origin.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
+    offset.current = { dx: 0, dy: 0 };
+    dx.value = 0;
+    dy.value = 0;
+    grow.value = springTo(1.35, spring.quick);
+    done.current = false;
+    void begin();
+  };
+
+  const onMove = (e: GestureResponderEvent) => {
+    if (done.current) return;
+    // Leftward and upward only, and never past the point the hints stop moving
+    // — a control that follows the finger across the screen reads as dragged
+    // rather than held.
+    const ndx = Math.min(0, Math.max(e.nativeEvent.pageX - origin.current.x, -CANCEL_FULL));
+    const ndy = Math.min(0, Math.max(e.nativeEvent.pageY - origin.current.y, -LOCK_AT - 20));
+    offset.current = { dx: ndx, dy: ndy };
+    dx.value = ndx;
+    dy.value = ndy;
+  };
+
+  const onOut = () => {
+    if (done.current) return;
+    done.current = true;
+    const { dx: fx, dy: fy } = offset.current;
+    grow.value = springTo(1, spring.base);
+    dx.value = withTiming(0, timing.quick);
+    dy.value = withTiming(0, timing.quick);
+    if (fx <= -CANCEL_AT) discard();
+    else if (fy <= -LOCK_AT) lock();
+    else send();
+  };
 
   /**
    * The disc itself — size, shape and colour included, rather than left to a
@@ -349,24 +345,30 @@ export function HoldToRecord({
           </View>
         </View>
 
-      {/* A plain View between the detector and the animated one, the way
-          `SwipeToReply` does it — and a second plain one inside carrying the
-          disc, so the animated view in between holds nothing but a transform.
-          See `disc` for why that split is load-bearing rather than tidy. */}
-      <GestureDetector gesture={hold}>
-        <View>
-          <Animated.View
-            style={button}
-            accessibilityRole="button"
-            accessibilityLabel="Hold to record a voice message"
-            accessibilityHint="Hold to record, release to send. Slide left to cancel, up to lock."
-          >
-            <View style={disc}>
-              <MicIcon size={19} color="#fff" />
-            </View>
-          </Animated.View>
-        </View>
-      </GestureDetector>
+      {/* The animated view carries nothing but a transform, and a plain one
+          inside it carries the disc. See `disc` for why that split is
+          load-bearing rather than tidy. */}
+      <Pressable
+        onPressIn={onIn}
+        onPressOut={onOut}
+        onTouchMove={onMove}
+        onTouchEnd={onOut}
+        onTouchCancel={onOut}
+        // Generous, because the interaction *is* leaving the button: slide left
+        // to cancel, up to lock. Without this the responder reports a release
+        // the moment the finger travels, and every slide sends instead.
+        pressRetentionOffset={{ top: 240, bottom: 240, left: 240, right: 240 }}
+        hitSlop={6}
+        accessibilityRole="button"
+        accessibilityLabel="Hold to record a voice message"
+        accessibilityHint="Hold to record, release to send. Slide left to cancel, up to lock."
+      >
+        <Animated.View style={button}>
+          <View style={disc}>
+            <MicIcon size={19} color="#fff" />
+          </View>
+        </Animated.View>
+      </Pressable>
     </>
   );
 }
