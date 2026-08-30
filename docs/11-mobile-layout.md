@@ -363,30 +363,43 @@ exist the moment it does. A single `onLayout` on the row remains as a
 anything.
 
 
-### It crashed anyway, and the blur is gone
+## 10. Reanimated: layout properties and transforms are not the same job
 
-The `blurTarget` fix above is correct — it is what makes the blur run at all —
-and it is also what took the app down. The build that first registered the
-target crashed on launch, every time, before first paint.
+The tab bar's pill crashed the app on launch for two builds, and the blur took
+the blame for both because it was the native-looking change sitting next to it.
+It was not a clean A/B: the blur and a rewritten pill shipped **together** in
+both crashing builds, and neither had ever shipped without the other.
 
-The first theory was the blur radius. `intensity / blurReductionFactor` had been
-set to 70/2 = 35, and `ScriptIntrinsicBlur.setRadius` accepts `0 < r <= 25` and
-throws above it; the value had been harmless only because no blur was running to
-apply it. That was a real mistake and worth fixing, **but it was not the crash**:
-the next build put the factor back to 4, moved to `dimezisBlurViewSdk31Plus` so
-Android 12+ uses `RenderEffect` (which has no radius ceiling at all), and it
-crashed identically.
+What was new was not the blur running. It was this, in one animated style:
 
-So the blur is out of `TabBar.tsx` entirely, and `BlurTargetView` with it. Three
-builds, one clean A/B: with the blur wired up the app does not start, without it
-the app is fine. A navigation bar is not worth an app that will not open.
+```js
+useAnimatedStyle(() => ({
+  position: "absolute", top, left, width, height, borderRadius, backgroundColor,
+  opacity: 1,
+  transform: [{ translateX: … }, { scaleX: … }],
+}))
+```
 
-**Do not reach for `expo-blur` here again without a crash log first.** Everything
-above this line is knowledge worth keeping — the target requirement, the
-identity-comparison bug in `componentDidUpdate`, the fact that a blur
-photographs what is behind it rather than covering it. None of it identified the
-actual fault, because a native crash cannot be diagnosed from the JavaScript
-side. The app already carries Sentry (`src/telemetry.ts`); it only initialises
-when `EXPO_PUBLIC_SENTRY_DSN` is set at build time, so setting that in the EAS
-profile is the cheapest way to turn the next native crash into a stack trace
-instead of another round of guessing.
+Layout properties go through the shadow tree and force a re-layout; `opacity`
+and `transform` are compositor-only. Driving both from one updater sixty times a
+second is a different operation from driving either alone.
+
+That combination had been sitting in the file for a build already **without ever
+executing** — the pill's opacity was gated on a measurement that never
+completed, so the branch carrying the transform was never taken. The first build
+in which it actually ran is the first build that crashed, which is exactly the
+signature of a fault that has been present but dormant.
+
+The fix is structural, and it is the right shape regardless of whether it turns
+out to be the crash: **a plain `View` owns the box, and an `Animated.View`
+around it owns only `opacity` and `transform`.** Nothing in the animated style
+touches layout, so the travel costs the compositor and nothing else.
+
+`__tests__/tabbar.test.tsx` asserts the separation directly — no `width`,
+`height`, `position`, `top`, `left` or `borderRadius` may appear in the pill's
+animated style.
+
+One thing this episode is worth remembering for: the app has had a root
+`ErrorBoundary` showing `error.message` since long before any of this. A crash
+that shows *nothing* has therefore already told you something — it is native,
+not a JavaScript throw, and no amount of reading the TypeScript will find it.

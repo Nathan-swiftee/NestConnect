@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { BlurView } from "expo-blur";
 import Animated, {
   interpolate,
   interpolateColor,
@@ -10,7 +11,7 @@ import type { BottomTabBarProps } from "expo-router/build/react-navigation/botto
 import { haptics } from "../haptics";
 import { useInsets } from "../insets";
 import { spring, springTo } from "../motion";
-import { elevation, useTheme } from "../theme";
+import { useTheme } from "../theme";
 
 /**
  * The bottom navigation: a floating capsule with a pill that travels.
@@ -22,10 +23,9 @@ import { elevation, useTheme } from "../theme";
  *  1. **It floats.** The bar is a rounded capsule inset from the screen edges,
  *     not a slab welded to the bottom with a hairline on top. A capsule reads
  *     as a control you operate; a slab reads as the edge of the window. What
- *     separates it from the page is a hairline ring and a shadow. It is not
- *     glass: three builds went into making Android's blur run and the one that
- *     succeeded crashed the app on launch, so the blur is gone. See the capsule
- *     for the whole account.
+ *     separates it from the page is a hairline ring and the blur behind it —
+ *     not a drop shadow, which cannot coexist with real glass; see the capsule
+ *     itself for why.
  *  2. **The selection is behind the icon, not the whole item.** A neutral pill
  *     sits under the glyph and the label stays outside it, which keeps the
  *     label legible and stops the selection from looking like a button.
@@ -113,6 +113,24 @@ const LABEL_LINE = 12;
 const LABEL_GAP = 0;
 
 /**
+ * What the blur radius is divided by on Android, and why it is the library's
+ * default rather than a number of ours.
+ *
+ * The radius reaching the native blur is `intensity / blurReductionFactor`, and
+ * on the RenderScript path `ScriptIntrinsicBlur.setRadius` accepts `0 < r <= 25`
+ * and throws otherwise. This was set to 2 to get a softer blur — which was
+ * harmless for exactly as long as the blur was not running, because the target
+ * had never been registered and the native view had quietly fallen back to
+ * `NONE`. The build that finally wired the target up therefore ran the radius
+ * for the first time, at 70 / 2 = 35, and the app crashed on launch.
+ *
+ * At 4, the largest radius this can ever produce is 100 / 4 = 25 — the cap
+ * exactly. Softness comes from `blurMethod` and the wash instead, neither of
+ * which can throw.
+ */
+const BLUR_REDUCTION = 4;
+
+/**
  * The capsule's corner.
  *
  * Past half the capsule's height, so both platforms clamp it to a fully round
@@ -143,8 +161,18 @@ export function TabBar({
   state,
   descriptors,
   navigation,
-}: BottomTabBarProps) {
-  const { c, scheme } = useTheme();
+  blurTarget,
+}: BottomTabBarProps & {
+  /**
+   * The subtree the glass is a picture of, from `(tabs)/_layout.tsx`.
+   *
+   * Android's blur is not ambient: it captures a nominated view and, given
+   * none, `ExpoBlurView` sets its method to `NONE` without saying so. Optional
+   * only because iOS ignores it entirely.
+   */
+  blurTarget?: RefObject<View | null>;
+}) {
+  const { scheme } = useTheme();
   const insets = useInsets();
 
   // Only the routes that actually appear, and their own dense numbering.
@@ -212,23 +240,28 @@ export function TabBar({
   }, [active, progress]);
 
   /**
-   * The pill's fixed geometry, spread into the animated style below.
+   * The pill's box — a plain style on a plain view, and deliberately **not**
+   * part of the animated style.
    *
-   * It reads as a static style and it used to be written as one, in an array
-   * beside `pill` — which is the shape that never arrives. The pill therefore
-   * had no width, no height, no radius and, most visibly, no background: the
-   * selected tab has been unmarked on the device this whole time. The travel
-   * animation was running perfectly on something invisible.
+   * This is the shape the file arrived at the hard way. First the box sat in a
+   * static object beside the animated one, where the NativeWind interop
+   * discarded it and the pill had no size or colour at all. Then it was folded
+   * *into* the animated style, which fixed the appearance and meant Reanimated
+   * was driving `width`, `height`, `position`, `top`, `borderRadius` and a
+   * `transform` through one updater on every frame — layout properties, which
+   * go through the shadow tree, mixed with compositor-only ones.
    *
-   * The old note here argued that a constant `width` belongs in a static style
-   * so Android isn't asked to lay the pill out sixty times a second. The
-   * concern was reasonable and the conclusion was wrong, because there is no
-   * static style to put it in. It costs nothing in practice: these values never
-   * change, so the shadow-tree diff sees the same numbers every frame and
-   * nothing is re-laid out. Only `translateX` and `scaleX` actually move, and
-   * both are compositor-only.
+   * That combination had never run before: in the builds where it was present
+   * the pill was invisible, so the branch carrying the transform was never
+   * taken. The first build in which it actually executed is the first build
+   * that crashed on launch.
+   *
+   * So they are separated by structure instead. The static view owns the box.
+   * The animated view owns only `opacity` and `transform`, both of which the
+   * compositor can apply without touching layout — which is also what makes the
+   * travel cheap.
    */
-  const BOX = {
+  const box = {
     position: "absolute" as const,
     top: PAD_Y,
     left: 0,
@@ -238,22 +271,17 @@ export function TabBar({
     // Neutral, as in the reference — but heavier than the palette's `surface2`,
     // which at 5% black on a white capsule was so close to invisible on a real
     // screen in daylight that the travel it exists to show read as nothing
-    // moving at all. This is the one value in the file tuned to the surface it
-    // sits on rather than taken from the tokens, for the same reason PILL_W is.
+    // moving at all.
     backgroundColor: scheme === "dark" ? "rgba(255,255,255,0.13)" : "rgba(26,26,24,0.085)",
   };
 
+  /** Opacity and transform only. Nothing here changes the layout. */
   const pill = useAnimatedStyle(() => {
     // Nothing to point at: the focused route isn't one of the tabs, reachable
-    // by deep link. This is the *only* thing that hides the pill now. An
-    // opacity that waited on anything — a measurement, an effect, a shared
-    // value being filled in — is what made it invisible before, and the first
-    // attempt at this fix moved that wait into a `useEffect` rather than
-    // removing it. `slotW` and `count` are plain values from the render scope,
-    // so the worklet has them the moment it exists.
-    if (hidden) return { ...BOX, opacity: 0 };
-
-    const i = Math.min(Math.max(progress.value, 0), count - 1);
+    // by deep link. The shape of what is returned never changes — only the
+    // numbers — because a `useAnimatedStyle` whose property set varies between
+    // calls is a documented way to confuse the updater.
+    const i = hidden ? 0 : Math.min(Math.max(progress.value, 0), count - 1);
     // Interpolating the index and then converting to a position, rather than
     // interpolating between two positions: the tabs are evenly spaced, so the
     // two are identical, and this needs no table to look anything up in.
@@ -265,8 +293,7 @@ export function TabBar({
     const away = Math.abs(i - Math.round(i)) * 2;
 
     return {
-      ...BOX,
-      opacity: 1,
+      opacity: hidden ? 0 : 1,
       transform: [{ translateX: cx - PILL_W / 2 }, { scaleX: 1 + away * STRETCH }],
     };
   });
@@ -301,46 +328,85 @@ export function TabBar({
       testID="tabbar"
       accessibilityRole="tablist"
     >
-      {/* No blur, and no `expo-blur` anywhere in this file.
+      {/* Nothing opaque anywhere in here, and that is the whole trick.
 
-          Three builds went into making Android's blur actually run, and the
-          build that finally succeeded crashed the app on launch. Reducing the
-          radius did not help, so whatever the native fault is, it is not the
-          one thing I could identify from the source — and the honest position
-          is that I cannot debug a native crash on a device I do not have.
+          The capsule used to carry `backgroundColor: c.surface` — solid white —
+          on the theory that Android needs a colour under an elevation or it
+          draws no shadow, and that the blur would cover it anyway. A blur does
+          not cover what is behind it; it is a *photograph* of it. So the glass
+          was a photograph of a white rectangle, and no amount of tuning
+          intensity or tint was ever going to make that look like glass.
 
-          What is certain is the A/B, which is now three builds wide: with the
-          blur wired up the app does not start, and without it the app is fine.
-          A navigation bar is not worth an app that will not open, so it is out
-          entirely rather than left in behind a flag someone might flip.
-
-          What replaces it is an honest solid. Not a translucent panel — with
-          nothing blurring behind it, a see-through bar over a scrolling list
-          means you read the list *through* the bar, which is worse than either
-          a blur or an opaque surface. `elevated` with a hairline ring reads as
-          a card floating over the page, which is what the capsule shape was
-          always saying anyway.
-
-          docs/11-mobile-layout.md §8 keeps the two real findings from those
-          three builds, because both are true and both cost days: the blur needs
-          a nominated `blurTarget` on Android, and a blur photographs whatever
-          is behind it rather than covering it. Anyone reaching for glass here
-          again should read that first, and should get a crash log off a device
-          before writing any code. */}
+          The elevation went with it, because the two cannot coexist: an Android
+          shadow is cast from the view's outline, an outline comes from its
+          background, and any background here is the thing the blur will show
+          you instead of your inbox. The hairline ring does the separating now,
+          which is what draws the edge on a real glass panel anyway. */}
       <View
         testID="tabbar-capsule"
         style={{
           borderRadius: CAPSULE_R,
-          backgroundColor: c.elevated,
+          // Carrying the whole job of separating the capsule from the page now,
+          // so it is a touch stronger than when it was helping a shadow.
           borderWidth: StyleSheet.hairlineWidth,
-          borderColor: scheme === "dark" ? "rgba(255,255,255,0.14)" : "rgba(26,26,24,0.10)",
-          // The shadow can come back now: it was dropped because an Android
-          // elevation needs an opaque background to cast from, and an opaque
-          // background was the one thing the blur could not have behind it.
-          // With no blur there is nothing to protect.
-          ...elevation.bar,
+          borderColor: scheme === "dark" ? "rgba(255,255,255,0.14)" : "rgba(26,26,24,0.12)",
         }}
       >
+        <BlurView
+          // Frosted, not merely see-through. Without a blur a translucent bar
+          // over a moving list is worse than an opaque one — you read the text
+          // sliding through it. The blur is what turns "you can see there is
+          // content down there" into "you can't read it", which is the whole
+          // point of the material.
+          //
+          // `Sdk31Plus`, not plain `dimezisBlurView`. The plain method uses
+          // RenderScript on every Android version, and `ScriptIntrinsicBlur`
+          // throws outright above a radius of 25 — see `BLUR_REDUCTION`. On
+          // Android 12 and up this uses `RenderEffect` instead, which has no
+          // such ceiling and is the path Android itself is moving to;
+          // RenderScript has been deprecated since 12 and dropped from the
+          // modern NDK. Below 12 it degrades to no blur, which is a worse bar
+          // but a bar that exists.
+          blurMethod="dimezisBlurViewSdk31Plus"
+          // The subtree to photograph. Android has no ambient blur: without
+          // this the native view sets its method to `NONE` and renders a plain
+          // panel, silently. See `(tabs)/_layout.tsx`.
+          blurTarget={blurTarget}
+          blurReductionFactor={BLUR_REDUCTION}
+          // Kept so that `intensity / BLUR_REDUCTION` stays well inside 25 on
+          // any path. Every earlier value here — 44, 60, 84, 48, 70 — was
+          // chosen by looking at a bar that had no blur running behind it, so
+          // each was really a guess about how white to make an opaque panel.
+          intensity={scheme === "dark" ? 52 : 60}
+          tint={scheme === "dark" ? "dark" : "light"}
+          style={[
+            StyleSheet.absoluteFill,
+            { borderRadius: CAPSULE_R, overflow: "hidden" },
+          ]}
+        />
+        {/* A wash over the blur — over, so it is never photographed by it.
+            Blur alone takes its value from whatever happens to be underneath,
+            so a dark photo scrolling past would drag the whole bar dark and
+            take the labels with it; this holds the contrast steady.
+
+            It has been 0.55, 0.30 and 0.18, and none of those were really
+            decisions: the bar looked white because no blur was running, so
+            every value was compensating for the wrong thing — first by adding
+            white to a white panel, then by taking so much away that the bar
+            became a window you could read straight through. With the blur
+            running it does its own job, which is to keep a `textMuted` label
+            legible when something dark scrolls underneath. */}
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: CAPSULE_R,
+              backgroundColor:
+                scheme === "dark" ? "rgba(21,21,20,0.32)" : "rgba(255,255,255,0.34)",
+            },
+          ]}
+        />
         <View
           // The one measurement left, and it corrects rather than gates: the
           // pill is already drawn from the computed width by the time this
@@ -356,8 +422,11 @@ export function TabBar({
         {/* Behind the items, not between them: a tap has to reach the tab, and
             an absolutely-positioned sibling with no `pointerEvents` would sit in
             front of the row and swallow every press near the middle. */}
-        {/* `pill` and nothing else — it carries BOX; see where it is built. */}
-        <Animated.View pointerEvents="none" testID="tabbar-pill" style={pill} />
+        {/* Two views, on purpose: the animated one carries only opacity and a
+            transform, the plain one inside it carries the box. See `box`. */}
+        <Animated.View pointerEvents="none" testID="tabbar-pill" style={pill}>
+          <View style={box} />
+        </Animated.View>
 
         {shown.map((route, index) => {
           const { options } = descriptors[route.key];

@@ -68,26 +68,50 @@ function styleOf(p: Record<string, unknown>) {
   return out;
 }
 
+/**
+ * The pill is two views now — an animated one carrying opacity and transform,
+ * and a plain child carrying the box — so this reads both. Keeping layout
+ * properties out of the animated style is the point, so the split is asserted
+ * rather than flattened away.
+ */
 async function pill(activeIndex: number) {
   const r = await render(<TabBar {...props(activeIndex)} />, { config: { safelist: [] } });
-  return styleOf(r.getByTestId("tabbar-pill").props as Record<string, unknown>);
+  const el = r.getByTestId("tabbar-pill");
+  const animated = styleOf(el.props as Record<string, unknown>);
+  const children = (el.props as { children?: unknown }).children;
+  const child = (Array.isArray(children) ? children[0] : children) as
+    | { props?: { style?: Record<string, unknown> } }
+    | undefined;
+  return { animated, box: child?.props?.style ?? {} };
 }
 
 describe("the tab bar's selected-tab pill", () => {
   it("is visible on the very first render, with no measurement to wait for", async () => {
-    const s = await pill(0);
+    const { animated, box } = await pill(0);
     // The assertion that matters. Everything below it was already true when the
     // pill was invisible.
-    expect(s.opacity).toBe(1);
-    expect(s.backgroundColor).toBe("rgba(26,26,24,0.085)");
-    expect(s.width).toBe(54);
-    expect(s.height).toBe(30);
-    expect(s.position).toBe("absolute");
+    expect(animated.opacity).toBe(1);
+    expect(box.backgroundColor).toBe("rgba(26,26,24,0.085)");
+    expect(box.width).toBe(54);
+    expect(box.height).toBe(30);
+    expect(box.position).toBe("absolute");
+  });
+
+  it("keeps layout properties out of the animated style", async () => {
+    // Reanimated drove the box and the transform through one updater for two
+    // builds, which is layout going through the shadow tree on every frame
+    // alongside compositor-only work. The first build in which that
+    // combination actually ran is the first build that crashed on launch.
+    const { animated } = await pill(0);
+    for (const layout of ["width", "height", "position", "top", "left", "borderRadius"]) {
+      expect(animated[layout]).toBeUndefined();
+    }
+    expect(animated.transform).toBeDefined();
   });
 
   it("sits over a different tab depending on which is selected", async () => {
-    const first = await pill(0);
-    const last = await pill(2);
+    const first = (await pill(0)).animated;
+    const last = (await pill(2)).animated;
     const x = (s: Record<string, unknown>) =>
       (s.transform as { translateX?: number }[])?.find((t) => "translateX" in t)?.translateX ?? 0;
     // Both placed, and not in the same place — the pill travels rather than
