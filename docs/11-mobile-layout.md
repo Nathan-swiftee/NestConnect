@@ -403,3 +403,30 @@ One thing this episode is worth remembering for: the app has had a root
 `ErrorBoundary` showing `error.message` since long before any of this. A crash
 that shows *nothing* has therefore already told you something — it is native,
 not a JavaScript throw, and no amount of reading the TypeScript will find it.
+
+
+### What `expo-blur`'s own changelog says about `BlurTargetView`
+
+Worth knowing before the next attempt, because it is the only hard evidence
+about this component that exists outside a device:
+
+- **55.0.9** — *"[Android] Fix Fabric mount/detach mismatch in `BlurTargetView`
+  that could trigger `view already removed from parent` errors during root tree
+  transitions."*
+- **57.0.1** — *"[Android] Fix gesture handlers treating views under a
+  `BlurTargetView` as detached and cancelling their gestures."*
+
+This app runs `newArchEnabled: true`, so it is on Fabric, and it wraps the
+*entire* tab navigator in a `BlurTargetView` — every screen, every
+`GestureHandlerRootView`, every sheet. Both of those bugs are in exactly that
+territory. We are already on 57.0.2, the newest release, so there is no upgrade
+left to try: what remains is either the component's remaining rough edges or
+something else entirely.
+
+If a build with the blur crashes on launch again, the next thing to try is
+**not** another `expo-blur` configuration. It is a blur that does not require
+the navigator to be wrapped at all — `@react-native-community/blur` attaches to
+the activity's decor view itself, so there is no target view in the React tree
+to mount, detach or confuse a gesture handler. That is a different native
+dependency and carries its own risk, so it is worth one deliberate build, not a
+guess.
