@@ -137,13 +137,16 @@ export function useVoiceRecording() {
       const ms = Math.round(seconds * 1000);
       await mark("stop");
       await recorder.stop();
-      await endTrail();
       // Read the file's location *before* touching the audio session. Tearing
       // down recording mode is what releases the recorder, and a released
       // recorder has no uri to give — which would look exactly like "the
       // recording came back empty" while the file sat on disk perfectly fine.
       const uri = recorder.uri;
+      // Putting the audio session back is a native call like any other, so it
+      // stays inside the trail. Only once it returns is the sequence over.
+      await mark("release");
       await release();
+      await endTrail();
       if (!uri) {
         setFailed("The recording came back empty");
         return null;
@@ -175,6 +178,7 @@ export function useVoiceRecording() {
     } catch {
       /* already stopped by the OS (a call arriving, the app backgrounding) */
     }
+    await mark("cancel-release");
     await release();
     await endTrail();
   }, [recorder, release]);
