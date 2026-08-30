@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { formatDuration } from "@ding/client";
+import { beginTrail, mark } from "../diagnostics";
 import { haptics } from "../haptics";
 import { BackIcon, LockIcon, MicIcon } from "../icons";
 import { useTheme } from "../theme";
@@ -62,25 +63,61 @@ export function HoldToRecord({
   const dy = useSharedValue(0);
   const grow = useSharedValue(1);
 
-  const begin = () => {
+  /**
+   * Every step of the press, written to disk before it runs.
+   *
+   * Holding the microphone takes the app down on Android with no error and no
+   * JS stack, and three readings of the code produced three wrong causes. The
+   * trail replaces reading with measuring: whichever call kills the process,
+   * its name is the last thing written. `src/diagnostics.ts` explains why it
+   * awaits, and Settings shows what survived.
+   *
+   * The awaits here delay the visual response by the length of one small
+   * key-value write. That is a few milliseconds against a bug that closes the
+   * app, and it comes out again the moment the cause is known.
+   */
+  const begin = async () => {
+    await beginTrail("press");
     setHolding(true);
+    await mark("haptic");
     haptics.tap();
-    void voice.start();
+    await mark("start");
+    await voice.start();
   };
   const send = () => {
+    void mark("release:send");
     setHolding(false);
     onSend();
   };
   const discard = () => {
+    void mark("release:discard");
     setHolding(false);
     haptics.warning();
     void voice.cancel();
   };
   const lock = () => {
+    void mark("release:lock");
     setHolding(false);
     haptics.success();
     onLock();
   };
+
+  /**
+   * Proof that the recording overlay rendered.
+   *
+   * An effect runs after the commit, so reaching this at all means the two
+   * animated views below mounted without taking the process with them — which
+   * is a real candidate, since they appear mid-gesture while the shared values
+   * they read are being written from the UI thread.
+   *
+   * Fire-and-forget is fine here and nowhere else: `mark` appends to the trail
+   * synchronously and every later step persists the whole list, so this entry
+   * lands on disk as soon as anything after it does. Its job is to say the
+   * render already survived, not to be the last word.
+   */
+  useEffect(() => {
+    if (holding) void mark("overlay");
+  }, [holding]);
 
   const hold = Gesture.Pan()
     // Claimed on touch-down rather than after any travel: this is a hold, and

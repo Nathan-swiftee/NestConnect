@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import * as Updates from "expo-updates";
 import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../theme";
+import { lastTrail } from "../diagnostics";
 import { INSET_SOURCES, useInsets } from "../insets";
 
 /**
@@ -41,6 +43,20 @@ export function BuildStamp() {
   // field anyone types back in.
   const update = Updates.updateId ? Updates.updateId.slice(-8) : null;
 
+  // The interrupted sequence from before the app last went away, if there is
+  // one. Read once, on mount: nothing writes a trail from this screen, so it
+  // cannot go stale while it is being looked at.
+  const [trail, setTrail] = useState<{ steps: string[]; at: string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void lastTrail().then((t) => {
+      if (alive) setTrail(t);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <View className="items-center gap-0.5 px-4 pb-2 pt-6">
       <Text style={{ color: c.textFaint }} className="text-2xs">
@@ -60,6 +76,21 @@ export function BuildStamp() {
       <Text style={{ color: c.textFaint }} className="text-2xs">
         bottom {resolved.bottom} = live {live.bottom} / start {INSET_SOURCES.atStartup?.bottom ?? "–"}
       </Text>
+      {/* A sequence that started and never finished — right now only the
+          microphone writes one. The last step named here is the one immediately
+          before whatever ended the app, which is the single fact a native crash
+          otherwise refuses to give up. Absent means the last attempt completed,
+          so an empty space here is the good outcome. */}
+      {trail ? (
+        <Text
+          style={{ color: c.danger }}
+          className="px-2 pt-1 text-center text-2xs"
+          selectable
+        >
+          stopped after: {trail.steps.join(" › ")} ·{" "}
+          {new Date(trail.at).toLocaleTimeString()}
+        </Text>
+      ) : null}
     </View>
   );
 }

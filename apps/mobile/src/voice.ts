@@ -7,6 +7,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
+import { endTrail, mark } from "./diagnostics";
 
 /** What a finished recording hands back. */
 export interface RecordedVoice {
@@ -77,28 +78,42 @@ export function useVoiceRecording() {
     wanted.current = true;
     setFailed(null);
     try {
+      // Each `mark` is on disk before the call under it runs; see `diagnostics`.
+      // Four native calls, four names — whichever one takes the process down,
+      // its name is the last thing in the trail.
+      await mark("perm");
       const perm = await requestRecordingPermissionsAsync();
       if (!perm.granted) {
         wanted.current = false;
+        await endTrail();
         Alert.alert("Microphone access needed", "Allow microphone access to record a voice note.");
         return;
       }
       // Recording without `allowsRecording` produces a silent file on iOS
       // rather than an error, which is the kind of bug you only find after
       // shipping.
+      await mark("mode");
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       // Released mid-await: don't start a recording nobody is holding.
       if (!wanted.current) return void (await release());
+      await mark("prepare");
       await recorder.prepareToRecordAsync();
       if (!wanted.current) return void (await release());
+      await mark("record");
       recorder.record();
       started.current = true;
       setLive(true);
+      await mark("live");
     } catch (err) {
       wanted.current = false;
       started.current = false;
       setLive(false);
       setFailed(err instanceof Error ? err.message : "Couldn't start recording");
+      // A JS error is not what the trail is hunting — it already reached the
+      // catch, so the app is alive and the message is on screen. Keep it in the
+      // trail rather than clearing it, so a caught failure reads differently
+      // from a clean run.
+      await mark(`threw: ${err instanceof Error ? err.message : "unknown"}`);
       await release();
     }
   }, [recorder, release]);
@@ -114,12 +129,15 @@ export function useVoiceRecording() {
     // nothing — the agent lifted their thumb, which is not an error.
     if (!started.current) {
       await release();
+      await endTrail();
       return null;
     }
     started.current = false;
     try {
       const ms = Math.round(seconds * 1000);
+      await mark("stop");
       await recorder.stop();
+      await endTrail();
       // Read the file's location *before* touching the audio session. Tearing
       // down recording mode is what releases the recorder, and a released
       // recorder has no uri to give — which would look exactly like "the
@@ -147,15 +165,18 @@ export function useVoiceRecording() {
     // anyway is what took the app down.
     if (!started.current) {
       await release();
+      await endTrail();
       return;
     }
     started.current = false;
     try {
+      await mark("cancel-stop");
       await recorder.stop();
     } catch {
       /* already stopped by the OS (a call arriving, the app backgrounding) */
     }
     await release();
+    await endTrail();
   }, [recorder, release]);
 
   // Guarded for the same reason as `stop`. The locked panel's buttons are only
