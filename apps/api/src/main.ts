@@ -39,6 +39,31 @@ async function bootstrap() {
   // email in a sandboxed iframe with its own strict CSP), so helmet's default
   // CSP is disabled to avoid breaking those; the rest of the headers stay on.
   app.use(helmet({ contentSecurityPolicy: false }));
+  /**
+   * The NestChat widget is the one thing here meant to be loaded BY other
+   * websites, and helmet's defaults exist to stop exactly that.
+   *
+   *  - `Cross-Origin-Resource-Policy: same-origin` makes a browser refuse our
+   *    loader script when a customer's page asks for it
+   *    (ERR_BLOCKED_BY_RESPONSE.NotSameOrigin);
+   *  - `X-Frame-Options: SAMEORIGIN` then refuses to frame the widget page.
+   *
+   * Both are relaxed for the widget's own paths and nowhere else. The inbox is
+   * a cookie-authenticated app and keeps its framing protection: exempting it
+   * too would be a clickjacking hole. Nothing here is a secret — the loader and
+   * the widget page are static assets, and the API under them is already the
+   * public visitor API with its own token checks.
+   */
+  const WIDGET_PATHS = /^\/(nestchat\.js|widget\.html)$|^\/api\/nestchat(\/|$)/;
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (!WIDGET_PATHS.test(req.path)) return next();
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    // X-Frame-Options has no "any origin" value — the way to allow framing is
+    // to not send it, and to say so in CSP instead.
+    res.removeHeader("X-Frame-Options");
+    res.setHeader("Content-Security-Policy", "frame-ancestors *");
+    next();
+  });
   // Trust the platform proxy so req.ip is the real client (rate limiting keys on
   // it). Set to the number of proxy hops in front of the app (Railway ≈ 1).
   app.getHttpAdapter().getInstance().set("trust proxy", 1);
@@ -63,6 +88,18 @@ async function bootstrap() {
     next();
   });
   app.enableCors({ origin: env.corsOrigin, credentials: true });
+  // …and reassert it afterwards. The block above has to run *before* the app's
+  // CORS to answer the preflight (which `cors` ends itself, so a later
+  // middleware never sees an OPTIONS). But for the actual request `cors` runs
+  // second and overwrites Access-Control-Allow-Origin with the app's own
+  // origin, which would leave these routes advertising a policy that isn't the
+  // one they mean. Setting it once more, last, is what makes the header true.
+  app.use("/api/nestchat", (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    // `cors` adds Vary: Origin; harmless, and correct to leave for caches.
+    res.removeHeader("Access-Control-Allow-Credentials");
+    next();
+  });
   // REST lives under /api; health endpoints stay at the root for platform probes.
   app.setGlobalPrefix("api", { exclude: ["health", "health/ready"] });
 
