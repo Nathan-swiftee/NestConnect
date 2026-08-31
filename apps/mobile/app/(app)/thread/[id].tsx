@@ -26,6 +26,7 @@ import {
   useSetStatus,
   useSnooze,
   useTeams,
+  useTypingPresence,
 } from "@ding/client";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { ActionSheet, LEADING, type SheetAction } from "../../../src/components/ActionSheet";
@@ -65,6 +66,7 @@ import {
 } from "../../../src/icons";
 import { haptics } from "../../../src/haptics";
 import { enter } from "../../../src/motion";
+import { locateMessage } from "../../../src/thread-nav";
 import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
 import { useNow } from "../../../src/now";
@@ -173,6 +175,17 @@ export default function Thread() {
    *  A token rather than an array so pressing it twice re-seeds. */
   const [ccPrefill, setCcPrefill] = useState<{ at: number; addresses: string[] } | null>(null);
   const list = useRef<SectionList<Message, DaySection>>(null);
+  // Another agent writing on this thread, from the shared hook. The web has had
+  // this since typing indicators shipped; the phone showed nothing at all.
+  const typingWho = useTypingPresence(id);
+  // The message a "jump to quoted" landed on, flashed briefly so the eye can
+  // find it. Scrolling somewhere without saying where you arrived is how people
+  // end up asking whether the tap did anything.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (highlightTimer.current) clearTimeout(highlightTimer.current);
+  }, []);
   const marked = useRef(false);
   /**
    * Is the reader at the newest message?
@@ -343,6 +356,38 @@ export default function Thread() {
     [c.surface2],
   );
 
+  /**
+   * Jump to the message a reply is quoting.
+   *
+   * The quoted block has always looked like a link and behaved like a label —
+   * tapping it did nothing, which is the one thing a quote in a chat app is
+   * expected to do. `scrollToLocation` needs coordinates rather than an id, so
+   * `locateMessage` supplies them, and a miss is reported rather than guessed
+   * at: a thread pages older messages in, so a reply to something from weeks
+   * back genuinely isn't loaded yet.
+   */
+  const onJumpTo = useCallback(
+    (messageId: string) => {
+      const at = locateMessage(sections, messageId);
+      if (!at) {
+        toast({ text: "That message isn't loaded yet — pull down to load older ones." });
+        return;
+      }
+      list.current?.scrollToLocation({
+        ...at,
+        // Mid-screen rather than at the top: the quoted message is context, and
+        // context reads better with what surrounds it visible.
+        viewPosition: 0.5,
+        animated: true,
+      });
+      haptics.select();
+      setHighlightId(messageId);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(() => setHighlightId(null), 1600);
+    },
+    [sections, toast],
+  );
+
   const renderMessage = useCallback(
     ({
       item: m,
@@ -366,6 +411,8 @@ export default function Thread() {
           channel={data.channel}
           contactName={data.contact.displayName}
           quoted={m.quotedMsgId ? byId.get(m.quotedMsgId) : undefined}
+          onJumpTo={onJumpTo}
+          highlighted={highlightId === m.id}
           meId={myId}
           // Same speaker above? Part of a run: loses the name and most of the
           // gap above it. Same speaker below? Not the last of the run, so the
@@ -385,7 +432,7 @@ export default function Thread() {
         />
       );
     },
-    [data, byId, myId, showsSubject, onLongPress, onReply, onOpenReadLog, onRemoveReaction, onRetry],
+    [data, byId, myId, showsSubject, highlightId, onJumpTo, onLongPress, onReply, onOpenReadLog, onRemoveReaction, onRetry],
   );
 
   // Send `forwarding` on to the picked customers. The server reports each target
@@ -663,6 +710,7 @@ export default function Thread() {
       <Header
         conv={data}
         insetTop={insets.top}
+        typingWho={typingWho}
         onDetails={() => setSheet("details")}
         onMore={() => setSheet("more")}
       />
@@ -927,6 +975,7 @@ function BottomInset() {
 function Header({
   conv,
   insetTop,
+  typingWho,
   onDetails,
   onMore,
 }: {
@@ -935,6 +984,8 @@ function Header({
    *  topmost thing on the screen and a plain View can be relied on to apply
    *  padding it's given. */
   insetTop: number;
+  /** A colleague typing on this thread right now, or null. */
+  typingWho: string | null;
   onDetails: () => void;
   onMore: () => void;
 }) {
@@ -976,16 +1027,27 @@ function Header({
             line truncates from the right, so what gets cut when the name is long
             is the name — which you can also see two lines up — rather than the
             countdown, which is nowhere else on this screen. */}
-        <Text numberOfLines={1} className="text-2xs leading-snug text-faint">
-          {slaText ? (
-            <Text style={{ color: slaOver ? c.danger : c.amber }} className="font-semibold">
-              {slaText}
-              {" · "}
-            </Text>
-          ) : null}
-          {statusText}
-          {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
-        </Text>
+        {/* A colleague writing on this thread takes the line over while it
+            lasts. It replaces the SLA/assignee line rather than adding a
+            fourth: the header is three lines on a phone already, and "someone
+            is answering this right now" is the more urgent of the two — it is
+            what stops two agents replying to the same customer at once. */}
+        {typingWho ? (
+          <Text numberOfLines={1} style={{ color: c.brandStrong }} className="text-2xs font-semibold leading-snug">
+            {`${typingWho} is typing…`}
+          </Text>
+        ) : (
+          <Text numberOfLines={1} className="text-2xs leading-snug text-faint">
+            {slaText ? (
+              <Text style={{ color: slaOver ? c.danger : c.amber }} className="font-semibold">
+                {slaText}
+                {" · "}
+              </Text>
+            ) : null}
+            {statusText}
+            {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
+          </Text>
+        )}
       </View>
       <Touchable feel="chip" onPress={onDetails} accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={12} className="px-1.5">
         <DetailsIcon size={20} color={c.textMuted} />
@@ -1049,6 +1111,8 @@ const Bubble = memo(function Bubble({
   channel,
   contactName,
   quoted,
+  onJumpTo,
+  highlighted,
   meId,
   continues,
   endsRun,
@@ -1066,6 +1130,10 @@ const Bubble = memo(function Bubble({
   contactName: string;
   /** The message this one quotes, already resolved by the parent. */
   quoted?: Message;
+  /** Scroll the thread to a message — what tapping the quote does. */
+  onJumpTo?: (messageId: string) => void;
+  /** Briefly flashed because a jump just landed here. */
+  highlighted?: boolean;
   meId?: string;
   continues: boolean;
   /** Last of a run — i.e. not followed by the same speaker. Carries the tail. */
@@ -1203,7 +1271,19 @@ const Bubble = memo(function Bubble({
       testID={`msg-${message.id}`}
       entering={enter.row}
       className={mine ? "items-end" : "items-start"}
-      style={{ marginTop: gapTop, marginBottom: gapBottom }}
+      style={{
+        marginTop: gapTop,
+        marginBottom: gapBottom,
+        // The flash after a jump, on the row rather than the bubble. The bubble
+        // can't take it: its fill is shared with the tail, which is a separate
+        // filled shape, and tinting one without the other splits what is
+        // supposed to read as a single object. A border is out for the same
+        // reason — see the note below. A band behind the whole row also says
+        // "here" more clearly at arm's length, and costs no layout: no padding
+        // changes, so nothing moves when it clears.
+        backgroundColor: highlighted ? c.brandTint : undefined,
+        borderRadius: highlighted ? 12 : 0,
+      }}
     >
       <Pressable
         onLayout={(e) => setBubbleH(e.nativeEvent.layout.height)}
@@ -1264,15 +1344,28 @@ const Bubble = memo(function Bubble({
           </View>
         ) : null}
 
+        {/* Tap to go to what's being quoted. It has always looked like a link
+            and done nothing, which is the one behaviour a quote in a chat app
+            has everywhere else. */}
         {quoted ? (
-          <View style={{ borderLeftColor: mine ? c.brandStrong : c.borderStrong, backgroundColor: c.surface2 }} className="mb-1.5 rounded-8 border-l-2 px-2.5 py-1.5">
+          <Touchable
+            feel="chip"
+            onPress={() => onJumpTo?.(quoted.id)}
+            disabled={!onJumpTo}
+            accessibilityRole="button"
+            accessibilityLabel={`Reply to ${quoted.direction === "out" ? "your message" : contactName}: ${
+              quoted.body || "attachment"
+            }. Tap to go to it.`}
+            style={{ borderLeftColor: mine ? c.brandStrong : c.borderStrong, backgroundColor: c.surface2 }}
+            className="mb-1.5 rounded-8 border-l-2 px-2.5 py-1.5"
+          >
             <Text numberOfLines={1} className="text-2xs font-medium text-muted">
               {quoted.direction === "out" ? "You" : contactName}
             </Text>
             <Text numberOfLines={2} className="text-sm text-muted">
               {quoted.body || "Attachment"}
             </Text>
-          </View>
+          </Touchable>
         ) : null}
 
         {/* Email carries structure worth keeping — headings, lists, links, a

@@ -3,7 +3,16 @@ import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-nati
 import Animated from "react-native-reanimated";
 import { enter, exit, reflow } from "../motion";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { api, useIntegrations, usePeople, useSendMessage, useTemplates, windowLeft } from "@ding/client";
+import {
+  api,
+  useIntegrations,
+  useMe,
+  usePeople,
+  useSendMessage,
+  useTemplates,
+  useTypingSignal,
+  windowLeft,
+} from "@ding/client";
 import { useStagedAttachments } from "../attachments";
 import { enqueue } from "../send-queue";
 import { Avatar } from "./Avatar";
@@ -114,6 +123,15 @@ export function Composer({
 }) {
   const { c } = useTheme();
   const send = useSendMessage();
+  const { data: me } = useMe();
+  // Tell the rest of the team we're writing. The throttling and the idle
+  // "stopped" live in the hook, shared with the web, so the phone and the
+  // browser can't drift into two different definitions of "is typing".
+  const typing = useTypingSignal(conv.id, me?.user.name);
+  // Last time we pinged WhatsApp's own typing indicator, which is a separate
+  // thing: that one is shown to the *customer*. Each ping keeps it alive about
+  // 25 seconds, so it is throttled far harder than the agent-facing one.
+  const waTyping = useRef(0);
   const { data: templates } = useTemplates();
   const toast = useToast();
   const inputRef = useRef<TextInput>(null);
@@ -263,6 +281,10 @@ export function Composer({
     // Clear optimistically — the message is already on screen via useSendMessage,
     // and leaving the text behind invites an accidental double-send.
     setBody("");
+    // Say we've stopped now rather than letting the 2.5s idle timer say it: the
+    // message itself is about to arrive, and a colleague watching "Nathan is
+    // typing…" sit under a message he has already sent looks like a bug.
+    typing.stop();
     try {
       await send.mutateAsync({
         id: conv.id,
@@ -368,6 +390,16 @@ export function Composer({
   function onBodyChange(next: string) {
     const caret = Math.max(0, Math.min(next.length, caretRef.current + (next.length - body.length)));
     setBody(next);
+    // A note goes to the team, not the customer, so it neither broadcasts
+    // presence on the conversation nor pokes WhatsApp.
+    if (!internal) {
+      typing.signal();
+      const t = Date.now();
+      if (isWhatsApp && !locked && t - waTyping.current > 9000) {
+        waTyping.current = t;
+        void api.sendTyping(conv.id).catch(() => {});
+      }
+    }
     // Only ever matches when the "@" starts a word — an email address typed
     // into a note shouldn't open a people picker.
     const m = internal ? /(?:^|\s)@([\w.+-]*)$/.exec(next.slice(0, caret)) : null;

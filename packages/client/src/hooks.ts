@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   keepPreviousData,
   useInfiniteQuery,
@@ -1160,4 +1160,114 @@ export function useRealtime(openConversationId: string | null) {
       socket.emit(ClientEvent.LeaveConversation, { conversationId: openConversationId });
     };
   }, [openConversationId]);
+}
+
+/* ---- typing indicators ------------------------------------------------- */
+
+/**
+ * "{name} is typing…" for the conversation currently open.
+ *
+ * Shared rather than written per client, because it was written per client and
+ * the phone simply never got its turn — the web has had this since typing
+ * indicators shipped and the app has shown nothing at all. Two copies of a
+ * socket listener with two independent idle timers is also two chances to leave
+ * an indicator stuck on screen for a conversation nobody is looking at any more.
+ *
+ * Clears three ways: on an explicit `typing:false`, after four seconds of
+ * silence (a phone that goes into a tunnel mid-word never sends the `false`),
+ * and on switching or closing the conversation.
+ */
+export function useTypingPresence(conversationId: string | null): string | null {
+  const [who, setWho] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setWho(null);
+      return;
+    }
+    const socket = getSocket();
+    let clear: ReturnType<typeof setTimeout> | null = null;
+    const onTyping = (p: { conversationId: string; who: string; typing: boolean }) => {
+      if (p.conversationId !== conversationId) return;
+      if (clear) clearTimeout(clear);
+      if (p.typing) {
+        setWho(p.who);
+        clear = setTimeout(() => setWho(null), 4000);
+      } else {
+        clear = null;
+        setWho(null);
+      }
+    };
+    socket.on(ServerEvent.Typing, onTyping);
+    return () => {
+      socket.off(ServerEvent.Typing, onTyping);
+      if (clear) clearTimeout(clear);
+      setWho(null);
+    };
+  }, [conversationId]);
+
+  return who;
+}
+
+/**
+ * Broadcast that we are typing on this conversation.
+ *
+ * `signal()` on every keystroke; the throttling is in here. One `typing:true`
+ * every two seconds at most — a socket event per character is a lot of traffic
+ * to say one thing — and a 2.5s idle timer that sends `typing:false` once the
+ * agent stops, so the other end clears without waiting out its own timeout.
+ *
+ * Leaving the conversation sends the `false` too. Without that, closing a
+ * thread mid-sentence leaves everyone else looking at a colleague who appears
+ * to be typing and never arrives.
+ */
+export function useTypingSignal(
+  conversationId: string | null,
+  who?: string,
+): { signal: () => void; stop: () => void } {
+  // Refs, not state: none of this should cause a render, and `signal` is called
+  // from a keystroke handler where a re-render per character is the one thing
+  // that would actually be felt.
+  const sent = useRef(false);
+  const throttled = useRef(0);
+  const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // So the unmount cleanup below sends `false` for the conversation it was
+  // actually typing in, not whichever one is open by the time it runs.
+  const current = useRef<string | null>(conversationId);
+  const name = useRef(who);
+  current.current = conversationId;
+  name.current = who;
+
+  const stop = useCallback(() => {
+    if (idle.current) {
+      clearTimeout(idle.current);
+      idle.current = null;
+    }
+    throttled.current = 0;
+    if (sent.current && current.current) {
+      sent.current = false;
+      getSocket().emit(ClientEvent.Typing, {
+        conversationId: current.current,
+        typing: false,
+        who: name.current,
+      });
+    }
+  }, []);
+
+  const signal = useCallback(() => {
+    const id = current.current;
+    if (!id) return;
+    const t = Date.now();
+    if (t - throttled.current > 2000) {
+      throttled.current = t;
+      sent.current = true;
+      getSocket().emit(ClientEvent.Typing, { conversationId: id, typing: true, who: name.current });
+    }
+    if (idle.current) clearTimeout(idle.current);
+    idle.current = setTimeout(stop, 2500);
+  }, [stop]);
+
+  useEffect(() => stop, [conversationId, stop]);
+
+  return { signal, stop };
 }
