@@ -22,14 +22,49 @@ export function embedSnippet(
       `        style="border:0;width:100%;height:600px"></iframe>`,
     ].join("\n");
   }
+  // Configuration goes in a settings object, not in data- attributes on the
+  // script tag. Site optimisers (SiteGround Optimizer, WP Rocket, Autoptimize)
+  // concatenate external scripts into one bundle and drop the original tags —
+  // taking every attribute with them, and leaving a bundle whose src is the
+  // customer's own domain rather than ours. A settings object is code, so it
+  // survives; and it carries `host`, so the widget never has to guess where we
+  // are. The host is also why the two tags can't be collapsed into one.
+  const host = originOf(settings.scriptUrl);
   return [
-    `<script src="${settings.scriptUrl}"`,
-    `        data-key="${settings.widgetKey}"`,
-    `        data-position="${appearance.position}"`,
-    `        data-accent="${appearance.accent}"`,
-    `        data-label="${attr(appearance.launcherLabel)}"`,
-    `        defer></script>`,
+    `<script>`,
+    `  window.NestChatSettings = {`,
+    `    key: ${js(settings.widgetKey)},`,
+    `    host: ${js(host)},`,
+    `    position: ${js(appearance.position)},`,
+    `    accent: ${js(appearance.accent)},`,
+    `    label: ${js(appearance.launcherLabel)}`,
+    `  };`,
+    `</script>`,
+    `<script src="${settings.scriptUrl}" defer></script>`,
   ].join("\n");
+}
+
+/** The scheme + host the loader is served from — what the widget iframe and the
+ *  visitor API are reached on, whatever the host page's own origin is. */
+function originOf(scriptUrl: string): string {
+  try {
+    return new URL(scriptUrl).origin;
+  } catch {
+    // A relative or malformed scriptUrl: strip the path and hope, rather than
+    // emit a snippet with an exception in it.
+    return scriptUrl.replace(/\/[^/]*$/, "");
+  }
+}
+
+/**
+ * A JavaScript string literal for a value going into an inline `<script>`.
+ *
+ * JSON.stringify does the quoting, but `<` has to be escaped on top of it: a
+ * launcher label containing `</script>` would otherwise end the block early and
+ * spill the rest of the snippet onto the page as text.
+ */
+function js(value: string): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
 }
 
 /**

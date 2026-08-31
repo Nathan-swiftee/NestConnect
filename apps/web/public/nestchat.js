@@ -1,7 +1,8 @@
 /*
  * The NestChat launcher — the one-line embed.
  *
- *   <script src="https://your-app/nestchat.js" data-key="nc_..." defer></script>
+ *   <script>window.NestChatSettings = { key: "nc_...", host: "https://your-app" };</script>
+ *   <script src="https://your-app/nestchat.js" defer></script>
  *
  * Plain ES5-ish JavaScript with no build step and no dependencies, because this
  * runs on somebody else's website: it must not assume a bundler, a framework, or
@@ -12,40 +13,89 @@
  * else — the conversation, the visitor's identity, the business's colours —
  * lives inside that iframe, on our own origin, where the host page can't reach
  * it and we don't need to trust the host page either.
+ *
+ * Configuration deliberately comes from `window.NestChatSettings` first, and
+ * from this tag's own data- attributes only as a fallback. That is not a style
+ * preference — it is the difference between working and not on a site running
+ * an optimiser. WordPress plugins like SiteGround Optimizer, WP Rocket and
+ * Autoptimize concatenate every external script into one bundle, and when they
+ * do, the original `<script>` element (and every attribute on it) is gone:
+ *   - `document.currentScript` becomes the combined bundle, which has no
+ *     data-key, so the widget reports a missing key and stops;
+ *   - and the bundle is served from the *customer's* domain, so deriving our
+ *     origin from `script.src` would point the iframe at their site.
+ * A settings object is code, so it survives being combined and minified.
  */
 (function () {
   "use strict";
 
   if (window.NestChat && window.NestChat.mounted) return;
 
-  var script = document.currentScript;
-  if (!script) {
-    // `defer` keeps currentScript available; a script moved or re-executed by a
-    // tag manager may not have it, so fall back to finding ourselves by src.
+  /** The `<script>` element that loaded us, when it still exists as itself. */
+  function ownTag() {
+    var current = document.currentScript;
+    // Only trust currentScript if it really is our file: after combination it
+    // is the bundle, which knows nothing about us.
+    if (current && current.src && current.src.indexOf("nestchat.js") !== -1) return current;
     var all = document.getElementsByTagName("script");
     for (var i = all.length - 1; i >= 0; i--) {
-      if (all[i].src && all[i].src.indexOf("nestchat.js") !== -1) {
-        script = all[i];
-        break;
-      }
+      if (all[i].src && all[i].src.indexOf("nestchat.js") !== -1) return all[i];
     }
+    // Not combined, but moved or re-executed by a tag manager — the attributes
+    // may still be on the element even if the src doesn't name us.
+    return current || null;
   }
-  if (!script) return;
 
-  var key = script.getAttribute("data-key") || "";
-  if (!key) {
-    if (window.console && console.warn) {
-      console.warn("[NestChat] Missing data-key on the embed script.");
+  var tag = ownTag();
+  var settings = window.NestChatSettings || window.nestChatSettings || {};
+  // An element carrying the key survives combination too, for anyone who would
+  // rather put it in their HTML than in a script block.
+  var marked = document.querySelector ? document.querySelector("[data-nestchat-key]") : null;
+
+  function option(name, settingsKey) {
+    if (settings[settingsKey] != null && settings[settingsKey] !== "") return String(settings[settingsKey]);
+    if (tag && tag.getAttribute("data-" + name)) return tag.getAttribute("data-" + name);
+    if (marked && marked.getAttribute("data-nestchat-" + name)) {
+      return marked.getAttribute("data-nestchat-" + name);
     }
+    return null;
+  }
+
+  function warn(message) {
+    if (window.console && console.warn) console.warn("[NestChat] " + message);
+  }
+
+  var key = option("key", "key");
+  if (!key) {
+    warn(
+      "No widget key found. If your site combines or minifies JavaScript, the " +
+        "data-key attribute is stripped — use the snippet that sets " +
+        "window.NestChatSettings instead (Settings › NestChat widget › Install).",
+    );
     return;
   }
 
-  // Everything is fetched from wherever this script was served from, so one
-  // snippet works across staging and production without being edited.
-  var origin = new URL(script.src, window.location.href).origin;
-  var position = script.getAttribute("data-position") === "left" ? "left" : "right";
-  var accent = script.getAttribute("data-accent") || "#2563eb";
-  var label = script.getAttribute("data-label") || "Chat with us";
+  // Where to load the chat itself from. `host` in the settings object is the
+  // reliable answer; our own src works when the tag survived; and a bundle's
+  // src is the customer's own domain, which is never right.
+  var origin = "";
+  var host = option("host", "host");
+  if (host) {
+    origin = String(host).replace(/\/+$/, "");
+  } else if (tag && tag.src && tag.src.indexOf("nestchat.js") !== -1) {
+    origin = new URL(tag.src, window.location.href).origin;
+  }
+  if (!origin) {
+    warn(
+      "Can't tell which Nest Connect server to load the chat from. Add " +
+        "host to window.NestChatSettings (Settings › NestChat widget › Install).",
+    );
+    return;
+  }
+
+  var position = option("position", "position") === "left" ? "left" : "right";
+  var accent = option("accent", "accent") || "#2563eb";
+  var label = option("label", "label") || "Chat with us";
   var open = false;
 
   var side = position === "left" ? "left" : "right";

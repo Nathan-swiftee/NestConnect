@@ -1633,7 +1633,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
               </div>
               <p className="fieldhint">
                 {embed === "script"
-                  ? "Paste before </body> on every page. It draws the bubble and opens the chat in a frame of its own."
+                  ? "Paste both tags before </body> on every page. It draws the bubble and opens the chat in a frame of its own. Keep them together — the first carries the settings, and it survives plugins that combine and minify JavaScript."
                   : "Drops the chat straight into a page — a contact page, a help centre. Size it with the surrounding CSS."}
               </p>
               <pre className="ncw__snippet">{snippet}</pre>

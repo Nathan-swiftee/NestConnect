@@ -9,17 +9,34 @@ const settings = {
 };
 
 describe("embedSnippet", () => {
-  it("carries the key, the corner and the brand colour into the script tag", () => {
+  it("carries the key, the corner and the brand colour into the settings object", () => {
     const out = embedSnippet(
       "script",
       settings,
       nestchatAppearanceSchema.parse({ accent: "#0FA47A", position: "left" }),
     );
     expect(out).toContain(`src="https://nestconnect.io/nestchat.js"`);
-    expect(out).toContain(`data-key="nc_0123456789abcdef0123456789abcdef"`);
-    expect(out).toContain(`data-position="left"`);
-    expect(out).toContain(`data-accent="#0FA47A"`);
+    expect(out).toContain(`key: "nc_0123456789abcdef0123456789abcdef"`);
+    expect(out).toContain(`position: "left"`);
+    expect(out).toContain(`accent: "#0FA47A"`);
     expect(out.trimEnd().endsWith("</script>")).toBe(true);
+  });
+
+  it("puts the config in code, not attributes, so an optimiser can't strip it", () => {
+    // SiteGround Optimizer and friends concatenate external scripts into one
+    // bundle and drop the original tags. Attributes go with them; an assignment
+    // survives. This is the whole reason for the settings object.
+    const out = embedSnippet("script", settings, DEFAULT_NESTCHAT_APPEARANCE);
+    expect(out).toContain("window.NestChatSettings");
+    expect(out).not.toContain("data-key=");
+  });
+
+  it("tells the widget which server to load from, not just which key", () => {
+    // A combined bundle is served from the customer's own domain, so the widget
+    // cannot derive our origin from its own src. Without `host` it would point
+    // the iframe at their site.
+    const out = embedSnippet("script", settings, DEFAULT_NESTCHAT_APPEARANCE);
+    expect(out).toContain(`host: "https://nestconnect.io"`);
   });
 
   it("points the iframe at the widget page, not the script", () => {
@@ -29,26 +46,39 @@ describe("embedSnippet", () => {
     expect(out).toContain("</iframe>");
   });
 
-  it("escapes a quote in the business's own words instead of breaking the tag", () => {
-    // A launcher label like `Say "hi"` is ordinary copy, and would otherwise end
-    // the attribute early and leave a broken tag on the customer's page.
+  it("escapes a quote in the business's own words instead of breaking the literal", () => {
+    // A launcher label like `Say "hi"` is ordinary copy, and an unescaped quote
+    // would end the string early and leave a syntax error on the customer's page.
     const out = embedSnippet(
       "script",
       settings,
-      nestchatAppearanceSchema.parse({ launcherLabel: 'Say "hi" <now>' }),
+      nestchatAppearanceSchema.parse({ launcherLabel: 'Say "hi"' }),
     );
-    expect(out).toContain(`data-label="Say &quot;hi&quot; &lt;now&gt;"`);
-    // One attribute, not three: the quotes did not split it.
-    expect(out.match(/data-label=/g)).toHaveLength(1);
+    expect(out).toContain('label: "Say \\"hi\\""');
   });
 
-  it("keeps the snippet to one line per attribute", () => {
+  it("escapes a closing script tag hidden in the label", () => {
+    // `</script>` inside an inline script ends the block wherever it appears —
+    // the rest of the snippet would land on the page as visible text.
+    const out = embedSnippet(
+      "script",
+      settings,
+      nestchatAppearanceSchema.parse({ launcherLabel: "Chat </script> now" }),
+    );
+    expect(out).not.toContain("</script> now");
+    expect(out).toContain("\\u003c/script\\u003e");
+    // Exactly one closing tag for the inline block, and one for the loader.
+    expect(out.match(/<\/script>/g)).toHaveLength(2);
+  });
+
+  it("keeps a multi-line label from breaking the object literal", () => {
     const out = embedSnippet(
       "script",
       settings,
       nestchatAppearanceSchema.parse({ launcherLabel: "Two\nlines" }),
     );
-    expect(out.split("\n")).toHaveLength(6);
+    expect(out).toContain('label: "Two\\nlines"');
+    expect(out.split("\n")).toHaveLength(10);
   });
 });
 
