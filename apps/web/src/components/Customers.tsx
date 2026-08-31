@@ -420,10 +420,12 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
               <h2>Customers <span className="setcount">{contacts.data?.length ?? 0}</span></h2>
               <p>Everyone who's messaged you, plus contacts you add by hand. Tag them and pin a customer to a team so their messages always land in the right place.</p>
             </div>
-            <div className="setpane__actions">
-              {/* Import sits beside Add rather than behind a menu: a directory
-                  that starts empty is the normal case, and "bring my list in"
-                  is the first thing anyone wants to do with it. */}
+            {/* `setpane__headacts` is the existing pane-header pair — Settings ›
+                Templates uses it for the same ghost-plus-primary shape, and it
+                already sizes both icons. Import sits beside Add rather than
+                behind a menu: a directory that starts empty is the normal case,
+                and "bring my list in" is the first thing anyone does with it. */}
+            <div className="setpane__headacts">
               <button className="btn-ghost" onClick={() => setImporting(true)}>
                 <DownloadIcon /> Import
               </button>

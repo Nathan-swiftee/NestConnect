@@ -2780,11 +2780,6 @@ button.tpl-row:active{transform:scale(.97)}
 }
 
 /* ═══════════ Customer import ═══════════ */
-/* Import sits beside Add customer rather than behind a menu — a directory that
-   starts empty is the normal case, and bringing a list in is the first thing
-   anyone wants to do with it. */
-.setpane__actions{display:flex;align-items:center;gap:var(--sp-2)}
-
 /* The file step. Big enough to be an obvious drop target rather than a link
    that happens to accept a drag. */
 .impdrop{display:flex;flex-direction:column;align-items:center;gap:6px;
