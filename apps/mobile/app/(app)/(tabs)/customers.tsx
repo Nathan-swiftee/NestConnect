@@ -7,6 +7,7 @@ import { Avatar } from "../../../src/components/Avatar";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
 import { EmptyState, QueryState } from "../../../src/components/States";
+import { ContactEditor } from "../../../src/components/ContactEditor";
 import { ChevronRight, SearchIcon, XIcon } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
@@ -15,9 +16,14 @@ import { Touchable } from "../../../src/components/Touchable";
 /**
  * The customer directory — the web's Customers section on a phone.
  *
- * Reading, not editing: on a phone you look someone up to find out who they are
- * and jump into the conversation you already have with them. Creating and
- * merging customers stay on the web, where the forms belong.
+ * Mostly reading: on a phone you look someone up to find out who they are and
+ * jump into the conversation you already have with them. Creating and merging
+ * customers stay on the web — both are forms with duplicate-checking behind
+ * them, and neither is something you do one-handed.
+ *
+ * Correcting a customer is different, and is here. A name arrives from WhatsApp
+ * as whatever the customer set as their profile name; noticing it's wrong
+ * happens while reading a thread, which is a phone activity.
  */
 export default function Customers() {
   const insets = useInsets();
@@ -163,30 +169,35 @@ function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void
           data={data.conversations}
           keyExtractor={(cv) => cv.id}
           ListHeaderComponent={
-            <View className="items-center px-6 py-6">
-              <Avatar name={data.displayName} color={data.avatarColor} size={72} />
-              <Text accessibilityRole="header" className="mt-3 text-xl font-semibold text-fg">
-                {data.displayName}
-              </Text>
-              {data.company ? (
-                <Text className="text-md text-muted">{data.company}</Text>
-              ) : null}
-              <View className="mt-2 items-center gap-0.5">
-                {data.phone ? <Text className="text-md text-muted">{data.phone}</Text> : null}
-                {data.email ? <Text className="text-md text-muted">{data.email}</Text> : null}
+            <View className="pb-1 pt-6">
+              <View className="items-center px-6">
+                <Avatar name={data.displayName} color={data.avatarColor} size={72} />
+                <Text accessibilityRole="header" className="mt-3 text-xl font-semibold text-fg">
+                  {data.displayName}
+                </Text>
+                {data.company ? (
+                  <Text className="text-md text-muted">{data.company}</Text>
+                ) : null}
+                {data.tags?.length ? (
+                  <View className="mt-3 flex-row flex-wrap justify-center gap-1.5">
+                    {data.tags.map((t) => (
+                      <View key={t} style={{ backgroundColor: c.surface2 }} className="rounded-full px-2.5 py-1">
+                        <Text style={{ color: c.textMuted }} className="text-2xs font-medium">
+                          {t}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
               </View>
-              {data.tags?.length ? (
-                <View className="mt-3 flex-row flex-wrap justify-center gap-1.5">
-                  {data.tags.map((t) => (
-                    <View key={t} style={{ backgroundColor: c.surface2 }} className="rounded-full px-2.5 py-1">
-                      <Text style={{ color: c.textMuted }} className="text-2xs font-medium">
-                        {t}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-              <Text style={{ color: c.textFaint }} className="mt-5 self-start text-2xs font-semibold uppercase tracking-wider">
+
+              {/* Phone and email used to be three centred lines of grey text
+                  here. They are the same three fields the details sheet shows,
+                  so they are now the same component — which also means the
+                  directory can fix a wrong number, not just display it. */}
+              <ContactEditor contact={data} />
+
+              <Text style={{ color: c.textFaint }} className="px-5 pb-1.5 pt-6 text-2xs font-semibold uppercase tracking-wider">
                 Conversations
               </Text>
             </View>

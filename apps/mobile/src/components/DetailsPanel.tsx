@@ -14,6 +14,7 @@ import {
 import type { ConversationWithMessages } from "@ding/schemas";
 import { Avatar } from "./Avatar";
 import { ChannelDot } from "./ChannelDot";
+import { ContactEditor } from "./ContactEditor";
 import { TagEditor } from "./TagEditor";
 import { BellIcon, CheckIcon, ChevronRight, TeamGlyph, XIcon, channelMeta } from "../icons";
 import { useTheme } from "../theme";
@@ -26,10 +27,11 @@ import { Touchable } from "./Touchable";
  * The web keeps this permanently docked beside the thread; a phone has no room
  * for that, so it's a sheet off the thread header.
  *
- * What's editable here is what belongs to the *customer*: their tags, and where
- * their conversations get routed. Both are things you learn mid-thread — "these
- * people are wholesale", "this one should always go to Ops" — and having to
- * remember it until you're next at a desk is how it gets lost.
+ * What's editable here is what belongs to the *customer*: their details, their
+ * tags, and where their conversations get routed. All three are things you
+ * learn mid-thread — "that's not their name", "these people are wholesale",
+ * "this one should always go to Ops" — and having to remember it until you're
+ * next at a desk is how it gets lost.
  *
  * Conversation labels used to be here and aren't any more. They describe the
  * thread, not the person, so they live in the thread's own ⋯ menu; having them
@@ -114,16 +116,10 @@ export function DetailsPanel({
               </View>
             </View>
 
-            {/* Reachable on */}
-            {conv.contact.phone || conv.contact.email ? (
-              <>
-                <Section>Reachable on</Section>
-                <Card>
-                  {conv.contact.phone ? <Field label="Phone" value={conv.contact.phone} /> : null}
-                  {conv.contact.email ? <Field label="Email" value={conv.contact.email} last /> : null}
-                </Card>
-              </>
-            ) : null}
+            {/* The customer's own details, and the form that fixes them. Not
+                for a group: `conv.contact` there is the group itself, and
+                "company" and "email" mean nothing on one. */}
+            {!isGroup && contact ? <ContactEditor contact={contact} /> : null}
 
             {/* This conversation */}
             <Section>This conversation</Section>

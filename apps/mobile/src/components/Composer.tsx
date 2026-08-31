@@ -9,6 +9,7 @@ import { enqueue } from "../send-queue";
 import { Avatar } from "./Avatar";
 import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
+import { TemplateSheet } from "./TemplateSheet";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { HoldMic, HoldOverlay, useHoldToRecord } from "./HoldToRecord";
 import { useVoiceRecording, type RecordedVoice } from "../voice";
@@ -122,6 +123,7 @@ export function Composer({
   const [error, setError] = useState<string | null>(null);
   const [pickedChannel, setPickedChannel] = useState<ChannelType | null>(null);
   const [attachSheet, setAttachSheet] = useState(false);
+  const [templateSheet, setTemplateSheet] = useState(false);
   /** True only for the *locked*, hands-free panel. A held recording is not a
    *  mode — it lasts exactly as long as the thumb is down. */
   const [recording, setRecording] = useState(false);
@@ -978,6 +980,7 @@ export function Composer({
 
         {isWhatsApp && !internal ? (
           <Touchable feel="chip"
+            onPress={() => setTemplateSheet(true)}
             accessibilityRole="button"
             accessibilityLabel="Templates"
             hitSlop={6}
@@ -1045,6 +1048,16 @@ export function Composer({
         onCamera={() => void files.takePhoto()}
         onPhotos={() => void files.pickImages()}
         onFiles={() => void files.pickFiles()}
+      />
+
+      {/* `channel` rather than the conversation's own: in a cross-channel thread
+          this is the composer's WhatsApp selection, and a template sent against
+          an email-origin conversation would otherwise go out by email. */}
+      <TemplateSheet
+        conversationId={conv.id}
+        channel={channel}
+        visible={templateSheet}
+        onClose={() => setTemplateSheet(false)}
       />
     </View>
   );
