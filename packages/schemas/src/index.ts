@@ -15,9 +15,22 @@ export const ChannelType = {
   WhatsApp: "whatsapp",
   WhatsAppGroup: "whatsapp_group",
   Email: "email",
+  NestChat: "nestchat",
 } as const;
-export const channelTypeSchema = z.enum(["whatsapp", "whatsapp_group", "email"]);
+export const channelTypeSchema = z.enum(["whatsapp", "whatsapp_group", "email", "nestchat"]);
 export type ChannelType = z.infer<typeof channelTypeSchema>;
+
+/**
+ * How we know a customer. One person can have several: a phone number, an email
+ * address, a WhatsApp id, a browser that has chatted with us before. Matching on
+ * any of them is what makes a conversation follow the person across channels.
+ *
+ * `nestchat` is the odd one out — it is a random id the visitor's own browser
+ * keeps, not something they own or could prove. It identifies a *browser*, so it
+ * unifies a returning visitor with their own history and nothing else.
+ */
+export const contactIdentityKindSchema = z.enum(["phone", "email", "wa_id", "nestchat"]);
+export type ContactIdentityKind = z.infer<typeof contactIdentityKindSchema>;
 
 export const conversationStatusSchema = z.enum(["open", "pending", "snoozed", "closed"]);
 export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
@@ -176,6 +189,10 @@ export const REQUIRED_CHANNEL_KEYS: Record<ChannelType, string[]> = {
   whatsapp: ["phoneNumberId", "accessToken"],
   whatsapp_group: ["phoneNumberId", "accessToken"],
   email: ["providerToken"],
+  // NestChat is our own channel — there is no third party to authenticate with,
+  // so a NestChat inbox is live the moment it exists (its widget key is minted
+  // on creation). An empty requirement list makes isInboxConnected() say so.
+  nestchat: [],
 };
 
 /**
@@ -183,7 +200,17 @@ export const REQUIRED_CHANNEL_KEYS: Record<ChannelType, string[]> = {
  * credentials. Access tokens (`accessToken`, `providerToken`) and the webhook
  * `verifyToken` are deliberately absent, so a token never leaves the backend.
  */
-export const PUBLIC_CHANNEL_KEYS = ["phoneNumberId", "wabaId", "displayNumber", "fromName", "provider"] as const;
+export const PUBLIC_CHANNEL_KEYS = [
+  "phoneNumberId",
+  "wabaId",
+  "displayNumber",
+  "fromName",
+  "provider",
+  // The NestChat widget key is public by design — it is what the embed snippet
+  // on the customer's own website carries. It identifies an inbox; it authorises
+  // nothing beyond "open a chat with this business", which is the point.
+  "widgetKey",
+] as const;
 
 /** Pick only the non-secret channelConfig keys, for display in the channel editor. */
 export function publicChannelConfig(
@@ -782,6 +809,135 @@ export const updateInboxInputSchema = z.object({
 });
 export type UpdateInboxInput = z.infer<typeof updateInboxInputSchema>;
 
+/** A hex colour (#RGB or #RRGGBB) — a label swatch, a widget's brand colour. */
+const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Must be a hex colour like #0FA47A");
+
+/* ------------------------------------------------------------------ */
+/* NestChat — our own live chat channel                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How a NestChat widget looks and what it says. Every string a visitor can read
+ * is here rather than in the widget's source, because the business — not us —
+ * decides how it greets its own customers.
+ *
+ * Colours are stored as authored (a `#rrggbb`, validated below) and applied as
+ * CSS custom properties, so the widget never interpolates untrusted text into a
+ * style rule.
+ */
+export const nestchatAppearanceSchema = z.object({
+  /** Brand colour: the header, the launcher, and the visitor's own bubbles. */
+  accent: hexColor.default("#2563eb"),
+  /** Text drawn on top of `accent` — authored, because a light brand colour
+   *  needs dark text and we can't guess which without a contrast calculation
+   *  the business may disagree with. */
+  accentText: hexColor.default("#ffffff"),
+  /** "auto" follows the visitor's own OS preference. */
+  theme: z.enum(["light", "dark", "auto"]).default("light"),
+  title: z.string().max(60).default("Chat with us"),
+  subtitle: z.string().max(120).default("We usually reply in a few minutes"),
+  /** The first thing in the empty thread — shown before the visitor writes. */
+  greeting: z.string().max(300).default("Hi 👋 How can we help today?"),
+  placeholder: z.string().max(60).default("Write a message…"),
+  /** The floating bubble's tooltip, for the script embed. */
+  launcherLabel: z.string().max(40).default("Chat with us"),
+  /** Shown in place of the subtitle when no agent is online. */
+  awayMessage: z
+    .string()
+    .max(200)
+    .default("We're away right now — leave a message and we'll reply by email."),
+  /** Ask for an email before the first message, so a reply can reach someone
+   *  who has closed the tab. */
+  askEmail: z.boolean().default(true),
+  askEmailLabel: z.string().max(80).default("Your email, so we can reply if you leave"),
+  showBranding: z.boolean().default(true),
+  /** Which corner the script embed's launcher sits in. */
+  position: z.enum(["right", "left"]).default("right"),
+});
+export type NestChatAppearance = z.infer<typeof nestchatAppearanceSchema>;
+
+/** The appearance every new NestChat channel starts with. */
+export const DEFAULT_NESTCHAT_APPEARANCE: NestChatAppearance = nestchatAppearanceSchema.parse({});
+
+/** What the agent-facing settings pane reads for one NestChat channel. */
+export const nestchatSettingsSchema = z.object({
+  inboxId: z.string(),
+  /** Public id in the embed snippet. Identifies the inbox; authorises nothing. */
+  widgetKey: z.string(),
+  appearance: nestchatAppearanceSchema,
+  /** Ready-to-paste URLs, resolved against the deployment's own public URL so
+   *  the snippet is correct without the admin knowing where we're hosted. */
+  embedUrl: z.string(),
+  scriptUrl: z.string(),
+});
+export type NestChatSettings = z.infer<typeof nestchatSettingsSchema>;
+
+export const updateNestchatInputSchema = z.object({
+  appearance: nestchatAppearanceSchema.partial(),
+});
+export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
+
+/* ---- the visitor-facing contract (public, unauthenticated) ---- */
+
+/** What the widget fetches before it renders anything. No customer data. */
+export const nestchatConfigSchema = z.object({
+  appearance: nestchatAppearanceSchema,
+  /** Whether anyone is at the desk right now, so the widget can set
+   *  expectations instead of promising a reply nobody is there to send. */
+  online: z.boolean(),
+});
+export type NestChatConfig = z.infer<typeof nestchatConfigSchema>;
+
+/**
+ * One message as a visitor may see it. Deliberately not `Message`: the internal
+ * shape carries notes, assignment, delivery state and author ids, none of which
+ * belong on someone else's website. Everything the widget renders is built here.
+ */
+export const nestchatMessageSchema = z.object({
+  id: z.string(),
+  from: z.enum(["visitor", "agent"]),
+  /** The agent's display name, for the "Sarah" above a reply. Absent for the
+   *  visitor's own messages. */
+  authorName: z.string().optional(),
+  body: z.string(),
+  at: z.string(),
+  attachments: z
+    .array(z.object({ id: z.string(), filename: z.string(), mime: z.string() }))
+    .optional(),
+});
+export type NestChatMessage = z.infer<typeof nestchatMessageSchema>;
+
+/** Opening (or resuming) a chat. The visitor id is the browser's own, so a
+ *  returning visitor lands back in their existing conversation. */
+export const nestchatSessionInputSchema = z.object({
+  visitorId: z.string().min(8).max(64).optional(),
+  name: z.string().max(80).optional(),
+  email: z.string().email().max(200).optional(),
+});
+export type NestChatSessionInput = z.infer<typeof nestchatSessionInputSchema>;
+
+export const nestchatSessionSchema = z.object({
+  visitorId: z.string(),
+  /** Bearer for every later visitor call. Scoped to one conversation. */
+  token: z.string(),
+  messages: z.array(nestchatMessageSchema),
+});
+export type NestChatSession = z.infer<typeof nestchatSessionSchema>;
+
+export const nestchatSendInputSchema = z.object({
+  body: z.string().min(1).max(4000),
+  /** The page the widget is embedded on. Recorded as the subject of the thread
+   *  this message opens, so the agent can see where the visitor was standing. */
+  pageUrl: z.string().max(500).optional(),
+});
+export type NestChatSendInput = z.infer<typeof nestchatSendInputSchema>;
+
+export const nestchatIdentifyInputSchema = z.object({
+  name: z.string().max(80).optional(),
+  email: z.string().email().max(200).optional(),
+});
+export type NestChatIdentifyInput = z.infer<typeof nestchatIdentifyInputSchema>;
+
 export const createTeamInputSchema = z.object({
   name: z.string().min(1),
   icon: z.string().optional(),
@@ -802,8 +958,6 @@ export const reorderTeamsInputSchema = z.object({
 });
 export type ReorderTeamsInput = z.infer<typeof reorderTeamsInputSchema>;
 
-/** A hex colour (#RGB or #RRGGBB) for a label swatch. */
-const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Must be a hex colour like #0FA47A");
 export const createLabelInputSchema = z.object({
   name: z.string().min(1).max(40),
   color: hexColor,

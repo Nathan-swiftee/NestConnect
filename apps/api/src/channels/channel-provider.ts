@@ -51,6 +51,9 @@ export interface SendContext {
 
 /** A resolved outbound media file (bytes in hand), handed to a provider to send. */
 export interface OutboundMedia {
+  /** Our stored attachment id. External providers ignore it (they get bytes),
+   *  but a channel whose client fetches from us needs it to build a link. */
+  id: string;
   kind: AttachmentKind;
   mime: string;
   filename: string;
@@ -89,6 +92,12 @@ export interface SendParams {
   template?: OutboundTemplate;
   /** Provider id of a message this one quotes/replies to (WhatsApp context). */
   replyToChannelMsgId?: string;
+  /** Our own id for the message being sent, and who wrote it. Channels that
+   *  deliver to a client we also wrote (NestChat) echo the message straight to
+   *  it, and need the real id so the widget can reconcile it with the copy it
+   *  fetches — an invented id would show the reply twice. */
+  messageId?: string;
+  authorName?: string;
   /** An open-tracking pixel URL to embed (email providers only). When set, a
    *  hidden 1×1 `<img>` pointing here is appended to the HTML body so a request
    *  for it records that THIS recipient opened the email (per-recipient copies). */

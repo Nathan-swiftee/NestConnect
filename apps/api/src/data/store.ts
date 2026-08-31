@@ -4,6 +4,7 @@ import type {
   ChannelType,
   Contact,
   ContactDuplicateGroup,
+  ContactIdentityKind,
   ContactWithConversations,
   Conversation,
   ConversationPage,
@@ -667,6 +668,10 @@ export abstract class Store {
 
   abstract getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined>;
   abstract getInboxByEmailAddress(address: string): Promise<Inbox | undefined>;
+  /** The NestChat channel a widget key belongs to. The key is public (it sits in
+   *  the embed snippet on the business's website), so an unknown one is simply
+   *  not found — it is an identifier, not a credential. */
+  abstract getInboxByWidgetKey(widgetKey: string): Promise<Inbox | undefined>;
 
   /* ---- webhook diagnostics (unmapped/unverified inbound) ---- */
   abstract recordWebhookDiagnostic(input: {
@@ -698,7 +703,7 @@ export abstract class Store {
 
   abstract upsertContactByIdentity(params: {
     orgId: string;
-    kind: "phone" | "email" | "wa_id";
+    kind: ContactIdentityKind;
     value: string;
     displayName: string;
     company?: string;
@@ -791,7 +796,7 @@ export abstract class Store {
    */
   abstract findContactByIdentity(params: {
     orgId: string;
-    kind: "phone" | "email" | "wa_id";
+    kind: ContactIdentityKind;
     value: string;
   }): Promise<Contact | undefined>;
 
@@ -846,6 +851,9 @@ export abstract class Store {
    *  conversations and participations onto the winner, blank-fill its fields and
    *  union tags, then delete the losers. Returns the surviving contact. */
   abstract mergeContacts(params: { winnerId: string; loserIds: string[] }): Promise<Contact>;
+  /** One customer, without their conversations — for the paths that only need
+   *  the person (a visitor's display name, an ownership check). */
+  abstract getContact(id: string): Promise<Contact | undefined>;
   abstract getContactWithConversations(id: string): Promise<ContactWithConversations | undefined>;
   abstract updateContact(
     id: string,

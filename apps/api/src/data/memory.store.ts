@@ -1395,6 +1395,14 @@ export class MemoryStore extends Store {
     return unconfigured.length === 1 ? unconfigured[0] : undefined;
   }
 
+  async getInboxByWidgetKey(widgetKey: string): Promise<Inbox | undefined> {
+    const key = widgetKey.trim();
+    if (!key) return undefined;
+    return this.inboxes.find(
+      (i) => i.type === "nestchat" && this.inboxConfig.get(i.id)?.widgetKey === key,
+    );
+  }
+
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const a = address.trim().toLowerCase();
     // Deterministic match on the inbox address only — no arbitrary fallback.
@@ -2010,6 +2018,10 @@ export class MemoryStore extends Store {
     }
     this.contacts = this.contacts.filter((c) => !loserSet.has(c.id));
     return { ...winner, tags: winner.tags ?? [] };
+  }
+
+  async getContact(id: string): Promise<Contact | undefined> {
+    return this.contacts.find((c) => c.id === id);
   }
 
   async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {

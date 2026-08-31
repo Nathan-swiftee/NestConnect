@@ -3,6 +3,7 @@ import { NestFactory } from "@nestjs/core";
 import { Logger } from "@nestjs/common";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
+import type { NextFunction, Request, Response } from "express";
 import { AppModule } from "./app.module";
 import { Store } from "./data/store";
 import { env, assertProdSecrets } from "./config/env";
@@ -43,6 +44,24 @@ async function bootstrap() {
   app.getHttpAdapter().getInstance().set("trust proxy", 1);
 
   app.use(cookieParser());
+  // The NestChat widget runs in an iframe on the customer's own website, so its
+  // public routes have to answer any origin. They are opened up here, ahead of
+  // the app's own CORS, rather than by loosening that policy: the agent-facing
+  // API is reached with a session cookie, and a reflected origin plus
+  // credentials on *those* routes would let any website act as a signed-in user.
+  // These routes carry no cookie (the visitor's bearer token is passed
+  // explicitly), so `*` without credentials is the whole of what they need.
+  app.use("/api/nestchat", (req: Request, res: Response, next: NextFunction) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Max-Age", "86400");
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
+    next();
+  });
   app.enableCors({ origin: env.corsOrigin, credentials: true });
   // REST lives under /api; health endpoints stay at the root for platform probes.
   app.setGlobalPrefix("api", { exclude: ["health", "health/ready"] });

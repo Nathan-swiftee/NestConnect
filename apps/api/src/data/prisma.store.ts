@@ -1595,6 +1595,22 @@ export class PrismaStore extends Store {
     return undefined; // no deterministic match — caller records a diagnostic
   }
 
+  async getInboxByWidgetKey(widgetKey: string): Promise<Inbox | undefined> {
+    const key = widgetKey.trim();
+    if (!key) return undefined;
+    // Matched in code rather than in the query: the key lives inside the
+    // channelConfig JSON, and there are a handful of channels in an org — a JSON
+    // path index would be machinery for a list that fits on a screen.
+    const rows = await this.prisma.inbox.findMany({
+      where: { orgId: ORG_ID, type: "nestchat" },
+      include: { teams: true },
+    });
+    const match = rows.find(
+      (i) => (i.channelConfig as Record<string, string> | null)?.widgetKey === key,
+    );
+    return match ? mapInbox(match) : undefined;
+  }
+
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const rows = await this.prisma.inbox.findMany({
       where: { orgId: ORG_ID, type: "email" },
@@ -2503,6 +2519,11 @@ export class PrismaStore extends Store {
     const merged = await this.prisma.contact.findUnique({ where: { id: params.winnerId }, include: { identities: true } });
     if (!merged) throw new Error("Winner contact not found");
     return mapContact(merged);
+  }
+
+  async getContact(id: string): Promise<Contact | undefined> {
+    const row = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
+    return row ? mapContact(row) : undefined;
   }
 
   async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {

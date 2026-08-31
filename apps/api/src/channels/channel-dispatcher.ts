@@ -162,6 +162,8 @@ export class ChannelDispatcher {
       media,
       template,
       replyToChannelMsgId,
+      messageId: message.id,
+      authorName: message.authorName,
     };
     // Email fans out into one tracked copy per recipient (read receipts); other
     // channels send a single message. A template send skips tracking (WhatsApp).
@@ -311,6 +313,7 @@ export class ChannelDispatcher {
         continue;
       }
       out.push({
+        id: att.id,
         kind: att.kind,
         mime: att.mime,
         filename: att.filename,

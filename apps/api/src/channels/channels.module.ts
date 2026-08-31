@@ -22,6 +22,11 @@ import { GmailProvider } from "./google/gmail.provider";
 import { GmailSyncService } from "./google/gmail-sync.service";
 import { MetaOAuthService } from "./meta/meta-oauth.service";
 import { MetaController } from "./meta/meta.controller";
+import { NestChatProvider } from "./nestchat/nestchat.provider";
+import { NestChatController } from "./nestchat/nestchat.controller";
+import { NestChatAdminController } from "./nestchat/nestchat-admin.controller";
+import { NestChatService } from "./nestchat/nestchat.service";
+import { VisitorBus } from "./nestchat/visitor-bus";
 import { DiagnosticsController } from "./diagnostics.controller";
 import { IntegrationsController } from "../settings/integrations.controller";
 
@@ -33,6 +38,8 @@ import { IntegrationsController } from "../settings/integrations.controller";
     GroupsController,
     GoogleController,
     MetaController,
+    NestChatController,
+    NestChatAdminController,
     DiagnosticsController,
     IntegrationsController,
   ],
@@ -41,14 +48,16 @@ import { IntegrationsController } from "../settings/integrations.controller";
     WhatsAppGroupsProvider,
     EmailProvider,
     GmailProvider,
+    NestChatProvider,
     {
       provide: CHANNEL_PROVIDERS,
       useFactory: (
         wa: WhatsAppCloudProvider,
         email: EmailProvider,
         gmailProvider: GmailProvider,
-      ) => [wa, gmailProvider, email],
-      inject: [WhatsAppCloudProvider, EmailProvider, GmailProvider],
+        nestchat: NestChatProvider,
+      ) => [wa, gmailProvider, email, nestchat],
+      inject: [WhatsAppCloudProvider, EmailProvider, GmailProvider, NestChatProvider],
     },
     RoutingService,
     IngestService,
@@ -60,7 +69,9 @@ import { IntegrationsController } from "../settings/integrations.controller";
     MetaOAuthService,
     ChannelDispatcher,
     OutboundDeliveryService,
+    VisitorBus,
+    NestChatService,
   ],
-  exports: [ChannelDispatcher, OutboundDeliveryService, GmailSyncService, MetaOAuthService],
+  exports: [ChannelDispatcher, OutboundDeliveryService, GmailSyncService, MetaOAuthService, NestChatService],
 })
 export class ChannelsModule {}

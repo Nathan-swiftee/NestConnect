@@ -1,5 +1,12 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { GROUP_MAX_MEMBERS, type Conversation, type MessageType } from "@ding/schemas";
+import {
+  GROUP_MAX_MEMBERS,
+  type Contact,
+  type Conversation,
+  type Inbox,
+  type Message,
+  type MessageType,
+} from "@ding/schemas";
 import { Store, type AttachmentInput } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { TenantContext } from "../tenancy/tenant-context";
@@ -224,6 +231,62 @@ export class IngestService {
       void this.pushInbound(conversationId, contact.displayName, input.text);
     }
     return { conversationId, created: false };
+  }
+
+  /**
+   * A visitor wrote in the NestChat widget on the business's own website.
+   *
+   * The simplest inbound path we have: the widget already told us which channel
+   * it belongs to and who is writing (the visitor session resolved both), so
+   * there is no address to map and no provider id to de-duplicate against — the
+   * only way to reach here is one HTTP call from one browser.
+   *
+   * Everything after that is the shared pipeline: find or open the conversation,
+   * route a new one, append, notify. A NestChat thread behaves like any other.
+   */
+  async ingestNestChat(input: {
+    inbox: Inbox;
+    contact: Contact;
+    text: string;
+    /** The page the widget is embedded on, recorded as the new thread's subject
+     *  so an agent opening it knows where the visitor was standing. */
+    pageUrl?: string;
+  }): Promise<{ conversationId: string; created: boolean; message?: Message } | undefined> {
+    if (input.contact.blocked) {
+      this.logger.log(`Dropped inbound NestChat from blocked contact ${input.contact.id}`);
+      return undefined;
+    }
+
+    const res = await this.store.findOrCreateOpenConversation({
+      orgId: input.inbox.orgId,
+      inboxId: input.inbox.id,
+      contact: input.contact,
+      channel: "nestchat",
+      subject: input.pageUrl,
+    });
+    const conversationId = res.conversation.id;
+    if (res.created) {
+      const decision = await this.routing.route(input.inbox, input.contact);
+      const assigned = await this.store.assign(conversationId, decision);
+      if (assigned) await this.applyTeamSla(assigned);
+      this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
+      this.logger.log(
+        `New NestChat conversation ${conversationId} from ${input.contact.displayName} → ` +
+          `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
+      );
+    }
+
+    const message = await this.store.appendInboundMessage(conversationId, {
+      authorName: input.contact.displayName,
+      body: input.text,
+      channel: "nestchat",
+    });
+    if (message) {
+      this.realtime.emitMessageCreated(conversationId, message, input.inbox.orgId);
+      void this.pushInbound(conversationId, input.contact.displayName, input.text);
+    }
+
+    return { conversationId, created: res.created, message };
   }
 
   async ingestEmail(input: EmailInbound): Promise<{ conversationId: string; created: boolean } | undefined> {

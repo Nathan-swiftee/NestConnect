@@ -136,6 +136,33 @@ export class RealtimeGateway
     }
   }
 
+  /**
+   * Is anybody at the desk?
+   *
+   * The NestChat widget asks before it promises a reply: "we usually reply in a
+   * few minutes" is a good line when someone is there to read it and a bad one
+   * at 3am. An agent with the app open is in the org room, which is as close to
+   * "reachable right now" as we can honestly get.
+   *
+   * Best-effort — a failure answers "away", which under-promises rather than
+   * over-promises.
+   */
+  async hasOnlineAgents(orgId: string): Promise<boolean> {
+    try {
+      const sockets = await this.server.in(orgRoom(orgId)).fetchSockets();
+      return sockets.length > 0;
+    } catch (err) {
+      this.logger.debug(`hasOnlineAgents check failed: ${String(err)}`);
+      return false;
+    }
+  }
+
+  /** Relay a typing indicator into a conversation from outside a socket — a
+   *  NestChat visitor types in an iframe, not on the agents' socket. */
+  emitTyping(conversationId: string, who: string, typing: boolean): void {
+    this.server.to(convRoom(conversationId)).emit(ServerEvent.Typing, { conversationId, who, typing });
+  }
+
   @SubscribeMessage(ClientEvent.JoinConversation)
   onJoin(@ConnectedSocket() client: DingSocket, @MessageBody() body: { conversationId: string }) {
     client.join(convRoom(body.conversationId));
