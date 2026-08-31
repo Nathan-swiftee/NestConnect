@@ -1140,6 +1140,20 @@ export const integrationSettingsSchema = z.object({
     /** Non-secret echo — the from-address (the API key is never returned). */
     from: z.string(),
   }),
+  /** Push notifications to the phone app, and the Firebase project they travel
+   *  through. `configured` is about the Expo access token, which is the only
+   *  credential the API itself holds — the Firebase values are identifiers. */
+  push: z.object({
+    /** True when an Expo access token is set, so sends are authenticated. */
+    configured: z.boolean(),
+    /** The Firebase project id, e.g. "nestconnect-d5489". */
+    projectId: z.string(),
+    /** The FCM sender id — `project_number` in google-services.json. */
+    projectNumber: z.string(),
+    /** The Android app's `mobilesdk_app_id`. */
+    appId: z.string(),
+    storageBucket: z.string(),
+  }),
   /** Claude (Anthropic) — powers the composer's one-tap Polish. */
   anthropic: z.object({
     /** True when an API key is set. */
@@ -1205,6 +1219,14 @@ export const updateIntegrationSettingsInputSchema = z.object({
    *  blank to keep the stored one. */
   resendApiKey: z.string().optional(),
   resendFrom: z.string().optional(),
+  /** Push. The Firebase identifiers write on any change (empty clears, falling
+   *  back to the environment); the Expo access token is written only when a
+   *  non-empty value is sent, so it can be left blank to keep the stored one. */
+  expoAccessToken: z.string().optional(),
+  firebaseProjectId: z.string().optional(),
+  firebaseProjectNumber: z.string().optional(),
+  firebaseAppId: z.string().optional(),
+  firebaseStorageBucket: z.string().optional(),
   /** Claude (Anthropic). The model and prompt write on any change (empty resets
    *  to the default); the API key is written only when a non-empty value is
    *  sent, so it can be left blank to keep the stored one. */

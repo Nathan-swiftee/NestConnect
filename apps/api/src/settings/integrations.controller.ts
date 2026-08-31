@@ -58,6 +58,14 @@ import {
   ANTHROPIC_MODEL_KEY,
   ANTHROPIC_POLISH_PROMPT_KEY,
 } from "../ai/anthropic-config";
+import {
+  pushPublicSettings,
+  EXPO_ACCESS_TOKEN_KEY,
+  FIREBASE_APP_ID_KEY,
+  FIREBASE_PROJECT_ID_KEY,
+  FIREBASE_PROJECT_NUMBER_KEY,
+  FIREBASE_STORAGE_BUCKET_KEY,
+} from "../push/push-config";
 
 /** App-level integration settings (Settings › Setup). Currently: the org's
  *  Google OAuth app credentials that power the "Connect with Google" flow. */
@@ -141,6 +149,20 @@ export class IntegrationsController {
     }
     const anthropicApiKey = body.anthropicApiKey?.trim();
     if (anthropicApiKey) await this.store.setAppSetting(me.orgId, ANTHROPIC_API_KEY_KEY, anthropicApiKey);
+    // Push. The Firebase values are the project's public identifiers, so they
+    // write on any change (empty clears, dropping back to the environment); the
+    // Expo access token is the only secret here and writes only when supplied.
+    const firebase: [string, string | undefined][] = [
+      [FIREBASE_PROJECT_ID_KEY, body.firebaseProjectId],
+      [FIREBASE_PROJECT_NUMBER_KEY, body.firebaseProjectNumber],
+      [FIREBASE_APP_ID_KEY, body.firebaseAppId],
+      [FIREBASE_STORAGE_BUCKET_KEY, body.firebaseStorageBucket],
+    ];
+    for (const [key, value] of firebase) {
+      if (value !== undefined) await this.store.setAppSetting(me.orgId, key, value.trim());
+    }
+    const expoAccessToken = body.expoAccessToken?.trim();
+    if (expoAccessToken) await this.store.setAppSetting(me.orgId, EXPO_ACCESS_TOKEN_KEY, expoAccessToken);
     return this.snapshot(me.orgId, req);
   }
 
@@ -165,6 +187,7 @@ export class IntegrationsController {
       smtp,
       resend,
       anthropic,
+      push,
     ] = await Promise.all([
         this.google.clientId(orgId),
         this.google.configured(orgId),
@@ -176,6 +199,7 @@ export class IntegrationsController {
         smtpPublicSettings(this.store, orgId),
         resendPublicSettings(this.store, orgId),
         anthropicPublicSettings(this.store, orgId),
+        pushPublicSettings(this.store, orgId),
       ]);
     return {
       google: {
@@ -195,6 +219,7 @@ export class IntegrationsController {
       smtp,
       resend,
       anthropic,
+      push,
     };
   }
 

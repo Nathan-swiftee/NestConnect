@@ -54,6 +54,7 @@ import { initials, avatarBg } from "../lib/format";
 import { api } from "../lib/api";
 import { TEMPLATE_CATEGORIES, approvalMeta, countVariables } from "./TemplatePicker";
 import {
+  BellIcon,
   BoltIcon,
   channelMeta,
   ChevronDown,
@@ -88,10 +89,11 @@ type Leaf =
   | "connections"
   | "storage"
   | "email"
-  | "ai";
-type SetupSub = "connections" | "storage" | "email" | "ai";
+  | "ai"
+  | "push";
+type SetupSub = "connections" | "storage" | "email" | "ai" | "push";
 /** The integrations that open a credential sheet from their card. */
-type SetupKey = "google" | "meta" | "storage" | "resend" | "smtp" | "anthropic";
+type SetupKey = "google" | "meta" | "storage" | "resend" | "smtp" | "anthropic" | "push";
 
 interface Props {
   onClose: () => void;
@@ -138,6 +140,7 @@ const NAV: NavSection[] = [
       { key: "storage", label: "Storage" },
       { key: "email", label: "Email" },
       { key: "ai", label: "AI" },
+      { key: "push", label: "Push" },
     ],
   },
 ];
@@ -159,6 +162,10 @@ const SETUP_HEAD: Record<SetupSub, { h: string; p: string }> = {
   ai: {
     h: "AI assist",
     p: "Claude writes nothing on its own — it polishes what an agent has already drafted, on request.",
+  },
+  push: {
+    h: "Push notifications",
+    p: "How a new message reaches the phone app, and the Firebase project it travels through.",
   },
 };
 
@@ -243,9 +250,11 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "teams" && <TeamsPane onToast={onToast} />}
             {active === "people" && <PeoplePane onToast={onToast} />}
             {active === "labels" && <LabelsPane onToast={onToast} />}
-            {(active === "connections" || active === "storage" || active === "email" || active === "ai") && (
-              <SetupPane sub={active} onToast={onToast} />
-            )}
+            {(active === "connections" ||
+              active === "storage" ||
+              active === "email" ||
+              active === "ai" ||
+              active === "push") && <SetupPane sub={active} onToast={onToast} />}
           </div>
         </div>
       </div>
@@ -2249,6 +2258,8 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const resendConfigured = Boolean(resend?.configured);
   const anthropic = integrations.data?.anthropic;
   const anthropicConfigured = Boolean(anthropic?.configured);
+  const push = integrations.data?.push;
+  const pushConfigured = Boolean(push?.configured);
   // A test send goes via whichever transport is configured (Mailer tries Resend
   // first, then Gmail/SMTP), so enable the test whenever either is set up.
   const emailConfigured = resendConfigured || smtpConfigured;
@@ -2272,6 +2283,11 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const [resendFrom, setResendFrom] = useState("");
   const [anthropicApiKey, setAnthropicApiKey] = useState("");
   const [anthropicModel, setAnthropicModel] = useState("");
+  const [expoAccessToken, setExpoAccessToken] = useState("");
+  const [firebaseProjectId, setFirebaseProjectId] = useState("");
+  const [firebaseProjectNumber, setFirebaseProjectNumber] = useState("");
+  const [firebaseAppId, setFirebaseAppId] = useState("");
+  const [firebaseStorageBucket, setFirebaseStorageBucket] = useState("");
   const [polishPrompt, setPolishPrompt] = useState("");
   const [aiTesting, setAiTesting] = useState(false);
   // Models this key can use. Empty + an error => the field degrades to free text.
@@ -2312,6 +2328,18 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   useEffect(() => {
     if (anthropic?.model !== undefined) setAnthropicModel(anthropic.model);
   }, [anthropic?.model]);
+  useEffect(() => {
+    if (push?.projectId !== undefined) setFirebaseProjectId(push.projectId);
+  }, [push?.projectId]);
+  useEffect(() => {
+    if (push?.projectNumber !== undefined) setFirebaseProjectNumber(push.projectNumber);
+  }, [push?.projectNumber]);
+  useEffect(() => {
+    if (push?.appId !== undefined) setFirebaseAppId(push.appId);
+  }, [push?.appId]);
+  useEffect(() => {
+    if (push?.storageBucket !== undefined) setFirebaseStorageBucket(push.storageBucket);
+  }, [push?.storageBucket]);
   // The prompt is long and hand-edited, so it prefills from the server (which
   // seeds it with DEFAULT_POLISH_PROMPT) rather than starting blank.
   useEffect(() => {
@@ -2367,6 +2395,40 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
       onSuccess: () => {
         setMetaAppSecret("");
         onToast("Meta settings saved");
+        setEditing(null);
+      },
+      onError: () => onToast("Only admins & managers can change setup"),
+    });
+  };
+
+  const savePush = () => {
+    const input: {
+      expoAccessToken?: string;
+      firebaseProjectId?: string;
+      firebaseProjectNumber?: string;
+      firebaseAppId?: string;
+      firebaseStorageBucket?: string;
+    } = {};
+    // The Firebase values are the project's public identifiers, so they send on
+    // any change and an empty one clears back to the environment.
+    if (firebaseProjectId.trim() !== (push?.projectId ?? "")) input.firebaseProjectId = firebaseProjectId.trim();
+    if (firebaseProjectNumber.trim() !== (push?.projectNumber ?? ""))
+      input.firebaseProjectNumber = firebaseProjectNumber.trim();
+    if (firebaseAppId.trim() !== (push?.appId ?? "")) input.firebaseAppId = firebaseAppId.trim();
+    if (firebaseStorageBucket.trim() !== (push?.storageBucket ?? ""))
+      input.firebaseStorageBucket = firebaseStorageBucket.trim();
+    // The token is write-only — only sent when the field has something in it,
+    // so leaving it blank keeps whatever is already stored.
+    const token = expoAccessToken.trim();
+    if (token) input.expoAccessToken = token;
+    if (Object.keys(input).length === 0) {
+      onToast("Nothing to save — change a field first");
+      return;
+    }
+    update.mutate(input, {
+      onSuccess: () => {
+        setExpoAccessToken("");
+        onToast("Push settings saved");
         setEditing(null);
       },
       onError: () => onToast("Only admins & managers can change setup"),
@@ -2607,6 +2669,19 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
           />
         )}
 
+        {sub === "push" && (
+          <IntegrationCard
+            color="#FFA000"
+            glyph={<BellIcon />}
+            name="Firebase / Expo push"
+            blurb="How a new message reaches the phone"
+            summary={push?.projectId ? `Project ${push.projectId}` : "No Firebase project recorded"}
+            on={pushConfigured}
+            label={pushConfigured ? "Token set" : "Unauthenticated sends"}
+            onClick={() => setEditing("push")}
+          />
+        )}
+
         {sub === "email" && (
           <>
             <IntegrationCard
@@ -2787,6 +2862,90 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
               placeholder="Optional — e.g. 987654321098765"
             />
           </div>
+        </SetupModal>
+      )}
+
+      {editing === "push" && (
+        <SetupModal
+          title="Firebase / Expo push"
+          onClose={close}
+          foot={
+            <>
+              <button className="btn-ghost" type="button" onClick={close}>
+                Cancel
+              </button>
+              <button className="btn-primary" type="button" onClick={savePush} disabled={update.isPending || integrations.isLoading}>
+                Save
+              </button>
+            </>
+          }
+        >
+          <p className="fieldhint">
+            A notification travels app → Expo → Firebase → phone. Expo does the Firebase call using the service-account
+            key uploaded to <b>EAS credentials</b> — that key is never held here, and there is nothing to paste for it.
+            What this screen holds is the access token that authenticates <i>our</i> sends to Expo, and a record of which
+            Firebase project the app is pointed at. Takes effect within seconds of saving — no redeploy.
+          </p>
+
+          <label className="field">
+            <span>Expo access token</span>
+            <input
+              type="password"
+              value={expoAccessToken}
+              autoComplete="off"
+              onChange={(e) => setExpoAccessToken(e.target.value)}
+              placeholder={pushConfigured ? "Saved — leave blank to keep it" : "Optional, but recommended"}
+            />
+          </label>
+          <p className="fieldhint">
+            Expo accepts sends without a token. With one — and “enhanced security” switched on in your Expo account —
+            anyone who learns a device’s push token still can’t send to that phone in your name.
+          </p>
+
+          <div className="setform__grid two">
+            <label className="field">
+              <span>Firebase project ID</span>
+              <input
+                value={firebaseProjectId}
+                autoComplete="off"
+                onChange={(e) => setFirebaseProjectId(e.target.value)}
+                placeholder="e.g. nestconnect-d5489"
+              />
+            </label>
+            <label className="field">
+              <span>Sender ID (project number)</span>
+              <input
+                value={firebaseProjectNumber}
+                autoComplete="off"
+                onChange={(e) => setFirebaseProjectNumber(e.target.value)}
+                placeholder="e.g. 186082168787"
+              />
+            </label>
+            <label className="field">
+              <span>Android app ID</span>
+              <input
+                value={firebaseAppId}
+                autoComplete="off"
+                onChange={(e) => setFirebaseAppId(e.target.value)}
+                placeholder="1:000000000000:android:…"
+              />
+            </label>
+            <label className="field">
+              <span>Storage bucket</span>
+              <input
+                value={firebaseStorageBucket}
+                autoComplete="off"
+                onChange={(e) => setFirebaseStorageBucket(e.target.value)}
+                placeholder="your-project.firebasestorage.app"
+              />
+            </label>
+          </div>
+          <p className="fieldhint">
+            These four are the project’s public identifiers, copied from <code>google-services.json</code> in the mobile
+            app. Nothing sends them anywhere — they’re recorded so that when pushes stop, “which Firebase project is the
+            app actually on?” has an answer here rather than inside a build artefact. The app itself reads its copy at
+            build time, so changing them here does not repoint a phone that’s already installed.
+          </p>
         </SetupModal>
       )}
 

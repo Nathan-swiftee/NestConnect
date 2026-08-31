@@ -119,6 +119,19 @@ export const env = {
     // ready immediately, and they're the only way DeviceNotRegistered is learned.
     receiptDelaySeconds: Number(process.env.PUSH_RECEIPT_DELAY_SECONDS ?? 300),
   },
+  // The Firebase project Android notifications travel through. Recorded, not
+  // used: delivery is app → Expo → FCM, Expo holds the service-account key (in
+  // EAS credentials, never here), and the app carries the matching client config
+  // compiled in from google-services.json. These are the project's public
+  // identifiers, kept so "which project is this app pointed at?" has an answer
+  // outside a build artefact. An org's saved Settings values override them.
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID ?? "",
+    // The FCM sender id — `project_number` in google-services.json.
+    projectNumber: process.env.FIREBASE_PROJECT_NUMBER ?? "",
+    appId: process.env.FIREBASE_APP_ID ?? "",
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET ?? "",
+  },
   gmail: {
     // Inbound polling cadence in seconds; 0 disables the poller (push-only).
     pollSeconds: Number(process.env.GMAIL_POLL_SECONDS ?? 60),
