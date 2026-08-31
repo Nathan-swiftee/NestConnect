@@ -875,6 +875,37 @@ export const createContactInputSchema = z.object({
 });
 export type CreateContactInput = z.infer<typeof createContactInputSchema>;
 
+/**
+ * A bulk import of customers, one entry per row of the uploaded file.
+ *
+ * Deliberately the same shape as a single create, so the import path and the
+ * Add-customer form cannot drift into two different ideas of what a customer
+ * is — including the get-or-create dedup, which is the whole reason importing
+ * the same list twice is safe.
+ *
+ * Capped at 2000. Not a technical limit: the request is one transaction's worth
+ * of work and a bigger file almost always means someone exported their whole
+ * CRM by accident, which is better refused than half-applied.
+ */
+export const importContactsInputSchema = z.object({
+  contacts: z.array(createContactInputSchema).min(1).max(2000),
+  /** Applied to every row — including rows that matched a customer already on
+   *  file, which is the point of tagging an import. Merged with whatever tags
+   *  they have; nothing is removed. */
+  tags: z.array(z.string()).default([]),
+});
+export type ImportContactsInput = z.infer<typeof importContactsInputSchema>;
+
+/** What an import did, per outcome. `failed` carries the row's position in the
+ *  file so a rejection can be pointed at rather than just counted. */
+export const importContactsResultSchema = z.object({
+  created: z.number().int().nonnegative(),
+  /** Matched an existing customer by phone/email; tags were added to them. */
+  matched: z.number().int().nonnegative(),
+  failed: z.array(z.object({ index: z.number().int(), name: z.string(), error: z.string() })),
+});
+export type ImportContactsResult = z.infer<typeof importContactsResultSchema>;
+
 export const updateContactInputSchema = z.object({
   displayName: z.string().min(1).optional(),
   company: z.string().optional(),

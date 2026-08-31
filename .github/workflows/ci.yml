@@ -44,6 +44,13 @@ jobs:
       - name: Hook order
         run: pnpm check:hooks
 
+      # Reading a customer list someone exported. Both halves fail silently
+      # rather than loudly: a naive CSV split puts half an address in the name
+      # field, and a first-match header scan reads "Company Name" as the
+      # customer's name and imports everyone under their employer.
+      - name: Web unit tests
+        run: pnpm --filter @ding/web test
+
       # Three structural rules about the mobile screens that neither the
       # typechecker nor a browser can see. Takes a second. docs/11-mobile-layout.md
       # says why they exist and why they aren't rendering tests.

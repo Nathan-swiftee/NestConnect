@@ -8,6 +8,8 @@ import type {
   Template,
   UpdateTemplateInput,
   ContactWithConversations,
+  ImportContactsInput,
+  ImportContactsResult,
   Conversation,
   ConversationPage,
   ConversationStatus,
@@ -244,6 +246,9 @@ export const api = {
   contact: (id: string) => get<ContactWithConversations>(`/contacts/${id}`),
   createContact: (input: CreateContactInput) =>
     post<{ contact: Contact; existed: boolean }>("/contacts", input),
+  /** Bulk import. Rows that match an existing customer are tagged, not duplicated. */
+  importContacts: (input: ImportContactsInput) =>
+    post<ImportContactsResult>("/contacts/import", input),
   updateContact: (id: string, input: UpdateContactInput) => patch<Contact>(`/contacts/${id}`, input),
   deleteContact: (id: string) => del<{ ok: boolean }>(`/contacts/${id}`),
   // Open (or start) this customer's conversation on another channel. An explicit

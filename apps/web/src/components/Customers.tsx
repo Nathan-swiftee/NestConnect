@@ -13,6 +13,7 @@ import {
 } from "../hooks";
 import { relativeTime } from "../lib/format";
 import { Avatar } from "./Avatar";
+import { ImportCustomers } from "./ImportCustomers";
 import { TagEditor } from "./TagEditor";
 import {
   channelMeta,
@@ -20,6 +21,7 @@ import {
   EditIcon,
   MailIcon,
   PhoneIcon,
+  DownloadIcon,
   PlusIcon,
   RouteIcon,
   SearchIcon,
@@ -367,6 +369,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [contacts.data]);
 
+  const [importing, setImporting] = useState(false);
   const blockedCount = (contacts.data ?? []).filter((c) => c.blocked).length;
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -417,9 +420,17 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
               <h2>Customers <span className="setcount">{contacts.data?.length ?? 0}</span></h2>
               <p>Everyone who's messaged you, plus contacts you add by hand. Tag them and pin a customer to a team so their messages always land in the right place.</p>
             </div>
-            <button className="btn-primary" onClick={() => setModal({ contact: null })}>
-              <PlusIcon /> Add customer
-            </button>
+            <div className="setpane__actions">
+              {/* Import sits beside Add rather than behind a menu: a directory
+                  that starts empty is the normal case, and "bring my list in"
+                  is the first thing anyone wants to do with it. */}
+              <button className="btn-ghost" onClick={() => setImporting(true)}>
+                <DownloadIcon /> Import
+              </button>
+              <button className="btn-primary" onClick={() => setModal({ contact: null })}>
+                <PlusIcon /> Add customer
+              </button>
+            </div>
           </div>
 
           <div className="setbar">
@@ -560,6 +571,14 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
           onClose={() => setModal(null)}
           onToast={onToast}
           onOpenConversation={onOpenConversation}
+        />
+      )}
+
+      {importing && (
+        <ImportCustomers
+          existingTags={allTags}
+          onClose={() => setImporting(false)}
+          onToast={onToast}
         />
       )}
     </div>

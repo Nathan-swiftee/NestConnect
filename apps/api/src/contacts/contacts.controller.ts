@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
@@ -11,10 +12,13 @@ import {
 } from "@nestjs/common";
 import {
   createContactInputSchema,
+  importContactsInputSchema,
   mergeContactsInputSchema,
   reachInputSchema,
   updateContactInputSchema,
   type CreateContactInput,
+  type ImportContactsInput,
+  type ImportContactsResult,
   type MergeContactsInput,
   type ReachInput,
   type UpdateContactInput,
@@ -62,6 +66,68 @@ export class ContactsController {
     // contact, so the UI can open that one instead of adding a duplicate.
     const { contact, created } = await this.store.createContact({ orgId: me.orgId, ...body });
     return { contact, existed: !created };
+  }
+
+  /**
+   * Bulk import from an uploaded file.
+   *
+   * Each row goes through the same get-or-create as the Add-customer form, so
+   * importing a list twice does not double the directory — the second run
+   * matches on normalised phone/email and updates instead. That is what makes
+   * this safe to re-run after fixing a column mapping, which people do.
+   *
+   * The bulk tags reach matched customers too, not just new ones. Tagging an
+   * import is nearly always about marking a *cohort* — "these came from the
+   * trade show" — and a cohort that silently excluded everyone already on file
+   * would be wrong in exactly the cases that matter.
+   *
+   * A bad row fails alone. One malformed phone number in a thousand-row file
+   * should not cost the other 999, so the loop collects failures and reports
+   * them by position rather than aborting.
+   */
+  @Post("import")
+  async import(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(importContactsInputSchema)) body: ImportContactsInput,
+  ): Promise<ImportContactsResult> {
+    const me = await this.store.getUser(userId);
+    if (!me) throw new NotFoundException("Current user not found");
+    if (me.role !== "admin" && me.role !== "manager") {
+      throw new ForbiddenException("Only admins and managers can import customers");
+    }
+
+    const bulk = body.tags.map((t) => t.trim()).filter(Boolean);
+    const result: ImportContactsResult = { created: 0, matched: 0, failed: [] };
+
+    for (const [index, input] of body.contacts.entries()) {
+      try {
+        const tags = [...new Set([...(input.tags ?? []), ...bulk])];
+        const { contact, created } = await this.store.createContact({
+          orgId: me.orgId,
+          ...input,
+          ...(tags.length ? { tags } : {}),
+        });
+        if (created) {
+          result.created++;
+          continue;
+        }
+        result.matched++;
+        // Get-or-create returns the existing record untouched, so the tags have
+        // to be put on separately. Union, never replace: an import must not
+        // strip labels someone applied by hand.
+        const merged = [...new Set([...(contact.tags ?? []), ...tags])];
+        if (merged.length !== (contact.tags ?? []).length) {
+          await this.store.updateContact(contact.id, { tags: merged });
+        }
+      } catch (err) {
+        result.failed.push({
+          index,
+          name: input.displayName,
+          error: err instanceof Error && err.message ? err.message : "Could not be imported",
+        });
+      }
+    }
+    return result;
   }
 
   /** Merge duplicate customers into one surviving record (winnerId). The losers'

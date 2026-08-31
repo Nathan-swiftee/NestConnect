@@ -16,6 +16,7 @@ import {
   type Label,
   type Priority,
   type CreateContactInput,
+  type ImportContactsInput,
   type MergeContactsInput,
   type CreateGroupInput,
   type CreateInboxInput,
@@ -533,6 +534,25 @@ export function useUpdateContact() {
       qc.invalidateQueries({ queryKey: ["conversation"] });
       qc.invalidateQueries({ queryKey: ["conversations"] });
       qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
+/**
+ * Bulk import customers from a file.
+ *
+ * Invalidates the same queries a single create does, plus the duplicate
+ * clusters: an import is the most likely thing in the app to produce
+ * near-duplicates worth reviewing, and leaving that list stale is how they go
+ * unnoticed.
+ */
+export function useImportContacts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ImportContactsInput) => api.importContacts(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contacts"] });
+      qc.invalidateQueries({ queryKey: ["contact-duplicates"] });
     },
   });
 }

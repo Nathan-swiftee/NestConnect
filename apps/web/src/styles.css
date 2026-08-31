@@ -2778,3 +2778,68 @@ button.tpl-row:active{transform:scale(.97)}
   .an-select select{max-width:none;flex:1}
   .an-seg{width:100%;justify-content:space-between}
 }
+
+/* ═══════════ Customer import ═══════════ */
+/* Import sits beside Add customer rather than behind a menu — a directory that
+   starts empty is the normal case, and bringing a list in is the first thing
+   anyone wants to do with it. */
+.setpane__actions{display:flex;align-items:center;gap:var(--sp-2)}
+
+/* The file step. Big enough to be an obvious drop target rather than a link
+   that happens to accept a drag. */
+.impdrop{display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding:var(--sp-8) var(--sp-5);border:1.5px dashed var(--border-strong);border-radius:var(--r-16);
+  background:var(--surface-2);cursor:pointer;text-align:center;
+  transition:background var(--t-base),border-color var(--t-base)}
+.impdrop:hover,.impdrop.over{background:var(--sel);border-color:var(--brand)}
+.impdrop:focus-visible{outline:2px solid var(--brand-ring);outline-offset:2px}
+.impdrop svg{width:26px;height:26px;color:var(--text-faint)}
+.impdrop b{font-size:var(--fs-md);font-weight:600}
+.impdrop small{color:var(--text-muted)}
+
+/* The chosen file, and a way back out of it. */
+.imp__file{display:flex;align-items:center;gap:10px;padding:10px 12px;margin-bottom:var(--sp-3);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-12)}
+.imp__file svg{width:17px;height:17px;color:var(--brand-strong);flex:0 0 auto}
+.imp__filename{font-weight:600;font-size:var(--fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp__count{margin-left:auto;color:var(--text-faint);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+
+/* The mapping. Three columns: our field, their column, and what is actually in
+   it — the sample is the point, because a column name is a claim and its
+   contents are the evidence. */
+.impmap{display:flex;flex-direction:column;gap:6px;margin:var(--sp-3) 0}
+.impmap__row{display:grid;grid-template-columns:88px minmax(0,1fr) minmax(0,1.1fr);align-items:center;gap:10px}
+.impmap__label{font-size:var(--fs-xs);font-weight:600;color:var(--text-muted)}
+.impmap__row select{width:100%;min-width:0}
+.impmap__sample{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:var(--fs-xs);color:var(--text-faint);font-variant-numeric:tabular-nums}
+
+/* Rows that won't come in. Stated before the import, not after it. */
+.impskip{display:flex;gap:10px;align-items:flex-start;margin-top:var(--sp-3);padding:10px 12px;
+  background:color-mix(in srgb,var(--amber) 12%,transparent);border-radius:var(--r-12)}
+.impskip svg{width:16px;height:16px;color:var(--amber);flex:0 0 auto;margin-top:1px}
+.impskip b{display:block;font-size:var(--fs-sm)}
+.impskip small{color:var(--text-muted);font-size:var(--fs-xs)}
+
+/* The result. */
+.impdone{text-align:center;padding:var(--sp-4) 0}
+.impdone__ic{width:44px;height:44px;margin:0 auto var(--sp-3);border-radius:50%;display:grid;place-items:center;
+  background:var(--brand-tint);color:var(--brand-strong)}
+.impdone__ic svg{width:22px;height:22px}
+.impdone h3{margin:0 0 var(--sp-3);font-size:var(--fs-lg)}
+.impdone__stats{list-style:none;margin:0;padding:0;display:flex;justify-content:center;gap:var(--sp-5);flex-wrap:wrap}
+.impdone__stats li{color:var(--text-muted);font-size:var(--fs-sm)}
+.impdone__stats b{display:block;font-size:var(--fs-2xl);font-weight:600;color:var(--text);
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.impdone__stats .bad b{color:var(--danger)}
+.impfails{margin-top:var(--sp-4);text-align:left;display:flex;flex-direction:column;gap:4px}
+.impfails__row{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;
+  background:var(--surface-2);border-radius:var(--r-8);font-size:var(--fs-xs)}
+.impfails__row small{color:var(--danger)}
+
+@media (max-width:560px){
+  /* The sample column is the first thing to go: on a phone the select is
+     already narrow, and a truncated preview helps nobody. */
+  .impmap__row{grid-template-columns:80px minmax(0,1fr)}
+  .impmap__sample{display:none}
+}
