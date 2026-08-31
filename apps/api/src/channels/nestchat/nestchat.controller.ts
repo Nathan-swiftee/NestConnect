@@ -20,6 +20,7 @@ import {
   nestchatSessionInputSchema,
   type NestChatConfig,
   type NestChatIdentifyInput,
+  type NestChatIdentifyResult,
   type NestChatReadInput,
   type NestChatSendInput,
   type NestChatSession,
@@ -73,10 +74,43 @@ export class NestChatController {
   @Get(":widgetKey/config")
   async config(@Param("widgetKey") widgetKey: string): Promise<NestChatConfig> {
     const inbox = await this.nestchat.inboxForWidgetKey(widgetKey);
+    const appearance = await this.nestchat.appearanceFor(inbox.id);
     return {
-      appearance: await this.nestchat.appearanceFor(inbox.id),
+      appearance,
       online: await this.realtime.hasOnlineAgents(inbox.orgId),
+      // Only when the business asked for it: showing who is behind the counter
+      // is a choice, not a default we make on their behalf.
+      team: appearance.showTeam ? await this.nestchat.teamFacesFor(inbox) : undefined,
     };
+  }
+
+  /**
+   * One agent's photo, for the faces in the widget's header.
+   *
+   * Its own route because the ordinary media endpoint is session-guarded and a
+   * visitor has no session. Scoped hard: the widget key names a channel, and
+   * the user must be on a team that channel routes to — so this serves the
+   * faces that widget already shows and nothing else.
+   */
+  @Get(":widgetKey/avatar/:userId")
+  async avatar(
+    @Param("widgetKey") widgetKey: string,
+    @Param("userId") userId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const inbox = await this.nestchat.inboxForWidgetKey(widgetKey);
+    if (!(await this.nestchat.servesWidget(inbox, userId))) {
+      throw new NotFoundException("No such avatar");
+    }
+    const user = await this.store.getUser(userId);
+    // avatarUrl is our own media path; the id at the end is what we can stream.
+    const attachmentId = user?.avatarUrl?.split("/").pop();
+    const file = attachmentId ? await this.media.load(attachmentId) : null;
+    if (!file) throw new NotFoundException("No such avatar");
+    res.setHeader("Content-Type", file.mime || "application/octet-stream");
+    // A face doesn't change often, and this is on somebody else's page.
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.end(file.bytes);
   }
 
   /**
@@ -126,8 +160,6 @@ export class NestChatController {
           contactId: contact.id,
           conversationId: "",
         });
-
-    if (body.email) await this.recordEmail(contact.id, body.email);
 
     return {
       visitorId,
@@ -181,18 +213,87 @@ export class NestChatController {
     return { messages: await this.nestchat.visitorHistory(claims.conversationId) };
   }
 
-  /** The visitor gives their name / email, so a reply can reach them later. */
+  /**
+   * The visitor gives their name, email or phone, so a reply can reach them
+   * after they close the tab — and so we know who they are.
+   *
+   * The interesting case is when those details already belong to somebody. A
+   * visitor typing the email we have on file for a customer IS that customer,
+   * and the right outcome is one record with the whole history on it, not a
+   * second one holding a browser id. So a match merges: the known customer
+   * wins, and the visitor's conversation and browser identity move onto them.
+   *
+   * This used to attempt a plain write and swallow the failure, which meant
+   * giving an address we already knew looked identical to giving a new one and
+   * quietly did nothing — the one case anybody testing it would try first.
+   */
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("identify")
   async identify(
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatIdentifyInputSchema)) body: NestChatIdentifyInput,
-  ) {
+  ): Promise<NestChatIdentifyResult> {
     const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const inbox = await this.store.getInbox(claims.inboxId);
+    if (!inbox) throw new NotFoundException("Chat unavailable");
+
+    const saved: Array<"name" | "email" | "phone"> = [];
+    let contactId = claims.contactId;
+    let linked = false;
+
     const name = body.name?.trim();
-    if (name) await this.store.updateContact(claims.contactId, { displayName: name });
-    if (body.email) await this.recordEmail(claims.contactId, body.email);
-    return { ok: true };
+    if (name) {
+      await this.store.updateContact(contactId, { displayName: name });
+      saved.push("name");
+    }
+
+    for (const [kind, raw] of [
+      ["email", body.email],
+      ["phone", body.phone],
+    ] as const) {
+      const value = raw?.trim();
+      if (!value) continue;
+      const existing = await this.store.findContactByIdentity({
+        orgId: inbox.orgId,
+        kind,
+        value,
+      });
+      if (existing && existing.id !== contactId) {
+        // Somebody we already know. Merge onto them — they have the history,
+        // the tags and the owner; the visitor has a browser id and one thread.
+        const winner = await this.store.mergeContacts({
+          winnerId: existing.id,
+          loserIds: [contactId],
+        });
+        contactId = winner.id;
+        linked = true;
+        saved.push(kind);
+        continue;
+      }
+      if (existing) {
+        // Already ours — nothing to write, but it is still "saved" as far as
+        // the person who typed it is concerned.
+        saved.push(kind);
+        continue;
+      }
+      // Case only means anything in an address; a phone keeps whatever shape
+      // they typed it in, and the store normalises it for matching either way.
+      await this.store.updateContact(contactId, {
+        [kind]: kind === "email" ? value.toLowerCase() : value,
+      });
+      saved.push(kind);
+    }
+
+    return {
+      ok: true,
+      saved,
+      linked,
+      // A merge deletes the contact the visitor's token names, so it has to be
+      // reissued against the surviving one or every later call 404s.
+      token: linked
+        ? this.nestchat.signVisitorToken({ ...claims, contactId })
+        : undefined,
+    };
   }
 
   /**
@@ -306,17 +407,4 @@ export class NestChatController {
     res.on("error", stop);
   }
 
-  /** Attach an email to a visitor's contact record, so a reply can reach them
-   *  after they close the tab. */
-  private async recordEmail(contactId: string, email: string): Promise<void> {
-    const value = email.trim().toLowerCase();
-    if (!value) return;
-    try {
-      await this.store.updateContact(contactId, { email: value });
-    } catch {
-      // The address already belongs to another contact — a real customer we
-      // know by email. Merging the two is a decision for an agent, not for an
-      // unauthenticated form, so this is left alone rather than guessed at.
-    }
-  }
 }

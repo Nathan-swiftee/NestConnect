@@ -7,12 +7,23 @@ import {
   type Inbox,
   type Message,
   type NestChatAppearance,
+  type NestChatAgentFace,
   type NestChatMessage,
   type NestChatSettings,
+  type User,
 } from "@ding/schemas";
 import { Store } from "../../data/store";
 import { env } from "../../config/env";
 import { VisitorBus } from "./visitor-bus";
+
+/** "Nathan Amos" → "NA"; a single name → its first letter. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  const first = parts[0][0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] ?? "" : "";
+  return (first + last).toUpperCase();
+}
 
 /** What a verified visitor token tells us. */
 export interface VisitorClaims {
@@ -204,6 +215,70 @@ export class NestChatService {
     return conv.messages
       .map((m) => this.toVisitorMessage(m))
       .filter((m): m is NestChatMessage => Boolean(m));
+  }
+
+  /* ---- who is behind the counter ---- */
+
+  /**
+   * The faces to show in the widget's header: the people on the team(s) this
+   * channel routes to.
+   *
+   * Online first, then alphabetical, so a visitor sees somebody who is actually
+   * there rather than whoever happens to sort first. Capped at four because
+   * that is what fits, with the total returned so the widget can say "+3".
+   *
+   * Deliberately thin — a name and a face. The full member list, roles and
+   * addresses stay on the agent side of the fence.
+   */
+  async teamFacesFor(inbox: Inbox): Promise<{ name?: string; faces: NestChatAgentFace[]; total: number }> {
+    const teams = await this.store.listTeams();
+    const serving = teams.filter((t) => inbox.teamIds.includes(t.id));
+    const seen = new Set<string>();
+    const members: User[] = [];
+    for (const team of serving) {
+      for (const m of await this.store.getMembers(team.id)) {
+        if (seen.has(m.id)) continue;
+        seen.add(m.id);
+        members.push(m);
+      }
+    }
+    members.sort((a, b) =>
+      a.online === b.online ? a.name.localeCompare(b.name) : a.online ? -1 : 1,
+    );
+    const widgetKey = await this.ensureWidgetKey(inbox.id);
+    const faces = members.slice(0, 4).map((m) => ({
+      // A first name is what a person says when they answer the phone.
+      name: m.name.split(/\s+/)[0] || m.name,
+      initials: initialsOf(m.name),
+      color: m.avatarColor ?? undefined,
+      /*
+       * Routed through our own public endpoint, because the media route is
+       * session-guarded and a visitor has no session.
+       *
+       * Root-relative on purpose. The only thing that ever loads this is the
+       * widget document, which is served from whatever origin the customer
+       * pointed their embed at — so the browser resolves it against the host
+       * that is actually answering. Building it from a configured app URL
+       * instead looks right in the JSON and then 404s or refuses the
+       * connection on every deployment where the two aren't the same string,
+       * and the failure is silent: you just get initials.
+       */
+      avatarUrl: m.avatarUrl
+        ? `/api/nestchat/${widgetKey}/avatar/${encodeURIComponent(m.id)}`
+        : undefined,
+      online: Boolean(m.online),
+    }));
+    return { name: serving[0]?.name, faces, total: members.length };
+  }
+
+  /** Is this user someone this widget may show a face for? Guards the public
+   *  avatar route: only the teams this channel routes to. */
+  async servesWidget(inbox: Inbox, userId: string): Promise<boolean> {
+    for (const teamId of inbox.teamIds) {
+      const members = await this.store.getMembers(teamId);
+      if (members.some((m) => m.id === userId)) return true;
+    }
+    return false;
   }
 
   /** Push a message to the visitor's open widget, if they still have one. */

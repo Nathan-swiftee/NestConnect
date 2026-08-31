@@ -101,6 +101,11 @@
   var side = position === "left" ? "left" : "right";
 
   var frame = document.createElement("iframe");
+  // Stable ids on both elements. A customer's own stylesheet is written against
+  // their page, not ours, and a bare `button {}` rule is common enough that the
+  // launcher needs something to be addressed by — for them to override, and for
+  // us to point at when someone asks why it's sitting behind their footer.
+  frame.id = "nestchat-frame";
   frame.src = origin + "/widget.html?key=" + encodeURIComponent(key);
   frame.title = label;
   frame.setAttribute("aria-hidden", "true");
@@ -126,6 +131,7 @@
   ].join(";");
 
   var button = document.createElement("button");
+  button.id = "nestchat-launcher";
   button.type = "button";
   button.setAttribute("aria-label", label);
   button.setAttribute("aria-expanded", "false");

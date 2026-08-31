@@ -1,5 +1,6 @@
 import type {
   NestChatConfig,
+  NestChatIdentifyResult,
   NestChatMessage,
   NestChatSession,
 } from "@ding/schemas";
@@ -54,12 +55,15 @@ export function fetchMessages(token: string): Promise<{ messages: NestChatMessag
   );
 }
 
-export function identify(token: string, input: { name?: string; email?: string }): Promise<unknown> {
+export function identify(
+  token: string,
+  input: { name?: string; email?: string; phone?: string },
+): Promise<NestChatIdentifyResult> {
   return fetch(`${base}/identify`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(input),
-  }).then(json<unknown>);
+  }).then(json<NestChatIdentifyResult>);
 }
 
 /**

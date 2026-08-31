@@ -95,7 +95,6 @@ body {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  background: rgba(255, 255, 255, 0.18);
   color: var(--accent-text);
 }
 
@@ -113,6 +112,84 @@ body {
 
 .nc__pip--online {
   background: #34d07f;
+}
+
+/* The team, stacked. Overlapping rather than in a row because a row of five
+   circles is a list of strangers, and a stack is a group. */
+.nc__faces {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.nc__face {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  margin-left: -9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--accent-text);
+  /* Ringed in the header's colour so the overlap reads as depth, not a blur. */
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/*
+ * A tint that works on any brand colour.
+ *
+ * A face with no avatar colour, and the "+2" chip, sit directly on the header,
+ * so they need to be a shade of it. A fixed white overlay does that on a navy
+ * accent and disappears completely on a pale yellow one. `currentColor` is the
+ * accent's own text colour — already chosen to contrast with the accent — so a
+ * low-alpha wash of it darkens a light header and lightens a dark one, with no
+ * second colour to configure and no colour function to depend on.
+ */
+.nc__face--plain::before,
+.nc__face--more::before,
+.nc__mark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.2;
+}
+
+.nc__face--plain > b,
+.nc__face--more > b {
+  position: relative;
+}
+
+.nc__face:first-child {
+  margin-left: 0;
+}
+
+/* The stack descends in z-order, so every face after the first has its left
+   edge — 9px of overlap plus the 2px ring — under the one in front of it.
+   Initials centred in the whole circle are then half-hidden: the first letter
+   of "NA" disappears and the row reads as noise. Centre them in the part that
+   is actually visible instead (11px covered, so the middle moves 5.5px right).
+   The first face is on top and stays centred, and photos need no nudge — the
+   covered sliver of a face is just the edge of a face. */
+.nc__face:not(:first-child) > b {
+  margin-left: 5.5px;
+}
+
+.nc__face img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+.nc__face--more {
+  font-size: 11px;
+  letter-spacing: -0.02em;
 }
 
 .nc__headtext {
@@ -354,6 +431,53 @@ body {
 .nc__ask input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+.nc__asklabel2 {
+  margin-top: 10px;
+}
+
+/* An explicit Save, not a blur handler. Leaving the field was doing the saving
+   before, which is invisible — you cannot tell a form that worked from one that
+   quietly didn't. */
+.nc__asksave {
+  margin-top: 10px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.nc__asksave:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.nc__askerr {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: #d1453b;
+}
+
+/* Something the chat says about itself rather than a message from either side. */
+.nc__note {
+  align-self: center;
+  max-width: 90%;
+  padding: 6px 13px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--muted);
+  /* Outlined rather than filled. Every other bubble in this thread is somebody
+     talking; a filled one that nobody sent reads as a reply that has arrived,
+     and the visitor waits for an answer they've already been given. */
+  background: transparent;
+  border: 1px solid var(--line);
+  text-align: center;
 }
 
 /* ── composer ───────────────────────────────────────────────────────────── */

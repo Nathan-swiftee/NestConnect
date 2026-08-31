@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import type { NestChatAppearance, NestChatMessage } from "@ding/schemas";
+import type { NestChatAppearance, NestChatConfig, NestChatMessage } from "@ding/schemas";
 import {
   attachmentUrl,
   fetchConfig,
@@ -112,8 +112,12 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   // the visitor's first message means EventSource retrying a 400 forever, on
   // someone else's website, for a widget nobody has typed into.
   const [live, setLive] = useState(false);
+  const [team, setTeam] = useState<NestChatConfig["team"]>();
   const [email, setEmail] = useState("");
-  const [emailSaved, setEmailSaved] = useState(false);
+  const [phone, setPhone] = useState("");
+  /** What we told them we saved — the confirmation that used to be missing. */
+  const [detailsSaved, setDetailsSaved] = useState<{ linked: boolean } | null>(null);
+  const [detailsError, setDetailsError] = useState(false);
   /** When an agent last read this thread — the "Seen" under our own messages. */
   const [seenAt, setSeenAt] = useState<string>();
 
@@ -136,6 +140,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         applyAppearance(config.appearance);
         setAppearance(config.appearance);
         setOnline(config.online);
+        setTeam(config.team);
 
         const session = await openSession(widgetKey, { visitorId: readVisitorId(widgetKey) });
         if (!alive) return;
@@ -218,7 +223,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     if (phase !== "ready") return;
     const id = setInterval(() => {
       void fetchConfig(widgetKey)
-        .then((c) => setOnline(c.online))
+        .then((c) => {
+          setOnline(c.online);
+          setTeam(c.team);
+        })
         .catch(() => {});
     }, 60_000);
     return () => clearInterval(id);
@@ -299,11 +307,20 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     }
   };
 
-  const saveEmail = () => {
-    const value = email.trim();
-    if (!value || !token) return;
-    setEmailSaved(true);
-    void identify(token, { email: value }).catch(() => setEmailSaved(false));
+  const saveDetails = () => {
+    const e = email.trim();
+    const p = phone.trim();
+    if ((!e && !p) || !token) return;
+    setDetailsError(false);
+    void identify(token, { email: e || undefined, phone: p || undefined })
+      .then((res) => {
+        // A match merged this visitor onto a customer we already had, which
+        // deletes the contact the old token named — take the new one.
+        if (res.token) setToken(res.token);
+        if (res.saved.length) setDetailsSaved({ linked: res.linked });
+        else setDetailsError(true);
+      })
+      .catch(() => setDetailsError(true));
   };
 
   if (phase === "loading") return <div className="nc__state">Loading…</div>;
@@ -311,7 +328,8 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     return <div className="nc__state">This chat isn’t available right now.</div>;
   }
 
-  const askingEmail = appearance.askEmail && !emailSaved && messages.length > 0;
+  const asking =
+    (appearance.askEmail || appearance.askPhone) && !detailsSaved && messages.length > 0;
 
   // The last thing the visitor themselves said — the only bubble a "Seen"
   // belongs under, and only once an agent has actually read it.
@@ -321,10 +339,50 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   return (
     <div className="nc" ref={rootRef}>
       <header className="nc__head">
-        <div className="nc__mark" aria-hidden="true">
-          {initials(appearance.title)}
-          <i className={online ? "nc__pip nc__pip--online" : "nc__pip"} />
-        </div>
+        {team?.faces.length ? (
+          /* Who is behind the counter. Overlapped left-to-right with the first
+             face on top, so the stack reads as a group rather than a row.
+             No per-face presence dot: a visitor cannot pick which of them
+             answers, so five dots are five pieces of information they can't
+             use — availability is the header's own subtitle. Who is online
+             still decides *which* faces are shown, which is the useful half. */
+          <div className="nc__faces" aria-label={`${team.total} people can answer`}>
+            {team.faces.map((f, i) => (
+              <span
+                key={f.name + i}
+                /* A face with its own colour is one of the app's avatar
+                   gradients, which are picked to carry white initials — so its
+                   label follows the circle, not the header. Only a face with no
+                   colour sits directly on the accent and takes the accent's own
+                   text colour. Getting this backwards puts near-black initials
+                   on a mid-blue circle whenever a business picks a pale brand
+                   colour, which is exactly when it's hardest to read. */
+                className={f.color ? "nc__face" : "nc__face nc__face--plain"}
+                style={{
+                  zIndex: team.faces.length - i,
+                  ...(f.color ? { background: f.color, color: "#fff" } : null),
+                }}
+                title={f.name}
+              >
+                {f.avatarUrl ? (
+                  <img src={f.avatarUrl} alt="" loading="lazy" />
+                ) : (
+                  <b>{f.initials}</b>
+                )}
+              </span>
+            ))}
+            {team.total > team.faces.length ? (
+              <span className="nc__face nc__face--more">
+                <b>+{team.total - team.faces.length}</b>
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <div className="nc__mark" aria-hidden="true">
+            {initials(appearance.title)}
+            <i className={online ? "nc__pip nc__pip--online" : "nc__pip"} />
+          </div>
+        )}
         <div className="nc__headtext">
           <div className="nc__title">{appearance.title}</div>
           <div className="nc__sub">{online ? appearance.subtitle : appearance.awayMessage}</div>
@@ -395,23 +453,66 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
             the composer: it is one question, asked once, and it should read as
             part of the chat and then be gone — not as a second input the
             visitor has to look past every time they write. */}
-        {askingEmail ? (
+        {asking ? (
           <div className="nc__ask">
-            <label htmlFor="nc-email">{appearance.askEmailLabel}</label>
-            <input
-              id="nc-email"
-              type="email"
-              value={email}
-              placeholder="you@example.com"
-              onChange={(e) => setEmail(e.target.value)}
-              onBlur={saveEmail}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  saveEmail();
-                }
-              }}
-            />
+            {appearance.askEmail ? (
+              <>
+                <label htmlFor="nc-email">{appearance.askEmailLabel}</label>
+                <input
+                  id="nc-email"
+                  type="email"
+                  value={email}
+                  placeholder="you@example.com"
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveDetails();
+                    }
+                  }}
+                />
+              </>
+            ) : null}
+            {appearance.askPhone ? (
+              <>
+                <label htmlFor="nc-phone" className="nc__asklabel2">
+                  {appearance.askPhoneLabel}
+                </label>
+                <input
+                  id="nc-phone"
+                  type="tel"
+                  value={phone}
+                  placeholder="+44 7700 900123"
+                  onChange={(e) => setPhone(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveDetails();
+                    }
+                  }}
+                />
+              </>
+            ) : null}
+            <button
+              type="button"
+              className="nc__asksave"
+              onClick={saveDetails}
+              disabled={!email.trim() && !phone.trim()}
+            >
+              Save
+            </button>
+            {detailsError ? (
+              <p className="nc__askerr">That didn’t save — check it and try again.</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Said once, in the thread, so it is clear it actually landed. */}
+        {detailsSaved ? (
+          <div className="nc__note">
+            {detailsSaved.linked
+              ? "Thanks — we’ve found your details."
+              : "Thanks — we’ll use that to reply."}
           </div>
         ) : null}
       </div>

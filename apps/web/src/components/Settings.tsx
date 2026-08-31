@@ -1386,6 +1386,7 @@ const NESTCHAT_WORDS: Array<{
   { key: "placeholder", label: "Message box placeholder" },
   { key: "launcherLabel", label: "Launcher tooltip", hint: "On the floating bubble" },
   { key: "askEmailLabel", label: "Email prompt" },
+  { key: "askPhoneLabel", label: "Phone prompt", hint: "Only shown if you ask for one" },
 ];
 
 /**
@@ -1431,9 +1432,15 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   }, [settings.data]);
 
   const set = <K extends keyof NestChatAppearance>(key: K, value: NestChatAppearance[K]) =>
-    setDrafts((m) =>
-      inboxId && m[inboxId] ? { ...m, [inboxId]: { ...m[inboxId], [key]: value } } : m,
-    );
+    setDrafts((m) => {
+      const current = inboxId ? m[inboxId] : undefined;
+      if (!inboxId || !current) return m;
+      // Spread a typed one-key object rather than using a computed key inline:
+      // `{ ...current, [key]: value }` widens the key to `string` and stops
+      // being assignable to the appearance type.
+      const patch = { [key]: value } as Pick<NestChatAppearance, K>;
+      return { ...m, [inboxId]: { ...current, ...patch } };
+    });
 
   /** Channels with edits that haven't been saved yet — marked in the picker, so
    *  a pending change on a channel you've switched away from stays visible. */
@@ -1636,6 +1643,22 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   onChange={(e) => set("askEmail", e.target.checked)}
                 />
                 Ask for an email address, so a reply can reach someone who has left
+              </label>
+              <label className={"check" + (draft.askPhone ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.askPhone}
+                  onChange={(e) => set("askPhone", e.target.checked)}
+                />
+                Ask for a phone number too
+              </label>
+              <label className={"check" + (draft.showTeam ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.showTeam}
+                  onChange={(e) => set("showTeam", e.target.checked)}
+                />
+                Show the faces of the team that answers this channel
               </label>
               <label className={"check" + (draft.showBranding ? " on" : "")}>
                 <input

@@ -882,6 +882,13 @@ export const nestchatAppearanceSchema = z.object({
    *  who has closed the tab. */
   askEmail: z.boolean().default(true),
   askEmailLabel: z.string().max(80).default("Your email, so we can reply if you leave"),
+  /** Ask for a phone number as well. Off by default — one field converts better
+   *  than two, and most businesses only need one way back to the person. */
+  askPhone: z.boolean().default(false),
+  askPhoneLabel: z.string().max(80).default("Phone (optional)"),
+  /** Show the faces of the team that answers this channel, the way a shop shows
+   *  you who is behind the counter. */
+  showTeam: z.boolean().default(true),
   showBranding: z.boolean().default(true),
   /** Which corner the script embed's launcher sits in. */
   position: z.enum(["right", "left"]).default("right"),
@@ -911,12 +918,40 @@ export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
 
 /* ---- the visitor-facing contract (public, unauthenticated) ---- */
 
+/**
+ * One of the people who answers this chat, as a visitor may see them.
+ *
+ * A first name and a face — nothing else. Not their email, not their role, not
+ * whether they are the one who will actually pick it up: this exists to show
+ * that a person is on the other end, which is the whole reason a chat widget
+ * outperforms a contact form.
+ */
+export const nestchatAgentFaceSchema = z.object({
+  /** Display name, trimmed to a first name — a visitor doesn't need a surname. */
+  name: z.string(),
+  initials: z.string(),
+  /** Their avatar colour, so the fallback circle is theirs and not a generic grey. */
+  color: z.string().optional(),
+  /** A URL the widget can load their photo from, when they have one. */
+  avatarUrl: z.string().optional(),
+  online: z.boolean(),
+});
+export type NestChatAgentFace = z.infer<typeof nestchatAgentFaceSchema>;
+
 /** What the widget fetches before it renders anything. No customer data. */
 export const nestchatConfigSchema = z.object({
   appearance: nestchatAppearanceSchema,
   /** Whether anyone is at the desk right now, so the widget can set
    *  expectations instead of promising a reply nobody is there to send. */
   online: z.boolean(),
+  /** The team behind this channel: a few faces, and how many there are in all. */
+  team: z
+    .object({
+      name: z.string().optional(),
+      faces: z.array(nestchatAgentFaceSchema),
+      total: z.number().int().nonnegative(),
+    })
+    .optional(),
 });
 export type NestChatConfig = z.infer<typeof nestchatConfigSchema>;
 
@@ -944,7 +979,6 @@ export type NestChatMessage = z.infer<typeof nestchatMessageSchema>;
 export const nestchatSessionInputSchema = z.object({
   visitorId: z.string().min(8).max(64).optional(),
   name: z.string().max(80).optional(),
-  email: z.string().email().max(200).optional(),
 });
 export type NestChatSessionInput = z.infer<typeof nestchatSessionInputSchema>;
 
@@ -983,8 +1017,31 @@ export type NestChatReadInput = z.infer<typeof nestchatReadInputSchema>;
 export const nestchatIdentifyInputSchema = z.object({
   name: z.string().max(80).optional(),
   email: z.string().email().max(200).optional(),
+  phone: z.string().max(40).optional(),
 });
 export type NestChatIdentifyInput = z.infer<typeof nestchatIdentifyInputSchema>;
+
+/**
+ * What came of it.
+ *
+ * `token` is reissued when the details turned out to belong to a customer we
+ * already knew: this visitor IS that person, so their conversation moves onto
+ * the existing record and the old contact — the one the visitor's token named —
+ * no longer exists. A widget that kept its old token would be holding a
+ * reference to a deleted row.
+ *
+ * `saved` is what the widget confirms back to the visitor. It used to report
+ * nothing at all, which meant a details form that quietly failed looked exactly
+ * like one that worked.
+ */
+export const nestchatIdentifyResultSchema = z.object({
+  ok: z.boolean(),
+  saved: z.array(z.enum(["name", "email", "phone"])),
+  /** True when these details matched a customer already on file. */
+  linked: z.boolean(),
+  token: z.string().optional(),
+});
+export type NestChatIdentifyResult = z.infer<typeof nestchatIdentifyResultSchema>;
 
 export const createTeamInputSchema = z.object({
   name: z.string().min(1),
