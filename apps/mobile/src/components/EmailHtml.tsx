@@ -5,6 +5,7 @@ import { haptics } from "../haptics";
 import { ChevronDown } from "../icons";
 import { useTheme } from "../theme";
 import { Touchable } from "./Touchable";
+import { MEASURE_JS } from "../email-fit";
 
 /**
  * An HTML email, rendered as the sender wrote it.
@@ -57,7 +58,7 @@ const MAX_HEIGHT = 2000;
 /**
  * A `WebView` has no intrinsic width.
  *
- * That one fact is the whole bug. The bubble around it is `maxWidth: "94%"` —
+ * That one fact is the whole bug. The bubble around it is a `maxWidth` —
  * a *maximum*, so it shrinks to fit its contents — and a child that reports no
  * width contributes nothing to shrink-to-fit. So the bubble collapsed to almost
  * nothing and took the rest of the component with it: even the plain "Remote
@@ -68,43 +69,19 @@ const MAX_HEIGHT = 2000;
  * WebView has to be told, so the chain from the screen edge is spelled out here
  * rather than being a magic number:
  *
- *   the list's `contentContainerStyle: { padding: 12 }`   → −24
- *   the bubble's own `maxWidth: "94%"`                    → ×0.94
- *   the bubble's `px-3.5`, at NativeWind's native rem of 14 → −24.5
+ *   the list's `contentContainerStyle: { padding: 12 }`     → −24
+ *   the bubble's own `maxWidth: "100%"` for an email        → ×1
+ *   the bubble's `paddingHorizontal: 6` for an email        → −12
+ *
+ * These mirror the email branch of the message bubble in `thread/[id].tsx`. If
+ * one moves the other has to, and the symptom of forgetting is an email a few
+ * points too wide for its card — clipped on the right, which is exactly the
+ * shape of bug this file already exists to document.
  */
 const LIST_PADDING = 12 * 2;
-const BUBBLE_MAX = 0.94;
-const BUBBLE_PADDING = 12.25 * 2;
+const BUBBLE_MAX = 1;
+const BUBBLE_PADDING = 6 * 2;
 
-/**
- * Report the document height, then keep reporting it as the layout settles.
- *
- * One measurement is never enough: images decide the height of most designed
- * emails and they arrive after first paint, so a single reading at load lands
- * before the pictures and clamps the message to the height of its text. A
- * `ResizeObserver` on the body covers reflow, and the load listener covers the
- * images that finish after it is installed.
- */
-const MEASURE_JS = `
-(function () {
-  var last = 0;
-  function send() {
-    var h = Math.max(
-      document.body ? document.body.scrollHeight : 0,
-      document.documentElement ? document.documentElement.scrollHeight : 0
-    );
-    if (h && Math.abs(h - last) > 1) {
-      last = h;
-      window.ReactNativeWebView.postMessage(String(h));
-    }
-  }
-  send();
-  window.addEventListener('load', send);
-  if (window.ResizeObserver && document.body) new ResizeObserver(send).observe(document.body);
-  [60, 250, 700, 1500].forEach(function (d) { setTimeout(send, d); });
-})();
-true;
-`;
 
 export function EmailHtml({ html }: { html: string }) {
   const { c, scheme } = useTheme();
@@ -136,7 +113,10 @@ export function EmailHtml({ html }: { html: string }) {
     // it carries the app's own surface — which is what a mail client on a dark
     // phone does too.
     return (
-      `<!doctype html><html><head><meta charset="utf-8">` +
+      // `class="fit"` is the responsive attempt, and the measurer takes it off
+      // again for a page that turns out to be built to a fixed width. See
+      // `MEASURE_JS`.
+      `<!doctype html><html class="fit"><head><meta charset="utf-8">` +
       `<meta name="viewport" content="width=device-width,initial-scale=1">` +
       `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
       `<style>html,body{margin:0;padding:0;background:#fff;-webkit-text-size-adjust:100%}` +
@@ -144,7 +124,7 @@ export function EmailHtml({ html }: { html: string }) {
       `font:15px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;` +
       `word-break:break-word;overflow-wrap:anywhere}` +
       `img{max-width:100%;height:auto}a{color:#0a7c66}` +
-      `table{max-width:100%;border-collapse:collapse}` +
+      `table{border-collapse:collapse}html.fit table{max-width:100%}` +
       `blockquote{margin:6px 0 6px 4px;padding-left:11px;border-left:3px solid #dcdcdc;color:#555}` +
       `pre{white-space:pre-wrap;word-break:break-word}` +
       `</style></head><body>${body}</body></html>`
