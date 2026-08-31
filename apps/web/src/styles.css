@@ -1247,8 +1247,14 @@ input,textarea{font:inherit}
 .comp-drop span{display:inline-flex;align-items:center;gap:8px}
 .comp-drop svg{width:20px;height:20px}
 
-/* context panel — matte structural surface */
-.panel{width:300px;flex:0 0 300px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+/* context panel — matte structural surface.
+   340 rather than 300 because 300 reads as a strip rather than an inspector:
+   the contact rows are the panel's real content and they were ellipsing an
+   address that had room to sit. It is also the width this same panel already
+   takes when it floats as an overlay below 1400 (see that media query), so the
+   two are now one number — a panel that changed size depending on how it was
+   docked was the odder half of the old arrangement. */
+.panel{width:340px;flex:0 0 340px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
 /* Inspector rhythm. Sections are separated by ONE hairline and even padding —
    not by gaps between floating cards. Every direct child of the scroller is a
    section, so the rhythm can't drift as sections are added. */
@@ -2022,7 +2028,12 @@ input,textarea{font:inherit}
 
 /* ═══════════ Premium details-panel redesign ═══════════ */
 /* identity hero */
-.chero{position:relative;text-align:center;padding:6px 4px 2px}
+/* The hero's bottom padding is the section rhythm's, not its own. It used to be
+   2px, from when this block ended in text — text carries its own optical space
+   above a rule. It now ends in a filled button, and 2px of air under a solid
+   shape reads as the hairline being stuck to it. Every other section gives its
+   content sp-3 before the divider; so does this one. */
+.chero{position:relative;text-align:center;padding:6px 4px var(--sp-3)}
 .chero__avawrap{position:relative;width:64px;height:64px;margin:0 auto 11px}
 .chero__ring{display:none}
 .chero__ava{width:64px;height:64px;border-radius:var(--r-16);display:grid;place-items:center;color:#fff;font-weight:600;font-size:var(--fs-2xl);
