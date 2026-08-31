@@ -7,7 +7,6 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { formatDuration } from "@ding/client";
-import { armTrail, mark } from "../diagnostics";
 import { haptics } from "../haptics";
 import { BackIcon, LockIcon, MicIcon } from "../icons";
 import { useTheme } from "../theme";
@@ -82,13 +81,6 @@ export function useHoldToRecord({
   const dy = useSharedValue(0);
   const grow = useSharedValue(1);
 
-  // One step on disk before anything is touched, so an empty reading means
-  // "this bundle has no diagnostic" rather than "the press did nothing". See
-  // `armTrail`.
-  useEffect(() => {
-    void armTrail();
-  }, []);
-
   /**
    * Touch down: say so, and nothing else.
    *
@@ -99,30 +91,21 @@ export function useHoldToRecord({
    * than from a committed React effect. So the trigger stays a hold and the
    * driving goes back to what worked: this flips a flag, and the effect below
    * starts the recorder once React has committed.
-   *
-   * The `await` before anything else is deliberate. A fire-and-forget write
-   * makes "no `press` on disk" ambiguous — it could mean the press never
-   * arrived, or that it arrived and the app died in the two lines below before
-   * the write landed. Those want opposite investigations.
    */
-  const begin = async () => {
-    await mark("press");
+  const begin = () => {
     haptics.tap();
     setHolding(true);
   };
   const send = () => {
-    void mark("release:send");
     setHolding(false);
     onSend();
   };
   const discard = () => {
-    void mark("release:discard");
     setHolding(false);
     haptics.warning();
     void voice.cancel();
   };
   const lock = () => {
-    void mark("release:lock");
     setHolding(false);
     haptics.success();
     onLock();
@@ -145,7 +128,6 @@ export function useHoldToRecord({
     if (!holding) return;
     let alive = true;
     void (async () => {
-      await mark("committed");
       // Released between the commit and here — rare, but a recording nobody is
       // holding would have nothing to stop it.
       if (alive) await voice.start();
@@ -160,11 +142,13 @@ export function useHoldToRecord({
    * The hold, on React Native's own touch responder rather than a gesture
    * handler.
    *
-   * This is where the evidence led, and it is the fix. The breadcrumb trail
-   * came back reading `armed` and nothing after it: the microphone had mounted,
-   * and the press left no record of ever reaching JavaScript. Everything
-   * downstream — permission, audio mode, prepare, record — was being read for
-   * four rounds, and none of it runs.
+   * This is not a preference. Holding the microphone closed the app on Android,
+   * every time, with no error and nothing for the root `ErrorBoundary` to show.
+   * Instrumenting the press — one step written to disk and waited on before the
+   * next call ran — established that the microphone mounted and then the press
+   * left no record of ever reaching JavaScript. So everything downstream, the
+   * whole audio sequence that four separate readings went through looking for
+   * the bug, never ran at all.
    *
    * What sat between a finger touching the screen and `runOnJS` delivering was
    * a native gesture handler and a worklet. `Gesture.Pan().minDistance(0)`
@@ -196,7 +180,7 @@ export function useHoldToRecord({
     dy.value = 0;
     grow.value = springTo(1.35, spring.quick);
     done.current = false;
-    void begin();
+    begin();
   };
 
   const onMove = (e: GestureResponderEvent) => {
