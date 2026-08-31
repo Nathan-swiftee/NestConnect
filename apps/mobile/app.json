@@ -32,7 +32,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0B1F3F"
+        "backgroundColor": "#071634"
       },
       "permissions": [
         "POST_NOTIFICATIONS",

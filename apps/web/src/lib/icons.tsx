@@ -26,14 +26,7 @@ import {
   tickIcons,
   type IconSpec,
 } from "@ding/design/icons";
-import {
-  BRAND,
-  MARK_ARCH,
-  MARK_NODES,
-  MARK_NODE_R,
-  MARK_STEM,
-  MARK_STROKE,
-} from "@ding/design/logo";
+import { BRAND_ASSETS } from "@ding/design/logo";
 
 /** One glyph: outline first, then any solid shapes on top of it. */
 function Glyph({ spec, fillOverride }: { spec: IconSpec; fillOverride?: string }): JSX.Element {
@@ -182,27 +175,17 @@ export function TeamGlyph({ icon }: { icon?: string | null }): JSX.Element {
 /* ── the mark ────────────────────────────────────────────────────────────── */
 
 /**
- * The mark, from the shared geometry.
+ * The mark.
  *
- * It draws in `BRAND.green` rather than `currentColor`, which is the one place
- * in this file that ignores the surrounding text colour on purpose: the logo is
- * a fixed value in every context — light theme, dark theme, and the white page
- * of whatever embeds a screenshot of it. Inheriting made it a grey smudge in
- * the icon rail and a green one on the login screen, which is two logos again.
+ * An `img` rather than inline SVG because the artwork is a picture — it is the
+ * file design delivered, in `packages/design/brand`, and `tools/render-logo.mjs`
+ * cuts the sizes out of it. Redrawing it in code is exactly how this app came to
+ * have one logo on the web and a different one on the phone.
+ *
+ * No colour prop and nothing inherited: a logo is the same green on a rail
+ * badge, a login screen and a browser tab. Where it needs a ground of its own,
+ * `.brandmark` supplies the brand's navy — the same navy as the app icon.
  */
 export const Logo = (): JSX.Element => (
-  <svg viewBox="0 0 100 100" fill="none">
-    <g
-      fill="none"
-      stroke={BRAND.green}
-      strokeWidth={MARK_STROKE}
-      strokeLinecap="round"
-    >
-      <path d={MARK_STEM} />
-      <path d={MARK_ARCH} />
-    </g>
-    {MARK_NODES.map((n) => (
-      <circle key={`${n.cx}-${n.cy}`} cx={n.cx} cy={n.cy} r={MARK_NODE_R} fill={BRAND.green} />
-    ))}
-  </svg>
+  <img src={BRAND_ASSETS.mark} alt="" aria-hidden="true" draggable={false} />
 );

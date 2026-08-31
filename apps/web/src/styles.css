@@ -87,9 +87,13 @@ input,textarea{font:inherit}
 /* icon rail — matte structural surface, circular controls */
 /* .rail container, .rail-avatar, .avatar-me + presence dot → Tailwind utilities
    in IconRail.tsx. .brandmark and .railbtn stay (shared primitives). */
-.brandmark{width:34px;height:34px;border-radius:var(--r-12);background:var(--brand);
-  display:grid;place-items:center;color:#fff;box-shadow:0 6px 16px -8px var(--brand-ring);margin-bottom:10px}
-.brandmark svg{width:19px;height:19px}
+/* The brand's navy, not the UI green. The mark is green artwork now, and green
+   on green is nothing — this was a green tile with a white mark knocked out of
+   it. Navy is also what the app icon stands on, so the badge in the rail and the
+   icon on a home screen are recognisably the same object. */
+.brandmark{width:34px;height:34px;border-radius:var(--r-12);background:#071634;
+  display:grid;place-items:center;box-shadow:0 6px 16px -8px rgba(7,22,52,.5);margin-bottom:10px}
+.brandmark img{width:22px;height:22px;object-fit:contain}
 .railbtn{width:40px;height:40px;position:relative}
 .railbtn svg{width:20px;height:20px}
 .railbtn.active{background:var(--sel);color:var(--brand-strong);box-shadow:none}

@@ -1,36 +1,31 @@
-import { View } from "react-native";
-import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
-import {
-  BRAND,
-  MARK_ARCH,
-  MARK_NODES,
-  MARK_NODE_R,
-  MARK_STEM,
-  MARK_STROKE,
-} from "@ding/design/logo";
+import { Image, View } from "react-native";
+import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 
 /**
- * The app's mark, from the geometry the web draws from too.
+ * The app's mark.
  *
- * It used to be three nested bowls here and a speech bubble with an amber dot
- * on the web — two different logos for one product, neither aware of the other,
- * which is what happens when a mark is drawn twice instead of shared once.
- * `@ding/design/logo` is now the only place the shape exists, and the app icon
- * and favicon are generated from the same numbers rather than exported by hand.
+ * It used to be three nested bowls drawn here in SVG, while the web drew a chat
+ * bubble with an amber dot — two hand-maintained logos for one product, neither
+ * aware of the other. Both now come from the artwork in
+ * `packages/design/brand`, and every size either platform needs is cut from it
+ * by `tools/render-logo.mjs` rather than redrawn.
  *
- * `color` defaults to the brand green rather than white: a logo holds its value
- * wherever it lands. Pass a colour only for somewhere it genuinely has to be
- * monochrome, like a knockout on a solid brand tile.
+ * The mark is a fixed green and carries no `color`: it is the same green on the
+ * sign-in tile, in a launcher and on a browser tab, which is what a logo is for.
+ * Anywhere it needs a ground of its own, the ground is the brand's navy — see
+ * the sign-in screen, and the app icon it matches.
  */
-export function NestMark({ size = 28, color = BRAND.green }: { size?: number; color?: string }) {
+export function NestMark({ size = 28 }: { size?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 100 100" fill="none">
-      <Path d={MARK_STEM} stroke={color} strokeWidth={MARK_STROKE} strokeLinecap="round" />
-      <Path d={MARK_ARCH} stroke={color} strokeWidth={MARK_STROKE} strokeLinecap="round" />
-      {MARK_NODES.map((n) => (
-        <Circle key={`${n.cx}-${n.cy}`} cx={n.cx} cy={n.cy} r={MARK_NODE_R} fill={color} />
-      ))}
-    </Svg>
+    <Image
+      source={require("../../assets/logo-mark.png")}
+      style={{ width: size, height: size }}
+      // The source is square and trimmed to the mark, so `contain` only ever
+      // letterboxes by a rounding error — but it is the difference between a
+      // mark that stays itself at any size and one that stretches.
+      resizeMode="contain"
+      accessibilityIgnoresInvertColors
+    />
   );
 }
 

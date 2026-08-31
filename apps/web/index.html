@@ -7,13 +7,13 @@
          (kept in sync with the theme by syncThemeColor()). -->
     <meta name="theme-color" content="#FFFFFF" />
     <!-- There was no site icon at all before this, so every tab showed the
-         browser's blank page glyph. SVG first for anything modern — it stays
-         sharp at whatever size the browser asks for, including the 16px
-         favourites bar — with a PNG behind it for the ones that don't take SVG,
-         and a 180 for an iOS home screen, which composites onto white and so
-         needs the mark on its own tile rather than floating. -->
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+         browser's blank page glyph. Three sizes, all
+         cut from the delivered artwork by tools/render-logo.mjs: a 32 for the
+         tab, a 64 for denser displays, and a 180 for an iOS home screen — which
+         composites onto white, so that one is the mark on its own navy tile
+         rather than floating. -->
     <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/favicon-64.png" sizes="64x64" type="image/png" />
     <link rel="apple-touch-icon" href="/favicon-180.png" />
     <title>Nest Connect</title>
   </head>

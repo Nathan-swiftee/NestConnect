@@ -8,6 +8,7 @@ import { api, seedIdentity, type MeResponse } from "@ding/client";
 import type { TwoFactorChallenge } from "@ding/schemas";
 import { Button } from "../src/components/Button";
 import { Field } from "../src/components/Field";
+import { BRAND } from "@ding/design/logo";
 import { AuthGlow, NestMark } from "../src/components/NestMark";
 import { rowIn } from "../src/motion";
 import { saveSession } from "../src/session";
@@ -119,8 +120,12 @@ export default function SignIn() {
         <Animated.View
           entering={ZoomIn.springify().damping(16).stiffness(220).mass(0.8).reduceMotion(ReduceMotion.System)}
           style={{
-            backgroundColor: c.brand,
-            shadowColor: c.brand,
+            // The brand's navy, not the UI's green: the mark is green now, and
+            // green on green is nothing. This is the ground the app icon uses,
+            // so the tile someone taps to open the app and the tile that greets
+            // them inside it are the same object.
+            backgroundColor: BRAND.navy,
+            shadowColor: BRAND.navy,
             shadowOpacity: 0.32,
             shadowRadius: 20,
             shadowOffset: { width: 0, height: 8 },
