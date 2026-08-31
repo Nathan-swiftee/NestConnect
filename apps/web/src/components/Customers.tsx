@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { Contact, ContactDuplicateGroup, Team } from "@ding/schemas";
+import type { ChannelType, Contact, ContactDuplicateGroup, Team } from "@ding/schemas";
 import {
   useContact,
   useContacts,
@@ -12,7 +12,9 @@ import {
   useUpdateContact,
 } from "../hooks";
 import { relativeTime } from "../lib/format";
+import { filterCustomers, isFiltered, tagCounts } from "../lib/customer-filter";
 import { Avatar } from "./Avatar";
+import { GlideMenu } from "./GlideMenu";
 import { ImportCustomers } from "./ImportCustomers";
 import { TagEditor } from "./TagEditor";
 import {
@@ -21,8 +23,11 @@ import {
   EditIcon,
   MailIcon,
   PhoneIcon,
+  CheckIcon,
+  ChevronDown,
   DownloadIcon,
   PlusIcon,
+  TagIcon,
   RouteIcon,
   SearchIcon,
   TrashIcon,
@@ -370,18 +375,34 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
   }, [contacts.data]);
 
   const [importing, setImporting] = useState(false);
+  /** Tags narrow (a customer must have all of them); channels widen (reachable
+   *  on any). Both live in `lib/customer-filter`, where the two combinators are
+   *  stated and tested — the asymmetry is deliberate, not an oversight. */
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [channelFilter, setChannelFilter] = useState<ChannelType[]>([]);
+  const [tagMenu, setTagMenu] = useState(false);
   const blockedCount = (contacts.data ?? []).filter((c) => c.blocked).length;
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    let list = contacts.data ?? [];
-    if (!showBlocked) list = list.filter((c) => !c.blocked);
-    if (!needle) return list;
-    return list.filter((c) =>
-      [c.displayName, c.company, c.phone, c.email, ...(c.tags ?? [])]
-        .filter(Boolean)
-        .some((v) => (v as string).toLowerCase().includes(needle)),
-    );
-  }, [contacts.data, q, showBlocked]);
+
+  const filter = useMemo(
+    () => ({ query: q, tags: tagFilter, channels: channelFilter, showBlocked }),
+    [q, tagFilter, channelFilter, showBlocked],
+  );
+  const filtered = useMemo(
+    () => filterCustomers(contacts.data ?? [], filter),
+    [contacts.data, filter],
+  );
+  /** Counted across everyone, not the filtered list: a count that fell to zero
+   *  as you ticked things would make the menu unusable for adding a second tag. */
+  const tagOptions = useMemo(() => tagCounts(contacts.data ?? []), [contacts.data]);
+  const toggleTag = (t: string) =>
+    setTagFilter((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+  const toggleChannel = (ch: ChannelType) =>
+    setChannelFilter((cur) => (cur.includes(ch) ? cur.filter((x) => x !== ch) : [...cur, ch]));
+  const clearFilters = () => {
+    setQ("");
+    setTagFilter([]);
+    setChannelFilter([]);
+  };
 
   const routing = (c: Contact) =>
     c.ownerTeamId
@@ -440,6 +461,67 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
               <SearchIcon />
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, company, number, email or tag…" />
             </div>
+            {/* Channels first: two chips, always the same two, so they stay a
+                fixed landmark rather than a list that changes shape. */}
+            {(["whatsapp", "email"] as ChannelType[]).map((ch) => (
+              <button
+                key={ch}
+                type="button"
+                className={"setfilterchip" + (channelFilter.includes(ch) ? " on" : "")}
+                onClick={() => toggleChannel(ch)}
+                aria-pressed={channelFilter.includes(ch)}
+              >
+                {channelMeta(ch).label}
+              </button>
+            ))}
+
+            {/* Tags behind a menu rather than inline: a directory accumulates
+                dozens, and a chip row that wraps to four lines pushes the table
+                off the screen. The count on the button is what a row of chips
+                was there to tell you. */}
+            {tagOptions.length > 0 && (
+              <div className="custtagfilter">
+                <button
+                  type="button"
+                  className={"setfilterchip" + (tagFilter.length ? " on" : "")}
+                  onClick={() => setTagMenu((v) => !v)}
+                  aria-expanded={tagMenu}
+                  aria-haspopup="true"
+                >
+                  <TagIcon />
+                  {tagFilter.length ? `Tags · ${tagFilter.length}` : "Tags"}
+                  <ChevronDown />
+                </button>
+                {tagMenu && (
+                  <>
+                    {/* A full-screen sink rather than a document listener: it
+                        closes on any outside click including one that lands on
+                        another control, without that control also firing. */}
+                    <div className="custtagfilter__sink" onClick={() => setTagMenu(false)} />
+                    <GlideMenu className="menu custtagmenu" role="menu">
+                      {tagOptions.map(({ tag, count }) => {
+                        const on = tagFilter.some((t) => t.toLowerCase() === tag.toLowerCase());
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            role="menuitemcheckbox"
+                            aria-checked={on}
+                            className={on ? "on" : ""}
+                            onClick={() => toggleTag(tag)}
+                          >
+                            <span className="custtagmenu__tick">{on ? <CheckIcon /> : null}</span>
+                            <span className="custtagmenu__name">{tag}</span>
+                            <span className="custtagmenu__n">{count}</span>
+                          </button>
+                        );
+                      })}
+                    </GlideMenu>
+                  </>
+                )}
+              </div>
+            )}
+
             {blockedCount > 0 && (
               <button
                 type="button"
@@ -448,6 +530,20 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
               >
                 {showBlocked ? "Hide blocked" : `Show blocked · ${blockedCount}`}
               </button>
+            )}
+
+            {isFiltered(filter) && (
+              <button type="button" className="setfilterchip custclear" onClick={clearFilters}>
+                <XIcon /> Clear
+              </button>
+            )}
+
+            {/* What the filters actually did. Without it, a narrow filter and an
+                empty directory look identical. */}
+            {isFiltered(filter) && contacts.data && (
+              <span className="custcount">
+                {filtered.length} of {contacts.data.length}
+              </span>
             )}
           </div>
 
