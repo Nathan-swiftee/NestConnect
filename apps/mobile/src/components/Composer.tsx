@@ -915,6 +915,24 @@ export function Composer({
         style={{ backgroundColor: c.surface2 }}
         className="flex-row items-end gap-1 rounded-24 px-1.5 py-1"
       >
+        {/* Everything the recording state replaces, in one group so holding the
+            microphone fades it out in a single step.
+
+            This is what makes the recording hint able to be transparent, and
+            transparency is what stops the microphone disappearing. The hint
+            used to be an opaque bar drawn over the row — a second pill inside
+            the row's own — and the button travels up to 120 points left as you
+            slide to cancel, so no amount of clearance kept it out from under
+            that bar. Hiding what's underneath instead means nothing is ever
+            drawn on top of the button at all.
+
+            `pointerEvents` goes with the opacity: an invisible text field that
+            still takes touches is a trap. */}
+        <View
+          className="flex-1 flex-row items-end gap-1"
+          style={{ opacity: hold.holding ? 0 : 1 }}
+          pointerEvents={hold.holding ? "none" : "auto"}
+        >
         <Touchable feel="chip"
           // The emoji row animates itself in and out (`enter.soft`/`exit.soft`
           // on the row above). This used to call `LayoutAnimation`, which does
@@ -978,6 +996,7 @@ export function Composer({
         >
           <AttachIcon size={20} color={c.textMuted} />
         </Touchable>
+        </View>
 
         {/* The trailing action. With nothing written it is a microphone you
             hold; the moment there is a draft it becomes send. This is the

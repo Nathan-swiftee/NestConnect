@@ -27,17 +27,16 @@ const LOCK_AT = 74;
 const CANCEL_FULL = 120;
 
 /**
- * How much of the row's right-hand end the recording bar leaves alone.
+ * How much of the row's right-hand end the recording hint leaves alone.
  *
- * The microphone is still under the finger while the bar is up, and the bar is
- * painted after the row, so a bar running the full width covers the button: you
- * press, the disc turns red, and it vanishes beneath the grey pill. Reserving
- * the space *inside* the bar does not fix that — the spacer is transparent but
- * the bar's own background still fills it. The bar has to stop short.
+ * Only about text now, not paint: the hint draws no background of its own, so
+ * nothing can cover the microphone at any point in the slide. This keeps the
+ * running clock and the "slide to cancel" line from being *centred* under a
+ * button they would otherwise collide with.
  *
  * 5.25 for the row's `px-1.5` at NativeWind's native rem of 14, plus the disc's
- * 35, plus enough that the two never touch — including when the disc springs to
- * 1.35 and grows six points wider on each side.
+ * 35, plus enough that they never touch — including while the disc is sprung to
+ * 1.35 and six points wider on each side.
  */
 const MIC_CLEARANCE = 48;
 
@@ -339,11 +338,18 @@ export function HoldOverlay({ hold, voice }: { hold: Hold; voice: VoiceRecording
         </Animated.View>
       </View>
 
-      {/* `right` is here rather than in the className because it is arithmetic
+      {/* No background. The composer row is already a pill of exactly this
+          colour, and drawing a second one inside it was both redundant and the
+          reason the microphone kept disappearing — the button slides up to 120
+          points left as you head for cancel, so it ended up under the bar
+          however much clearance the bar left at rest. What the row holds is
+          faded out instead, and this only adds type on top of it.
+
+          `right` is here rather than in the className because it is arithmetic
           about the button beside it, not a spacing step — see `MIC_CLEARANCE`. */}
       <View
-        style={{ backgroundColor: c.surface2, right: MIC_CLEARANCE }}
-        className="absolute bottom-0 left-0 h-11 flex-row items-center rounded-24 px-3"
+        style={{ right: MIC_CLEARANCE }}
+        className="absolute bottom-0 left-0 h-11 flex-row items-center px-3"
       >
         <View
           style={{ backgroundColor: voice.isRecording ? c.danger : c.textFaint }}
