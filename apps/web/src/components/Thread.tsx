@@ -6,7 +6,7 @@ import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
-import { ClientEvent, ServerEvent, FORWARD_MAX_TARGETS } from "@ding/schemas";
+import { ClientEvent, ServerEvent, FORWARD_MAX_TARGETS, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -2233,9 +2233,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       typingSentRef.current = true;
       getSocket().emit(ClientEvent.Typing, { conversationId: conv.id, typing: true, who: me?.user.name });
     }
-    // Also show the *customer* a "typing…" indicator on WhatsApp (each ping keeps
-    // it alive ~25s, so throttle hard — and only while free-typing in the window).
-    if (isWhatsApp && !internal && !composeLocked && t - waTypingRef.current > 9000) {
+    // Also show the *customer* a "typing…" indicator, on the channels that have
+    // one. The cadence is the channel's, not ours: WhatsApp holds an indicator
+    // ~25s per ping, the NestChat widget drops its dots after a few seconds.
+    const pingEvery = typingPingMs(composeChannel);
+    if (pingEvery != null && !internal && !composeLocked && t - waTypingRef.current > pingEvery) {
       waTypingRef.current = t;
       void api.sendTyping(conv.id).catch(() => {});
     }

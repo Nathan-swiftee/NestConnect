@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-nati
 import Animated from "react-native-reanimated";
 import { enter, exit, reflow } from "../motion";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
+import { typingPingMs } from "@ding/schemas";
 import {
   api,
   useIntegrations,
@@ -391,11 +392,13 @@ export function Composer({
     const caret = Math.max(0, Math.min(next.length, caretRef.current + (next.length - body.length)));
     setBody(next);
     // A note goes to the team, not the customer, so it neither broadcasts
-    // presence on the conversation nor pokes WhatsApp.
+    // presence on the conversation nor pokes the channel.
     if (!internal) {
       typing.signal();
       const t = Date.now();
-      if (isWhatsApp && !locked && t - waTyping.current > 9000) {
+      // Channels that show the customer an indicator, at their own cadence.
+      const pingEvery = typingPingMs(channel);
+      if (pingEvery != null && !locked && t - waTyping.current > pingEvery) {
         waTyping.current = t;
         void api.sendTyping(conv.id).catch(() => {});
       }
@@ -541,7 +544,10 @@ export function Composer({
     if (isWhatsApp && windowClosed)
       return { text: "24-hour window closed", tone: c.amber, dot: true };
     return {
-      text: `${isGroup ? "Group" : "WhatsApp"} · ${conv.contact.displayName}`,
+      // Named from the channel actually being composed on. It used to say
+      // "WhatsApp" for anything that wasn't email or a group, which told a
+      // NestChat visitor's thread it was about to send to WhatsApp.
+      text: `${isGroup ? "Group" : channelMeta(channel).label} · ${conv.contact.displayName}`,
       tone: c.textMuted,
       dot: false,
     };

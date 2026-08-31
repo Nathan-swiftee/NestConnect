@@ -176,7 +176,12 @@ export function ContactEditor({ contact }: { contact: Contact }) {
                 that is where it needs to be fixable. */}
             <Row label="Company" value={contact.company} />
             <Row label="Phone" value={contact.phone} />
-            <Row label="Email" value={contact.email} last />
+            <Row label="Email" value={contact.email} last={!contact.visitorId} />
+            {/* Someone who reached us through the website widget has neither,
+                and two empty rows say less than naming how they got here. */}
+            {contact.visitorId ? (
+              <Row label="Website" value={`Visitor ${contact.visitorId.slice(0, 6)}`} last />
+            ) : null}
           </>
         )}
       </View>

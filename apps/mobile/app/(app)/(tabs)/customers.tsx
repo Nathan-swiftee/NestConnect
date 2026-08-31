@@ -113,7 +113,10 @@ function Row({ contact, onPress }: { contact: Contact; onPress: () => void }) {
           {contact.displayName}
         </Text>
         <Text numberOfLines={1} className="text-sm text-muted">
-          {contact.company || contact.phone || contact.email || "—"}
+          {contact.company ||
+            contact.phone ||
+            contact.email ||
+            (contact.visitorId ? "Website visitor" : "—")}
         </Text>
       </View>
       {contact.tags?.length ? (

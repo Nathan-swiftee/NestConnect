@@ -181,9 +181,11 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           setAgentTyping(event.typing);
           // The agent's client sends "typing", never "stopped" — so the widget
           // times it out itself rather than waiting for a signal that may not
-          // come (they closed the tab mid-sentence).
+          // come (they closed the tab mid-sentence). Comfortably longer than
+          // the agent's ping interval, or the dots blink off and on again
+          // while somebody is still mid-sentence.
           clearTimeout(typingTimer.current);
-          if (event.typing) typingTimer.current = setTimeout(() => setAgentTyping(false), 4000);
+          if (event.typing) typingTimer.current = setTimeout(() => setAgentTyping(false), 6000);
           return;
         }
         if (event.kind !== "message") return;

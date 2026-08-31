@@ -32,6 +32,33 @@ export type ChannelType = z.infer<typeof channelTypeSchema>;
 export const contactIdentityKindSchema = z.enum(["phone", "email", "wa_id", "nestchat"]);
 export type ContactIdentityKind = z.infer<typeof contactIdentityKindSchema>;
 
+/**
+ * How often an agent's client should re-poke the CUSTOMER-facing typing
+ * indicator on this channel, or null where the customer is shown nothing.
+ *
+ * Separate from the presence agents broadcast to each other, and channel-shaped
+ * because the two that have it keep it alive for very different lengths of
+ * time: WhatsApp holds an indicator ~25 seconds per ping, so pinging hard would
+ * be rude to Meta and pointless; the NestChat widget drops its dots after a few
+ * seconds, so the same interval would make them blink on and off while somebody
+ * is mid-sentence.
+ *
+ * Here rather than in each client because it was in neither: both the web and
+ * the phone gated this on "is this WhatsApp", so NestChat visitors saw nothing
+ * however well the server behaved.
+ */
+export function typingPingMs(channel: ChannelType): number | null {
+  switch (channel) {
+    case "whatsapp":
+    case "whatsapp_group":
+      return 9_000;
+    case "nestchat":
+      return 3_000;
+    default:
+      return null;
+  }
+}
+
 export const conversationStatusSchema = z.enum(["open", "pending", "snoozed", "closed"]);
 export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 
