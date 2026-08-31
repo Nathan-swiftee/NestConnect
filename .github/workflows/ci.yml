@@ -37,6 +37,13 @@ jobs:
       - name: Inbound threading rule
         run: pnpm check:threading
 
+      # Hooks called below an early return. React throws #310 and unmounts the
+      # whole tree, so the symptom is a white page with nothing in the console
+      # that names the component — and it typechecks and builds perfectly. It has
+      # shipped twice, most recently blanking the web app the moment you signed in.
+      - name: Hook order
+        run: pnpm check:hooks
+
       # Three structural rules about the mobile screens that neither the
       # typechecker nor a browser can see. Takes a second. docs/11-mobile-layout.md
       # says why they exist and why they aren't rendering tests.

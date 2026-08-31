@@ -1505,6 +1505,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const { mutate: retry } = useRetryMessage();
   const forward = useForwardMessage();
   const { data: people } = usePeople();
+  // Used far below, for reply-all's "don't copy ourselves" filter. It is called
+  // *here* rather than at its use site because this component returns early
+  // while the conversation loads: a hook below those returns runs on some
+  // renders and not others, which is React error #310 and a blank screen.
+  const { data: inboxes } = useInboxes();
 
   const [text, setText] = useState("");
   // The message being quoted in a reply (shown as a cue above the composer), and
@@ -2240,12 +2245,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Keep the editor's onUpdate pointing at the current signalTyping closure.
   typingSignalRef.current = signalTyping;
 
+  /** Our address on this inbox, so reply-all never copies the inbox into its
+   *  own thread. The query itself is called at the top of the component, above
+   *  the early returns — only the lookup happens here. */
+  const ourAddress = inboxes?.find((i) => i.id === conv.inboxId)?.handle;
+
   // Start (or switch) a quoted reply to a message: force Reply mode and focus
   // the composer. Notes can't quote a customer message out to WhatsApp.
-  /** Our address on this inbox, so reply-all never copies the inbox into its
-   *  own thread. */
-  const inboxes = useInboxes();
-  const ourAddress = inboxes.data?.find((i) => i.id === conv.inboxId)?.handle;
 
   const startReply = (m: Message) => {
     setReplyTo(m);
