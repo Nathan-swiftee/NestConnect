@@ -1405,29 +1405,53 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   const settings = useNestchatSettings(inboxId);
   const update = useUpdateNestchat();
 
-  const [draft, setDraft] = useState<NestChatAppearance>();
   const [embed, setEmbed] = useState<EmbedKind>("script");
   const [copied, setCopied] = useState(false);
 
-  // Load the saved appearance into the form once per channel. Keyed on the
-  // channel id so switching channels reloads, but typing doesn't get reverted
-  // by a background refetch.
-  const loadedFor = useRef<string>();
+  /**
+   * One draft per channel, not one draft.
+   *
+   * Every widget is styled separately — two NestChat channels can be two
+   * different products with different colours and different words — so the form
+   * has to hold an edit per channel rather than a single form the channel picker
+   * points at. Keeping them keyed by inbox id also means switching channels
+   * mid-edit doesn't quietly throw your work away, which a single draft did.
+   */
+  const [drafts, setDrafts] = useState<Record<string, NestChatAppearance>>({});
+  const [saved, setSaved] = useState<Record<string, NestChatAppearance>>({});
+  const draft = inboxId ? drafts[inboxId] : undefined;
+
+  // Seed a channel's draft from what's stored, once. Keyed on the id so a
+  // background refetch never reverts what someone is typing.
   useEffect(() => {
-    if (!settings.data || loadedFor.current === settings.data.inboxId) return;
-    loadedFor.current = settings.data.inboxId;
-    setDraft(settings.data.appearance);
+    const data = settings.data;
+    if (!data) return;
+    setSaved((m) => ({ ...m, [data.inboxId]: data.appearance }));
+    setDrafts((m) => (m[data.inboxId] ? m : { ...m, [data.inboxId]: data.appearance }));
   }, [settings.data]);
 
   const set = <K extends keyof NestChatAppearance>(key: K, value: NestChatAppearance[K]) =>
-    setDraft((d) => (d ? { ...d, [key]: value } : d));
+    setDrafts((m) =>
+      inboxId && m[inboxId] ? { ...m, [inboxId]: { ...m[inboxId], [key]: value } } : m,
+    );
+
+  /** Channels with edits that haven't been saved yet — marked in the picker, so
+   *  a pending change on a channel you've switched away from stays visible. */
+  const dirty = (id: string) =>
+    Boolean(drafts[id] && saved[id] && JSON.stringify(drafts[id]) !== JSON.stringify(saved[id]));
+  const isDirty = inboxId ? dirty(inboxId) : false;
 
   const save = () => {
     if (!inboxId || !draft) return;
+    const name = channels.find((c) => c.id === inboxId)?.name ?? "Widget";
     update.mutate(
       { inboxId, input: { appearance: draft } },
       {
-        onSuccess: () => onToast("Widget updated"),
+        onSuccess: (res) => {
+          setSaved((m) => ({ ...m, [res.inboxId]: res.appearance }));
+          setDrafts((m) => ({ ...m, [res.inboxId]: res.appearance }));
+          onToast(`${name} updated`);
+        },
         onError: () => onToast("Only admins & managers can change the widget"),
       },
     );
@@ -1458,7 +1482,8 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
         <div className="setempty">
           <p>
             No NestChat channel yet. Add one under <strong>Channels</strong> and its widget appears
-            here, ready to style and embed.
+            here, ready to style and embed. Add several — one per site or product — and each keeps
+            its own colours, wording and embed snippet.
           </p>
         </div>
       </div>
@@ -1469,31 +1494,44 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
     <div className="setpane setpane--wide">
       <div className="setpane__head">
         <h2>NestChat widget</h2>
-        <p>How your live chat looks and what it says, and the snippet that puts it on your site.</p>
+        <p>
+          Every NestChat channel has its own look, its own words and its own embed. Pick one to
+          style it.
+        </p>
         <div className="setpane__headacts">
-          {channels.length > 1 && (
-            <select
-              className="setfilterchip"
-              value={inboxId}
-              onChange={(e) => setSelected(e.target.value)}
-              aria-label="Which NestChat channel"
-            >
-              {channels.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          )}
           <button
             type="button"
             className="btn-primary"
             onClick={save}
-            disabled={!draft || update.isPending}
+            disabled={!draft || update.isPending || !isDirty}
           >
-            {update.isPending ? "Saving…" : "Save changes"}
+            {update.isPending ? "Saving…" : isDirty ? "Save changes" : "Saved"}
           </button>
         </div>
+      </div>
+
+      {/* Always shown, even with one channel: these settings belong to a
+          specific widget, and a picker that appears only once there are two
+          leaves the first one looking like a global setting. */}
+      <div className="ncwtabs" role="tablist" aria-label="NestChat channels">
+        {channels.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            role="tab"
+            aria-selected={c.id === inboxId}
+            className={"ncwtab" + (c.id === inboxId ? " on" : "")}
+            onClick={() => setSelected(c.id)}
+          >
+            <span className="ncwtab__name">
+              {c.name}
+              {dirty(c.id) && (
+                <i className="ncwtab__dot" title="Unsaved changes" aria-label="Unsaved changes" />
+              )}
+            </span>
+            <small>{c.handle}</small>
+          </button>
+        ))}
       </div>
 
       {!draft ? (
@@ -1614,7 +1652,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
             <NestChatPreview appearance={draft} />
 
             <section className="ncw__group">
-              <h3>Install</h3>
+              <h3>Install {channels.find((c) => c.id === inboxId)?.name}</h3>
               <div className="ncw__tabs" role="group" aria-label="Embed style">
                 <button
                   type="button"

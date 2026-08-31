@@ -2876,6 +2876,23 @@ button.tpl-row:active{transform:scale(.97)}
   font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* NestChat widget settings ------------------------------------------------ */
+/* Which widget you are editing. Always on screen, one card per channel, because
+   these settings belong to a channel and not to the product — a picker that
+   only appeared once you had two made the first one read as a global setting. */
+.ncwtabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 var(--sp-4)}
+.ncwtab{display:grid;gap:1px;justify-items:start;text-align:left;padding:8px 14px;
+  border:1px solid var(--border);border-radius:var(--r-12);background:var(--surface);
+  color:var(--text-muted);cursor:pointer;
+  transition:border-color var(--t-fast),background var(--t-fast),color var(--t-fast)}
+.ncwtab:hover{background:var(--surface-2)}
+.ncwtab.on{border-color:var(--nestchat);background:var(--surface);color:var(--text)}
+.ncwtab__name{display:flex;align-items:center;gap:6px;font-size:var(--fs-sm);font-weight:600}
+.ncwtab.on .ncwtab__name{color:var(--text)}
+.ncwtab small{font-size:var(--fs-xs);color:var(--text-faint)}
+/* An edit made on a channel you have since switched away from is still pending
+   — say so on its card rather than losing it silently. */
+.ncwtab__dot{width:6px;height:6px;border-radius:50%;background:var(--amber);flex:none}
+
 /* Form on the left, preview and install snippet on the right: the two things
    you are deciding between — how it reads, and how it looks — side by side. */
 .ncw{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--sp-5);align-items:start}
