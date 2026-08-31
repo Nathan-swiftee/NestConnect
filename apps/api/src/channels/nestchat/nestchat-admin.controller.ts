@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Put } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Param, Patch } from "@nestjs/common";
 import { updateNestchatInputSchema, type UpdateNestchatInput } from "@ding/schemas";
 import { Store } from "../../data/store";
 import { CurrentUserId } from "../../auth/current-user.decorator";
@@ -25,7 +25,7 @@ export class NestChatAdminController {
     return this.nestchat.settingsFor(inboxId);
   }
 
-  @Put(":inboxId")
+  @Patch(":inboxId")
   async update(
     @CurrentUserId() userId: string,
     @Param("inboxId") inboxId: string,

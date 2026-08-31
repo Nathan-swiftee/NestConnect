@@ -129,6 +129,11 @@ export const contactSchema = z.object({
   company: z.string().optional(),
   phone: z.string().optional(),
   email: z.string().optional(),
+  /** The browser id this customer first chatted from, if they came in through a
+   *  NestChat widget. Its own field rather than folded into `phone`: it is not a
+   *  number, nothing can be dialled or messaged at it, and showing it under a
+   *  phone icon tells an agent something untrue. */
+  visitorId: z.string().optional(),
   avatarColor: z.string().optional(),
   /** Free-form labels for organising customers (VIP, Wholesale, …). */
   tags: z.array(z.string()).default([]),
@@ -920,6 +925,10 @@ export const nestchatSessionSchema = z.object({
   visitorId: z.string(),
   /** Bearer for every later visitor call. Scoped to one conversation. */
   token: z.string(),
+  /** Whether this visitor already has a thread. False for someone who has
+   *  opened the widget but never written — there is nothing to stream yet, and
+   *  a widget that opens one anyway reconnects against a 400 forever. */
+  hasConversation: z.boolean(),
   messages: z.array(nestchatMessageSchema),
 });
 export type NestChatSession = z.infer<typeof nestchatSessionSchema>;

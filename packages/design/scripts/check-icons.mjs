@@ -20,9 +20,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const { icons, tickIcons, channelIcons, teamIcons, logo } = await import(
-  resolve(here, "../icons.ts")
-);
+const { icons, tickIcons, channelIcons, teamIcons } = await import(resolve(here, "../icons.ts"));
 
 /** The drawable margin on the 24-grid: ~20 live, so anything outside 1.5..22.5 is a slip. */
 const PAD = 1.5;
@@ -40,7 +38,8 @@ const sets = {
   ticks: tickIcons,
   channels: channelIcons,
   teams: teamIcons,
-  logo: { logo: { d: logo.bubble, fill: logo.dot } },
+  // The brand mark used to be geometry here and is now artwork (brand/*.png,
+  // rendered by tools/render-logo.mjs), so there is no path left to check.
 };
 
 const problems = [];

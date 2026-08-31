@@ -32,7 +32,9 @@ import type {
   UpdateLabelInput,
   UpdateContactInput,
   UpdateInboxInput,
+  NestChatSettings,
   UpdateIntegrationSettingsInput,
+  UpdateNestchatInput,
   PolishDraftInput,
   PolishDraftResult,
   UpdateTeamInput,
@@ -208,6 +210,10 @@ export const api = {
   deleteInbox: (id: string) => del<{ ok: boolean }>(`/inboxes/${id}`),
   // Move a channel's still-open conversations onto its (new) routing.
   rerouteInbox: (id: string) => post<{ moved: number }>(`/inboxes/${id}/reroute`, {}),
+  // NestChat: how one channel's widget looks, and the snippet that embeds it.
+  nestchatSettings: (inboxId: string) => get<NestChatSettings>(`/settings/nestchat/${inboxId}`),
+  updateNestchat: (inboxId: string, input: UpdateNestchatInput) =>
+    patch<NestChatSettings>(`/settings/nestchat/${inboxId}`, input),
   // settings
   teams: () => get<Team[]>("/settings/teams"),
   people: () => get<Member[]>("/settings/people"),

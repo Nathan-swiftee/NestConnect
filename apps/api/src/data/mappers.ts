@@ -302,6 +302,7 @@ export function mapInbox(i: InboxWithTeams): Inbox {
 export function mapContact(c: ContactWithIdentities): Contact {
   const phone = c.identities.find((x) => x.kind === "phone" || x.kind === "wa_id")?.value;
   const email = c.identities.find((x) => x.kind === "email")?.value;
+  const visitorId = c.identities.find((x) => x.kind === "nestchat")?.value;
   return {
     id: c.id,
     orgId: c.orgId,
@@ -309,6 +310,7 @@ export function mapContact(c: ContactWithIdentities): Contact {
     company: c.company ?? undefined,
     phone,
     email,
+    visitorId,
     avatarColor: c.avatarColor ?? undefined,
     tags: c.tags ?? [],
     ownerUserId: c.ownerUserId ?? undefined,

@@ -264,6 +264,15 @@ export const channelIcons = {
   email: {
     fill: "M4 5h16c1.1 0 2 .9 2 2v.5l-10 5.6L2 7.5V7c0-1.1.9-2 2-2Zm18 4.8V17c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V9.8l9.52 5.33c.3.16.66.16.96 0L22 9.8Z",
   },
+  /**
+   * NestChat — our own live chat. A speech bubble with a tail, kept solid so it
+   * reads at the 8px dot size the conversation list uses; the WhatsApp mark is
+   * also a bubble, so this one is squarer, and its tail hangs from the left
+   * rather than the corner.
+   */
+  nestchat: {
+    fill: "M6 3.4h12A3.6 3.6 0 0 1 21.6 7v6.6A3.6 3.6 0 0 1 18 17.2h-6.1l-4.2 3.4a.85.85 0 0 1-1.38-.66V17.2H6a3.6 3.6 0 0 1-3.6-3.6V7A3.6 3.6 0 0 1 6 3.4Z",
+  },
   /** Gmail's envelope, with the tell-tale "M" valley. Coloured Gmail red. */
   gmail: {
     fill: "M4 5h1.4L12 9.9 18.6 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2.6v-8.2L12 14 6.6 9.8V19H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z",

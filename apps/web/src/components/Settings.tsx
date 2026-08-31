@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { embedSnippet, type EmbedKind } from "../lib/nestchat-embed";
 import type {
   ChannelType,
   Inbox,
@@ -14,6 +15,7 @@ import type {
   OpeningHours,
   OpeningDay,
   OpeningHoursDay,
+  NestChatAppearance,
 } from "@ding/schemas";
 import { WHATSAPP_VERTICALS, OPENING_DAYS } from "@ding/schemas";
 import {
@@ -30,6 +32,8 @@ import {
   useDeleteUser,
   useInboxes,
   useLabels,
+  useNestchatSettings,
+  useUpdateNestchat,
   useUpdateLabel,
   useIntegrations,
   useMe,
@@ -80,6 +84,7 @@ import {
  *  sections; each section surfaces its leaves as the top sub-navigation. */
 type Leaf =
   | "channels"
+  | "nestchat"
   | "templates"
   | "profile"
   | "broadcast"
@@ -116,6 +121,7 @@ const NAV: NavSection[] = [
     Icon: InboxIcon,
     leaves: [
       { key: "channels", label: "Channels" },
+      { key: "nestchat", label: "NestChat widget" },
       { key: "templates", label: "Templates" },
       { key: "profile", label: "Business profile" },
       { key: "broadcast", label: "Broadcast" },
@@ -244,6 +250,7 @@ export function Settings({ onClose, onToast }: Props) {
 
           <div className="settings__pane" key={paneKey}>
             {active === "channels" && <ChannelsPane onToast={onToast} />}
+            {active === "nestchat" && <NestChatPane onToast={onToast} />}
             {active === "templates" && <TemplatesPane onToast={onToast} />}
             {active === "profile" && <ProfilePane onToast={onToast} />}
             {active === "broadcast" && <BroadcastPane onToast={onToast} />}
@@ -295,6 +302,16 @@ const CHANNEL_KINDS: ChannelKind[] = [
       { key: "wabaId", label: "WhatsApp Business Account ID", placeholder: "Optional", optional: true },
       { key: "verifyToken", label: "Webhook verify token", placeholder: "A phrase you choose", optional: true },
     ],
+  },
+  {
+    type: "nestchat",
+    label: "NestChat",
+    desc: "Our own live chat, embedded on your website. Nothing to connect — it's ours.",
+    handleLabel: "Website",
+    handlePlaceholder: "swiftee.co.uk",
+    // No credentials: there is no third party to authenticate with. The widget
+    // key that identifies this channel is minted for us, not pasted in.
+    fields: [],
   },
   {
     type: "email",
@@ -513,7 +530,7 @@ function ChannelEditor({
           <span>Also move this channel’s open conversations to the new routing (chats on a team it no longer serves).</span>
         </label>
       )}
-      {kind && (
+      {kind && kind.fields.length > 0 && (
         <div className="connect__creds">
           <div className="connect__credhead">Update credentials <em>— leave blank to keep current</em></div>
           <div className="setform__grid two">
@@ -719,6 +736,7 @@ function ConnectChannel({
         </div>
       )}
 
+      {kind.fields.length > 0 && (
       <div className="connect__creds">
         <div className="connect__credhead">Integration</div>
         <div className="setform__grid two">
@@ -738,6 +756,7 @@ function ConnectChannel({
           ))}
         </div>
       </div>
+      )}
 
       <div className="setform__grid two">
         <div className="field">
@@ -1350,6 +1369,318 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
 /* ------------------------------------------------------------------ */
 /* Templates — WhatsApp message templates (24-hour window)            */
 /* ------------------------------------------------------------------ */
+
+/* ── NestChat widget ─────────────────────────────────────────────────────── */
+
+/** The text fields, in the order the widget reads them out loud. */
+const NESTCHAT_WORDS: Array<{
+  key: keyof NestChatAppearance;
+  label: string;
+  hint?: string;
+  multiline?: boolean;
+}> = [
+  { key: "title", label: "Header title" },
+  { key: "subtitle", label: "Header subtitle", hint: "Shown while someone is online" },
+  { key: "awayMessage", label: "Away message", hint: "Replaces the subtitle when nobody is", multiline: true },
+  { key: "greeting", label: "Greeting", hint: "The first thing in an empty chat", multiline: true },
+  { key: "placeholder", label: "Message box placeholder" },
+  { key: "launcherLabel", label: "Launcher tooltip", hint: "On the floating bubble" },
+  { key: "askEmailLabel", label: "Email prompt" },
+];
+
+/**
+ * Settings › NestChat widget.
+ *
+ * A pane rather than another section of the Edit-channel modal: this is a dozen
+ * fields plus an install snippet, and it is worth seeing what you are changing
+ * while you change it. The preview beside the form is a stand-in drawn from the
+ * live form state — the real widget renders in its own iframe from saved
+ * settings, so it can't show what you haven't saved yet.
+ */
+function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
+  const inboxes = useInboxes();
+  const channels = (inboxes.data ?? []).filter((i) => i.type === "nestchat");
+  const [selected, setSelected] = useState<string>();
+  const inboxId = selected ?? channels[0]?.id;
+  const settings = useNestchatSettings(inboxId);
+  const update = useUpdateNestchat();
+
+  const [draft, setDraft] = useState<NestChatAppearance>();
+  const [embed, setEmbed] = useState<EmbedKind>("script");
+  const [copied, setCopied] = useState(false);
+
+  // Load the saved appearance into the form once per channel. Keyed on the
+  // channel id so switching channels reloads, but typing doesn't get reverted
+  // by a background refetch.
+  const loadedFor = useRef<string>();
+  useEffect(() => {
+    if (!settings.data || loadedFor.current === settings.data.inboxId) return;
+    loadedFor.current = settings.data.inboxId;
+    setDraft(settings.data.appearance);
+  }, [settings.data]);
+
+  const set = <K extends keyof NestChatAppearance>(key: K, value: NestChatAppearance[K]) =>
+    setDraft((d) => (d ? { ...d, [key]: value } : d));
+
+  const save = () => {
+    if (!inboxId || !draft) return;
+    update.mutate(
+      { inboxId, input: { appearance: draft } },
+      {
+        onSuccess: () => onToast("Widget updated"),
+        onError: () => onToast("Only admins & managers can change the widget"),
+      },
+    );
+  };
+
+  // Built from the draft, not the saved settings, so the snippet you copy
+  // matches the colour and label you are looking at.
+  const snippet =
+    settings.data && draft ? embedSnippet(embed, settings.data, draft) : "";
+
+  const copy = () => {
+    void navigator.clipboard.writeText(snippet).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1600);
+      },
+      () => onToast("Couldn’t copy — select the snippet and copy it by hand"),
+    );
+  };
+
+  if (!channels.length) {
+    return (
+      <div className="setpane setpane--wide">
+        <div className="setpane__head">
+          <h2>NestChat widget</h2>
+          <p>Our own live chat, embedded on your website.</p>
+        </div>
+        <div className="setempty">
+          <p>
+            No NestChat channel yet. Add one under <strong>Channels</strong> and its widget appears
+            here, ready to style and embed.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="setpane setpane--wide">
+      <div className="setpane__head">
+        <h2>NestChat widget</h2>
+        <p>How your live chat looks and what it says, and the snippet that puts it on your site.</p>
+        <div className="setpane__headacts">
+          {channels.length > 1 && (
+            <select
+              className="setfilterchip"
+              value={inboxId}
+              onChange={(e) => setSelected(e.target.value)}
+              aria-label="Which NestChat channel"
+            >
+              {channels.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={save}
+            disabled={!draft || update.isPending}
+          >
+            {update.isPending ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+
+      {!draft ? (
+        <div className="setempty">
+          <p>Loading the widget’s settings…</p>
+        </div>
+      ) : (
+        <div className="ncw">
+          <div className="ncw__form">
+            <section className="ncw__group">
+              <h3>Brand</h3>
+              <div className="setform__grid two">
+                <label className="field">
+                  <span>Brand colour</span>
+                  <div className="ncw__colour">
+                    <input
+                      type="color"
+                      value={draft.accent}
+                      onChange={(e) => set("accent", e.target.value)}
+                      aria-label="Brand colour"
+                    />
+                    <input
+                      value={draft.accent}
+                      onChange={(e) => set("accent", e.target.value)}
+                      spellCheck={false}
+                    />
+                  </div>
+                </label>
+                <label className="field">
+                  <span>Text on the brand colour</span>
+                  <div className="ncw__colour">
+                    <input
+                      type="color"
+                      value={draft.accentText}
+                      onChange={(e) => set("accentText", e.target.value)}
+                      aria-label="Text on the brand colour"
+                    />
+                    <input
+                      value={draft.accentText}
+                      onChange={(e) => set("accentText", e.target.value)}
+                      spellCheck={false}
+                    />
+                  </div>
+                </label>
+              </div>
+              <div className="setform__grid two">
+                <label className="field">
+                  <span>Theme</span>
+                  <select
+                    value={draft.theme}
+                    onChange={(e) => set("theme", e.target.value as NestChatAppearance["theme"])}
+                  >
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                    <option value="auto">Match the visitor’s device</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Launcher corner</span>
+                  <select
+                    value={draft.position}
+                    onChange={(e) =>
+                      set("position", e.target.value as NestChatAppearance["position"])
+                    }
+                  >
+                    <option value="right">Bottom right</option>
+                    <option value="left">Bottom left</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+
+            <section className="ncw__group">
+              <h3>Words</h3>
+              {NESTCHAT_WORDS.map((f) => (
+                <label className="field" key={f.key}>
+                  <span>
+                    {f.label} {f.hint && <em>{f.hint}</em>}
+                  </span>
+                  {f.multiline ? (
+                    <textarea
+                      rows={2}
+                      value={String(draft[f.key] ?? "")}
+                      onChange={(e) => set(f.key, e.target.value as never)}
+                    />
+                  ) : (
+                    <input
+                      value={String(draft[f.key] ?? "")}
+                      onChange={(e) => set(f.key, e.target.value as never)}
+                    />
+                  )}
+                </label>
+              ))}
+            </section>
+
+            <section className="ncw__group">
+              <h3>Behaviour</h3>
+              <label className={"check" + (draft.askEmail ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.askEmail}
+                  onChange={(e) => set("askEmail", e.target.checked)}
+                />
+                Ask for an email address, so a reply can reach someone who has left
+              </label>
+              <label className={"check" + (draft.showBranding ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.showBranding}
+                  onChange={(e) => set("showBranding", e.target.checked)}
+                />
+                Show “Powered by Nest Connect”
+              </label>
+            </section>
+          </div>
+
+          <div className="ncw__side">
+            <NestChatPreview appearance={draft} />
+
+            <section className="ncw__group">
+              <h3>Install</h3>
+              <div className="ncw__tabs" role="group" aria-label="Embed style">
+                <button
+                  type="button"
+                  className={"setfilterchip" + (embed === "script" ? " on" : "")}
+                  onClick={() => setEmbed("script")}
+                >
+                  Floating bubble
+                </button>
+                <button
+                  type="button"
+                  className={"setfilterchip" + (embed === "iframe" ? " on" : "")}
+                  onClick={() => setEmbed("iframe")}
+                >
+                  Inline iframe
+                </button>
+              </div>
+              <p className="fieldhint">
+                {embed === "script"
+                  ? "Paste before </body> on every page. It draws the bubble and opens the chat in a frame of its own."
+                  : "Drops the chat straight into a page — a contact page, a help centre. Size it with the surrounding CSS."}
+              </p>
+              <pre className="ncw__snippet">{snippet}</pre>
+              <button type="button" className="btn-ghost" onClick={copy}>
+                {copied ? "Copied" : "Copy snippet"}
+              </button>
+              <p className="fieldhint">
+                Widget key <code>{settings.data?.widgetKey}</code> — public by design; it identifies
+                this channel and nothing more.
+              </p>
+            </section>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A stand-in for the widget, drawn from the form as it is being edited. Close
+ *  enough to judge colour and copy by; the real thing lives in its own bundle. */
+function NestChatPreview({ appearance }: { appearance: NestChatAppearance }) {
+  const dark = appearance.theme === "dark";
+  return (
+    <div
+      className={"ncprev" + (dark ? " ncprev--dark" : "")}
+      style={{ ["--pv-accent" as string]: appearance.accent, ["--pv-on" as string]: appearance.accentText }}
+      aria-hidden="true"
+    >
+      <div className="ncprev__head">
+        <div className="ncprev__title">{appearance.title}</div>
+        <div className="ncprev__sub">{appearance.subtitle}</div>
+      </div>
+      <div className="ncprev__thread">
+        <div className="ncprev__in">{appearance.greeting}</div>
+        <div className="ncprev__out">Hi — do you deliver on Saturdays?</div>
+        <div className="ncprev__in">We do, right up until 2pm.</div>
+      </div>
+      <div className="ncprev__composer">
+        <span>{appearance.placeholder}</span>
+        <i />
+      </div>
+      {appearance.showBranding && <div className="ncprev__brand">Powered by Nest Connect</div>}
+    </div>
+  );
+}
+
+/* ── templates ───────────────────────────────────────────────────────────── */
 
 function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
   const templates = useTemplates();

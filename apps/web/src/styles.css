@@ -2050,6 +2050,11 @@ input,textarea{font:inherit}
 .cchip:hover{background:var(--hover)}
 .cchip svg{width:15px;height:15px;color:var(--text-faint);flex:0 0 auto}
 .cchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A chip that states a fact rather than copying one — nothing to click, so it
+   takes none of the hover affordance. */
+.cchip--static{cursor:default;color:var(--text-muted)}
+.cchip--static:hover{background:transparent}
+.cchip--static svg{color:var(--nestchat)}
 .cact{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:12px;padding:10px 16px;font:inherit;
   font-size:var(--fs-sm);font-weight:600;border-radius:var(--r-8);cursor:pointer;transition:transform var(--t-fast),filter var(--t-base)}
 .cact:active{transform:scale(.97)}
@@ -2869,3 +2874,48 @@ button.tpl-row:active{transform:scale(.97)}
    the same, and people assume the search is broken. */
 .custcount{margin-left:auto;flex:none;color:var(--text-faint);font-size:var(--fs-xs);
   font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* NestChat widget settings ------------------------------------------------ */
+/* Form on the left, preview and install snippet on the right: the two things
+   you are deciding between — how it reads, and how it looks — side by side. */
+.ncw{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--sp-5);align-items:start}
+@media (max-width:1100px){.ncw{grid-template-columns:minmax(0,1fr)}}
+.ncw__form,.ncw__side{display:grid;gap:var(--sp-4);min-width:0}
+.ncw__group{display:grid;gap:var(--sp-3);min-width:0}
+.ncw__group h3{margin:0;font-size:var(--fs-xs);font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--text-faint)}
+/* The swatch and its hex sit on one line: the picker is the fast way in, the
+   hex is the one a brand guideline is written in. */
+.ncw__colour{display:flex;gap:8px;align-items:center}
+.ncw__colour input[type="color"]{flex:none;width:38px;height:38px;padding:2px;
+  border:1px solid var(--border);border-radius:var(--r-10);background:var(--surface);cursor:pointer}
+.ncw__colour input:not([type="color"]){flex:1 1 auto;min-width:0;font-family:var(--mono);
+  font-size:var(--fs-sm)}
+.ncw__tabs{display:flex;gap:6px}
+.ncw__snippet{margin:0;padding:var(--sp-3);border-radius:var(--r-10);background:var(--surface-2);
+  border:1px solid var(--border);font-family:var(--mono);font-size:11.5px;line-height:1.55;
+  color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* The preview. Its own colours come from the form as it's typed, so they are
+   set inline as --pv-* and never inherit the app's palette. */
+.ncprev{border:1px solid var(--border);border-radius:var(--r-14);overflow:hidden;
+  background:#fff;color:#12151a;box-shadow:var(--shadow)}
+.ncprev--dark{background:#14171c;color:#eef1f5;border-color:#2a2f38}
+.ncprev__head{padding:12px 14px;background:var(--pv-accent);color:var(--pv-on)}
+.ncprev__title{font-size:var(--fs-sm);font-weight:650}
+.ncprev__sub{margin-top:2px;font-size:11.5px;opacity:.85}
+.ncprev__thread{display:grid;gap:8px;padding:14px 12px;background:#f6f7f9;min-height:132px}
+.ncprev--dark .ncprev__thread{background:#1b1f26}
+.ncprev__in,.ncprev__out{max-width:82%;padding:8px 11px;font-size:12.5px;line-height:1.4;
+  border-radius:14px}
+.ncprev__in{justify-self:start;background:#fff;color:#12151a;border-bottom-left-radius:4px}
+.ncprev--dark .ncprev__in{background:#232830;color:#eef1f5}
+.ncprev__out{justify-self:end;background:var(--pv-accent);color:var(--pv-on);
+  border-bottom-right-radius:4px}
+.ncprev__composer{display:flex;align-items:center;gap:8px;padding:9px 12px;
+  border-top:1px solid var(--border);font-size:12.5px;color:var(--text-faint)}
+.ncprev--dark .ncprev__composer{border-top-color:#2a2f38}
+.ncprev__composer span{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.ncprev__composer i{flex:none;width:26px;height:26px;border-radius:50%;background:var(--pv-accent)}
+.ncprev__brand{padding:0 12px 9px;text-align:center;font-size:10.5px;color:var(--text-faint)}

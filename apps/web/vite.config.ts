@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { resolve } from "node:path";
 
 // In dev the web app proxies REST + WebSocket traffic to the API on :3001,
 // so the browser talks to a single origin (no CORS juggling locally).
@@ -26,6 +27,22 @@ export default defineConfig({
      * context, so a duplicate of it fails identically.
      */
     dedupe: ["react", "react-dom", "@tanstack/react-query"],
+  },
+  build: {
+    rollupOptions: {
+      /**
+       * Two apps out of one package.
+       *
+       * `index.html` is the inbox. `widget.html` is the NestChat chat widget,
+       * which loads in an iframe on a customer's own website — it must not pull
+       * the agent console in with it, so it gets its own entry and its own
+       * dependency graph rather than a route inside the SPA.
+       */
+      input: {
+        main: resolve(__dirname, "index.html"),
+        widget: resolve(__dirname, "widget.html"),
+      },
+    },
   },
   server: {
     port: 5173,

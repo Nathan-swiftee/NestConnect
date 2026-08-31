@@ -1,7 +1,7 @@
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 
 /** The kinds of identity a contact can be matched on. */
-export type IdentityKind = "phone" | "email" | "wa_id";
+export type IdentityKind = "phone" | "email" | "wa_id" | "nestchat";
 
 /** Default region for parsing numbers typed without a country code. WhatsApp
  *  always delivers a full country code, so this only affects hand-typed local
@@ -61,6 +61,13 @@ export function normalizeIdentity(kind: IdentityKind, raw: string): NormalizedId
     // Loose sanity — a real address has an @ and a dot in the domain.
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) return null;
     return { value, normalized };
+  }
+
+  // A NestChat visitor id is already canonical — 32 hex characters this server
+  // generated. Running it through the phone parser below would strip its letters
+  // and try to read the rest as a number.
+  if (kind === "nestchat") {
+    return /^[0-9a-zA-Z_-]{8,64}$/.test(value) ? { value, normalized: value } : null;
   }
 
   // phone | wa_id — keep only digits and a leading +, then parse to E.164.

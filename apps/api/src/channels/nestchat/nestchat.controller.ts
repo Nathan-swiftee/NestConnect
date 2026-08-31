@@ -130,6 +130,7 @@ export class NestChatController {
     return {
       visitorId,
       token,
+      hasConversation: Boolean(conversationId),
       messages: conversationId ? await this.nestchat.visitorHistory(conversationId) : [],
     };
   }

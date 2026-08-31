@@ -154,7 +154,16 @@ export class NestChatService {
       if (!claims.visitorId || !claims.inboxId || !claims.contactId || claims.conversationId == null) {
         throw new Error("incomplete claims");
       }
-      return claims as VisitorClaims;
+      // Rebuilt field by field rather than returned as-is: the verified payload
+      // also carries the JWT's own `iat`/`exp`, and re-signing a spread of it
+      // (which the first message does, to name the conversation it created)
+      // fails outright — "the payload already has an exp property".
+      return {
+        visitorId: claims.visitorId,
+        inboxId: claims.inboxId,
+        contactId: claims.contactId,
+        conversationId: claims.conversationId,
+      };
     } catch {
       throw new ForbiddenException("Chat session expired");
     }

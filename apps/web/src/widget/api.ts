@@ -1,0 +1,81 @@
+import type {
+  NestChatConfig,
+  NestChatMessage,
+  NestChatSession,
+} from "@ding/schemas";
+
+/**
+ * The widget's whole API surface — plain fetch, no shared client.
+ *
+ * The inbox app's client carries auth, sockets, react-query and a cache; none of
+ * that belongs in a chat bubble on someone's marketing site, where every
+ * kilobyte is charged to a page we don't own.
+ *
+ * Same-origin by construction: the widget page is served by the API, so an
+ * embed on any website still calls back to us, not to the host page's origin.
+ */
+const base = "/api/nestchat";
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) throw new Error(`${res.status}`);
+  return (await res.json()) as T;
+}
+
+export function fetchConfig(widgetKey: string): Promise<NestChatConfig> {
+  return fetch(`${base}/${encodeURIComponent(widgetKey)}/config`).then(json<NestChatConfig>);
+}
+
+export function openSession(
+  widgetKey: string,
+  input: { visitorId?: string; name?: string; email?: string },
+): Promise<NestChatSession> {
+  return fetch(`${base}/${encodeURIComponent(widgetKey)}/session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  }).then(json<NestChatSession>);
+}
+
+export function sendMessage(
+  token: string,
+  body: string,
+  pageUrl?: string,
+): Promise<{ ok: boolean; message?: NestChatMessage; token?: string }> {
+  return fetch(`${base}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ body, pageUrl }),
+  }).then(json<{ ok: boolean; message?: NestChatMessage; token?: string }>);
+}
+
+export function fetchMessages(token: string): Promise<{ messages: NestChatMessage[] }> {
+  return fetch(`${base}/messages`, { headers: { Authorization: `Bearer ${token}` } }).then(
+    json<{ messages: NestChatMessage[] }>,
+  );
+}
+
+export function identify(token: string, input: { name?: string; email?: string }): Promise<unknown> {
+  return fetch(`${base}/identify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  }).then(json<unknown>);
+}
+
+/** Fire-and-forget: a dropped typing ping is not worth a retry or an error. */
+export function pingTyping(token: string): void {
+  void fetch(`${base}/typing`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  }).catch(() => {});
+}
+
+/** The download URL for a file an agent sent. The token rides in the query
+ *  because this goes into an `<a href>`, where a header cannot follow. */
+export function attachmentUrl(token: string, attachmentId: string): string {
+  return `${base}/media/${encodeURIComponent(attachmentId)}?token=${encodeURIComponent(token)}`;
+}
+
+export function streamUrl(token: string): string {
+  return `${base}/stream?token=${encodeURIComponent(token)}`;
+}

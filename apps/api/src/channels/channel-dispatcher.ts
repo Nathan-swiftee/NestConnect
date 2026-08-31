@@ -85,6 +85,11 @@ export class ChannelDispatcher {
 
     // A group message is addressed to the group id (kept on channelRef), not a
     // person's number; a 1:1 message goes to the customer's phone / email.
+    //
+    // NestChat is addressed to the browser the visitor chatted from — its own
+    // identity, not a phone number. Naming it here rather than falling through
+    // to `contact.phone` is what makes the "no address" guard below mean
+    // something for this channel too.
     const to =
       channel === "email"
         ? isForward
@@ -92,7 +97,9 @@ export class ChannelDispatcher {
           : conversation.contact.email
         : channel === "whatsapp_group"
           ? conversation.channelRef
-          : conversation.contact.phone;
+          : channel === "nestchat"
+            ? conversation.contact.visitorId
+            : conversation.contact.phone;
     if (!to) {
       return { ok: false, retryable: false, reason: `Conversation has no ${channel} address` };
     }
@@ -327,7 +334,7 @@ export class ChannelDispatcher {
 
 /** A short, user-facing failure reason derived from a provider send result. */
 function shortReason(channel: string, result: { httpStatus?: number; errorCode?: string }): string {
-  const label = channel === "email" ? "Email" : "WhatsApp";
+  const label = channel === "email" ? "Email" : channel === "nestchat" ? "NestChat" : "WhatsApp";
   if (result.errorCode === "not_connected") return `${label} isn’t connected`;
   // Graph error 100 on a send means the phone-number-id and access token don't
   // match (wrong/expired token, or a token for a different number).

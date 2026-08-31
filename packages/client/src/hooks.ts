@@ -31,6 +31,7 @@ import {
   type UpdateContactInput,
   type UpdateInboxInput,
   type UpdateIntegrationSettingsInput,
+  type UpdateNestchatInput,
   type UpdateMyPreferencesInput,
   type UpdatePushPreferencesInput,
   type UpdateMyProfileInput,
@@ -333,6 +334,30 @@ export function useMarkNotificationsRead() {
 export const useInboxes = () => useQuery({ queryKey: ["inboxes"], queryFn: api.inboxes });
 export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: api.teams });
 export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
+
+/* ---- NestChat (Settings › NestChat widget) ---- */
+
+/** One NestChat channel's appearance and embed snippet. Enabled only for a real
+ *  inbox id, so the pane can render before a channel is picked. */
+export const useNestchatSettings = (inboxId: string | undefined) =>
+  useQuery({
+    queryKey: ["nestchat", inboxId],
+    queryFn: () => api.nestchatSettings(inboxId!),
+    enabled: Boolean(inboxId),
+  });
+
+export function useUpdateNestchat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { inboxId: string; input: UpdateNestchatInput }) =>
+      api.updateNestchat(v.inboxId, v.input),
+    onSuccess: (data) => {
+      // The response is the saved settings, so seed the cache with it rather
+      // than refetching what we already have in hand.
+      qc.setQueryData(["nestchat", data.inboxId], data);
+    },
+  });
+}
 
 /* ---- integrations (Settings › Setup) ---- */
 export const useIntegrations = () =>

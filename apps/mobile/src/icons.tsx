@@ -143,10 +143,11 @@ export const CheckDouble = glyph(tickIcons.checkDouble, 16);
 const WaGlyph = glyph(channelIcons.whatsapp);
 const GroupGlyph = glyph(channelIcons.group);
 const EmailGlyph = glyph(channelIcons.email);
+const NestChatGlyph = glyph(channelIcons.nestchat);
 
 export interface ChannelMeta {
   /** Key into the theme palette — resolved per scheme by the caller. */
-  colorKey: "wa" | "group" | "email";
+  colorKey: "wa" | "group" | "email" | "nestchat";
   label: string;
   Glyph: (p: P) => JSX.Element;
 }
@@ -159,6 +160,8 @@ export function channelMeta(type: ChannelType): ChannelMeta {
       return { colorKey: "wa", label: "WhatsApp", Glyph: WaGlyph };
     case "whatsapp_group":
       return { colorKey: "group", label: "WhatsApp group", Glyph: GroupGlyph };
+    case "nestchat":
+      return { colorKey: "nestchat", label: "NestChat", Glyph: NestChatGlyph };
     default:
       return { colorKey: "email", label: "Email", Glyph: EmailGlyph };
   }

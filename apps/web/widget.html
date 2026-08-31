@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <!-- Named explicitly: without it every widget load asks for /favicon.ico
+         and takes a 404 on the customer's own page. -->
+    <link rel="icon" href="/favicon-32.png" />
+    <title>Chat</title>
+  </head>
+  <body>
+    <!--
+      The NestChat widget: a page of its own, loaded in an iframe on the
+      business's website. It shares no bundle with the inbox app — a chat bubble
+      on someone's marketing site must not drag a whole agent console with it.
+    -->
+    <div id="widget"></div>
+    <script type="module" src="/src/widget/main.tsx"></script>
+  </body>
+</html>

@@ -11,6 +11,7 @@ import type {
   ChannelType,
   Contact,
   ContactDuplicateGroup,
+  ContactIdentityKind,
   ContactWithConversations,
   Conversation,
   ConversationPage,
@@ -1673,7 +1674,7 @@ export class PrismaStore extends Store {
 
   async upsertContactByIdentity(params: {
     orgId: string;
-    kind: "phone" | "email" | "wa_id";
+    kind: ContactIdentityKind;
     value: string;
     displayName: string;
     company?: string;
@@ -1681,7 +1682,12 @@ export class PrismaStore extends Store {
   }): Promise<Contact> {
     // A phone number can arrive as either `phone` or `wa_id` — match across both
     // so we don't fork one customer into two contacts (mirrors setIdentity).
-    const matchKinds = params.kind === "email" ? ["email"] : ["phone", "wa_id"];
+    // phone and wa_id are the same number in two notations, so they match each
+    // other; email and a NestChat visitor id each match only themselves.
+    const matchKinds =
+      params.kind === "email" || params.kind === "nestchat"
+        ? [params.kind]
+        : ["phone", "wa_id"];
     // Match on the CANONICAL value (scoped to the org): "+44 7911…", "07911…"
     // and WhatsApp's "447911…" all resolve to one contact.
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
@@ -2076,12 +2082,17 @@ export class PrismaStore extends Store {
 
   async findContactByIdentity(params: {
     orgId: string;
-    kind: "phone" | "email" | "wa_id";
+    kind: ContactIdentityKind;
     value: string;
   }): Promise<Contact | undefined> {
     // Same matching as upsertContactByIdentity — canonical value, and phone/wa_id
     // treated as one identity — but lookup only, never creating.
-    const matchKinds = params.kind === "email" ? ["email"] : ["phone", "wa_id"];
+    // phone and wa_id are the same number in two notations, so they match each
+    // other; email and a NestChat visitor id each match only themselves.
+    const matchKinds =
+      params.kind === "email" || params.kind === "nestchat"
+        ? [params.kind]
+        : ["phone", "wa_id"];
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
     const ident = await this.prisma.contactIdentity.findFirst({
       where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },

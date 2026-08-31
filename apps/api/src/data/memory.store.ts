@@ -9,6 +9,7 @@ import type {
   ChannelType,
   Contact,
   ContactDuplicateGroup,
+  ContactIdentityKind,
   ContactWithConversations,
   Conversation,
   ConversationPage,
@@ -91,6 +92,26 @@ function safeDecode(cursor: string): string {
 function clampLimit(requested: number | undefined, fallback: number): number {
   const n = requested ?? fallback;
   return Math.min(Math.max(Math.trunc(n) || fallback, 1), 100);
+}
+
+/**
+ * Which field on a Contact an identity kind is kept in, and which kind to
+ * canonicalise it as when matching.
+ *
+ * Phone and wa_id share the phone field on purpose — they are the same number
+ * in two notations, and matching across both is what stops one customer forking
+ * into two contacts. A `nestchat` visitor id shares nothing with either: it is a
+ * browser's random id, so it gets a field of its own. (It used to fall through
+ * to `phone`, which showed an agent a 32-hex "phone number" and offered to
+ * message it on WhatsApp.)
+ */
+function identityField(kind: ContactIdentityKind): {
+  field: "phone" | "email" | "visitorId";
+  matchAs: IdentityKind;
+} {
+  if (kind === "email") return { field: "email", matchAs: "email" };
+  if (kind === "nestchat") return { field: "visitorId", matchAs: "nestchat" };
+  return { field: "phone", matchAs: "phone" };
 }
 
 /** Zero-infrastructure store backed by in-memory fixtures. Default in dev. */
@@ -1447,14 +1468,13 @@ export class MemoryStore extends Store {
 
   async upsertContactByIdentity(params: {
     orgId: string;
-    kind: "phone" | "email" | "wa_id";
+    kind: ContactIdentityKind;
     value: string;
     displayName: string;
     company?: string;
     avatarColor?: string;
   }): Promise<Contact> {
-    const key = params.kind === "email" ? "email" : "phone";
-    const matchKind: IdentityKind = params.kind === "email" ? "email" : "phone";
+    const { field: key, matchAs: matchKind } = identityField(params.kind);
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
     // Match on the canonical value so number formats / wa_id all resolve to one.
     const matches = this.contacts.filter((c) => {
@@ -1788,13 +1808,12 @@ export class MemoryStore extends Store {
 
   async findContactByIdentity(params: {
     orgId: string;
-    kind: "phone" | "email" | "wa_id";
+    kind: ContactIdentityKind;
     value: string;
   }): Promise<Contact | undefined> {
     // Same canonicalisation as upsertContactByIdentity, so "+44 7911…" and
     // "07911…" resolve to the same person here too — just without creating one.
-    const key = params.kind === "email" ? "email" : "phone";
-    const matchKind: IdentityKind = params.kind === "email" ? "email" : "phone";
+    const { field: key, matchAs: matchKind } = identityField(params.kind);
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
     return this.contacts.find((c) => {
       if (c.orgId !== params.orgId) return false;

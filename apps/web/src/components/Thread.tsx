@@ -2857,9 +2857,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       </span>
     );
   } else {
-    ctxNode = conv.channel === "whatsapp_group"
-      ? `Group · ${conv.contact.displayName}`
-      : `WhatsApp · ${conv.contact.displayName}`;
+    // Named from the channel actually being composed on. It used to fall back
+    // to a hard-coded "WhatsApp", which told a NestChat visitor's thread it was
+    // about to send to WhatsApp.
+    ctxNode =
+      composeChannel === "whatsapp_group"
+        ? `Group · ${conv.contact.displayName}`
+        : `${channelMeta(composeChannel).label} · ${conv.contact.displayName}`;
   }
 
   return (

@@ -138,6 +138,7 @@ export const CheckDouble = g(tickIcons.checkDouble);
 const WaGlyph = g(channelIcons.whatsapp);
 const GroupGlyph = g(channelIcons.group);
 const EmailGlyph = g(channelIcons.email);
+const NestChatGlyph = g(channelIcons.nestchat);
 /** Gmail envelope (the tell-tale "M" valley). Colour it via the parent. */
 export const GmailGlyph = g(channelIcons.gmail);
 
@@ -155,6 +156,8 @@ export function channelMeta(type: ChannelType): ChannelMeta {
       return { color: "var(--group)", label: "WhatsApp group", Glyph: GroupGlyph };
     case "email":
       return { color: "var(--email)", label: "Email", Glyph: EmailGlyph };
+    case "nestchat":
+      return { color: "var(--nestchat)", label: "NestChat", Glyph: NestChatGlyph };
   }
 }
 

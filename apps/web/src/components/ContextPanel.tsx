@@ -25,6 +25,9 @@ import { api } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { channelMeta, CheckIcon, ChevronDown, ChevronRight, PhoneIcon, MailIcon, ProfileIcon, SnoozeIcon, XIcon } from "../lib/icons";
 
+/** The NestChat mark, for the "website visitor" chip below the customer's name. */
+const NestChatChip = channelMeta("nestchat").Glyph;
+
 interface Props {
   conversationId: string | null;
   onToast: (msg: string) => void;
@@ -508,7 +511,7 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
           </div>
           {!isGroup && (
             <>
-              {(conv.contact.phone || conv.contact.email) && (
+              {(conv.contact.phone || conv.contact.email || conv.contact.visitorId) && (
                 <div className="chero__chips">
                   {conv.contact.phone && (
                     <button
@@ -531,6 +534,16 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
                       <MailIcon />
                       <span>{conv.contact.email}</span>
                     </button>
+                  )}
+                  {/* A website visitor with nothing else on file: say so, rather
+                      than leave the chips empty. Shown short — the full id is
+                      32 hex characters and means nothing to an agent, but "this
+                      person came in through the widget" does. */}
+                  {conv.contact.visitorId && !conv.contact.phone && !conv.contact.email && (
+                    <span className="cchip cchip--static" title="Reached us through the website chat">
+                      <NestChatChip />
+                      <span>Website visitor · {conv.contact.visitorId.slice(0, 6)}</span>
+                    </span>
                   )}
                 </div>
               )}
