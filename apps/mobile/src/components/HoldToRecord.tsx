@@ -27,6 +27,21 @@ const LOCK_AT = 74;
 /** Where the "slide to cancel" hint has faded out completely. */
 const CANCEL_FULL = 120;
 
+/**
+ * How much of the row's right-hand end the recording bar leaves alone.
+ *
+ * The microphone is still under the finger while the bar is up, and the bar is
+ * painted after the row, so a bar running the full width covers the button: you
+ * press, the disc turns red, and it vanishes beneath the grey pill. Reserving
+ * the space *inside* the bar does not fix that — the spacer is transparent but
+ * the bar's own background still fills it. The bar has to stop short.
+ *
+ * 5.25 for the row's `px-1.5` at NativeWind's native rem of 14, plus the disc's
+ * 35, plus enough that the two never touch — including when the disc springs to
+ * 1.35 and grows six points wider on each side.
+ */
+const MIC_CLEARANCE = 48;
+
 export type Hold = ReturnType<typeof useHoldToRecord>;
 
 /**
@@ -288,6 +303,10 @@ export function HoldMic({ hold }: { hold: Hold }) {
  * animated views mid-touch while the values their styles read were already
  * being written. Mounting once and fading in removes that question; at zero
  * opacity it draws nothing, and it never took touches.
+ *
+ * It stops short of the microphone rather than running the full width — see
+ * `MIC_CLEARANCE`, which is the difference between the button turning red under
+ * your thumb and disappearing under a grey pill.
  */
 export function HoldOverlay({ hold, voice }: { hold: Hold; voice: VoiceRecording }) {
   const { c } = useTheme();
@@ -336,9 +355,11 @@ export function HoldOverlay({ hold, voice }: { hold: Hold; voice: VoiceRecording
         </Animated.View>
       </View>
 
+      {/* `right` is here rather than in the className because it is arithmetic
+          about the button beside it, not a spacing step — see `MIC_CLEARANCE`. */}
       <View
-        style={{ backgroundColor: c.surface2 }}
-        className="absolute bottom-0 left-0 right-0 h-11 flex-row items-center rounded-24 px-3"
+        style={{ backgroundColor: c.surface2, right: MIC_CLEARANCE }}
+        className="absolute bottom-0 left-0 h-11 flex-row items-center rounded-24 px-3"
       >
         <View
           style={{ backgroundColor: voice.isRecording ? c.danger : c.textFaint }}
@@ -359,10 +380,6 @@ export function HoldOverlay({ hold, voice }: { hold: Hold; voice: VoiceRecording
             </View>
           </Animated.View>
         </View>
-        {/* The microphone sits at the right-hand end of the row underneath, and
-            the bar must not cover it — it is still under the finger, and
-            covering it is what would make the hold end mid-recording. */}
-        <View style={{ width: 41 }} />
       </View>
     </View>
   );
