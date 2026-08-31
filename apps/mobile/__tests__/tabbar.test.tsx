@@ -36,7 +36,7 @@ jest.mock("expo-router", () => ({
 }));
 import { render } from "nativewind/dist/test";
 import "../src/animated";
-import { TabBar } from "../src/components/TabBar";
+import { PILL_METRICS, TabBar } from "../src/components/TabBar";
 
 const TABS = [
   { name: "index", label: "Inbox", href: "/", icon: () => null },
@@ -88,6 +88,11 @@ const translateX = (s: Record<string, unknown>) =>
 /** The alpha out of an `rgba(…)` string, or 0 for anything without one. */
 const alphaOf = (color: string) => Number(/rgba\([^)]*,\s*([\d.]+)\s*\)/.exec(color)?.[1] ?? 0);
 
+/** What one tab item stands, and so what the pill behind it has to cover: the
+ *  icon's box, the label's line box, and the air left under it. */
+const ITEM_H =
+  PILL_METRICS.iconBox + PILL_METRICS.labelGap + PILL_METRICS.labelLine + PILL_METRICS.labelTail;
+
 describe("the tab bar's selected-tab pill", () => {
   it("is visible on the very first render, with no measurement to wait for", async () => {
     const { animated, box } = await pill(0);
@@ -105,7 +110,7 @@ describe("the tab bar's selected-tab pill", () => {
     // had when it covered only the glyph is what "doesn't cover the tab with
     // the text" was.
     expect(box.width as number).toBeGreaterThan(60);
-    expect(box.height).toBe(42);
+    expect(box.height).toBe(ITEM_H);
     expect(box.position).toBe("absolute");
   });
 
@@ -175,7 +180,34 @@ describe("the tab bar's selected-tab pill", () => {
   it("starts at the top of the row's content, not a second padding down", async () => {
     const { box } = await pill(0);
     expect(box.top).toBe(0);
-    // 30 for the icon's box + 12 for the label's line box: the item, exactly.
-    expect(box.height).toBe(42);
+    // The icon's box, the label's line box and the air under it: the item,
+    // exactly, so the capsule's own padding is the only margin the pill has.
+    expect(box.height).toBe(ITEM_H);
+  });
+
+  /**
+   * What "the background isn't even all round" actually was.
+   *
+   * The pill wraps the item exactly, so its apparent padding is whatever slack
+   * the two boxes inside happen to carry — half the icon box's spare height
+   * above the glyph, and the font's own leading below the text. Nothing made
+   * those equal, and they weren't: 4.5pt of air above the icon against 1pt
+   * below the label, which reads as a selection that has sagged inside its own
+   * pill.
+   *
+   * Pinning the heights would not have caught it and would not catch it coming
+   * back — every arrangement of these numbers passes a height check, including
+   * the wrong one. This asserts the relationship instead.
+   */
+  it("leaves the same air above the icon as below the label", () => {
+    const m = PILL_METRICS;
+    const aboveIcon = (m.iconBox - m.icon) / 2;
+    const belowLabel = m.labelTail + m.labelLeading;
+
+    expect(aboveIcon).toBe(belowLabel);
+    // And the gap between the two is smaller than the air around them, so they
+    // read as one object inside the pill rather than two stacked ones.
+    const iconToLabel = aboveIcon + m.labelGap + m.labelLeading;
+    expect(iconToLabel).toBeLessThan(aboveIcon + belowLabel);
   });
 });

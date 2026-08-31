@@ -1219,15 +1219,7 @@ const Bubble = memo(function Bubble({
           // being separated *from* is a tinted WhatsApp bubble, and against that
           // a plain white card is already unmistakable. The shadow only made the
           // thread look like two apps stacked.
-          maxWidth: isEmail ? "100%" : "86%",
-          // An email is a page someone designed to a width, not a sentence. The
-          // 6% held back for the "this is a bubble" read was costing the message
-          // the room it was drawn for, and the padding around it was costing
-          // more — so an email gets the whole row and a hairline inset, and the
-          // white card inside carries the separation instead. `EmailHtml`
-          // computes its own width from these two numbers; they have to move
-          // together.
-          ...(isEmail ? { paddingHorizontal: 6 } : null),
+          maxWidth: isEmail ? "94%" : "86%",
           // The tailed corner squares off. A tail growing out of a 16pt curve
           // leaves a visible sliver of background between the two shapes; at 2pt
           // they read as one shape.

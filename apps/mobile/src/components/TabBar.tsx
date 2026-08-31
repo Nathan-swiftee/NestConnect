@@ -78,8 +78,15 @@ import { useTheme } from "../theme";
  * behind the glyph with the label outside and below it, looking like it had
  * slipped. The pill is derived from the destination it marks now; see `pillW`
  * and `pillH`.
+ *
+ * 27 rather than 30, and the three points come off the *bottom* of what you
+ * see: the glyph is centred in this box, so a taller box pads it evenly, and
+ * the padding below the glyph is the entire gap between an icon and its label.
+ * At 30 that gap was 5.5pt against 1pt of air under the label — the pill read
+ * as sitting low, with the two words nearly touching its bottom edge. See
+ * {@link PILL_METRICS} for the arithmetic that keeps it even.
  */
-const PILL_H = 30;
+const ICON_BOX = 27;
 
 /** Air either side of the pill inside its destination's slot. */
 const PILL_GUTTER = 5;
@@ -120,6 +127,37 @@ const LABEL_LINE = 12;
 const LABEL_GAP = 0;
 
 /**
+ * Air below the label's line box, and the counterweight to the icon's box.
+ *
+ * The pill wraps the item exactly, so what reads as its padding is whatever
+ * slack the two boxes happen to carry: half the icon box's spare height above
+ * the glyph, and the font's own leading below the text. Those are not the same
+ * number — 4.5 against 1 at the sizes this started with — which is why the
+ * selection looked like it had settled towards the bottom of its own pill.
+ *
+ * This is the second half of the correction. Trimming the icon box lifts the
+ * label and closes the gap above it; this puts the difference back underneath,
+ * so the air above the glyph and the air below the text are equal.
+ */
+const LABEL_TAIL = 2;
+
+/**
+ * The numbers the pill's evenness is made of, exported so the test can assert
+ * the *relationship* rather than restating the arithmetic. A test that pins the
+ * heights would pass just as happily with the label jammed against the bottom
+ * edge, which is the bug this exists to prevent coming back.
+ */
+export const PILL_METRICS = {
+  iconBox: ICON_BOX,
+  icon: ICON,
+  labelGap: LABEL_GAP,
+  labelLine: LABEL_LINE,
+  labelTail: LABEL_TAIL,
+  /** What the line box leaves above and below the glyphs at this size. */
+  labelLeading: (LABEL_LINE - LABEL_SIZE) / 2,
+};
+
+/**
  * What the blur radius is divided by on Android, and why it is the library's
  * default rather than a number of ours.
  *
@@ -148,7 +186,7 @@ const BLUR_REDUCTION = 4;
 const CAPSULE_R = 30;
 
 /** The capsule's height, and so the room a screen owes it. See {@link TAB_BAR_H}. */
-const CAPSULE_H = PAD_Y * 2 + PILL_H + LABEL_GAP + LABEL_LINE;
+const CAPSULE_H = PAD_Y * 2 + ICON_BOX + LABEL_GAP + LABEL_LINE + LABEL_TAIL;
 
 /**
  * How much bottom room a tab screen has to leave for the bar.
@@ -263,7 +301,7 @@ export function TabBar({
    * covers the whole item with the capsule's own padding as its margin.
    */
   const pillW = Math.max(44, slotW - PILL_GUTTER * 2);
-  const pillH = PILL_H + LABEL_GAP + LABEL_LINE;
+  const pillH = ICON_BOX + LABEL_GAP + LABEL_LINE + LABEL_TAIL;
   useEffect(() => {
     if (active < 0) return;
     // `settle`, not `base`. The travel is the thing being looked at, and at
@@ -605,6 +643,10 @@ function TabItem({
     // in a flexed cell, so the extra width moves nothing but itself.
     fontWeight: focused ? ("700" as const) : ("500" as const),
     marginTop: LABEL_GAP,
+    // The air under the last line, matching what the icon's box leaves above
+    // the glyph. Without it the pill ends a point below the text while starting
+    // several above the icon, and the whole selection reads as having sagged.
+    marginBottom: LABEL_TAIL,
     // A tab label is a name, not a sentence: on a narrow phone with large text
     // "Customers" would otherwise be squeezed into the neighbouring tabs' space
     // rather than shrinking within its own.
@@ -635,7 +677,7 @@ function TabItem({
       style={{ flex: 1, alignItems: "center" }}
     >
       <Animated.View style={squeeze}>
-        <View style={{ height: PILL_H, justifyContent: "center", alignItems: "center" }}>
+        <View style={{ height: ICON_BOX, justifyContent: "center", alignItems: "center" }}>
           {/* Muted rather than faint, to match the label above it and the
               reference: an unselected destination is still a destination, and
               at `faint` the three you aren't on fade into the capsule. */}

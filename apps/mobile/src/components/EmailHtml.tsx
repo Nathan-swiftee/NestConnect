@@ -70,17 +70,22 @@ const MAX_HEIGHT = 2000;
  * rather than being a magic number:
  *
  *   the list's `contentContainerStyle: { padding: 12 }`     → −24
- *   the bubble's own `maxWidth: "100%"` for an email        → ×1
- *   the bubble's `paddingHorizontal: 6` for an email        → −12
+ *   the bubble's own `maxWidth: "94%"`                      → ×0.94
+ *   the bubble's `px-3.5`, at NativeWind's native rem of 14 → −24.5
  *
  * These mirror the email branch of the message bubble in `thread/[id].tsx`. If
  * one moves the other has to, and the symptom of forgetting is an email a few
  * points too wide for its card — clipped on the right, which is exactly the
  * shape of bug this file already exists to document.
+ *
+ * Widening the bubble is *not* how an oversized email gets fixed, and it was
+ * tried: the message being too wide for the phone is the email's own layout,
+ * not the card's, and a few more points of card only changes how much has to be
+ * scaled. `email-fit.ts` is where that is dealt with.
  */
 const LIST_PADDING = 12 * 2;
-const BUBBLE_MAX = 1;
-const BUBBLE_PADDING = 6 * 2;
+const BUBBLE_MAX = 0.94;
+const BUBBLE_PADDING = 12.25 * 2;
 
 
 export function EmailHtml({ html }: { html: string }) {
