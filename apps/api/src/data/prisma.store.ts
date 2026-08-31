@@ -1920,6 +1920,42 @@ export class PrismaStore extends Store {
     };
   }
 
+  async markOutboundStatusUpTo(
+    conversationId: string,
+    throughMessageId: string,
+    status: MessageStatus,
+  ): Promise<MessageStatusChange[]> {
+    const through = await this.prisma.message.findFirst({
+      where: { id: throughMessageId, conversationId },
+      select: { seq: true },
+    });
+    if (!through) return [];
+    // Outbound, not a note, at or before the acknowledged message. The ladder
+    // is checked per row rather than in the query so a late ack can't drag a
+    // read message back to delivered.
+    const candidates = await this.prisma.message.findMany({
+      where: {
+        conversationId,
+        direction: "out",
+        internal: false,
+        seq: { lte: through.seq },
+      },
+      include: { attachments: true },
+      orderBy: { seq: "asc" },
+    });
+    const changed: MessageStatusChange[] = [];
+    for (const row of candidates) {
+      if (!canAdvanceStatus(row.status as MessageStatus, status)) continue;
+      const updated = await this.prisma.message.update({
+        where: { id: row.id },
+        data: { status },
+        include: { attachments: true },
+      });
+      changed.push({ conversationId, message: mapMessage(updated) });
+    }
+    return changed;
+  }
+
   async updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,

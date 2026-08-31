@@ -273,7 +273,7 @@ export class ChannelDispatcher {
   }
 
   /** Send a read receipt for an inbound message on a channel that supports it. */
-  async markRead(conversation: ConversationWithMessages, channelMsgId: string): Promise<void> {
+  async markRead(conversation: ConversationWithMessages, channelMsgId?: string): Promise<void> {
     const provider = this.providers.find((p) => p.supports(conversation.channel) && p.markRead);
     if (!provider?.markRead) return;
     try {
@@ -284,7 +284,7 @@ export class ChannelDispatcher {
   }
 
   /** Show the customer a typing indicator on a channel that supports it. */
-  async sendTyping(conversation: ConversationWithMessages, channelMsgId: string): Promise<void> {
+  async sendTyping(conversation: ConversationWithMessages, channelMsgId?: string): Promise<void> {
     const provider = this.providers.find((p) => p.supports(conversation.channel) && p.sendTyping);
     if (!provider?.sendTyping) return;
     try {

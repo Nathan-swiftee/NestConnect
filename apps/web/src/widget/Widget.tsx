@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { NestChatAppearance, NestChatMessage } from "@ding/schemas";
 import {
   attachmentUrl,
@@ -7,6 +7,7 @@ import {
   identify,
   openSession,
   pingTyping,
+  reportRead,
   sendMessage,
   streamUrl,
 } from "./api";
@@ -60,6 +61,42 @@ function applyAppearance(a: NestChatAppearance): void {
   root.dataset.theme = dark ? "dark" : "light";
 }
 
+/**
+ * Whether the chat is actually in front of the visitor.
+ *
+ * Both halves matter and neither is enough alone. The launcher hides the whole
+ * iframe with `display:none`, which leaves the document running and reporting
+ * itself visible — an element with no box never intersects, so the observer
+ * catches that. Switching browser tabs leaves the box intact and flips
+ * `visibilityState`, which the observer doesn't see. "Read" is a claim about a
+ * person's eyes, so it should need both.
+ */
+function useOnScreen(ref: RefObject<HTMLElement>): boolean {
+  const [onScreen, setOnScreen] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      // No observer (a very old browser): fall back to the tab's own state
+      // rather than never reporting a read.
+      setOnScreen(document.visibilityState === "visible");
+      return;
+    }
+    let intersecting = false;
+    const settle = () => setOnScreen(intersecting && document.visibilityState === "visible");
+    const io = new IntersectionObserver((entries) => {
+      intersecting = entries.some((e) => e.isIntersecting);
+      settle();
+    });
+    io.observe(el);
+    document.addEventListener("visibilitychange", settle);
+    return () => {
+      io.disconnect();
+      document.removeEventListener("visibilitychange", settle);
+    };
+  }, [ref]);
+  return onScreen;
+}
+
 type Phase = "loading" | "ready" | "unavailable";
 
 export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
@@ -77,8 +114,13 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   const [live, setLive] = useState(false);
   const [email, setEmail] = useState("");
   const [emailSaved, setEmailSaved] = useState(false);
+  /** When an agent last read this thread — the "Seen" under our own messages. */
+  const [seenAt, setSeenAt] = useState<string>();
 
   const threadRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // What we have already told the server, so a re-render doesn't re-report it.
+  const acked = useRef<{ delivered?: string; read?: string }>({});
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastTypingPing = useRef(0);
   const typingTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -129,7 +171,12 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         const event = JSON.parse(ev.data) as
           | { kind: "message"; payload: NestChatMessage }
           | { kind: "typing"; typing: boolean }
+          | { kind: "read"; at: string }
           | { kind: "closed" };
+        if (event.kind === "read") {
+          setSeenAt(event.at);
+          return;
+        }
         if (event.kind === "typing") {
           setAgentTyping(event.typing);
           // The agent's client sends "typing", never "stopped" — so the widget
@@ -174,6 +221,25 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     }, 60_000);
     return () => clearInterval(id);
   }, [phase, widgetKey]);
+
+  /* ---- receipts: what the agent's ticks are made of ---- */
+
+  const onScreen = useOnScreen(rootRef);
+  useEffect(() => {
+    if (!token) return;
+    // The newest agent message is the high-water mark; the server moves
+    // everything up to it, so one call says the whole thing.
+    const newest = [...messages].reverse().find((m) => m.from === "agent");
+    if (!newest) return;
+    if (acked.current.delivered !== newest.id) {
+      acked.current.delivered = newest.id;
+      reportRead(token, newest.id, "delivered");
+    }
+    if (onScreen && acked.current.read !== newest.id) {
+      acked.current.read = newest.id;
+      reportRead(token, newest.id, "read");
+    }
+  }, [messages, token, onScreen]);
 
   /* ---- keep the newest message in view ---- */
 
@@ -245,15 +311,21 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
 
   const askingEmail = appearance.askEmail && !emailSaved && messages.length > 0;
 
+  // The last thing the visitor themselves said — the only bubble a "Seen"
+  // belongs under, and only once an agent has actually read it.
+  const lastOwn = [...messages].reverse().find((m) => m.from === "visitor");
+  const showSeen = Boolean(seenAt && lastOwn);
+
   return (
-    <div className="nc">
+    <div className="nc" ref={rootRef}>
       <header className="nc__head">
+        <div className="nc__mark" aria-hidden="true">
+          {initials(appearance.title)}
+          <i className={online ? "nc__pip nc__pip--online" : "nc__pip"} />
+        </div>
         <div className="nc__headtext">
           <div className="nc__title">{appearance.title}</div>
-          <div className="nc__sub">
-            <span className={online ? "nc__dot nc__dot--online" : "nc__dot"} />
-            {online ? appearance.subtitle : appearance.awayMessage}
-          </div>
+          <div className="nc__sub">{online ? appearance.subtitle : appearance.awayMessage}</div>
         </div>
       </header>
 
@@ -299,7 +371,12 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                   ) : null}
                 </div>
               </div>
-              {endsRun ? <div className="nc__time">{clockTime(m.at)}</div> : null}
+              {endsRun ? (
+                <div className="nc__time">
+                  {clockTime(m.at)}
+                  {showSeen && m.id === lastOwn?.id ? <span className="nc__seen">Seen</span> : null}
+                </div>
+              ) : null}
             </div>
           );
         })}
@@ -311,13 +388,16 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
             <i />
           </div>
         ) : null}
-      </div>
 
-      {askingEmail ? (
-        <div className="nc__ask">
-          <label>
-            {appearance.askEmailLabel}
+        {/* Asked inside the conversation rather than as a permanent band above
+            the composer: it is one question, asked once, and it should read as
+            part of the chat and then be gone — not as a second input the
+            visitor has to look past every time they write. */}
+        {askingEmail ? (
+          <div className="nc__ask">
+            <label htmlFor="nc-email">{appearance.askEmailLabel}</label>
             <input
+              id="nc-email"
               type="email"
               value={email}
               placeholder="you@example.com"
@@ -330,9 +410,9 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                 }
               }}
             />
-          </label>
-        </div>
-      ) : null}
+          </div>
+        ) : null}
+      </div>
 
       <div className="nc__composer">
         <textarea

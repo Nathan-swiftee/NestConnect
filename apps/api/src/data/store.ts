@@ -756,6 +756,26 @@ export abstract class Store {
     id: string,
   ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined>;
 
+  /**
+   * Advance this conversation's outbound messages up to and including
+   * `throughMessageId` to `status`, and report the ones that actually moved.
+   *
+   * By message id rather than by provider id, because the channel this exists
+   * for — NestChat — has no provider and therefore no provider id: the client
+   * that reports the receipt is one we wrote, and it knows our own ids. Up to
+   * *and including* because a client that has message 7 on screen necessarily
+   * has 1 to 6, and reporting each one separately would be six round trips to
+   * say one thing.
+   *
+   * Guarded by the same ladder as every other status write, so a late ack can
+   * never drag a read message back to delivered.
+   */
+  abstract markOutboundStatusUpTo(
+    conversationId: string,
+    throughMessageId: string,
+    status: MessageStatus,
+  ): Promise<MessageStatusChange[]>;
+
   abstract updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,

@@ -15,10 +15,12 @@ import type { Response } from "express";
 import { randomBytes } from "node:crypto";
 import {
   nestchatIdentifyInputSchema,
+  nestchatReadInputSchema,
   nestchatSendInputSchema,
   nestchatSessionInputSchema,
   type NestChatConfig,
   type NestChatIdentifyInput,
+  type NestChatReadInput,
   type NestChatSendInput,
   type NestChatSession,
   type NestChatSessionInput,
@@ -191,6 +193,36 @@ export class NestChatController {
     if (name) await this.store.updateContact(claims.contactId, { displayName: name });
     if (body.email) await this.recordEmail(claims.contactId, body.email);
     return { ok: true };
+  }
+
+  /**
+   * The visitor's widget reporting how far it has got: what moves an agent's
+   * ticks from sent to delivered to read.
+   *
+   * The widget is trusted for this in the same way a phone is trusted to say it
+   * displayed a WhatsApp message — it is a claim about the other end that only
+   * the other end can make. It is bounded by the token's own conversation, so
+   * the worst a forged one does is mark that visitor's own thread read.
+   */
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Post("read")
+  async read(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatReadInputSchema)) body: NestChatReadInput,
+  ) {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    if (!claims.conversationId) return { ok: true };
+    const changed = await this.store.markOutboundStatusUpTo(
+      claims.conversationId,
+      body.throughMessageId,
+      body.status,
+    );
+    // Tell the agents' inbox so the ticks move while they're looking at it.
+    const conv = changed.length ? await this.store.getConversation(claims.conversationId) : undefined;
+    for (const c of changed) {
+      this.realtime.emitMessageUpdated(c.conversationId, c.message, conv?.orgId);
+    }
+    return { ok: true, updated: changed.length };
   }
 
   /** The visitor is typing — relayed to the agents watching the thread. */

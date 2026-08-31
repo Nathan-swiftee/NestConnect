@@ -1682,6 +1682,27 @@ export class MemoryStore extends Store {
     });
   }
 
+  async markOutboundStatusUpTo(
+    conversationId: string,
+    throughMessageId: string,
+    status: MessageStatus,
+  ): Promise<MessageStatusChange[]> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return [];
+    const upTo = rec.messages.findIndex((m) => m.id === throughMessageId);
+    if (upTo === -1) return [];
+    const changed: MessageStatusChange[] = [];
+    for (const m of rec.messages.slice(0, upTo + 1)) {
+      // Outbound only, and never an internal note: neither is something the
+      // visitor could have received or read.
+      if (m.direction !== "out" || m.internal) continue;
+      if (!canAdvanceStatus(m.status, status)) continue;
+      m.status = status;
+      changed.push({ conversationId: rec.id, message: m });
+    }
+    return changed;
+  }
+
   async updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,

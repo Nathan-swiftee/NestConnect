@@ -7,6 +7,8 @@ import { env } from "../../config/env";
 export type VisitorEvent =
   | { kind: "message"; payload: unknown }
   | { kind: "typing"; who: string; typing: boolean }
+  /** An agent has read what the visitor wrote — the widget's "Seen". */
+  | { kind: "read"; at: string }
   | { kind: "closed" };
 
 const CHANNEL = "nestchat:visitor";

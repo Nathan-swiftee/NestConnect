@@ -70,11 +70,49 @@ body {
 .nc__head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  background: var(--accent);
+  gap: 11px;
+  padding: 16px 18px;
+  /* A single flat brand block reads like a title bar. The slight lift toward
+     the top-left is what makes it read as a surface, and it is derived from the
+     business's own colour rather than being a second colour to configure. */
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.17), transparent 60%),
+    var(--accent);
   color: var(--accent-text);
   flex: 0 0 auto;
+}
+
+/* Someone is there: the business's initials, with a presence dot. Stands in for
+   the team photos a bigger product would show. */
+.nc__mark {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--accent-text);
+}
+
+.nc__pip {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #9aa4b2;
+  /* Ringed in the header's own colour so it reads as cut out of the avatar. */
+  box-shadow: 0 0 0 2.5px var(--accent);
+}
+
+.nc__pip--online {
+  background: #34d07f;
 }
 
 .nc__headtext {
@@ -82,7 +120,7 @@ body {
 }
 
 .nc__title {
-  font-size: 15px;
+  font-size: 15.5px;
   font-weight: 650;
   letter-spacing: -0.01em;
   white-space: nowrap;
@@ -91,31 +129,12 @@ body {
 }
 
 .nc__sub {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin-top: 2px;
+  margin-top: 1px;
   font-size: 12.5px;
+  line-height: 1.35;
   /* The subtitle rides on the brand colour, so it can't take a fixed grey —
      it has to be the header's own text, dimmed. */
-  opacity: 0.85;
-}
-
-.nc__dot {
-  width: 7px;
-  height: 7px;
-  /* Nudged onto the cap-height of the first line: an away message can wrap to
-     two, and a centred dot then floats between them. */
-  margin-top: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: 0 0 auto;
-  opacity: 0.55;
-}
-
-.nc__dot--online {
-  background: #34d07f;
-  opacity: 1;
+  opacity: 0.82;
 }
 
 /* ── thread ─────────────────────────────────────────────────────────────── */
@@ -124,10 +143,10 @@ body {
   flex: 1 1 auto;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 16px 14px;
+  padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   background: var(--panel);
 }
 
@@ -170,22 +189,24 @@ body {
 
 .nc__bubble {
   max-width: 78%;
-  padding: 9px 12px;
-  border-radius: 16px;
+  padding: 10px 14px;
+  border-radius: 18px;
   font-size: 14.5px;
+  line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   background: var(--bubble-in);
   color: var(--text);
-  border-bottom-left-radius: 5px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.07);
+  border-bottom-left-radius: 6px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -6px rgba(16, 24, 40, 0.12);
 }
 
 .nc__msg--visitor .nc__bubble {
   background: var(--accent);
   color: var(--accent-text);
-  border-bottom-left-radius: 16px;
-  border-bottom-right-radius: 5px;
+  border-bottom-left-radius: 18px;
+  border-bottom-right-radius: 6px;
+  box-shadow: none;
 }
 
 .nc__author {
@@ -196,14 +217,26 @@ body {
 }
 
 .nc__time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   color: var(--muted);
-  margin: 2px 0 0 42px;
+  margin: 3px 0 0 42px;
 }
 
 .nc__msg--visitor .nc__time {
-  margin: 2px 2px 0 0;
-  text-align: right;
+  justify-content: flex-end;
+}
+
+/* "Seen" earns its own weight — it is the answer to "did anyone look at this?",
+   which is the question a visitor actually has. */
+.nc__seen {
+  font-weight: 600;
+}
+
+.nc__msg--visitor .nc__time {
+  margin: 3px 2px 0 0;
 }
 
 .nc__files {
@@ -228,11 +261,13 @@ body {
 .nc__greeting {
   align-self: flex-start;
   max-width: 88%;
-  padding: 12px 14px;
-  border-radius: 16px 16px 16px 5px;
+  margin-left: 34px;
+  padding: 13px 15px;
+  border-radius: 18px 18px 18px 6px;
   background: var(--bubble-in);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.07);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -6px rgba(16, 24, 40, 0.12);
   font-size: 14.5px;
+  line-height: 1.45;
 }
 
 .nc__typing {
@@ -241,9 +276,9 @@ body {
   align-items: center;
   padding: 11px 14px;
   width: fit-content;
-  border-radius: 16px 16px 16px 5px;
+  border-radius: 18px 18px 18px 6px;
   background: var(--bubble-in);
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.07);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -6px rgba(16, 24, 40, 0.12);
   margin-left: 34px;
 }
 
@@ -283,34 +318,37 @@ body {
 
 /* ── email ask ──────────────────────────────────────────────────────────── */
 
+/* A card in the thread, shaped like something the business said, because that
+   is what it is. */
 .nc__ask {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 10px 14px;
-  border-top: 1px solid var(--line);
-  background: var(--bg);
-  flex: 0 0 auto;
+  align-self: flex-start;
+  max-width: 88%;
+  margin-left: 34px;
+  padding: 12px 14px 13px;
+  border-radius: 18px 18px 18px 6px;
+  background: var(--bubble-in);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -6px rgba(16, 24, 40, 0.12);
 }
 
 .nc__ask label {
-  font-size: 12.5px;
-  color: var(--muted);
-  flex: 1 1 auto;
-  min-width: 0;
+  display: block;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
 }
 
 .nc__ask input {
   display: block;
   width: 100%;
-  margin-top: 4px;
-  padding: 7px 10px;
+  margin-top: 8px;
+  padding: 8px 11px;
   font: inherit;
-  font-size: 14px;
+  /* 16px so iOS doesn't zoom the host page when it takes focus. */
+  font-size: 16px;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 9px;
+  border-radius: 10px;
 }
 
 .nc__ask input:focus-visible {
@@ -363,11 +401,14 @@ body {
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: opacity 0.12s ease;
+  transition: opacity 0.14s ease, transform 0.14s ease;
 }
 
+/* Empty box: the button recedes rather than sitting there brightly inviting a
+   click that does nothing. */
 .nc__send:disabled {
-  opacity: 0.4;
+  opacity: 0.32;
+  transform: scale(0.94);
   cursor: default;
 }
 

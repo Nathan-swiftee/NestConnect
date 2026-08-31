@@ -58,7 +58,18 @@ export class NestChatProvider extends ChannelProvider {
 
   /** Relay the agent's typing to the visitor's widget. Unlike WhatsApp this is
    *  ours end to end, so there is no 25-second cap and no message to tie it to. */
-  async sendTyping(params: { conversation: { id: string }; channelMsgId: string }): Promise<void> {
+  async sendTyping(params: { conversation: { id: string } }): Promise<void> {
     this.bus.publish(params.conversation.id, { kind: "typing", who: "agent", typing: true });
+  }
+
+  /**
+   * Somebody at the business has read the visitor's messages — show them so.
+   *
+   * A fact about the conversation rather than about one message: an agent
+   * opening a thread has read what's in it, which is exactly what the widget
+   * puts a "Seen" under.
+   */
+  async markRead(params: { conversation: { id: string } }): Promise<void> {
+    this.bus.publish(params.conversation.id, { kind: "read", at: new Date().toISOString() });
   }
 }

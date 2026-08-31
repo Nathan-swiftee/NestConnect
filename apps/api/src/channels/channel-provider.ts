@@ -127,16 +127,21 @@ export abstract class ChannelProvider {
 
   /**
    * Send a read receipt for an inbound message (so the customer sees blue ticks).
-   * Optional — only channels that support it (WhatsApp) implement it.
+   * Optional — only channels that support it implement it.
+   *
+   * `channelMsgId` is optional because it is WhatsApp's requirement, not the
+   * idea's: WhatsApp marks one specific wamid read, while NestChat tells a
+   * client we wrote about a conversation it already knows. A provider that
+   * needs the id checks for it.
    */
-  markRead?(params: { conversation: Conversation; channelMsgId: string }): Promise<void>;
+  markRead?(params: { conversation: Conversation; channelMsgId?: string }): Promise<void>;
 
   /**
    * Show the customer a "typing…" indicator (WhatsApp shows it for up to ~25s,
    * or until the next message). Tied to the customer's latest inbound message.
    * Optional — only channels that support it implement it.
    */
-  sendTyping?(params: { conversation: Conversation; channelMsgId: string }): Promise<void>;
+  sendTyping?(params: { conversation: Conversation; channelMsgId?: string }): Promise<void>;
 
   /**
    * React to a message with an emoji (empty removes it). Optional — only

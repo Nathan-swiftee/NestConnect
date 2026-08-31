@@ -108,12 +108,16 @@ export class WhatsAppCloudProvider extends ChannelProvider {
   }
 
   /** Tell WhatsApp the customer's message was read → blue ticks on their side. */
-  async markRead(params: { conversation: Conversation; channelMsgId: string }): Promise<void> {
+  async markRead(params: { conversation: Conversation; channelMsgId?: string }): Promise<void> {
+    // Meta marks one specific wamid read; without it there is nothing to send.
+    if (!params.channelMsgId) return;
     await this.readReceipt(params.conversation.inboxId, params.channelMsgId, false);
   }
 
   /** Show the customer a "typing…" indicator (rides on the read receipt; ~25s). */
-  async sendTyping(params: { conversation: Conversation; channelMsgId: string }): Promise<void> {
+  async sendTyping(params: { conversation: Conversation; channelMsgId?: string }): Promise<void> {
+    // The indicator rides on the customer's last inbound message.
+    if (!params.channelMsgId) return;
     await this.readReceipt(params.conversation.inboxId, params.channelMsgId, true);
   }
 

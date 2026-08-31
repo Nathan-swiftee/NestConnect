@@ -430,6 +430,10 @@ export class ConversationsService {
         .reverse()
         .find((m) => m.direction === "in" && m.channelMsgId);
       if (lastInbound?.channelMsgId) void this.dispatcher.markRead(conv, lastInbound.channelMsgId);
+    } else if (conv.channel === "nestchat" && conv.messages.some((m) => m.direction === "in")) {
+      // No provider id to quote: the widget is ours and already knows which
+      // conversation it is in. Only worth sending if they have written at all.
+      void this.dispatcher.markRead(conv);
     }
     return updated ?? conv;
   }
@@ -467,12 +471,18 @@ export class ConversationsService {
     return updated.message;
   }
 
-  /** Agent is typing: show the customer a "typing…" indicator on WhatsApp.
-   *  Only works within the 24-hour window (it rides on the customer's last
-   *  inbound message) — a no-op otherwise. */
+  /** Agent is typing: show the customer a "typing…" indicator. On WhatsApp this
+   *  only works within the 24-hour window, because it rides on the customer's
+   *  last inbound message; on NestChat it goes straight to their open widget. */
   async sendTyping(id: string): Promise<void> {
     const conv = await this.store.getConversation(id);
     if (!conv) return;
+    // NestChat has no 24-hour window and nothing to hang the indicator on — the
+    // visitor's widget is connected or it isn't.
+    if (conv.channel === "nestchat") {
+      await this.dispatcher.sendTyping(conv);
+      return;
+    }
     if (conv.channel !== "whatsapp" && conv.channel !== "whatsapp_group") return;
     if (conv.waWindow && !conv.waWindow.open) return;
     const lastInbound = [...conv.messages]

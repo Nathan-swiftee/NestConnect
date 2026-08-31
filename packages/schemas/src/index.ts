@@ -941,6 +941,18 @@ export const nestchatSendInputSchema = z.object({
 });
 export type NestChatSendInput = z.infer<typeof nestchatSendInputSchema>;
 
+/** The visitor's widget reporting how far it has actually got through the
+ *  thread — what turns an agent's ticks from sent to delivered to read. */
+export const nestchatReadInputSchema = z.object({
+  /** The newest message the widget has. Everything up to it moves. */
+  throughMessageId: z.string().min(1),
+  /** "delivered" — it arrived in their browser. "read" — the chat was actually
+   *  on screen when it did, which is a different claim and the only one worth
+   *  showing an agent as read. */
+  status: z.enum(["delivered", "read"]),
+});
+export type NestChatReadInput = z.infer<typeof nestchatReadInputSchema>;
+
 export const nestchatIdentifyInputSchema = z.object({
   name: z.string().max(80).optional(),
   email: z.string().email().max(200).optional(),

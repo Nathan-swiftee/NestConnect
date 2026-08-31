@@ -62,6 +62,24 @@ export function identify(token: string, input: { name?: string; email?: string }
   }).then(json<unknown>);
 }
 
+/**
+ * Tell the server how far the visitor has actually got.
+ *
+ * Fire-and-forget: a receipt that doesn't arrive costs an agent a tick, which
+ * is not worth failing a send or showing anyone an error over.
+ */
+export function reportRead(
+  token: string,
+  throughMessageId: string,
+  status: "delivered" | "read",
+): void {
+  void fetch(`${base}/read`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ throughMessageId, status }),
+  }).catch(() => {});
+}
+
 /** Fire-and-forget: a dropped typing ping is not worth a retry or an error. */
 export function pingTyping(token: string): void {
   void fetch(`${base}/typing`, {
