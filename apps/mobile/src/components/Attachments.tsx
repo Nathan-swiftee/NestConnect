@@ -1,15 +1,14 @@
 import { useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import type { Attachment } from "@ding/schemas";
 import { formatBytes, formatDuration } from "@ding/client";
 import { mediaSource } from "../api-config";
-import { saveAttachment } from "../attachment-open";
-import { DocIcon, DownloadIcon, PlayIcon } from "../icons";
+import { DocIcon, EyeIcon, PlayIcon } from "../icons";
 import { useTheme } from "../theme";
 import { AudioPlayer } from "./AudioPlayer";
+import { DocumentViewer } from "./DocumentViewer";
 import { MediaViewer } from "./MediaViewer";
-import { useToast } from "./Toast";
 import { Touchable } from "./Touchable";
 
 const MAX_W = 240;
@@ -26,24 +25,18 @@ const MAX_W = 240;
  *  - a photo opens in a full-screen viewer,
  *  - a video opens in the same viewer, with real playback controls,
  *  - a voice note or audio file plays in the bubble,
- *  - anything else downloads with the header attached and goes to the share
- *    sheet, which is where "open in", "save to Files" and "print" all live.
+ *  - anything else opens in the document viewer, which reads PDFs and text in
+ *    the app and hands everything else to the share sheet — where "open in",
+ *    "save to Files" and "print" live. That was the *only* thing a document
+ *    row did before, which made a PDF something you exported rather than
+ *    something you could read while answering the message it came with.
  */
 export function Attachments({ items, mine }: { items: Attachment[]; mine?: boolean }) {
   const { c } = useTheme();
-  const toast = useToast();
   const [viewing, setViewing] = useState<Attachment | null>(null);
-  const [opening, setOpening] = useState<string | null>(null);
+  const [reading, setReading] = useState<Attachment | null>(null);
 
   if (!items.length) return null;
-
-  async function open(a: Attachment) {
-    if (opening) return;
-    setOpening(a.id);
-    const err = await saveAttachment(a);
-    setOpening(null);
-    if (err) toast({ text: err, tone: "error" });
-  }
 
   return (
     <View className="gap-2 pt-1">
@@ -114,15 +107,17 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
           return <AudioPlayer key={a.id} att={a} mine={mine} />;
         }
 
-        const busy = opening === a.id;
+        // Everything that isn't a photo, video or sound is a document row —
+        // and every one of them opens, rather than only offering a download.
+        // What the viewer can actually render is its problem, not the row's:
+        // deciding here would mean a file that opens onto "no preview" looked
+        // identical to one that doesn't open at all.
         return (
           <Touchable feel="slab"
             key={a.id}
-            onPress={() => void open(a)}
-            disabled={busy}
+            onPress={() => setReading(a)}
             accessibilityRole="button"
-            accessibilityState={{ busy }}
-            accessibilityLabel={`${a.filename || a.kind}, ${formatBytes(a.size)}. Opens the share sheet.`}
+            accessibilityLabel={`${a.filename || a.kind}, ${formatBytes(a.size)}. Tap to open.`}
             style={{ backgroundColor: c.surface2, borderColor: c.border, maxWidth: MAX_W }}
             className="flex-row items-center gap-2.5 rounded-12 border px-3 py-2.5"
           >
@@ -138,11 +133,9 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
               </Text>
               <Text className="text-2xs text-faint">{formatBytes(a.size)}</Text>
             </View>
-            {busy ? (
-              <ActivityIndicator size="small" color={c.textMuted} />
-            ) : (
-              <DownloadIcon size={16} color={c.textFaint} />
-            )}
+            {/* An eye, not a download arrow. The arrow was honest about what the
+                row used to do and is now the secondary action, inside. */}
+            <EyeIcon size={16} color={c.textFaint} />
           </Touchable>
         );
       })}
@@ -151,6 +144,7 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
           and this component renders once per message — leaving it mounted would
           put a native player behind every bubble in the thread. */}
       {viewing ? <MediaViewer attachment={viewing} onClose={() => setViewing(null)} /> : null}
+      {reading ? <DocumentViewer attachment={reading} onClose={() => setReading(null)} /> : null}
     </View>
   );
 }

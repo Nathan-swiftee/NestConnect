@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>PDF</title>
+    <!--
+      The PDF renderer the phone app loads in a WebView.
+
+      It exists because a WebView cannot show a PDF on Android — Chromium has a
+      renderer, but Android's WebView deliberately doesn't expose it, so a
+      `file://` PDF either downloads or shows nothing. iOS would render one
+      natively, but having two code paths means the platform the team tests on
+      is not the platform most of them run, so both go through this.
+
+      The page never fetches the document. `/api/media/:id` is behind the session
+      guard and this page has no session; the app does, so the app downloads the
+      bytes with its bearer token and posts them in. That is also why there is no
+      URL in here to get wrong.
+    -->
+    <style>
+      :root { color-scheme: light dark; }
+      html, body {
+        margin: 0;
+        background: #1c1c1e;
+        /* Room for the app's own floating header, which sits over this. */
+        padding: 0;
+        -webkit-text-size-adjust: 100%;
+      }
+      #pages { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px 8px 28px; }
+      canvas { max-width: 100%; height: auto; border-radius: 6px; background: #fff; box-shadow: 0 1px 8px rgba(0,0,0,.4); }
+      #msg {
+        display: none; padding: 28px 22px; text-align: center;
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: rgba(255,255,255,.72);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="pages"></div>
+    <p id="msg"></p>
+
+    <script type="module">
+      import * as pdfjsLib from "./pdf.min.mjs";
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "./pdf.worker.min.mjs";
+
+      const pages = document.getElementById("pages");
+      const msg = document.getElementById("msg");
+      const post = (m) => window.ReactNativeWebView?.postMessage(JSON.stringify(m));
+
+      function fail(text, detail) {
+        msg.textContent = text;
+        msg.style.display = "block";
+        post({ type: "error", text, detail: String(detail ?? "") });
+      }
+
+      /** base64 → bytes, in chunks: one giant atob+map on a 20MB file is what
+       *  makes a mid-range phone drop the tab. */
+      function toBytes(b64) {
+        const raw = atob(b64);
+        const out = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+        return out;
+      }
+
+      async function render(b64) {
+        try {
+          const doc = await pdfjsLib.getDocument({ data: toBytes(b64) }).promise;
+          post({ type: "pages", pages: doc.numPages });
+          // Cap the raster at the device's real pixel width rather than the
+          // PDF's own size: a 300-DPI scan rendered 1:1 is a 2500px canvas per
+          // page, which is both slower and no sharper on a phone.
+          const target = Math.min(window.innerWidth - 16, 1400) * (window.devicePixelRatio || 1);
+          for (let n = 1; n <= doc.numPages; n++) {
+            const page = await doc.getPage(n);
+            const base = page.getViewport({ scale: 1 });
+            const viewport = page.getViewport({ scale: target / base.width });
+            const canvas = document.createElement("canvas");
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.style.width = "100%";
+            pages.appendChild(canvas);
+            await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+            // Tell the app after the first page so it can drop its spinner
+            // rather than holding it through a fifty-page document.
+            if (n === 1) post({ type: "ready" });
+          }
+          if (doc.numPages === 0) fail("This PDF has no pages.");
+        } catch (err) {
+          fail("This PDF couldn’t be displayed.", err?.message);
+        }
+      }
+
+      // The app posts the document in. Both listeners, because which one fires
+      // differs by platform: iOS delivers to window, Android to document.
+      const onMessage = (e) => {
+        try {
+          const m = JSON.parse(e.data);
+          if (m?.type === "pdf" && typeof m.base64 === "string") render(m.base64);
+        } catch {
+          /* not for us */
+        }
+      };
+      window.addEventListener("message", onMessage);
+      document.addEventListener("message", onMessage);
+      post({ type: "loaded" });
+    </script>
+  </body>
+</html>

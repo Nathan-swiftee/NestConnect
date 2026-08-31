@@ -27,24 +27,7 @@ export async function saveAttachment(att: Attachment): Promise<string | null> {
       return "This phone has nowhere to send the file to.";
     }
 
-    const url = /^https?:\/\//.test(att.url)
-      ? att.url
-      : `${API_URL}${att.url.startsWith("/") ? "" : "/"}${att.url}`;
-    const token = sessionToken();
-
-    // Its own directory under the cache, named for the attachment, so two files
-    // called "invoice.pdf" from different customers don't collide and the OS is
-    // free to reclaim the lot when storage runs short.
-    const dir = new Directory(Paths.cache, `attachments/${att.id}`);
-    if (!dir.exists) dir.create({ intermediates: true });
-
-    const name = safeName(att.filename) || `${att.kind}-${att.id}`;
-    const file = await File.downloadFileAsync(url, new File(dir, name), {
-      headers: token ? { authorization: `Bearer ${token}` } : undefined,
-      // Re-opening the same attachment shouldn't fail on the copy it left
-      // behind last time.
-      idempotent: true,
-    });
+    const file = await downloadAttachment(att);
 
     await Sharing.shareAsync(file.uri, {
       mimeType: att.mime || undefined,
@@ -57,6 +40,38 @@ export async function saveAttachment(att: Attachment): Promise<string | null> {
   } catch (err) {
     return err instanceof Error && err.message ? err.message : "Couldn't open that file.";
   }
+}
+
+/**
+ * Fetch an attachment into the app's own cache, with the session attached.
+ *
+ * Split out of `saveAttachment` because the in-app viewer needs the same bytes
+ * for a different reason — to render them rather than hand them to another app —
+ * and both need the one thing a URL can't do: carry the credential. Everything
+ * downstream of here works on a local file, so nothing else has to know that
+ * `/api/media/:id` is guarded.
+ *
+ * Throws on failure. Both callers already turn an error into a sentence.
+ */
+export async function downloadAttachment(att: Attachment): Promise<File> {
+  const url = /^https?:\/\//.test(att.url)
+    ? att.url
+    : `${API_URL}${att.url.startsWith("/") ? "" : "/"}${att.url}`;
+  const token = sessionToken();
+
+  // Its own directory under the cache, named for the attachment, so two files
+  // called "invoice.pdf" from different customers don't collide and the OS is
+  // free to reclaim the lot when storage runs short.
+  const dir = new Directory(Paths.cache, `attachments/${att.id}`);
+  if (!dir.exists) dir.create({ intermediates: true });
+
+  const name = safeName(att.filename) || `${att.kind}-${att.id}`;
+  return File.downloadFileAsync(url, new File(dir, name), {
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
+    // Re-opening the same attachment shouldn't fail on the copy it left behind
+    // last time.
+    idempotent: true,
+  });
 }
 
 /** A filename the filesystem will accept, keeping the extension so the OS can

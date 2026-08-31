@@ -37,3 +37,7 @@ apps/mobile/.expo/
 apps/mobile/ios/
 apps/mobile/android/
 apps/mobile/expo-env.d.ts
+
+# pdf.js is copied out of node_modules at build time (scripts/copy-pdfjs.mjs);
+# the viewer page beside it is source and IS committed.
+apps/web/public/pdfjs/pdf*.mjs
