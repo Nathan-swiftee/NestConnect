@@ -898,26 +898,6 @@ export type NestChatAppearance = z.infer<typeof nestchatAppearanceSchema>;
 /** The appearance every new NestChat channel starts with. */
 export const DEFAULT_NESTCHAT_APPEARANCE: NestChatAppearance = nestchatAppearanceSchema.parse({});
 
-/** What the agent-facing settings pane reads for one NestChat channel. */
-export const nestchatSettingsSchema = z.object({
-  inboxId: z.string(),
-  /** Public id in the embed snippet. Identifies the inbox; authorises nothing. */
-  widgetKey: z.string(),
-  appearance: nestchatAppearanceSchema,
-  /** Ready-to-paste URLs, resolved against the deployment's own public URL so
-   *  the snippet is correct without the admin knowing where we're hosted. */
-  embedUrl: z.string(),
-  scriptUrl: z.string(),
-});
-export type NestChatSettings = z.infer<typeof nestchatSettingsSchema>;
-
-export const updateNestchatInputSchema = z.object({
-  appearance: nestchatAppearanceSchema.partial(),
-});
-export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
-
-/* ---- the visitor-facing contract (public, unauthenticated) ---- */
-
 /**
  * One of the people who answers this chat, as a visitor may see them.
  *
@@ -932,11 +912,43 @@ export const nestchatAgentFaceSchema = z.object({
   initials: z.string(),
   /** Their avatar colour, so the fallback circle is theirs and not a generic grey. */
   color: z.string().optional(),
-  /** A URL the widget can load their photo from, when they have one. */
+  /** A path the widget can load their photo from, when they have one. Relative,
+   *  because it is resolved against whichever origin served the widget. */
   avatarUrl: z.string().optional(),
   online: z.boolean(),
 });
 export type NestChatAgentFace = z.infer<typeof nestchatAgentFaceSchema>;
+
+/** The team behind a channel: a few faces, and how many there are in all. */
+export const nestchatTeamSchema = z.object({
+  name: z.string().optional(),
+  faces: z.array(nestchatAgentFaceSchema),
+  total: z.number().int().nonnegative(),
+});
+export type NestChatTeam = z.infer<typeof nestchatTeamSchema>;
+
+/** What the agent-facing settings pane reads for one NestChat channel. */
+export const nestchatSettingsSchema = z.object({
+  inboxId: z.string(),
+  /** Public id in the embed snippet. Identifies the inbox; authorises nothing. */
+  widgetKey: z.string(),
+  appearance: nestchatAppearanceSchema,
+  /** Ready-to-paste URLs, resolved against the deployment's own public URL so
+   *  the snippet is correct without the admin knowing where we're hosted. */
+  embedUrl: z.string(),
+  scriptUrl: z.string(),
+  /** The same faces the widget would show, so the preview shows them too — a
+   *  toggle that changes nothing on screen reads as a toggle that didn't work. */
+  team: nestchatTeamSchema.optional(),
+});
+export type NestChatSettings = z.infer<typeof nestchatSettingsSchema>;
+
+export const updateNestchatInputSchema = z.object({
+  appearance: nestchatAppearanceSchema.partial(),
+});
+export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
+
+/* ---- the visitor-facing contract (public, unauthenticated) ---- */
 
 /** What the widget fetches before it renders anything. No customer data. */
 export const nestchatConfigSchema = z.object({
@@ -945,13 +957,7 @@ export const nestchatConfigSchema = z.object({
    *  expectations instead of promising a reply nobody is there to send. */
   online: z.boolean(),
   /** The team behind this channel: a few faces, and how many there are in all. */
-  team: z
-    .object({
-      name: z.string().optional(),
-      faces: z.array(nestchatAgentFaceSchema),
-      total: z.number().int().nonnegative(),
-    })
-    .optional(),
+  team: nestchatTeamSchema.optional(),
 });
 export type NestChatConfig = z.infer<typeof nestchatConfigSchema>;
 

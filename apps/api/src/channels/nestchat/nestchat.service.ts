@@ -109,7 +109,7 @@ export class NestChatService {
 
   /** Everything the settings pane shows for one NestChat channel. */
   async settingsFor(inboxId: string): Promise<NestChatSettings> {
-    await this.requireNestChatInbox(inboxId);
+    const inbox = await this.requireNestChatInbox(inboxId);
     const widgetKey = await this.ensureWidgetKey(inboxId);
     const base = env.appUrl.replace(/\/+$/, "");
     return {
@@ -118,6 +118,9 @@ export class NestChatService {
       appearance: await this.appearanceFor(inboxId),
       embedUrl: `${base}/widget.html?key=${widgetKey}`,
       scriptUrl: `${base}/nestchat.js`,
+      // The same faces the visitor's header would carry, so the preview beside
+      // the switch shows what the switch does.
+      team: await this.teamFacesFor(inbox),
     };
   }
 

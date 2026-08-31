@@ -16,6 +16,7 @@ import type {
   OpeningDay,
   OpeningHoursDay,
   NestChatAppearance,
+  NestChatTeam,
 } from "@ding/schemas";
 import { WHATSAPP_VERTICALS, OPENING_DAYS } from "@ding/schemas";
 import {
@@ -1672,7 +1673,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
           </div>
 
           <div className="ncw__side">
-            <NestChatPreview appearance={draft} />
+            <NestChatPreview appearance={draft} team={settings.data?.team} />
 
             <section className="ncw__group">
               <h3>Install {channels.find((c) => c.id === inboxId)?.name}</h3>
@@ -1715,8 +1716,16 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
 
 /** A stand-in for the widget, drawn from the form as it is being edited. Close
  *  enough to judge colour and copy by; the real thing lives in its own bundle. */
-function NestChatPreview({ appearance }: { appearance: NestChatAppearance }) {
+function NestChatPreview({
+  appearance,
+  team,
+}: {
+  appearance: NestChatAppearance;
+  team?: NestChatTeam;
+}) {
   const dark = appearance.theme === "dark";
+  // Same stack the visitor sees, so switching the faces on shows the faces.
+  const faces = appearance.showTeam ? (team?.faces ?? []) : [];
   return (
     <div
       className={"ncprev" + (dark ? " ncprev--dark" : "")}
@@ -1724,8 +1733,28 @@ function NestChatPreview({ appearance }: { appearance: NestChatAppearance }) {
       aria-hidden="true"
     >
       <div className="ncprev__head">
-        <div className="ncprev__title">{appearance.title}</div>
-        <div className="ncprev__sub">{appearance.subtitle}</div>
+        {faces.length > 0 && (
+          <div className="ncprev__faces">
+            {faces.map((f, i) => (
+              <span
+                key={f.name + i}
+                className={f.color ? "ncprev__face" : "ncprev__face ncprev__face--plain"}
+                style={{ zIndex: faces.length - i, ...(f.color ? { background: f.color, color: "#fff" } : null) }}
+              >
+                {f.avatarUrl ? <img src={f.avatarUrl} alt="" /> : <b>{f.initials}</b>}
+              </span>
+            ))}
+            {team && team.total > faces.length && (
+              <span className="ncprev__face ncprev__face--plain">
+                <b>+{team.total - faces.length}</b>
+              </span>
+            )}
+          </div>
+        )}
+        <div className="ncprev__headtext">
+          <div className="ncprev__title">{appearance.title}</div>
+          <div className="ncprev__sub">{appearance.subtitle}</div>
+        </div>
       </div>
       <div className="ncprev__thread">
         <div className="ncprev__in">{appearance.greeting}</div>
