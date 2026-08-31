@@ -1,27 +1,35 @@
 import { View } from "react-native";
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from "react-native-svg";
+import {
+  BRAND,
+  MARK_ARCH,
+  MARK_NODES,
+  MARK_NODE_R,
+  MARK_STEM,
+  MARK_STROKE,
+} from "@ding/design/logo";
 
 /**
- * The app's mark: three nested bowls.
+ * The app's mark, from the geometry the web draws from too.
  *
- * Chosen because it survives being small and monochrome, which is most of what
- * a mark has to do — it's the tab icon, the splash, the thing on the sign-in
- * screen. Three concentric arcs read as a nest at 24pt and still read as one at
- * 96pt, and they carry the product's actual idea without illustrating it: every
- * conversation gathered into one place, whichever channel it arrived on.
+ * It used to be three nested bowls here and a speech bubble with an amber dot
+ * on the web — two different logos for one product, neither aware of the other,
+ * which is what happens when a mark is drawn twice instead of shared once.
+ * `@ding/design/logo` is now the only place the shape exists, and the app icon
+ * and favicon are generated from the same numbers rather than exported by hand.
  *
- * Stroked rather than filled, with round caps, so it holds its weight against
- * the brand tile behind it instead of turning into a solid blob at small sizes.
+ * `color` defaults to the brand green rather than white: a logo holds its value
+ * wherever it lands. Pass a colour only for somewhere it genuinely has to be
+ * monochrome, like a knockout on a solid brand tile.
  */
-export function NestMark({ size = 28, color = "#fff" }: { size?: number; color?: string }) {
-  const w = Math.round(size * 0.09);
+export function NestMark({ size = 28, color = BRAND.green }: { size?: number; color?: string }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 32 32" fill="none">
-      {/* Outer, middle, inner — each an arc from left to right curving under,
-          which is what makes a bowl rather than a dome. */}
-      <Path d="M3 13 A13 13 0 0 0 29 13" stroke={color} strokeWidth={w} strokeLinecap="round" />
-      <Path d="M8 13 A8 8 0 0 0 24 13" stroke={color} strokeWidth={w} strokeLinecap="round" opacity={0.82} />
-      <Path d="M13 13 A3 3 0 0 0 19 13" stroke={color} strokeWidth={w} strokeLinecap="round" opacity={0.64} />
+    <Svg width={size} height={size} viewBox="0 0 100 100" fill="none">
+      <Path d={MARK_STEM} stroke={color} strokeWidth={MARK_STROKE} strokeLinecap="round" />
+      <Path d={MARK_ARCH} stroke={color} strokeWidth={MARK_STROKE} strokeLinecap="round" />
+      {MARK_NODES.map((n) => (
+        <Circle key={`${n.cx}-${n.cy}`} cx={n.cx} cy={n.cy} r={MARK_NODE_R} fill={color} />
+      ))}
     </Svg>
   );
 }

@@ -8,13 +8,15 @@
     "./tokens.css": "./tokens.css",
     "./tokens": "./tokens.ts",
     "./icons": "./icons.ts",
-    "./tailwind-preset": "./tailwind-preset.cjs"
+    "./tailwind-preset": "./tailwind-preset.cjs",
+    "./logo": "./logo.ts"
   },
   "files": [
-    "tokens.css",
-    "tokens.ts",
     "icons.ts",
-    "tailwind-preset.cjs"
+    "logo.ts",
+    "tailwind-preset.cjs",
+    "tokens.css",
+    "tokens.ts"
   ],
   "scripts": {
     "build": "node scripts/generate-tokens.mjs",

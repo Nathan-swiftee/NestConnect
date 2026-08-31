@@ -22,11 +22,18 @@ import {
   ICON_STROKE,
   channelIcons,
   icons,
-  logo,
   teamIcons,
   tickIcons,
   type IconSpec,
 } from "@ding/design/icons";
+import {
+  BRAND,
+  MARK_ARCH,
+  MARK_NODES,
+  MARK_NODE_R,
+  MARK_STEM,
+  MARK_STROKE,
+} from "@ding/design/logo";
 
 /** One glyph: outline first, then any solid shapes on top of it. */
 function Glyph({ spec, fillOverride }: { spec: IconSpec; fillOverride?: string }): JSX.Element {
@@ -174,9 +181,28 @@ export function TeamGlyph({ icon }: { icon?: string | null }): JSX.Element {
 
 /* ── the mark ────────────────────────────────────────────────────────────── */
 
+/**
+ * The mark, from the shared geometry.
+ *
+ * It draws in `BRAND.green` rather than `currentColor`, which is the one place
+ * in this file that ignores the surrounding text colour on purpose: the logo is
+ * a fixed value in every context — light theme, dark theme, and the white page
+ * of whatever embeds a screenshot of it. Inheriting made it a grey smudge in
+ * the icon rail and a green one on the login screen, which is two logos again.
+ */
 export const Logo = (): JSX.Element => (
-  <svg viewBox="0 0 24 24" fill="none">
-    <path d={logo.bubble} fill="currentColor" />
-    <path d={logo.dot} fill={logo.dotColor} />
+  <svg viewBox="0 0 100 100" fill="none">
+    <g
+      fill="none"
+      stroke={BRAND.green}
+      strokeWidth={MARK_STROKE}
+      strokeLinecap="round"
+    >
+      <path d={MARK_STEM} />
+      <path d={MARK_ARCH} />
+    </g>
+    {MARK_NODES.map((n) => (
+      <circle key={`${n.cx}-${n.cy}`} cx={n.cx} cy={n.cy} r={MARK_NODE_R} fill={BRAND.green} />
+    ))}
   </svg>
 );

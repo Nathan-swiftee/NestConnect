@@ -325,17 +325,3 @@ export const teamIcons = {
 
 export type TeamIconName = keyof typeof teamIcons;
 export const TEAM_ICON_NAMES = Object.keys(teamIcons) as TeamIconName[];
-
-/* ────────────────────────────────────────────────────────────── the mark ── */
-
-/**
- * The Nest Connect mark: a chat bubble with an amber dot.
- *
- * Not part of the icon system — it's the logo, it's two-colour, and it keeps
- * its own proportions. The dot's colour is fixed rather than inherited.
- */
-export const logo = {
-  bubble: "M12 3C7 3 3 6.5 3 11c0 2.3 1.1 4.3 2.9 5.7L5 21l4.6-2c.8.2 1.6.3 2.4.3 5 0 9-3.5 9-8s-4-8-9-8Z",
-  dot: circle(17.5, 6.5, 2.5),
-  dotColor: "#F5A524",
-};
