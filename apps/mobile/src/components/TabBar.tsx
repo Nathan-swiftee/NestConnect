@@ -324,11 +324,13 @@ export function TabBar({
     width: pillW,
     height: pillH,
     borderRadius: pillH / 2,
-    // Neutral, as in the reference — but heavier than the palette's `surface2`,
-    // which at 5% black on a white capsule was so close to invisible on a real
-    // screen in daylight that the travel it exists to show read as nothing
-    // moving at all.
-    backgroundColor: scheme === "dark" ? "rgba(255,255,255,0.13)" : "rgba(26,26,24,0.085)",
+    // Neutral, as in the reference, and deliberately between two failure
+    // points. The palette's `surface2` — 5% black on a white capsule — was so
+    // close to invisible in daylight that the travel this exists to show read
+    // as nothing moving; 8.5% fixed that and went too far the other way,
+    // reading as a grey chip painted on the glass rather than part of it. 6.5%
+    // still tracks across the bar and lets the blur through.
+    backgroundColor: scheme === "dark" ? "rgba(255,255,255,0.10)" : "rgba(26,26,24,0.065)",
   };
 
   /** Opacity and transform only. Nothing here changes the layout. */

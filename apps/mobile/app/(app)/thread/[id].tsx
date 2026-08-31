@@ -28,7 +28,7 @@ import {
   useTeams,
 } from "@ding/client";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { ActionSheet, type SheetAction } from "../../../src/components/ActionSheet";
+import { ActionSheet, LEADING, type SheetAction } from "../../../src/components/ActionSheet";
 import { Attachments } from "../../../src/components/Attachments";
 import { Avatar } from "../../../src/components/Avatar";
 import { Composer } from "../../../src/components/Composer";
@@ -539,14 +539,14 @@ export default function Thread() {
       key: "me",
       section: "Assign to a person",
       label: "Assign to me",
-      leading: me ? <Avatar name={me.name} color={me.avatarColor} size={34} /> : undefined,
+      leading: me ? <Avatar name={me.name} color={me.avatarColor} size={LEADING} /> : undefined,
       selected: data.assigneeUserId === me?.id,
       onPress: () => doAssign({ assigneeUserId: me?.id ?? null }, "Assigned to you", me?.name ?? null),
     },
     ...ranked.map((m) => ({
       key: m.user.id,
       label: m.user.name,
-      leading: <Avatar name={m.user.name} color={m.user.avatarColor} size={34} />,
+      leading: <Avatar name={m.user.name} color={m.user.avatarColor} size={LEADING} />,
       detail: !m.user.available
         ? "Not accepting work"
         : inTeam(m)

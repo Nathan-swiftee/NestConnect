@@ -85,13 +85,21 @@ async function pill(activeIndex: number) {
 const translateX = (s: Record<string, unknown>) =>
   (s.transform as { translateX?: number }[])?.find((t) => "translateX" in t)?.translateX ?? 0;
 
+/** The alpha out of an `rgba(…)` string, or 0 for anything without one. */
+const alphaOf = (color: string) => Number(/rgba\([^)]*,\s*([\d.]+)\s*\)/.exec(color)?.[1] ?? 0);
+
 describe("the tab bar's selected-tab pill", () => {
   it("is visible on the very first render, with no measurement to wait for", async () => {
     const { animated, box } = await pill(0);
     // The assertion that matters. Everything below it was already true when the
     // pill was invisible.
     expect(animated.opacity).toBe(1);
-    expect(box.backgroundColor).toBe("rgba(26,26,24,0.085)");
+    // Not the exact shade — that is a design decision and gets tuned, and a
+    // test that fails on tuning reports nothing about whether the pill is
+    // visible. What has to hold is the floor: `surface2` at 5% black on a white
+    // capsule was invisible enough in daylight that the travel this pill exists
+    // to show read as nothing moving. Anything at or below that is the bug.
+    expect(alphaOf(box.backgroundColor as string)).toBeGreaterThan(0.05);
     // Sized from the destination rather than fixed, so the assertion is that
     // it is big enough to sit behind an icon *and* its label — the shape it
     // had when it covered only the glyph is what "doesn't cover the tab with

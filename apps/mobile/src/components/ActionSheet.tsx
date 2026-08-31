@@ -35,6 +35,13 @@ export interface SheetAction {
 }
 
 /**
+ * The size of the leading slot, and therefore the size a leading element should
+ * be. Pass it to `Avatar` rather than picking a number: anything larger
+ * overflows the slot and gets clipped to a square-edged circle.
+ */
+export const LEADING = 34;
+
+/**
  * A bottom sheet of choices — assign, resolve, snooze.
  *
  * Bottom rather than centre because it's a phone: the list starts within reach
@@ -83,10 +90,22 @@ export function ActionSheet({
               style={{ borderBottomColor: c.border }}
               className="flex-row items-center gap-3 border-b py-3"
             >
-              {/* Fixed width whether or not this row has one, so labels line up
-                  down the sheet instead of stepping in and out. */}
+              {/* Fixed size whether or not this row has one, so labels line up
+                  down the sheet instead of stepping in and out — and sized in
+                  points rather than a Tailwind step, because it has to be at
+                  least as big as what goes in it. `w-9` is 31.5 at NativeWind's
+                  native rem of 14, and the avatars are 34: two and a half points
+                  of circle overflowed and got clipped, which on the sheet's pale
+                  panel read as a white sliver shaving the left of every face.
+                  `LEADING` is what callers pass to `Avatar`, so the two cannot
+                  drift apart again. */}
               {a.leading ? (
-                <View className="h-9 w-9 items-center justify-center">{a.leading}</View>
+                <View
+                  style={{ width: LEADING, height: LEADING }}
+                  className="items-center justify-center"
+                >
+                  {a.leading}
+                </View>
               ) : null}
               <View className="flex-1">
                 <Text
