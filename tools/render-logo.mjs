@@ -41,30 +41,67 @@ const SRC = {
 };
 
 /**
- * One output. `pad` is the fraction of the canvas left empty around the art,
- * `bg` fills behind it, `radius` rounds that fill, and `crop` picks a region of
- * the source in source pixels (used to lift the mark out of the lockup).
+ * The delivered app tile, measured off `brand/app-icon.png` rather than chosen:
+ * the mark spans 49.2% of the tile and sits a touch right of centre and a touch
+ * high. Every icon that is meant to look like that tile is built from these
+ * numbers, so "the same logo, the same size" holds across platforms instead of
+ * being re-guessed per file.
+ */
+const TILE = { ink: 0.492, centre: { x: 0.51, y: 0.483 } };
+
+/**
+ * How much of an Android adaptive icon you actually see. The drawable is 108dp
+ * but the launcher masks it down to the middle 72 — everything outside that is
+ * parallax and mask margin. Sizing the mark against the canvas instead of
+ * against this window is how a logo ends up correct in the file and oversized on
+ * the home screen.
+ */
+const ADAPTIVE_VISIBLE = 72 / 108;
+
+/** Place `ink` of the tile inside the visible window of an adaptive icon. */
+const inAdaptiveWindow = ({ ink, centre }) => ({
+  ink: ink * ADAPTIVE_VISIBLE,
+  centre: {
+    x: (1 - ADAPTIVE_VISIBLE) / 2 + centre.x * ADAPTIVE_VISIBLE,
+    y: (1 - ADAPTIVE_VISIBLE) / 2 + centre.y * ADAPTIVE_VISIBLE,
+  },
+});
+
+/**
+ * One output. `ink` is the fraction of the canvas width the artwork spans and
+ * `centre` where its middle lands (both default to filling and centring);
+ * `bg` fills behind it; `trim: false` skips the alpha crop and scales the whole
+ * source, for a target that is already composed.
  */
 const TARGETS = [
   // ── the phone ──────────────────────────────────────────────────────────
   // iOS and the Play Store both want 1024 and neither may be transparent; the
   // system applies its own mask, so this is square and unrounded.
-  { out: "apps/mobile/assets/icon.png", src: "icon", size: 1024, pad: 0, trim: false },
-  // Android adaptive foreground. Everything outside the middle 66% is liable to
-  // be shaved off, so the mark takes about half the canvas and the rest is air.
-  { out: "apps/mobile/assets/adaptive-icon.png", src: "mark", size: 1024, pad: 0.26, bg: null },
+  //
+  // Rebuilt from the mark rather than upscaled from app-icon.png: the mark needs
+  // 503 pixels here, and mark.png has 911 to give where the 512 tile has only
+  // 252 to stretch. Same composition to a tenth of a percent — the numbers in
+  // TILE were measured off the delivered tile — on the same navy the Android
+  // background uses, so the two platforms show one object.
+  { out: "apps/mobile/assets/icon.png", src: "mark", size: 1024, ...TILE },
+  // Android adaptive foreground, sized against the window the launcher actually
+  // shows. At a flat 26% margin the mark filled 72% of that window against 49%
+  // in the delivered tile — the same logo half again too big on the home screen.
+  { out: "apps/mobile/assets/adaptive-icon.png", src: "mark", size: 1024, bg: null, ...inAdaptiveWindow(TILE) },
   // The mark on its own, for the sign-in screen and anywhere else in the app.
-  { out: "apps/mobile/assets/logo-mark.png", src: "mark", size: 512, pad: 0.02, bg: null },
+  { out: "apps/mobile/assets/logo-mark.png", src: "mark", size: 512, ink: 0.96, bg: null },
 
   // ── the browser ────────────────────────────────────────────────────────
-  { out: "apps/web/public/logo-mark.png", src: "mark", size: 512, pad: 0.02, bg: null },
-  { out: "apps/web/public/logo-lockup.png", src: "lockup", size: 1024, pad: 0.02, bg: null, wide: true },
+  { out: "apps/web/public/logo-mark.png", src: "mark", size: 512, ink: 0.96, bg: null },
+  { out: "apps/web/public/logo-lockup.png", src: "lockup", size: 1024, ink: 0.96, bg: null, wide: true },
   // A tab favicon is 16 or 32 real pixels, so it is trimmed hard — any margin
   // baked in here is margin the glyph doesn't get.
-  { out: "apps/web/public/favicon-32.png", src: "mark", size: 32, pad: 0.02, bg: null },
-  { out: "apps/web/public/favicon-64.png", src: "mark", size: 64, pad: 0.02, bg: null },
+  { out: "apps/web/public/favicon-32.png", src: "mark", size: 32, ink: 0.96, bg: null },
+  { out: "apps/web/public/favicon-64.png", src: "mark", size: 64, ink: 0.96, bg: null },
   // An iOS home screen composites onto white, so this one needs its own ground.
-  { out: "apps/web/public/favicon-180.png", src: "icon", size: 180, pad: 0, trim: false },
+  // Straight off the delivered tile: 512 down to 180 is a downscale, so there is
+  // nothing to gain by recomposing it.
+  { out: "apps/web/public/favicon-180.png", src: "icon", size: 180, trim: false },
 ];
 
 const browser = await chromium.launch({
@@ -107,14 +144,20 @@ for (const t of TARGETS) {
   const W = t.size;
   const H = t.wide && box ? Math.round((W * box.h) / box.w) : W;
 
-  // Scale the whole source by whatever makes the *ink* fit the padded canvas,
-  // then slide it so that ink lands centred. Transforming rather than cropping
-  // keeps one composite step and no rounding between two of them.
+  // Scale the whole source so its *ink* spans `ink` of the canvas width, then
+  // slide it so that ink's middle lands on `centre`. Transforming rather than
+  // cropping keeps one composite step and no rounding between two of them.
+  //
+  // Width alone sets the scale, and the height follows. Fitting to whichever
+  // axis is tighter — the obvious alternative — silently makes a wide mark and a
+  // tall one different sizes on the same home screen.
   let inner;
   if (box) {
-    const k = Math.min((W * (1 - t.pad * 2)) / box.w, (H * (1 - t.pad * 2)) / box.h);
-    const dx = (W - box.w * k) / 2 - box.x * k;
-    const dy = (H - box.h * k) / 2 - box.y * k;
+    const k = (W * (t.ink ?? 1)) / box.w;
+    const cx = (t.centre?.x ?? 0.5) * W;
+    const cy = (t.centre?.y ?? 0.5) * H;
+    const dx = cx - (box.x + box.w / 2) * k;
+    const dy = cy - (box.y + box.h / 2) * k;
     inner = `<img src="${src}" style="position:absolute;left:0;top:0;
       transform:translate(${dx}px, ${dy}px) scale(${k});transform-origin:0 0">`;
   } else {
