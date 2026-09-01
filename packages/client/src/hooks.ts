@@ -1209,6 +1209,21 @@ export function useRealtime(openConversationId: string | null) {
 
 /* ---- typing indicators ------------------------------------------------- */
 
+/** Who is writing on the open thread, and — on NestChat — what. */
+export interface TypingPresence {
+  who: string;
+  /**
+   * Their unsent draft, live.
+   *
+   * Only NestChat produces this: the widget is ours, so the draft is ours to
+   * relay, and on a live chat it is worth relaying — an agent can be finding
+   * the order before the question is finished. Absent everywhere else, and
+   * absent for a colleague typing: reading a teammate's unsent words is a
+   * different thing from knowing they are there.
+   */
+  preview?: string;
+}
+
 /**
  * "{name} is typing…" for the conversation currently open.
  *
@@ -1222,36 +1237,45 @@ export function useRealtime(openConversationId: string | null) {
  * silence (a phone that goes into a tunnel mid-word never sends the `false`),
  * and on switching or closing the conversation.
  */
-export function useTypingPresence(conversationId: string | null): string | null {
-  const [who, setWho] = useState<string | null>(null);
+export function useTypingPresence(conversationId: string | null): TypingPresence | null {
+  const [state, setState] = useState<TypingPresence | null>(null);
 
   useEffect(() => {
     if (!conversationId) {
-      setWho(null);
+      setState(null);
       return;
     }
     const socket = getSocket();
     let clear: ReturnType<typeof setTimeout> | null = null;
-    const onTyping = (p: { conversationId: string; who: string; typing: boolean }) => {
+    const onTyping = (p: {
+      conversationId: string;
+      who: string;
+      typing: boolean;
+      preview?: string;
+    }) => {
       if (p.conversationId !== conversationId) return;
       if (clear) clearTimeout(clear);
       if (p.typing) {
-        setWho(p.who);
-        clear = setTimeout(() => setWho(null), 4000);
+        // `preview` is absent on channels that can't give us one (everything but
+        // NestChat) and empty when the visitor has cleared their box. Both mean
+        // "no text to show", and neither means "stop showing the indicator" —
+        // somebody is still standing at the keyboard.
+        setState({ who: p.who, preview: p.preview?.trim() || undefined });
+        clear = setTimeout(() => setState(null), 4000);
       } else {
         clear = null;
-        setWho(null);
+        setState(null);
       }
     };
     socket.on(ServerEvent.Typing, onTyping);
     return () => {
       socket.off(ServerEvent.Typing, onTyping);
       if (clear) clearTimeout(clear);
-      setWho(null);
+      setState(null);
     };
   }, [conversationId]);
 
-  return who;
+  return state;
 }
 
 /**

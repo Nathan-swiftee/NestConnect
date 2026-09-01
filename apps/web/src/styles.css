@@ -1090,6 +1090,19 @@ input,textarea{font:inherit}
 .typing__dots span:nth-child(2){animation-delay:.16s}
 .typing__dots span:nth-child(3){animation-delay:.32s}
 .typing__who{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Carrying a live draft: wider, wrapping, and dashed rather than solid. The
+   dashed edge is doing the work — it says "not sent yet" without a label, so
+   the words can't be mistaken for a message that has arrived. Aligned with the
+   dots at the top rather than centred, so a growing draft pushes downward and
+   the indicator doesn't crawl up the thread as they type. */
+.typing--draft{align-items:flex-start;max-width:min(78%,44rem);
+  background:transparent;box-shadow:none;border:1px dashed var(--border-strong,var(--border))}
+.typing--draft .typing__dots{padding-top:.35em}
+.typing__draft{display:flex;flex-direction:column;gap:2px;min-width:0}
+.typing__label{font-size:var(--fs-2xs,.6875rem);font-weight:600;letter-spacing:.02em;
+  text-transform:uppercase;color:var(--text-faint)}
+.typing__text{color:var(--text-muted);font-weight:400;font-size:var(--fs-sm);line-height:1.4;
+  white-space:pre-wrap;overflow-wrap:anywhere}
 @keyframes typingDot{0%,60%,100%{opacity:.35;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
 :root[data-theme="dark"] .typing{background:color-mix(in srgb,var(--elevated),#fff 7%);
   box-shadow:0 1px 2px rgba(0,0,0,.4),inset 0 0 0 1px rgba(255,255,255,.05)}

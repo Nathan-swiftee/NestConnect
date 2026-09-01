@@ -1052,6 +1052,26 @@ export const nestchatReadInputSchema = z.object({
 });
 export type NestChatReadInput = z.infer<typeof nestchatReadInputSchema>;
 
+/**
+ * How much of a visitor's unsent draft travels, and how often.
+ *
+ * The cap is a socket-traffic bound, not an editorial one: someone pasting an
+ * order history into the box shouldn't push a kilobyte through the gateway on
+ * every keystroke, and the agent only needs enough to know what's coming. The
+ * interval is the trade between feeling live and one request per character —
+ * under a second reads as live, and at this rate a solid minute of typing stays
+ * inside the endpoint's rate limit.
+ */
+export const TYPING_PREVIEW_MAX = 500;
+export const TYPING_PREVIEW_MS = 700;
+
+export const nestchatTypingInputSchema = z.object({
+  /** What they have written so far. Empty means the box is empty — still
+   *  typing (they just deleted it), so the indicator stays but the text goes. */
+  preview: z.string().max(TYPING_PREVIEW_MAX).optional(),
+});
+export type NestChatTypingInput = z.infer<typeof nestchatTypingInputSchema>;
+
 export const nestchatIdentifyInputSchema = z.object({
   name: z.string().max(80).optional(),
   email: z.string().email().max(200).optional(),
@@ -1642,7 +1662,23 @@ export interface ServerToClientEvents {
     by?: string;
     reason?: string;
   }) => void;
-  [ServerEvent.Typing]: (p: { conversationId: string; who: string; typing: boolean }) => void;
+  /**
+   * Somebody is writing on this thread.
+   *
+   * `preview` is what they have typed so far, and only ever comes from a
+   * NestChat visitor: our own widget is the one place we hold the draft, and a
+   * live chat is the one place seeing it early is worth anything — you can be
+   * looking something up before they finish asking. WhatsApp and email give us
+   * nothing to show, and an agent's own half-written reply is deliberately not
+   * broadcast to their colleagues: watching a teammate type and retype is
+   * surveillance, not presence. Never stored — it exists between two sockets.
+   */
+  [ServerEvent.Typing]: (p: {
+    conversationId: string;
+    who: string;
+    typing: boolean;
+    preview?: string;
+  }) => void;
   [ServerEvent.Presence]: (p: { userId: string; online: boolean }) => void;
   [ServerEvent.InboxCounts]: (p: { inboxId: string; unread: number }) => void;
   [ServerEvent.Notification]: (p: { notification: Notification }) => void;

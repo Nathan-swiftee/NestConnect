@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { NestChatAppearance, NestChatConfig, NestChatMessage } from "@ding/schemas";
+import { TYPING_PREVIEW_MS } from "@ding/schemas";
 import {
   attachmentUrl,
   fetchConfig,
@@ -127,6 +128,8 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   const acked = useRef<{ delivered?: string; read?: string }>({});
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastTypingPing = useRef(0);
+  /** The trailing half of the typing throttle — see `sendTyping`. */
+  const previewTimer = useRef<ReturnType<typeof setTimeout>>();
   const typingTimer = useRef<ReturnType<typeof setTimeout>>();
 
   /* ---- boot: appearance, then session ---- */
@@ -265,6 +268,14 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     if (!body || !token || sending) return;
     setSending(true);
     setDraft("");
+    // Take the draft off the agent's screen now. The typing indicator times
+    // itself out in a few seconds, but those are the seconds where the message
+    // has arrived and the ghost of it is still sitting underneath — the same
+    // sentence twice, one of them apparently still being written. A pending
+    // trailing send would put it back, so that goes too.
+    clearTimeout(previewTimer.current);
+    lastTypingPing.current = 0;
+    pingTyping(token, "");
     // Show it immediately. The id is replaced by the server's on the way back,
     // so the reconciliation in the SSE handler still matches on one id.
     const optimistic: NestChatMessage = {
@@ -298,13 +309,38 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
       el.style.height = "auto";
       el.style.height = `${Math.min(el.scrollHeight, 116)}px`;
     }
-    // One ping every two seconds is enough to hold an indicator up, and keeps a
-    // fast typist from sending one request per keystroke.
+    // The agent sees this text as it's written, so the cadence is now what the
+    // *content* needs rather than what an indicator needs: a couple of seconds
+    // was plenty to keep three dots alive and reads as a stutter when there are
+    // words behind them. Still throttled — one request per keystroke is a
+    // request per keystroke.
+    //
+    // Not gated on the box being non-empty: deleting what you wrote is exactly
+    // the moment the agent's copy needs to catch up, and skipping the empty send
+    // would leave them reading a sentence that no longer exists.
+    //
+    // Leading edge AND trailing, because a throttle with only a leading edge
+    // drops the tail — stop typing inside the window and the last few characters
+    // are never sent, so the agent is left holding a word that isn't finished.
+    // The trailing send is what makes "what they're typing" settle on the truth.
+    sendTyping(value);
+  };
+
+  /** Throttled, with a trailing send so the final state always lands. */
+  const sendTyping = (value: string) => {
+    if (!token) return;
+    clearTimeout(previewTimer.current);
     const now = Date.now();
-    if (token && value.trim() && now - lastTypingPing.current > 2000) {
+    const wait = TYPING_PREVIEW_MS - (now - lastTypingPing.current);
+    if (wait <= 0) {
       lastTypingPing.current = now;
-      pingTyping(token);
+      pingTyping(token, value);
+      return;
     }
+    previewTimer.current = setTimeout(() => {
+      lastTypingPing.current = Date.now();
+      pingTyping(token, value);
+    }, wait);
   };
 
   const saveDetails = () => {

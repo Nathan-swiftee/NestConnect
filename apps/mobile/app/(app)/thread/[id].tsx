@@ -27,6 +27,7 @@ import {
   useSnooze,
   useTeams,
   useTypingPresence,
+  type TypingPresence,
 } from "@ding/client";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
 import { ActionSheet, LEADING, type SheetAction } from "../../../src/components/ActionSheet";
@@ -177,7 +178,7 @@ export default function Thread() {
   const list = useRef<SectionList<Message, DaySection>>(null);
   // Another agent writing on this thread, from the shared hook. The web has had
   // this since typing indicators shipped; the phone showed nothing at all.
-  const typingWho = useTypingPresence(id);
+  const typing = useTypingPresence(id);
   // The message a "jump to quoted" landed on, flashed briefly so the eye can
   // find it. Scrolling somewhere without saying where you arrived is how people
   // end up asking whether the tap did anything.
@@ -710,7 +711,6 @@ export default function Thread() {
       <Header
         conv={data}
         insetTop={insets.top}
-        typingWho={typingWho}
         onDetails={() => setSheet("details")}
         onMore={() => setSheet("more")}
       />
@@ -844,7 +844,8 @@ export default function Thread() {
         }
         ListFooterComponent={
           // Written but not yet accepted by the server — shown in place so a
-          // reply composed offline doesn't look like it vanished.
+          // reply composed offline doesn't look like it vanished. Then whoever
+          // is writing back, last, because that is the next thing to arrive.
           <>
             {queue.forConversation(id).map((q) => (
               <QueuedBubble
@@ -854,6 +855,7 @@ export default function Thread() {
                 onDiscard={() => void queue.discard(q.id)}
               />
             ))}
+            {typing ? <TypingBubble typing={typing} /> : null}
           </>
         }
       />
@@ -972,10 +974,61 @@ function BottomInset() {
   return <Animated.View style={style} />;
 }
 
+/**
+ * Somebody is writing, shown at the foot of the thread where their message will
+ * land.
+ *
+ * It used to live in the header, taking over the assignee line. That was a
+ * reasonable read of a phone's cramped chrome and a bad read of what a chat is:
+ * nobody looks at the top of the screen to find out whether a reply is coming,
+ * because no messaging app has put it there in a decade. It belongs at the
+ * bottom of the messages, in the place the message itself is about to occupy.
+ *
+ * On NestChat it also carries their draft as they write it. Outlined rather than
+ * filled, because an unsent sentence must not be able to pass for a message that
+ * arrived — every real bubble on this screen has a fill, so having none is the
+ * difference you notice before you read the label.
+ *
+ * The web draws that outline dashed. This doesn't: Android ignores
+ * `borderStyle: "dashed"` on anything with a border radius and quietly draws a
+ * solid line, so asking for it here would mean the comment and the phone
+ * disagreed. An unfilled bubble carries the meaning on its own.
+ */
+function TypingBubble({ typing }: { typing: TypingPresence }) {
+  const { c } = useTheme();
+  return (
+    <Animated.View entering={enter.row} className="mt-1.5 flex-row px-3">
+      <View
+        style={{
+          backgroundColor: typing.preview ? "transparent" : c.surface,
+          borderColor: c.border,
+          borderWidth: typing.preview ? 1 : 0,
+          maxWidth: "82%",
+        }}
+        className="rounded-2xl rounded-bl-md px-3 py-2"
+      >
+        {typing.preview ? (
+          <>
+            <Text style={{ color: c.textFaint }} className="text-2xs font-semibold uppercase tracking-wide">
+              {`${typing.who} is typing`}
+            </Text>
+            <Text style={{ color: c.textMuted }} className="mt-0.5 text-md leading-snug">
+              {typing.preview}
+            </Text>
+          </>
+        ) : (
+          <Text style={{ color: c.textMuted }} className="text-xs font-medium">
+            {`${typing.who} is typing…`}
+          </Text>
+        )}
+      </View>
+    </Animated.View>
+  );
+}
+
 function Header({
   conv,
   insetTop,
-  typingWho,
   onDetails,
   onMore,
 }: {
@@ -984,8 +1037,6 @@ function Header({
    *  topmost thing on the screen and a plain View can be relied on to apply
    *  padding it's given. */
   insetTop: number;
-  /** A colleague typing on this thread right now, or null. */
-  typingWho: string | null;
   onDetails: () => void;
   onMore: () => void;
 }) {
@@ -1026,28 +1077,22 @@ function Header({
         {/* SLA first, because it's the only part of this line that expires. The
             line truncates from the right, so what gets cut when the name is long
             is the name — which you can also see two lines up — rather than the
-            countdown, which is nowhere else on this screen. */}
-        {/* A colleague writing on this thread takes the line over while it
-            lasts. It replaces the SLA/assignee line rather than adding a
-            fourth: the header is three lines on a phone already, and "someone
-            is answering this right now" is the more urgent of the two — it is
-            what stops two agents replying to the same customer at once. */}
-        {typingWho ? (
-          <Text numberOfLines={1} style={{ color: c.brandStrong }} className="text-2xs font-semibold leading-snug">
-            {`${typingWho} is typing…`}
-          </Text>
-        ) : (
-          <Text numberOfLines={1} className="text-2xs leading-snug text-faint">
-            {slaText ? (
-              <Text style={{ color: slaOver ? c.danger : c.amber }} className="font-semibold">
-                {slaText}
-                {" · "}
-              </Text>
-            ) : null}
-            {statusText}
-            {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
-          </Text>
-        )}
+            countdown, which is nowhere else on this screen.
+
+            Typing used to take this line over. It lives at the foot of the
+            thread now (see TypingBubble), which is where every messaging app has
+            put it for a decade and where the person reading is already looking;
+            the header goes back to saying the one thing only it can say. */}
+        <Text numberOfLines={1} className="text-2xs leading-snug text-faint">
+          {slaText ? (
+            <Text style={{ color: slaOver ? c.danger : c.amber }} className="font-semibold">
+              {slaText}
+              {" · "}
+            </Text>
+          ) : null}
+          {statusText}
+          {conv.assigneeName ? `Assigned to ${conv.assigneeName}` : "Unassigned"}
+        </Text>
       </View>
       <Touchable feel="chip" onPress={onDetails} accessibilityRole="button" accessibilityLabel="Conversation details" hitSlop={12} className="px-1.5">
         <DetailsIcon size={20} color={c.textMuted} />

@@ -157,10 +157,18 @@ export class RealtimeGateway
     }
   }
 
-  /** Relay a typing indicator into a conversation from outside a socket — a
-   *  NestChat visitor types in an iframe, not on the agents' socket. */
-  emitTyping(conversationId: string, who: string, typing: boolean): void {
-    this.server.to(convRoom(conversationId)).emit(ServerEvent.Typing, { conversationId, who, typing });
+  /**
+   * Relay a typing indicator into a conversation from outside a socket — a
+   * NestChat visitor types in an iframe, not on the agents' socket.
+   *
+   * `preview` carries what they have written so far. It goes to the conversation
+   * room, which is the agents with this thread actually open — not the org room,
+   * so an unsent draft isn't broadcast to everyone signed in.
+   */
+  emitTyping(conversationId: string, who: string, typing: boolean, preview?: string): void {
+    this.server
+      .to(convRoom(conversationId))
+      .emit(ServerEvent.Typing, { conversationId, who, typing, preview });
   }
 
   @SubscribeMessage(ClientEvent.JoinConversation)

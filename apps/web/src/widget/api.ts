@@ -4,6 +4,7 @@ import type {
   NestChatMessage,
   NestChatSession,
 } from "@ding/schemas";
+import { TYPING_PREVIEW_MAX } from "@ding/schemas";
 
 /**
  * The widget's whole API surface — plain fetch, no shared client.
@@ -85,10 +86,18 @@ export function reportRead(
 }
 
 /** Fire-and-forget: a dropped typing ping is not worth a retry or an error. */
-export function pingTyping(token: string): void {
+/**
+ * Say we're typing, and what.
+ *
+ * Fire-and-forget: a dropped typing ping is a dropped typing ping, and making
+ * the visitor's keystrokes wait on a round trip to tell somebody about them
+ * would be a strange trade.
+ */
+export function pingTyping(token: string, preview: string): void {
   void fetch(`${base}/typing`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ preview: preview.slice(0, TYPING_PREVIEW_MAX) }),
   }).catch(() => {});
 }
 

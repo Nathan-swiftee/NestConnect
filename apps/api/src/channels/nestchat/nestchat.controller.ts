@@ -18,6 +18,7 @@ import {
   nestchatReadInputSchema,
   nestchatSendInputSchema,
   nestchatSessionInputSchema,
+  nestchatTypingInputSchema,
   type NestChatConfig,
   type NestChatIdentifyInput,
   type NestChatIdentifyResult,
@@ -25,6 +26,7 @@ import {
   type NestChatSendInput,
   type NestChatSession,
   type NestChatSessionInput,
+  type NestChatTypingInput,
 } from "@ding/schemas";
 import { Public } from "../../auth/public.decorator";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
@@ -326,14 +328,34 @@ export class NestChatController {
     return { ok: true, updated: changed.length };
   }
 
-  /** The visitor is typing — relayed to the agents watching the thread. */
-  @Throttle({ default: { limit: 120, ttl: 60_000 } })
+  /**
+   * The visitor is typing — relayed to the agents watching the thread, along
+   * with what they have written so far.
+   *
+   * The draft is the point: on a live chat an agent can be looking up the order
+   * number before the question finishes arriving, which is the whole difference
+   * between a chat and a contact form. It is never stored — it goes to the
+   * conversation room and is gone.
+   *
+   * The limit is generous because the widget sends one of these under once a
+   * second while somebody types. It is still a limit: this is an unauthenticated
+   * endpoint reachable with any visitor token.
+   */
+  @Throttle({ default: { limit: 240, ttl: 60_000 } })
   @Post("typing")
-  async typing(@Headers("authorization") auth: string | undefined) {
+  async typing(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatTypingInputSchema)) body: NestChatTypingInput,
+  ) {
     const claims = this.nestchat.verifyVisitorToken(bearer(auth));
     if (!claims.conversationId) return { ok: true };
     const contact = await this.store.getContact(claims.contactId);
-    this.realtime.emitTyping(claims.conversationId, contact?.displayName ?? "Visitor", true);
+    this.realtime.emitTyping(
+      claims.conversationId,
+      contact?.displayName ?? "Visitor",
+      true,
+      body.preview,
+    );
     return { ok: true };
   }
 
