@@ -59,6 +59,38 @@ export function typingPingMs(channel: ChannelType): number | null {
   }
 }
 
+/**
+ * The channels the composer offers on an open thread.
+ *
+ * A thread's channel is its identity, but the composer may answer on any channel
+ * the customer is actually reachable on — someone who wrote in by email and gave
+ * us a phone number can be answered on WhatsApp without starting a second
+ * conversation. A group is the exception: a group message goes to the group, so
+ * that is the only place to answer it.
+ *
+ * The thread's own channel is always in the list. Deriving this purely from the
+ * addresses on the contact record dropped it whenever the thread was on a
+ * channel that isn't a phone or an email — a NestChat thread with a customer
+ * whose email we hold offered WhatsApp and Email and no way to reply in the chat
+ * the visitor was sitting in. It hid for as long as visitors stayed anonymous,
+ * because an empty list fell through to the thread's own channel; it appeared
+ * the moment they started telling us who they were.
+ *
+ * Here rather than in each client because both clients had written it out, and
+ * both were wrong in the same way. One list, one place to be right.
+ */
+export function replyTargetsFor(conv: {
+  channel: ChannelType;
+  contact: { phone?: string | null; email?: string | null };
+}): ChannelType[] {
+  if (conv.channel === "whatsapp_group") return [conv.channel];
+  const out: ChannelType[] = [];
+  if (conv.contact.phone) out.push("whatsapp");
+  if (conv.contact.email) out.push("email");
+  if (!out.includes(conv.channel)) out.push(conv.channel);
+  return out;
+}
+
 export const conversationStatusSchema = z.enum(["open", "pending", "snoozed", "closed"]);
 export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 

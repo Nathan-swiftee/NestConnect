@@ -6,7 +6,7 @@ import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
-import { ClientEvent, ServerEvent, FORWARD_MAX_TARGETS, typingPingMs } from "@ding/schemas";
+import { ClientEvent, ServerEvent, FORWARD_MAX_TARGETS, replyTargetsFor, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -2075,16 +2075,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // channel the customer is reachable on, within this one open thread.
   const convIsEmail = conv.channel === "email";
   const isGroup = conv.channel === "whatsapp_group";
-  // Channels this customer can be reached on within this thread (1:1 only).
-  const switchable: ChannelType[] = [];
-  if (!isGroup) {
-    if (conv.contact.phone) switchable.push("whatsapp");
-    if (conv.contact.email) switchable.push("email");
-  }
   // The reply-target channels shown in the composer's mode switcher (before the
-  // Note tab). A group can only be answered on its own channel; a 1:1 lists every
-  // channel the customer is reachable on (falling back to the thread's own).
-  const replyTargets: ChannelType[] = isGroup || switchable.length === 0 ? [conv.channel] : switchable;
+  // Note tab) — shared with the phone so the two can't drift apart on it.
+  const replyTargets: ChannelType[] = replyTargetsFor(conv);
   // Default the composer to the channel the thread most recently used, not the
   // conversation's own channel. Those are the same for most threads and only
   // diverge once someone has actually replied on the other one — which is

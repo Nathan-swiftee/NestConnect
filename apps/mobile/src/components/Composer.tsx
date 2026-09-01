@@ -3,7 +3,7 @@ import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-nati
 import Animated from "react-native-reanimated";
 import { enter, exit, reflow } from "../motion";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { typingPingMs } from "@ding/schemas";
+import { replyTargetsFor, typingPingMs } from "@ding/schemas";
 import {
   api,
   useIntegrations,
@@ -206,17 +206,13 @@ export function Composer({
    *  `selection` fights the Android keyboard's own cursor handling. */
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
 
-  // Which channels this customer is reachable on inside this thread. Mirrors the
-  // web: a group can only be answered in the group; a 1:1 lists every channel we
-  // hold an address for, falling back to the thread's own.
+  // Which channels this customer is reachable on inside this thread — shared
+  // with the web so the phone and the desktop can't drift apart on it.
   const isGroup = conv.channel === "whatsapp_group";
-  const replyTargets = useMemo<ChannelType[]>(() => {
-    if (isGroup) return [conv.channel];
-    const out: ChannelType[] = [];
-    if (conv.contact.phone) out.push("whatsapp");
-    if (conv.contact.email) out.push("email");
-    return out.length ? out : [conv.channel];
-  }, [isGroup, conv.channel, conv.contact.phone, conv.contact.email]);
+  const replyTargets = useMemo<ChannelType[]>(
+    () => replyTargetsFor(conv),
+    [conv.channel, conv.contact.phone, conv.contact.email],
+  );
 
   // Default to the channel the customer last used, not the one the thread was
   // opened on — that's the address they're actually watching.
