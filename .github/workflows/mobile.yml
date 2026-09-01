@@ -1,13 +1,32 @@
 name: Mobile build
 
-# Deliberately manual. A native build takes ~15–25 minutes of EAS queue and burns
-# a build credit, so it should happen when someone wants an installable app —
-# not on every push. Trigger it from the repo's Actions tab (github.com works
+# A native BUILD is deliberately manual: it takes ~15–25 minutes of EAS queue and
+# burns a build credit, so it should happen when someone wants an installable app
+# — not on every push. Trigger it from the repo's Actions tab (github.com works
 # fine from a phone browser); the run's summary links to the build page, where
 # the QR code and install link appear.
 #
+# An UPDATE is not that. It is seconds of work, costs nothing, and reaches phones
+# that already have the app — so it runs on every push that touches the JS the
+# app actually ships. It was manual only because it shares a workflow with the
+# build, and the cost argument for one got applied to the other: what that meant
+# in practice is that a mobile fix could be committed, reviewed, deployed to the
+# web and reported as done while the phone in someone's hand still ran the old
+# code, with nothing anywhere saying so.
+#
 # Requires one repository secret, EXPO_TOKEN — see docs/08-mobile-builds.md.
 on:
+  push:
+    branches: ["**"]
+    paths:
+      # What Metro bundles. A change outside these can't alter the app's JS, and
+      # publishing an identical update just to say we did adds a row to the
+      # updates list that means nothing.
+      - "apps/mobile/**"
+      - "packages/schemas/**"
+      - "packages/client/**"
+      - "packages/design/**"
+      - ".github/workflows/mobile.yml"
   workflow_dispatch:
     inputs:
       mode:
@@ -35,6 +54,12 @@ concurrency:
   # two updates racing onto one channel is a coin flip over which lands last.
   group: mobile-${{ github.ref }}
   cancel-in-progress: false
+
+# A push publishes an update to the preview channel; a dispatch does whatever it
+# was asked to. Read once here so every step below agrees on which it is.
+env:
+  MOBILE_MODE: ${{ github.event_name == 'push' && 'update' || inputs.mode }}
+  MOBILE_PROFILE: ${{ github.event_name == 'push' && 'preview' || inputs.profile }}
 
 jobs:
   mobile:
@@ -78,7 +103,7 @@ jobs:
           echo "text=$MSG" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        if: inputs.mode == 'build'
+        if: env.MOBILE_MODE == 'build'
         working-directory: apps/mobile
         # No `--no-wait`, deliberately, and it used to be there. The argument for
         # it was that the runner shouldn't idle through the queue for a progress
@@ -96,28 +121,35 @@ jobs:
         run: |
           pnpm exec eas build \
             --platform ${{ inputs.platform }} \
-            --profile ${{ inputs.profile }} \
+            --profile ${{ env.MOBILE_PROFILE }} \
             --message "${{ steps.msg.outputs.text }}" \
             --non-interactive
 
       - name: Update
-        if: inputs.mode == 'update'
+        if: env.MOBILE_MODE == 'update'
         working-directory: apps/mobile
         run: |
           # The channel matches the build profile's `channel` in eas.json, so an
           # update published here reaches the builds made with that profile.
           pnpm exec eas update \
-            --channel ${{ inputs.profile }} \
+            --channel ${{ env.MOBILE_PROFILE }} \
             --message "${{ steps.msg.outputs.text }}" \
             --non-interactive
 
       - name: Where to find it
         run: |
-          KIND="${{ inputs.mode == 'build' && 'builds' || 'updates' }}"
+          KIND="${{ env.MOBILE_MODE == 'build' && 'builds' || 'updates' }}"
           {
-            echo "### Mobile ${{ inputs.mode }} started"
+            echo "### Mobile ${{ env.MOBILE_MODE }} started"
             echo
             echo "Watch it — and get the install link / QR code — at:"
             echo
             echo "<https://expo.dev/accounts/swiftee/projects/nest-connect/$KIND>"
+            echo
+            if [ "$KIND" = "updates" ]; then
+              echo "It reaches an installed app the next time that app is opened."
+              echo "A native build only picks up updates published for its own"
+              echo "runtime version, so if this one doesn't appear, the app in"
+              echo "your hand needs rebuilding rather than updating."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

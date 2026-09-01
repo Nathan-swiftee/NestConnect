@@ -227,19 +227,31 @@ Set on the EAS project (`eas secret:create`), not in the repo:
 
 ### 3.4 Everyday builds — from GitHub, no terminal
 
-<https://github.com/Nathan-swiftee/Chat/actions/workflows/mobile.yml> → **Run
-workflow**. Pick the branch, then:
+**JS changes ship by themselves.** A push that touches `apps/mobile/`,
+`packages/schemas/`, `packages/client/` or `packages/design/` publishes an EAS
+update to the `preview` channel, and installed apps pick it up on next launch.
+Nothing to run. This is the mobile half of what Railway already does for the web,
+and it exists because the alternative had a failure mode nobody could see: a fix
+could be committed, verified, deployed to the web and reported as done while the
+phone in your hand still ran the old code, with nothing anywhere saying so.
+
+**Native builds stay manual**, because one costs a credit and ~20 minutes of
+queue. <https://github.com/Nathan-swiftee/Chat/actions/workflows/mobile.yml> →
+**Run workflow**. Pick the branch, then:
 
 | Option | What to pick |
 |---|---|
-| **mode** | `build` for a new installable app; `update` to push JS-only changes |
+| **mode** | `build` for a new installable app; `update` to re-publish JS on demand |
 | **platform** | `android`, `ios`, or `all` |
 | **profile** | `preview` for an install-it-yourself APK; `production` for a store build |
 
-The run finishes in a couple of minutes — it does **not** sit and wait for the
-build, because EAS is building it server-side regardless and holding a GitHub
-runner idle for 20 minutes tells you nothing the build page doesn't. The run's
-summary links to
+A `build` run **waits** for EAS to finish, so a failed build turns the run red.
+It used to return as soon as the job was accepted, which meant a build that
+failed twenty minutes later left a green tick behind it — a signal that is worse
+than none, because people believe it. The build page URL is printed near the
+start of the log, so you can watch it without waiting for the run.
+
+The run's summary links to
 <https://expo.dev/accounts/swiftee/projects/nest-connect/builds>, where the
 build shows its progress and then offers a **QR code and an install link**. That
 link is shareable: anyone you send it to installs the same build.
@@ -253,24 +265,35 @@ Reckon on 15–25 minutes including queue time.
 rather than a personal login: it isn't tied to anyone's 2FA, it survives a
 password change, and it can be revoked on its own.
 
-#### `update` is usually the one you want
+#### When a push isn't enough — reach for `build`
 
-Most changes to this app are JavaScript — a screen, a component, some copy. Those
-need no new binary. `mode: update` publishes to EAS Update and every installed
-build on that channel picks it up **on next launch**, in seconds, no reinstall.
-
-Reach for `build` only when something native changed:
+Most changes to this app are JavaScript — a screen, a component, some copy —
+and those now ship on push, as above. A new binary is needed only when something
+*native* changed:
 
 - a new dependency with native code
 - a change to `app.json` / `app.config.ts` — permissions, icons, bundle id, plugins
 - an Expo SDK upgrade
-- the app version — `runtimeVersion` follows it (policy: `appVersion`), so bumping
-  the version means existing installs stop accepting updates until rebuilt
 
-When in doubt, `update` is safe: if the change really did need native code, the
-update simply won't contain it. It can't break an install.
+**How to tell, without guessing.** `runtimeVersion` uses the `fingerprint`
+policy: a hash of the native side — config, native modules, the dependency map —
+and *not* of `src/`. An update only reaches an installed app whose runtime
+version matches, so the question "does this need a rebuild?" has an exact answer:
 
-#### Why it's manual rather than on every push
+```sh
+cd apps/mobile && npx @expo/fingerprint .    # compare before and after your change
+```
+
+Same hash → the update reaches the app you already have. Different hash → the
+update is published against a runtime version nothing has installed, it lands
+nowhere, and the app needs rebuilding. Note this needs `node_modules` present:
+run it in a tree you've installed, or the dependency map differs for that reason
+alone and every comparison says "rebuild".
+
+Bumping the app version alone does **not** break updates under this policy —
+that was true under `appVersion` and isn't here.
+
+#### Why builds are manual rather than on every push
 
 A build costs a credit and ~20 minutes of queue. Firing one per commit spends
 both on changes nobody is waiting to install. `ci.yml` already bundles the app on
@@ -278,6 +301,10 @@ every push, which is what actually catches breakage — the build is for when yo
 want the app in your hand. The workflow re-runs that bundle check first, because
 catching a Metro resolution break in 40 seconds beats catching it after 20
 minutes of queue (see 3.0 — that failure mode is not hypothetical here).
+
+That reasoning is about *builds* and was once applied to updates too, purely
+because they share a workflow. An update costs nothing and takes seconds, so it
+now runs on push; only the build still waits to be asked.
 
 ### 3.5 Submitting to the stores — still a terminal job
 
