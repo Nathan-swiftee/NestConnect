@@ -1681,6 +1681,34 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   </div>
                 </label>
               </div>
+              <label className={"check" + (draft.appearance.headerGradient ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.appearance.headerGradient}
+                  onChange={(e) => set("headerGradient", e.target.checked)}
+                />
+                Run the header as a gradient
+              </label>
+              {draft.appearance.headerGradient && (
+                <label className="field">
+                  <span>
+                    Gradient runs to <em>The header only — buttons and bubbles stay flat</em>
+                  </span>
+                  <div className="ncw__colour">
+                    <input
+                      type="color"
+                      value={draft.appearance.accentTo}
+                      onChange={(e) => set("accentTo", e.target.value)}
+                      aria-label="Second colour"
+                    />
+                    <input
+                      value={draft.appearance.accentTo}
+                      onChange={(e) => set("accentTo", e.target.value)}
+                      spellCheck={false}
+                    />
+                  </div>
+                </label>
+              )}
               <div className="setform__grid two">
                 <label className="field">
                   <span>Theme</span>
@@ -2055,7 +2083,15 @@ function NestChatPreview({
   return (
     <div
       className={"ncprev" + (dark ? " ncprev--dark" : "")}
-      style={{ ["--pv-accent" as string]: appearance.accent, ["--pv-on" as string]: appearance.accentText }}
+      style={{
+        ["--pv-accent" as string]: appearance.accent,
+        ["--pv-on" as string]: appearance.accentText,
+        // Same rule the widget uses: the header takes the gradient, everything
+        // else keeps the flat accent.
+        ["--pv-head" as string]: appearance.headerGradient
+          ? `linear-gradient(135deg, ${appearance.accent}, ${appearance.accentTo})`
+          : appearance.accent,
+      }}
       aria-hidden="true"
     >
       <div className="ncprev__head">

@@ -83,10 +83,38 @@ function applyAppearance(a: NestChatAppearance): void {
   const root = document.documentElement;
   root.style.setProperty("--accent", a.accent);
   root.style.setProperty("--accent-text", a.accentText);
+  // The header's own fill: one colour, or a gradient travelling across it.
+  // Everything else in the widget keeps the flat accent.
+  root.style.setProperty(
+    "--head-bg",
+    a.headerGradient ? `linear-gradient(135deg, ${a.accent}, ${a.accentTo})` : a.accent,
+  );
+  /*
+   * What the overlapping faces are ringed in.
+   *
+   * A flat header can ring them in its own colour, which makes the overlap read
+   * as cut out of the surface. A gradient has no single colour to cut out of —
+   * the ring would match at one end of the header and be visibly wrong at the
+   * other — so it becomes a soft outline in the header's own text colour, which
+   * is right at both ends and is what the gradient messengers do.
+   */
+  root.style.setProperty("--head-ring", a.headerGradient ? withAlpha(a.accentText, 0.4) : a.accent);
   const dark =
     a.theme === "dark" ||
     (a.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   root.dataset.theme = dark ? "dark" : "light";
+}
+
+/**
+ * A validated `#rgb`/`#rrggbb` as `rgba(...)`, so a colour the business chose
+ * can be used at partial strength without a second setting for it.
+ */
+function withAlpha(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = Number.parseInt(full, 16);
+  if (!Number.isFinite(n)) return hex;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 /**
@@ -591,6 +619,11 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
 
   return (
     <div className="nc" ref={rootRef}>
+      {/* Stacked rather than side by side: the faces get a line of their own,
+          the title sits under them at a size worth reading, and the header has
+          the height a gradient needs to actually travel across. It is the shape
+          every modern messenger has landed on, and it is the difference between
+          a title bar and somewhere a person answers. */}
       <header className="nc__head">
         {team?.faces.length ? (
           /* Who is behind the counter. Overlapped left-to-right with the first
@@ -662,7 +695,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         {gated ? (
           <div className="nc__prechat">
             {/* What they need, then who they are.
-                
+
                 The menu goes first because it is the question the visitor came
                 with an answer to: "billing" costs one tap and is the thing that
                 decides who picks this up. Name and email are our questions, not

@@ -896,6 +896,18 @@ export const nestchatAppearanceSchema = z.object({
    *  needs dark text and we can't guess which without a contrast calculation
    *  the business may disagree with. */
   accentText: hexColor.default("#ffffff"),
+  /**
+   * Run the header as a gradient from `accent` to `accentTo`.
+   *
+   * Off by default, and only the header: the launcher, the send button and the
+   * visitor's own bubbles stay flat. A gradient is a surface — it wants room to
+   * travel and reads as depth across a header-sized block. On a 26px button it
+   * is two colours fighting in a space too small to tell them apart.
+   */
+  headerGradient: z.boolean().default(false),
+  /** The far end of that gradient. Ignored while `headerGradient` is off, so it
+   *  keeps a sensible value to switch on rather than turning the header black. */
+  accentTo: hexColor.default("#7c3aed"),
   /** "auto" follows the visitor's own OS preference. */
   theme: z.enum(["light", "dark", "auto"]).default("light"),
   title: z.string().max(60).default("Chat with us"),
