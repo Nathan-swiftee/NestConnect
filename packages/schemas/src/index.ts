@@ -930,6 +930,177 @@ export type NestChatAppearance = z.infer<typeof nestchatAppearanceSchema>;
 /** The appearance every new NestChat channel starts with. */
 export const DEFAULT_NESTCHAT_APPEARANCE: NestChatAppearance = nestchatAppearanceSchema.parse({});
 
+/* ---- who we're talking to, and who should answer ---- */
+
+/**
+ * One field on the pre-chat form.
+ *
+ * Two booleans rather than one tri-state, because "we ask but you may skip" is
+ * a real and common choice: an optional email converts better than a required
+ * one, and a business that wants the address more than the conversation can say
+ * so. `required` is meaningless while `enabled` is false, and the widget reads
+ * it that way.
+ */
+export const nestchatFieldSchema = z.object({
+  enabled: z.boolean(),
+  required: z.boolean(),
+});
+export type NestChatField = z.infer<typeof nestchatFieldSchema>;
+
+/**
+ * What we ask before the conversation starts.
+ *
+ * Off by default: this is a gate in front of a chat widget, and adding one to
+ * every existing channel because we shipped the feature would quietly cost
+ * businesses conversations they were having yesterday.
+ *
+ * Asking *before* the first message rather than after it is the whole point.
+ * The details are what let us find the customer we already know, and finding
+ * them before the conversation exists means it is created against their record
+ * — with their history, their owner and their name in the agent's queue —
+ * rather than against `Visitor 4f2a1c` and merged afterwards.
+ */
+export const nestchatPreChatSchema = z.object({
+  enabled: z.boolean().default(false),
+  intro: z
+    .string()
+    .max(200)
+    .default("Tell us who you are and we’ll get you to the right person."),
+  nameLabel: z.string().max(60).default("Your name"),
+  emailLabel: z.string().max(60).default("Email"),
+  phoneLabel: z.string().max(60).default("Phone"),
+  submitLabel: z.string().max(40).default("Start chat"),
+  /** A way out when nothing on the form is required — so a visitor with a quick
+   *  question isn't made to fill in a form to ask it. */
+  skipLabel: z.string().max(40).default("Skip"),
+  name: nestchatFieldSchema.default({ enabled: true, required: true }),
+  email: nestchatFieldSchema.default({ enabled: true, required: true }),
+  phone: nestchatFieldSchema.default({ enabled: false, required: false }),
+});
+export type NestChatPreChat = z.infer<typeof nestchatPreChatSchema>;
+export const DEFAULT_NESTCHAT_PRECHAT: NestChatPreChat = nestchatPreChatSchema.parse({});
+
+/**
+ * One thing a visitor can say they are here about, and the team that answers it.
+ *
+ * This is the widget's version of "press 1 for sales" — except that unlike a
+ * phone menu it costs the visitor one tap and tells us something we would
+ * otherwise have to read a paragraph to learn.
+ */
+export const nestchatRoutingOptionSchema = z.object({
+  /**
+   * Minted when the option is created and never reused.
+   *
+   * Its own id rather than the label, because the label is what a visitor's
+   * signed token would then carry — and renaming "Sales" to "New business"
+   * would strand everyone who picked it and hadn't written yet.
+   */
+  id: z.string().min(1).max(40),
+  label: z.string().min(1).max(60),
+  description: z.string().max(120).optional(),
+  /** An emoji for the chip. Deliberately not an icon key: this is drawn on
+   *  somebody else's website, where our icon set doesn't exist. */
+  icon: z.string().max(8).optional(),
+  /**
+   * The team that answers it.
+   *
+   * Constrained to the channel's own teams (`inbox.teamIds`), checked where it
+   * is saved rather than here — the schema can't see the channel. That
+   * constraint is not bureaucracy: the widget's header shows the faces of the
+   * teams a channel routes to, so an option pointing somewhere else would
+   * promise a visitor one team and hand them to another.
+   */
+  teamId: z.string().min(1),
+});
+export type NestChatRoutingOption = z.infer<typeof nestchatRoutingOptionSchema>;
+
+/** Enough for a real menu, few enough to stay a row of chips rather than a form
+ *  the visitor has to read. */
+export const NESTCHAT_MAX_ROUTING_OPTIONS = 8;
+
+export const nestchatRoutingSchema = z.object({
+  enabled: z.boolean().default(false),
+  prompt: z.string().max(120).default("What can we help with?"),
+  /** Whether a choice is needed before they can start. Optional is a real
+   *  configuration: a menu can be a shortcut rather than a toll gate. */
+  required: z.boolean().default(true),
+  options: z
+    .array(nestchatRoutingOptionSchema)
+    .max(NESTCHAT_MAX_ROUTING_OPTIONS)
+    .default([]),
+});
+export type NestChatRouting = z.infer<typeof nestchatRoutingSchema>;
+export const DEFAULT_NESTCHAT_ROUTING: NestChatRouting = nestchatRoutingSchema.parse({});
+
+/**
+ * A routing option as a *visitor* may see it.
+ *
+ * The team id is absent, and that is the entire reason this type exists. The
+ * widget runs on somebody else's website behind a public key; which internal
+ * team answers "Billing" is org structure, and a visitor picking an option
+ * doesn't need it to pick one.
+ */
+export const nestchatPublicOptionSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+});
+export type NestChatPublicOption = z.infer<typeof nestchatPublicOptionSchema>;
+
+export const nestchatPublicRoutingSchema = z.object({
+  prompt: z.string(),
+  required: z.boolean(),
+  options: z.array(nestchatPublicOptionSchema),
+});
+export type NestChatPublicRouting = z.infer<typeof nestchatPublicRoutingSchema>;
+
+/**
+ * Project a channel's routing menu down to what a visitor may see.
+ *
+ * Built field by field on purpose, like `toVisitorMessage`: this crosses into
+ * an unauthenticated stranger's browser on somebody else's website, and
+ * `teamId` — which every option carries — is internal org structure that tells
+ * them nothing they need in order to press a button. A field added to the
+ * option type later cannot leak by default.
+ *
+ * Options naming a team the channel no longer routes to are dropped rather than
+ * shown: picking one would silently land the visitor in the default queue,
+ * having been told they'd reached somebody in particular.
+ *
+ * Returns undefined for a menu that is off, or that has nothing left in it, so
+ * the widget's question stays "is there a menu?" rather than "is there a menu
+ * with anything in it?".
+ */
+export function toPublicRouting(
+  routing: NestChatRouting,
+  teamIds: string[],
+): NestChatPublicRouting | undefined {
+  if (!routing.enabled) return undefined;
+  const options = routing.options
+    .filter((o) => teamIds.includes(o.teamId))
+    .map((o) => ({ id: o.id, label: o.label, description: o.description, icon: o.icon }));
+  if (!options.length) return undefined;
+  return { prompt: routing.prompt, required: routing.required, options };
+}
+
+/**
+ * Put the visitor's name into a line the business wrote — "Hi {name} 👋".
+ *
+ * Shared rather than written twice because the settings preview has to agree
+ * with the widget about what the admin is going to get, down to the spacing.
+ *
+ * A missing name leaves the sentence still readable: the token goes, and the
+ * space it leaves behind goes with it, so "Hi {name} 👋" reads "Hi 👋" for a
+ * visitor who never gave one rather than "Hi  👋". Only the first name is used
+ * — a greeting that says "Hi Nathan Amos" reads like a letter from a bank.
+ */
+export function fillVisitorName(text: string, name?: string): string {
+  const first = (name ?? "").trim().split(/\s+/)[0] ?? "";
+  if (!first) return text.replace(/\s*\{name\}/g, "").replace(/\s{2,}/g, " ").trim();
+  return text.replace(/\{name\}/g, first);
+}
+
 /**
  * One of the people who answers this chat, as a visitor may see them.
  *
@@ -965,6 +1136,19 @@ export const nestchatSettingsSchema = z.object({
   /** Public id in the embed snippet. Identifies the inbox; authorises nothing. */
   widgetKey: z.string(),
   appearance: nestchatAppearanceSchema,
+  preChat: nestchatPreChatSchema,
+  routing: nestchatRoutingSchema,
+  /**
+   * The teams this channel routes to — the only teams a routing option may
+   * name, so the pane can offer exactly those and no more.
+   *
+   * Sent with the settings rather than fetched separately because the pane
+   * needs the *intersection* of the org's teams and this channel's, and the
+   * channel is the half only the server knows without another round trip.
+   */
+  teams: z
+    .array(z.object({ id: z.string(), name: z.string(), icon: z.string().nullable().optional() }))
+    .default([]),
   /** Ready-to-paste URLs, resolved against the deployment's own public URL so
    *  the snippet is correct without the admin knowing where we're hosted. */
   embedUrl: z.string(),
@@ -975,8 +1159,22 @@ export const nestchatSettingsSchema = z.object({
 });
 export type NestChatSettings = z.infer<typeof nestchatSettingsSchema>;
 
+/**
+ * A settings save.
+ *
+ * `appearance` is a patch, as it always was — it is a flat bag of independent
+ * strings and toggles, and merging one key over the rest is well defined.
+ *
+ * `preChat` and `routing` are replaced whole. They contain a list and nested
+ * objects, and "merge" has no honest meaning for those: patching an array of
+ * routing options can't express a deletion, and a caller who sent one option
+ * would find the other seven still there. The pane holds the whole structure
+ * anyway, so sending it costs nothing and removes the ambiguity.
+ */
 export const updateNestchatInputSchema = z.object({
-  appearance: nestchatAppearanceSchema.partial(),
+  appearance: nestchatAppearanceSchema.partial().optional(),
+  preChat: nestchatPreChatSchema.optional(),
+  routing: nestchatRoutingSchema.optional(),
 });
 export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
 
@@ -990,6 +1188,17 @@ export const nestchatConfigSchema = z.object({
   online: z.boolean(),
   /** The team behind this channel: a few faces, and how many there are in all. */
   team: nestchatTeamSchema.optional(),
+  /**
+   * The form to show before the first message, when the business asked for one.
+   *
+   * Absent rather than disabled when it is off: the widget's question is "is
+   * there a form?", and a channel that doesn't want one shouldn't ship six
+   * labels to every visitor's browser to say so.
+   */
+  preChat: nestchatPreChatSchema.optional(),
+  /** The menu of things a visitor can say they're here about. Absent when the
+   *  channel has no menu, or has one with nothing in it. */
+  routing: nestchatPublicRoutingSchema.optional(),
 });
 export type NestChatConfig = z.infer<typeof nestchatConfigSchema>;
 
@@ -1100,6 +1309,47 @@ export const nestchatIdentifyResultSchema = z.object({
   token: z.string().optional(),
 });
 export type NestChatIdentifyResult = z.infer<typeof nestchatIdentifyResultSchema>;
+
+/**
+ * The pre-chat form, submitted.
+ *
+ * Everything `identify` takes, plus which option they picked — one call rather
+ * than two, because these are answers to one form and half-applying them (the
+ * name saved, the routing lost) would put a visitor in front of the wrong team
+ * under their own name.
+ */
+export const nestchatStartInputSchema = z.object({
+  name: z.string().max(80).optional(),
+  email: z.string().email().max(200).optional(),
+  phone: z.string().max(40).optional(),
+  /** The id of the routing option they chose, if the channel offers a menu. */
+  optionId: z.string().max(40).optional(),
+});
+export type NestChatStartInput = z.infer<typeof nestchatStartInputSchema>;
+
+/**
+ * What the form produced.
+ *
+ * Extends the identify result because the identity half is literally the same
+ * operation — including the reissued `token`, which here does double duty: it
+ * carries the surviving contact after a merge AND the routing choice, so the
+ * choice survives a reload and can't be swapped by editing a later request.
+ */
+export const nestchatStartResultSchema = nestchatIdentifyResultSchema.extend({
+  /**
+   * The chosen option, echoed back after the server has checked it is really
+   * one of this channel's.
+   *
+   * Echoed rather than assumed because the server is the one that decides: an
+   * option removed while a visitor sat with the widget open resolves to
+   * nothing, and the widget should show what will actually happen.
+   */
+  option: z.object({ id: z.string(), label: z.string() }).optional(),
+  /** The faces of the team that will now answer, so the header can narrow from
+   *  "everyone here" to "the people who handle billing". */
+  team: nestchatTeamSchema.optional(),
+});
+export type NestChatStartResult = z.infer<typeof nestchatStartResultSchema>;
 
 export const createTeamInputSchema = z.object({
   name: z.string().min(1),

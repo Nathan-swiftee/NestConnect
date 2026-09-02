@@ -59,6 +59,8 @@ infra/
 | `pnpm dev` | Run schemas (watch) + API + web together |
 | `pnpm build` | Build every package (Turbo) |
 | `pnpm typecheck` | Type-check every package |
+| `pnpm check:threading` | Assert where an inbound message lands (see `tools/`) |
+| `pnpm check:routing` | Assert which team a new conversation is assigned to |
 | `pnpm db:up` / `pnpm db:down` | Start / stop local Postgres + Redis |
 | `pnpm db:migrate` / `pnpm db:seed` | Create schema / load demo data |
 

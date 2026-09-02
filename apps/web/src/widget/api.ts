@@ -3,6 +3,8 @@ import type {
   NestChatIdentifyResult,
   NestChatMessage,
   NestChatSession,
+  NestChatStartInput,
+  NestChatStartResult,
 } from "@ding/schemas";
 import { TYPING_PREVIEW_MAX } from "@ding/schemas";
 
@@ -54,6 +56,21 @@ export function fetchMessages(token: string): Promise<{ messages: NestChatMessag
   return fetch(`${base}/messages`, { headers: { Authorization: `Bearer ${token}` } }).then(
     json<{ messages: NestChatMessage[] }>,
   );
+}
+
+/**
+ * Submit the pre-chat form: who they are, and what they're here about.
+ *
+ * Not fire-and-forget, unlike the receipts below — the answer decides which
+ * team the conversation goes to and carries the token that says so, and a
+ * visitor whose form silently failed would be typing to nobody in particular.
+ */
+export function start(token: string, input: NestChatStartInput): Promise<NestChatStartResult> {
+  return fetch(`${base}/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  }).then(json<NestChatStartResult>);
 }
 
 export function identify(

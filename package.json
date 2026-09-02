@@ -12,6 +12,7 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "check:threading": "tsx tools/check-threading.ts",
+    "check:routing": "tsx tools/check-routing.ts",
     "check:hooks": "node tools/check-hook-order.mjs",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",

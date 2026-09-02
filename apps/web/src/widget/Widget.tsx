@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import type { NestChatAppearance, NestChatConfig, NestChatMessage } from "@ding/schemas";
-import { TYPING_PREVIEW_MS } from "@ding/schemas";
+import type {
+  NestChatAppearance,
+  NestChatConfig,
+  NestChatMessage,
+  NestChatPreChat,
+  NestChatPublicRouting,
+} from "@ding/schemas";
+import { fillVisitorName, TYPING_PREVIEW_MS } from "@ding/schemas";
 import {
   attachmentUrl,
   fetchConfig,
@@ -10,16 +16,29 @@ import {
   pingTyping,
   reportRead,
   sendMessage,
+  start,
   streamUrl,
 } from "./api";
+import { gateFor } from "./prechat";
 
-/** Where this browser's visitor id lives between visits. Scoped per widget key
- *  so two businesses embedding us on the same domain don't share an identity. */
-const storageKey = (widgetKey: string) => `nestchat:visitor:${widgetKey}`;
+/**
+ * What this browser remembers between visits, per widget key — so two
+ * businesses embedding us on the same domain don't share an identity.
+ *
+ * Three slots, and what is *not* among them is the point: `visitor` (the
+ * browser's own id), `name` (so the greeting can use it and the visitor can see
+ * who we think they are), and `identified` (whether the pre-chat form has been
+ * answered). The email and phone are deliberately never stored. Prefilling a
+ * form from them would hand the next person on a shared machine somebody else's
+ * address, and the form isn't shown again anyway once `identified` is set.
+ */
+type Slot = "visitor" | "name" | "identified";
 
-function readVisitorId(widgetKey: string): string | undefined {
+const storageKey = (widgetKey: string, slot: Slot) => `nestchat:${slot}:${widgetKey}`;
+
+function readLocal(widgetKey: string, slot: Slot): string | undefined {
   try {
-    return localStorage.getItem(storageKey(widgetKey)) ?? undefined;
+    return localStorage.getItem(storageKey(widgetKey, slot)) ?? undefined;
   } catch {
     // Private mode, or a browser set to block site data. A visitor without a
     // remembered id simply starts a fresh chat, which is a working widget.
@@ -27,11 +46,19 @@ function readVisitorId(widgetKey: string): string | undefined {
   }
 }
 
-function writeVisitorId(widgetKey: string, id: string): void {
+function writeLocal(widgetKey: string, slot: Slot, value: string): void {
   try {
-    localStorage.setItem(storageKey(widgetKey), id);
+    localStorage.setItem(storageKey(widgetKey, slot), value);
   } catch {
-    /* see readVisitorId */
+    /* see readLocal */
+  }
+}
+
+function clearLocal(widgetKey: string, slot: Slot): void {
+  try {
+    localStorage.removeItem(storageKey(widgetKey, slot));
+  } catch {
+    /* see readLocal */
   }
 }
 
@@ -116,6 +143,30 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   const [team, setTeam] = useState<NestChatConfig["team"]>();
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+
+  /* ---- the pre-chat form ---- */
+
+  const [preChat, setPreChat] = useState<NestChatPreChat>();
+  const [routing, setRouting] = useState<NestChatPublicRouting>();
+  /** Their name, as they gave it — for the greeting, and so they can see who we
+   *  think they are before they start typing to us. */
+  const [visitorName, setVisitorName] = useState(() => readLocal(widgetKey, "name"));
+  /**
+   * Whether this browser has already answered the identity half.
+   *
+   * Remembered across visits, unlike the routing choice below: who you are
+   * doesn't change between conversations, and what you need doesn't stay the
+   * same. Somebody coming back next week should be asked what it's about, not
+   * asked their name again.
+   */
+  const [identified, setIdentified] = useState(() => readLocal(widgetKey, "identified") === "1");
+  const [form, setForm] = useState({ name: "", email: "", phone: "" });
+  const [optionId, setOptionId] = useState<string>();
+  const [chosen, setChosen] = useState<{ id: string; label: string }>();
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState<string>();
+  /** They're through the form — by answering it, or by skipping it. */
+  const [startDone, setStartDone] = useState(false);
   /** What we told them we saved — the confirmation that used to be missing. */
   const [detailsSaved, setDetailsSaved] = useState<{ linked: boolean } | null>(null);
   const [detailsError, setDetailsError] = useState(false);
@@ -144,10 +195,12 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         setAppearance(config.appearance);
         setOnline(config.online);
         setTeam(config.team);
+        setPreChat(config.preChat);
+        setRouting(config.routing);
 
-        const session = await openSession(widgetKey, { visitorId: readVisitorId(widgetKey) });
+        const session = await openSession(widgetKey, { visitorId: readLocal(widgetKey, "visitor") });
         if (!alive) return;
-        writeVisitorId(widgetKey, session.visitorId);
+        writeLocal(widgetKey, "visitor", session.visitorId);
         setToken(session.token);
         setLive(session.hasConversation);
         setMessages(session.messages);
@@ -228,12 +281,15 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
       void fetchConfig(widgetKey)
         .then((c) => {
           setOnline(c.online);
-          setTeam(c.team);
+          // Not once they've chosen: the header has been narrowed to the team
+          // that is actually going to answer them, and the channel-wide list
+          // this returns would quietly widen it back every minute.
+          if (!chosen) setTeam(c.team);
         })
         .catch(() => {});
     }, 60_000);
     return () => clearInterval(id);
-  }, [phase, widgetKey]);
+  }, [phase, widgetKey, chosen]);
 
   /* ---- receipts: what the agent's ticks are made of ---- */
 
@@ -343,6 +399,97 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     }, wait);
   };
 
+  /* ---- the pre-chat form ---- */
+
+  /**
+   * Submit it — or skip it.
+   *
+   * One call, not one per answer: these are answers to a single form, and
+   * half-applying them (the name saved, the routing lost) would put somebody in
+   * front of the wrong team under their own name.
+   */
+  const startChat = useCallback(
+    async (skip = false) => {
+      if (!token || starting) return;
+      const name = skip ? "" : form.name.trim();
+      const mail = skip ? "" : form.email.trim();
+      const tel = skip ? "" : form.phone.trim();
+
+      // Skipped a form that asked nothing we have to record. There is no call
+      // to make, so don't make one — just open the composer.
+      if (!name && !mail && !tel && !optionId) {
+        setStartDone(true);
+        return;
+      }
+
+      setStarting(true);
+      setStartError(undefined);
+      try {
+        const res = await start(token, {
+          name: name || undefined,
+          email: mail || undefined,
+          phone: tel || undefined,
+          optionId,
+        });
+        // A match merged this visitor onto a customer we already had, which
+        // deletes the contact the old token named — take the new one. It also
+        // carries the routing choice, so this is never optional here.
+        if (res.token) setToken(res.token);
+        if (res.team) setTeam(res.team);
+        if (res.option) setChosen(res.option);
+        if (name) {
+          setVisitorName(name);
+          writeLocal(widgetKey, "name", name);
+        }
+        // Only when they actually answered it. A skipped form is "not now",
+        // not "asked and done", and should come back next time.
+        if (!skip && (name || mail || tel)) {
+          setIdentified(true);
+          writeLocal(widgetKey, "identified", "1");
+        }
+        setStartDone(true);
+      } catch {
+        setStartError("That didn’t go through — check your details and try again.");
+      } finally {
+        setStarting(false);
+      }
+    },
+    [token, starting, form, optionId, widgetKey],
+  );
+
+  /**
+   * "Not you?" — hand the widget back to whoever is actually sitting there.
+   *
+   * The browser id goes with the name, and a fresh session is opened against a
+   * new one. Anything less would leave the next person's messages landing on
+   * the previous person's customer record, which on a shared machine is the
+   * whole reason somebody would press this.
+   *
+   * Only offered before the first message, so there is never a live thread to
+   * lose on the way.
+   */
+  const forgetMe = useCallback(async () => {
+    for (const slot of ["visitor", "name", "identified"] as const) clearLocal(widgetKey, slot);
+    setVisitorName(undefined);
+    setIdentified(false);
+    setStartDone(false);
+    setChosen(undefined);
+    setOptionId(undefined);
+    setForm({ name: "", email: "", phone: "" });
+    setMessages([]);
+    setLive(false);
+    setStartError(undefined);
+    try {
+      const session = await openSession(widgetKey, {});
+      writeLocal(widgetKey, "visitor", session.visitorId);
+      setToken(session.token);
+      setLive(session.hasConversation);
+      setMessages(session.messages);
+    } catch {
+      setPhase("unavailable");
+    }
+  }, [widgetKey]);
+
   const saveDetails = () => {
     const e = email.trim();
     const p = phone.trim();
@@ -364,8 +511,27 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     return <div className="nc__state">This chat isn’t available right now.</div>;
   }
 
+  /* ---- what the visitor still has to answer ---- */
+
+  const hasThread = live || messages.length > 0;
+  const { wantsIdentity, wantsOption, gated, emailTypo, blocked, canSkip } = gateFor({
+    preChat,
+    routing,
+    identified,
+    chosen: Boolean(chosen),
+    hasThread,
+    startDone,
+    form,
+    optionId,
+    starting,
+  });
+
+  // The card inside the thread is the *other* way of asking for details, for
+  // channels that don't put a form in front of the chat. A channel that has a
+  // pre-chat form has already asked, and asking twice reads as the first one
+  // having failed.
   const asking =
-    (appearance.askEmail || appearance.askPhone) && !detailsSaved && messages.length > 0;
+    !preChat && (appearance.askEmail || appearance.askPhone) && !detailsSaved && messages.length > 0;
 
   // The last thing the visitor themselves said — the only bubble a "Seen"
   // belongs under, and only once an agent has actually read it.
@@ -427,7 +593,132 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
 
       <div className="nc__thread" ref={threadRef}>
         {messages.length === 0 && appearance.greeting ? (
-          <div className="nc__greeting">{appearance.greeting}</div>
+          <div className="nc__greeting">{fillVisitorName(appearance.greeting, visitorName)}</div>
+        ) : null}
+
+        {/* Who we think they are, while it can still be corrected. Offered only
+            before the first message: after that there is a thread on this
+            person's record, and "not you?" would be an offer to abandon it. */}
+        {visitorName && !hasThread ? (
+          <div className="nc__asme">
+            Chatting as {visitorName.split(/\s+/)[0]}
+            <button type="button" onClick={() => void forgetMe()}>
+              Not you?
+            </button>
+          </div>
+        ) : null}
+
+        {gated ? (
+          <div className="nc__prechat">
+            {wantsIdentity && preChat ? (
+              <>
+                {preChat.intro ? <p className="nc__prechatintro">{preChat.intro}</p> : null}
+                {preChat.name.enabled ? (
+                  <label className="nc__pcfield">
+                    <span>
+                      {preChat.nameLabel}
+                      {preChat.name.required ? null : <em> (optional)</em>}
+                    </span>
+                    <input
+                      type="text"
+                      autoComplete="name"
+                      value={form.name}
+                      placeholder="Your name"
+                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                    />
+                  </label>
+                ) : null}
+                {preChat.email.enabled ? (
+                  <label className="nc__pcfield">
+                    <span>
+                      {preChat.emailLabel}
+                      {preChat.email.required ? null : <em> (optional)</em>}
+                    </span>
+                    <input
+                      type="email"
+                      autoComplete="email"
+                      value={form.email}
+                      placeholder="you@example.com"
+                      aria-invalid={emailTypo || undefined}
+                      onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                    />
+                    {emailTypo ? (
+                      <small className="nc__pcerr">That doesn’t look like an email address.</small>
+                    ) : null}
+                  </label>
+                ) : null}
+                {preChat.phone.enabled ? (
+                  <label className="nc__pcfield">
+                    <span>
+                      {preChat.phoneLabel}
+                      {preChat.phone.required ? null : <em> (optional)</em>}
+                    </span>
+                    <input
+                      type="tel"
+                      autoComplete="tel"
+                      value={form.phone}
+                      placeholder="+44 7700 900123"
+                      onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                    />
+                  </label>
+                ) : null}
+              </>
+            ) : null}
+
+            {wantsOption && routing ? (
+              /* Buttons in a group rather than a <select>: there are at most
+                 eight, they are the most important question on the form, and a
+                 dropdown on a phone is a modal sheet to answer something that
+                 should cost one tap. */
+              <div
+                className="nc__options"
+                role="group"
+                aria-label={routing.prompt}
+              >
+                <p className="nc__optionsq">{routing.prompt}</p>
+                {routing.options.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    className={optionId === o.id ? "nc__option on" : "nc__option"}
+                    aria-pressed={optionId === o.id}
+                    onClick={() => setOptionId(o.id)}
+                  >
+                    {o.icon ? (
+                      <span className="nc__optionicon" aria-hidden="true">
+                        {o.icon}
+                      </span>
+                    ) : null}
+                    <span className="nc__optiontext">
+                      <b>{o.label}</b>
+                      {o.description ? <small>{o.description}</small> : null}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {startError ? <p className="nc__askerr">{startError}</p> : null}
+
+            <button
+              type="button"
+              className="nc__prechatgo"
+              disabled={blocked}
+              onClick={() => void startChat()}
+            >
+              {starting ? "Starting…" : preChat?.submitLabel || "Start chat"}
+            </button>
+            {canSkip ? (
+              <button
+                type="button"
+                className="nc__prechatskip"
+                onClick={() => void startChat(true)}
+                disabled={starting}
+              >
+                {preChat?.skipLabel || "Skip"}
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {messages.map((m, i) => {
@@ -553,6 +844,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         ) : null}
       </div>
 
+      {/* Hidden rather than disabled while the form is up: a greyed-out message
+          box next to a form reads as something broken, and the form is the only
+          thing to do. */}
+      {gated ? null : (
       <div className="nc__composer">
         <textarea
           ref={inputRef}
@@ -582,6 +877,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           </svg>
         </button>
       </div>
+      )}
 
       {appearance.showBranding ? (
         <div className="nc__brand">
