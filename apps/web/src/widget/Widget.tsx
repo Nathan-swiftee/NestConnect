@@ -625,6 +625,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           every modern messenger has landed on, and it is the difference between
           a title bar and somewhere a person answers. */}
       <header className="nc__head">
+        <div className="nc__headtop">
         {team?.faces.length ? (
           /* Who is behind the counter. Overlapped left-to-right with the first
              face on top, so the stack reads as a group rather than a row.
@@ -669,8 +670,14 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
             <i className={online ? "nc__pip nc__pip--online" : "nc__pip"} />
           </div>
         )}
+        </div>
         <div className="nc__headtext">
-          <div className="nc__title">{appearance.title}</div>
+          {/* The greeting takes their name; the title asks the question. Empty
+              headline drops the line rather than leaving a gap where it was. */}
+          {appearance.headline ? (
+            <div className="nc__headline">{fillVisitorName(appearance.headline, visitorName)}</div>
+          ) : null}
+          <div className="nc__title">{fillVisitorName(appearance.title, visitorName)}</div>
           <div className="nc__sub">{online ? appearance.subtitle : appearance.awayMessage}</div>
         </div>
       </header>
@@ -711,7 +718,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                  width and the list take only the height it needs. */
               <div className="nc__options" role="group" aria-label={routing.prompt}>
                 <p className="nc__optionsq">{routing.prompt}</p>
-                <div className="nc__optionlist">
+                <div className="nc__optionlist" data-chosen={optionId ? "yes" : "no"}>
                   {routing.options.map((o) => (
                     <button
                       key={o.id}

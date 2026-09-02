@@ -1401,7 +1401,8 @@ const NESTCHAT_WORDS: Array<{
   hint?: string;
   multiline?: boolean;
 }> = [
-  { key: "title", label: "Header title" },
+  { key: "headline", label: "Header greeting", hint: "The quiet line above the title; {name} becomes their name" },
+  { key: "title", label: "Header title", hint: "The bold line — usually a question" },
   { key: "subtitle", label: "Header subtitle", hint: "Shown while someone is online" },
   { key: "awayMessage", label: "Away message", hint: "Replaces the subtitle when nobody is", multiline: true },
   {
@@ -2095,6 +2096,7 @@ function NestChatPreview({
       aria-hidden="true"
     >
       <div className="ncprev__head">
+        <div className="ncprev__headtop">
         {faces.length > 0 && (
           <div className="ncprev__faces">
             {faces.map((f, i) => (
@@ -2113,8 +2115,14 @@ function NestChatPreview({
             )}
           </div>
         )}
+        </div>
         <div className="ncprev__headtext">
-          <div className="ncprev__title">{appearance.title}</div>
+          {appearance.headline && (
+            <div className="ncprev__headline">
+              {fillVisitorName(appearance.headline, "Sam Whitfield")}
+            </div>
+          )}
+          <div className="ncprev__title">{fillVisitorName(appearance.title, "Sam Whitfield")}</div>
           <div className="ncprev__sub">{appearance.subtitle}</div>
         </div>
       </div>
@@ -2129,7 +2137,7 @@ function NestChatPreview({
             {routing.enabled && routing.options.length > 0 && (
               <>
                 <p className="ncprev__gateq">{routing.prompt}</p>
-                <div className="ncprev__opts">
+                <div className="ncprev__opts" data-chosen="yes">
                   {routing.options.map((o, i) => (
                     <span key={o.id} className={"ncprev__opt" + (i === 0 ? " on" : "")}>
                       {o.icon && <span>{o.icon}</span>}

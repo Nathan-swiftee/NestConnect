@@ -2931,12 +2931,14 @@ button.tpl-row:active{transform:scale(.97)}
 .ncprev{border:1px solid var(--border);border-radius:var(--r-14);overflow:hidden;
   background:#fff;color:#12151a;box-shadow:var(--shadow)}
 .ncprev--dark{background:#14171c;color:#eef1f5;border-color:#2a2f38}
-/* Stacked, like the widget's own — faces on their own line, then the title. */
-.ncprev__head{display:flex;flex-direction:column;align-items:flex-start;gap:8px;
-  padding:14px 14px 16px;background:var(--pv-head,var(--pv-accent));color:var(--pv-on)}
+/* Stacked, like the widget's own — faces in the far corner, then the greeting. */
+.ncprev__head{display:flex;flex-direction:column;align-items:stretch;gap:22px;
+  padding:12px 14px 16px;background:var(--pv-head,var(--pv-accent));color:var(--pv-on)}
+.ncprev__headtop{display:flex;justify-content:flex-end;align-items:center;min-height:26px}
 .ncprev__headtext{min-width:0;width:100%}
-.ncprev__title{font-size:15px;font-weight:680;line-height:1.2;letter-spacing:-.015em}
-.ncprev__sub{margin-top:2px;font-size:11.5px;opacity:.85}
+.ncprev__headline{font-size:16px;font-weight:680;line-height:1.25;letter-spacing:-.02em;opacity:.62}
+.ncprev__title{font-size:16px;font-weight:680;line-height:1.25;letter-spacing:-.02em}
+.ncprev__sub{margin-top:4px;font-size:11.5px;opacity:.85}
 /* The header face stack, scaled down — same construction as the widget's own:
    overlapped with the first on top, ringed in the header colour, and the glyph
    nudged into the visible part of every circle but the first. */
@@ -2982,13 +2984,14 @@ button.tpl-row:active{transform:scale(.97)}
 /* Brick-laid pills, like the widget's own — the preview is only useful if the
    shape it shows is the shape that ships. */
 .ncprev__opts{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
-.ncprev__opt{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;
-  font-size:11px;line-height:1.3;border-radius:999px;background:#fff;
-  border:1px solid #e4e7ec;white-space:nowrap}
-.ncprev--dark .ncprev__opt{background:#232830;border-color:#2a2f38}
-/* The first option is shown chosen, so the accent is visible in the state that
-   actually carries it — an all-grey menu tells you nothing about your colour. */
-.ncprev__opt.on{background:var(--pv-accent);color:var(--pv-on);border-color:var(--pv-accent)}
+/* Filled, like the widget's — and the first shown chosen with the rest dimmed,
+   which is the whole of how selection reads there. */
+.ncprev__opt{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;
+  font-size:11px;font-weight:550;line-height:1.3;border-radius:999px;
+  background:var(--pv-accent);color:var(--pv-on);white-space:nowrap}
+.ncprev__opts[data-chosen="yes"] .ncprev__opt{opacity:.45}
+.ncprev__opts[data-chosen="yes"] .ncprev__opt.on{opacity:1}
+.ncprev__opt.on::before{content:"✓";font-size:10px;line-height:1}
 .ncprev__gatego{margin-top:8px;padding:6px 12px;width:fit-content;border-radius:9px;
   font-size:11.5px;font-weight:600;background:var(--pv-accent);color:var(--pv-on)}
 

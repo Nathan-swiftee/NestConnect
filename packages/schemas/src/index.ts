@@ -910,7 +910,16 @@ export const nestchatAppearanceSchema = z.object({
   accentTo: hexColor.default("#7c3aed"),
   /** "auto" follows the visitor's own OS preference. */
   theme: z.enum(["light", "dark", "auto"]).default("light"),
-  title: z.string().max(60).default("Chat with us"),
+  /**
+   * The quiet line above the title — "Hello Marta." to the title's "How can we
+   * help?".
+   *
+   * Two lines rather than one because they do different jobs: this one is a
+   * greeting and takes the visitor's name, the title is the question. Dimmed,
+   * so the eye lands on the question. Blank drops the line entirely.
+   */
+  headline: z.string().max(60).default("Hello {name}."),
+  title: z.string().max(60).default("How can we help?"),
   subtitle: z.string().max(120).default("We usually reply in a few minutes"),
   /** The first thing in the empty thread — shown before the visitor writes. */
   greeting: z.string().max(300).default("Hi 👋 How can we help today?"),
