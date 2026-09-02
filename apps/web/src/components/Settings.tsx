@@ -1884,6 +1884,11 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                       onChange={(e) => setRouting("prompt", e.target.value)}
                     />
                   </label>
+                  <p className="fieldhint">
+                    Each option is one pill the visitor taps, so keep the labels short — they
+                    sit side by side and wrap onto the next line. There’s no second line to
+                    explain one: if a label needs explaining, reword the label.
+                  </p>
                   <label className={"check" + (draft.routing.required ? " on" : "")}>
                     <input
                       type="checkbox"
@@ -1909,22 +1914,13 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                             value={o.icon ?? ""}
                             onChange={(e) => setOption(o.id, { icon: e.target.value || undefined })}
                           />
-                          <div className="ncwopt__body">
-                            <input
-                              aria-label="What the visitor sees"
-                              placeholder="Billing question"
-                              value={o.label}
-                              onChange={(e) => setOption(o.id, { label: e.target.value })}
-                            />
-                            <input
-                              aria-label="A note for the option (optional)"
-                              placeholder="Invoices, payments, refunds — shown on hover"
-                              value={o.description ?? ""}
-                              onChange={(e) =>
-                                setOption(o.id, { description: e.target.value || undefined })
-                              }
-                            />
-                          </div>
+                          <input
+                            className="ncwopt__label"
+                            aria-label="What the visitor sees"
+                            placeholder="Billing question"
+                            value={o.label}
+                            onChange={(e) => setOption(o.id, { label: e.target.value })}
+                          />
                           {/* Only this channel's teams. An option pointing
                               anywhere else would show a visitor the faces of
                               one team in the header and hand them to another —

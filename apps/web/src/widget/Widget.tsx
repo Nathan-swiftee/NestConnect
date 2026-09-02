@@ -675,11 +675,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                  modal sheet to answer something that should cost one tap, and
                  full-width rows turn eight short labels into eight lines of
                  mostly empty space. Wrapping pills let the labels set their own
-                 width and the list take only the height it needs.
-
-                 The description isn't drawn — it would put a second line inside
-                 every pill and undo the point. It rides along as the title, for
-                 anyone who hovers. */
+                 width and the list take only the height it needs. */
               <div className="nc__options" role="group" aria-label={routing.prompt}>
                 <p className="nc__optionsq">{routing.prompt}</p>
                 <div className="nc__optionlist">
@@ -689,7 +685,6 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                       type="button"
                       className={optionId === o.id ? "nc__option on" : "nc__option"}
                       aria-pressed={optionId === o.id}
-                      title={o.description || undefined}
                       onClick={() => setOptionId(o.id)}
                     >
                       {o.icon ? <span aria-hidden="true">{o.icon}</span> : null}

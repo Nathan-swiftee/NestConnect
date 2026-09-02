@@ -1011,9 +1011,17 @@ export const nestchatRoutingOptionSchema = z.object({
    * would strand everyone who picked it and hadn't written yet.
    */
   id: z.string().min(1).max(40),
+  /**
+   * What the visitor reads on the pill, and all they read.
+   *
+   * There is no second line by design. A pill is as wide as its own label and
+   * wraps with its neighbours, which is what keeps a menu of eight to two or
+   * three rows; a description would put a second line inside every one of them
+   * and undo exactly that. If a label needs explaining, it is the label that
+   * wants rewording.
+   */
   label: z.string().min(1).max(60),
-  description: z.string().max(120).optional(),
-  /** An emoji for the chip. Deliberately not an icon key: this is drawn on
+  /** An emoji for the pill. Deliberately not an icon key: this is drawn on
    *  somebody else's website, where our icon set doesn't exist. */
   icon: z.string().max(8).optional(),
   /**
@@ -1058,7 +1066,6 @@ export const DEFAULT_NESTCHAT_ROUTING: NestChatRouting = nestchatRoutingSchema.p
 export const nestchatPublicOptionSchema = z.object({
   id: z.string(),
   label: z.string(),
-  description: z.string().optional(),
   icon: z.string().optional(),
 });
 export type NestChatPublicOption = z.infer<typeof nestchatPublicOptionSchema>;
@@ -1094,7 +1101,7 @@ export function toPublicRouting(
   if (!routing.enabled) return undefined;
   const options = routing.options
     .filter((o) => teamIds.includes(o.teamId))
-    .map((o) => ({ id: o.id, label: o.label, description: o.description, icon: o.icon }));
+    .map((o) => ({ id: o.id, label: o.label, icon: o.icon }));
   if (!options.length) return undefined;
   return { prompt: routing.prompt, required: routing.required, options };
 }

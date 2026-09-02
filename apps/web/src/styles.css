@@ -3001,12 +3001,12 @@ button.tpl-row:active{transform:scale(.97)}
 .ncwfield__req{display:flex;align-items:center;gap:5px;flex:none;
   font-size:var(--fs-xs);color:var(--text-faint);white-space:nowrap}
 
-/* One routing option. The emoji is a single character, the team is a fixed
-   choice, and the words in between take whatever is left. */
-.ncwopt{display:flex;align-items:flex-start;gap:var(--sp-2);padding:var(--sp-2);
+/* One routing option, on one line: the emoji is a single character, the team is
+   a fixed choice, and the label takes whatever is left. */
+.ncwopt{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2);
   border:1px solid var(--border);border-radius:var(--r-10);background:var(--surface-2)}
 .ncwopt__icon{flex:none;width:44px;text-align:center}
-.ncwopt__body{flex:1 1 auto;min-width:0;display:grid;gap:6px}
+.ncwopt__label{flex:1 1 auto;min-width:0}
 .ncwopt select{flex:0 0 auto;max-width:150px}
 .ncwopt__del{flex:none;width:28px;height:28px;border:0;border-radius:var(--r-8);
   background:transparent;color:var(--text-faint);cursor:pointer;line-height:1}
