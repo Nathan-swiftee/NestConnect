@@ -2964,3 +2964,51 @@ button.tpl-row:active{transform:scale(.97)}
   white-space:nowrap}
 .ncprev__composer i{flex:none;width:26px;height:26px;border-radius:50%;background:var(--pv-accent)}
 .ncprev__brand{padding:0 12px 9px;text-align:center;font-size:10.5px;color:var(--text-faint)}
+
+/* The pre-chat form, in the preview. Deliberately flatter than the widget's own
+   — these are shapes standing in for fields, not fields, and drawing them as
+   real inputs invites somebody to try typing into the preview. */
+.ncprev__gate{justify-self:stretch;padding:10px 11px 11px;border-radius:14px;
+  border-bottom-left-radius:4px;background:#fff;color:#12151a}
+.ncprev--dark .ncprev__gate{background:#232830;color:#eef1f5}
+.ncprev__gateintro{margin:0 0 9px;font-size:12px;line-height:1.45}
+.ncprev__gatefield{margin-bottom:8px;font-size:11px}
+.ncprev__gatefield span{display:block;font-weight:600;margin-bottom:4px}
+.ncprev__gatefield i{display:block;height:26px;border-radius:8px;background:#f0f2f5}
+.ncprev--dark .ncprev__gatefield i{background:#171b21}
+.ncprev__gateq{margin:10px 0 6px;font-size:11px;font-weight:600}
+.ncprev__opt{display:flex;align-items:center;gap:6px;margin-bottom:5px;padding:6px 9px;
+  font-size:11.5px;border-radius:9px;background:#f0f2f5}
+.ncprev--dark .ncprev__opt{background:#171b21}
+/* The first option is shown chosen, so the accent is visible in the state that
+   actually carries it — an all-grey menu tells you nothing about your colour. */
+.ncprev__opt.on{background:var(--pv-accent);color:var(--pv-on)}
+.ncprev__gatego{margin-top:10px;padding:7px 12px;width:fit-content;border-radius:9px;
+  font-size:11.5px;font-weight:600;background:var(--pv-accent);color:var(--pv-on)}
+
+/* Settings for a toggle live under it, indented and ruled, so it reads as
+   "these belong to the thing above" rather than as more of the same list. */
+.ncw__sub{display:grid;gap:var(--sp-3);margin:calc(-1 * var(--sp-1)) 0 var(--sp-2) var(--sp-3);
+  padding-left:var(--sp-3);border-left:2px solid var(--border)}
+
+/* One pre-chat field: asked / what it's called / whether it's required. */
+.ncwfield{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+.ncwfield>.check{flex:0 0 auto;min-width:190px}
+.ncwfield__label{flex:1 1 160px;min-width:120px}
+.ncwfield__req{display:flex;align-items:center;gap:5px;flex:none;
+  font-size:var(--fs-xs);color:var(--text-faint);white-space:nowrap}
+
+/* One routing option. The emoji is a single character, the team is a fixed
+   choice, and the words in between take whatever is left. */
+.ncwopt{display:flex;align-items:flex-start;gap:var(--sp-2);padding:var(--sp-2);
+  border:1px solid var(--border);border-radius:var(--r-10);background:var(--surface-2)}
+.ncwopt__icon{flex:none;width:44px;text-align:center}
+.ncwopt__body{flex:1 1 auto;min-width:0;display:grid;gap:6px}
+.ncwopt select{flex:0 0 auto;max-width:150px}
+.ncwopt__del{flex:none;width:28px;height:28px;border:0;border-radius:var(--r-8);
+  background:transparent;color:var(--text-faint);cursor:pointer;line-height:1}
+.ncwopt__del:hover{background:var(--surface);color:var(--danger)}
+@media (max-width:700px){
+  .ncwopt{flex-wrap:wrap}
+  .ncwopt select{max-width:none;flex:1 1 100%}
+}

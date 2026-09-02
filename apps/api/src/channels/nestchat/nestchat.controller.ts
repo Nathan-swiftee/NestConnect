@@ -18,7 +18,9 @@ import {
   nestchatReadInputSchema,
   nestchatSendInputSchema,
   nestchatSessionInputSchema,
+  nestchatStartInputSchema,
   nestchatTypingInputSchema,
+  toPublicRouting,
   type NestChatConfig,
   type NestChatIdentifyInput,
   type NestChatIdentifyResult,
@@ -26,6 +28,8 @@ import {
   type NestChatSendInput,
   type NestChatSession,
   type NestChatSessionInput,
+  type NestChatStartInput,
+  type NestChatStartResult,
   type NestChatTypingInput,
 } from "@ding/schemas";
 import { Public } from "../../auth/public.decorator";
@@ -77,12 +81,16 @@ export class NestChatController {
   async config(@Param("widgetKey") widgetKey: string): Promise<NestChatConfig> {
     const inbox = await this.nestchat.inboxForWidgetKey(widgetKey);
     const appearance = await this.nestchat.appearanceFor(inbox.id);
+    const preChat = await this.nestchat.preChatFor(inbox.id);
+    const routing = await this.nestchat.routingFor(inbox.id);
     return {
       appearance,
       online: await this.realtime.hasOnlineAgents(inbox.orgId),
       // Only when the business asked for it: showing who is behind the counter
       // is a choice, not a default we make on their behalf.
       team: appearance.showTeam ? await this.nestchat.teamFacesFor(inbox) : undefined,
+      preChat: preChat.enabled ? preChat : undefined,
+      routing: toPublicRouting(routing, inbox.teamIds),
     };
   }
 
@@ -184,11 +192,18 @@ export class NestChatController {
     const contact = await this.store.getContact(claims.contactId);
     if (!contact) throw new NotFoundException("Chat unavailable");
 
+    // From the token, not the request body: the visitor chose this on the
+    // pre-chat form and the choice was signed there. Re-resolved rather than
+    // trusted — the option may have been renamed or its team taken off the
+    // channel while they were typing.
+    const chosen = await this.nestchat.resolveOption(inbox, claims.optionId);
+
     const result = await this.ingest.ingestNestChat({
       inbox,
       contact,
       text: body.body,
       pageUrl: body.pageUrl,
+      option: chosen ? { label: chosen.option.label, teamId: chosen.teamId } : undefined,
     });
     // Blocked contact: accepted and dropped. Telling them they're blocked only
     // teaches them to come back with a fresh visitor id.
@@ -216,18 +231,60 @@ export class NestChatController {
   }
 
   /**
-   * The visitor gives their name, email or phone, so a reply can reach them
-   * after they close the tab — and so we know who they are.
+   * The pre-chat form, submitted: who they are, and what they're here about.
    *
-   * The interesting case is when those details already belong to somebody. A
-   * visitor typing the email we have on file for a customer IS that customer,
-   * and the right outcome is one record with the whole history on it, not a
-   * second one holding a browser id. So a match merges: the known customer
-   * wins, and the visitor's conversation and browser identity move onto them.
+   * One call rather than an identify followed by a routing call, because these
+   * are answers to one form — and half-applying them would put a visitor in
+   * front of the wrong team under their own name, which is worse than either
+   * failure on its own.
    *
-   * This used to attempt a plain write and swallow the failure, which meant
-   * giving an address we already knew looked identical to giving a new one and
-   * quietly did nothing — the one case anybody testing it would try first.
+   * Deliberately before the conversation exists. Identifying first is what lets
+   * the merge in `identifyVisitor` find a customer we already know *before* the
+   * first message creates a thread, so the thread is born on their record —
+   * with their history, their owner and their name in the agent's queue —
+   * instead of on `Visitor 4f2a1c` and stitched over afterwards.
+   *
+   * The token is always reissued, not only after a merge as `identify` does:
+   * the routing choice lives in the claims, so a token that didn't change would
+   * be a choice that didn't take.
+   */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post("start")
+  async start(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatStartInputSchema)) body: NestChatStartInput,
+  ): Promise<NestChatStartResult> {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const inbox = await this.store.getInbox(claims.inboxId);
+    if (!inbox || inbox.type !== "nestchat") throw new NotFoundException("Chat unavailable");
+
+    const { saved, linked, contactId } = await this.nestchat.identifyVisitor(claims, body);
+    const chosen = await this.nestchat.resolveOption(inbox, body.optionId);
+    const appearance = await this.nestchat.appearanceFor(inbox.id);
+
+    return {
+      ok: true,
+      saved,
+      linked,
+      token: this.nestchat.signVisitorToken({ ...claims, contactId, optionId: chosen?.option.id }),
+      option: chosen ? { id: chosen.option.id, label: chosen.option.label } : undefined,
+      // Narrowed to the team that will actually answer — but still only if this
+      // channel shows faces at all. A business that turned the team off doesn't
+      // want it back because somebody pressed "Billing".
+      team:
+        appearance.showTeam && chosen?.teamId
+          ? await this.nestchat.teamFacesFor(inbox, { teamId: chosen.teamId })
+          : undefined,
+    };
+  }
+
+  /**
+   * The visitor gives their name, email or phone from the card inside the
+   * thread — the ask for channels that don't put a form in front of the chat.
+   *
+   * The work, including what a match with a customer we already know means, is
+   * `NestChatService.identifyVisitor`; it is shared with the pre-chat form above
+   * so the two asks can't drift into treating the same details differently.
    */
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post("identify")
@@ -236,65 +293,14 @@ export class NestChatController {
     @Body(new ZodValidationPipe(nestchatIdentifyInputSchema)) body: NestChatIdentifyInput,
   ): Promise<NestChatIdentifyResult> {
     const claims = this.nestchat.verifyVisitorToken(bearer(auth));
-    const inbox = await this.store.getInbox(claims.inboxId);
-    if (!inbox) throw new NotFoundException("Chat unavailable");
-
-    const saved: Array<"name" | "email" | "phone"> = [];
-    let contactId = claims.contactId;
-    let linked = false;
-
-    const name = body.name?.trim();
-    if (name) {
-      await this.store.updateContact(contactId, { displayName: name });
-      saved.push("name");
-    }
-
-    for (const [kind, raw] of [
-      ["email", body.email],
-      ["phone", body.phone],
-    ] as const) {
-      const value = raw?.trim();
-      if (!value) continue;
-      const existing = await this.store.findContactByIdentity({
-        orgId: inbox.orgId,
-        kind,
-        value,
-      });
-      if (existing && existing.id !== contactId) {
-        // Somebody we already know. Merge onto them — they have the history,
-        // the tags and the owner; the visitor has a browser id and one thread.
-        const winner = await this.store.mergeContacts({
-          winnerId: existing.id,
-          loserIds: [contactId],
-        });
-        contactId = winner.id;
-        linked = true;
-        saved.push(kind);
-        continue;
-      }
-      if (existing) {
-        // Already ours — nothing to write, but it is still "saved" as far as
-        // the person who typed it is concerned.
-        saved.push(kind);
-        continue;
-      }
-      // Case only means anything in an address; a phone keeps whatever shape
-      // they typed it in, and the store normalises it for matching either way.
-      await this.store.updateContact(contactId, {
-        [kind]: kind === "email" ? value.toLowerCase() : value,
-      });
-      saved.push(kind);
-    }
-
+    const { saved, linked, contactId } = await this.nestchat.identifyVisitor(claims, body);
     return {
       ok: true,
       saved,
       linked,
       // A merge deletes the contact the visitor's token names, so it has to be
       // reissued against the surviving one or every later call 404s.
-      token: linked
-        ? this.nestchat.signVisitorToken({ ...claims, contactId })
-        : undefined,
+      token: linked ? this.nestchat.signVisitorToken({ ...claims, contactId }) : undefined,
     };
   }
 

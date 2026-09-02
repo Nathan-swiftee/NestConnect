@@ -248,9 +248,18 @@ export class IngestService {
     inbox: Inbox;
     contact: Contact;
     text: string;
-    /** The page the widget is embedded on, recorded as the new thread's subject
+    /** The page the widget is embedded on, recorded in the new thread's subject
      *  so an agent opening it knows where the visitor was standing. */
     pageUrl?: string;
+    /**
+     * What the visitor said they were here about, already resolved against the
+     * channel's live routing menu by `NestChatService.resolveOption`.
+     *
+     * `teamId` is null for an option whose team has since been taken off the
+     * channel: the label is still what they chose and still worth showing, but
+     * there is no longer anywhere particular to send it.
+     */
+    option?: { label: string; teamId: string | null };
   }): Promise<{ conversationId: string; created: boolean; message?: Message } | undefined> {
     if (input.contact.blocked) {
       this.logger.log(`Dropped inbound NestChat from blocked contact ${input.contact.id}`);
@@ -262,16 +271,22 @@ export class IngestService {
       inboxId: input.inbox.id,
       contact: input.contact,
       channel: "nestchat",
-      subject: input.pageUrl,
+      // What they picked, then where they were standing. Both matter and the
+      // header has room for about one of them, so the half a visitor chose
+      // deliberately goes first and the URL takes the ellipsis.
+      subject: [input.option?.label, input.pageUrl].filter(Boolean).join(" · ") || undefined,
     });
     const conversationId = res.conversation.id;
     if (res.created) {
-      const decision = await this.routing.route(input.inbox, input.contact);
+      const decision = await this.routing.route(input.inbox, input.contact, {
+        optionTeamId: input.option?.teamId,
+      });
       const assigned = await this.store.assign(conversationId, decision);
       if (assigned) await this.applyTeamSla(assigned);
       this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
       this.logger.log(
-        `New NestChat conversation ${conversationId} from ${input.contact.displayName} → ` +
+        `New NestChat conversation ${conversationId} from ${input.contact.displayName}` +
+          `${input.option ? ` about "${input.option.label}"` : ""} → ` +
           `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
       );
     }

@@ -1,20 +1,70 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHmac, randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
+import { z } from "zod";
 import {
   DEFAULT_NESTCHAT_APPEARANCE,
+  DEFAULT_NESTCHAT_PRECHAT,
+  DEFAULT_NESTCHAT_ROUTING,
   nestchatAppearanceSchema,
+  nestchatPreChatSchema,
+  nestchatRoutingSchema,
   type Inbox,
   type Message,
   type NestChatAppearance,
   type NestChatAgentFace,
   type NestChatMessage,
+  type NestChatPreChat,
+  type NestChatRouting,
+  type NestChatRoutingOption,
   type NestChatSettings,
   type User,
 } from "@ding/schemas";
 import { Store } from "../../data/store";
 import { env } from "../../config/env";
 import { VisitorBus } from "./visitor-bus";
+
+/**
+ * Read one of the JSON blobs a NestChat channel keeps in `channelConfig`.
+ *
+ * All three — appearance, pre-chat form, routing menu — are stored the same
+ * way and fail the same way, so they read it the same way. Anything
+ * unparseable falls back to the defaults rather than throwing: this is on the
+ * path that answers strangers, and a widget that renders in our default
+ * colours is a far better failure than a chat that 500s on somebody's
+ * marketing page.
+ */
+function parseBlob<T>(
+  raw: string | undefined,
+  // Third parameter spelled out because these schemas carry `.default()`s: their
+  // input type has optionals where their output type doesn't, and the one-arg
+  // `z.ZodType<T>` quietly demands the two be the same.
+  schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+  fallback: T,
+): T {
+  if (!raw) return fallback;
+  try {
+    const parsed = schema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Is this display name a stand-in rather than a name somebody gave us?
+ *
+ * Two shapes qualify: the `Visitor 4f2a1c` a NestChat session mints for a
+ * browser nobody has introduced, and an email address used as a name, which is
+ * what the mail path falls back to when a message carries no From name.
+ * Neither is a name, and both should give way to one.
+ */
+function isPlaceholderName(name: string | undefined, email: string | undefined): boolean {
+  const trimmed = name?.trim();
+  if (!trimmed) return true;
+  if (/^Visitor [0-9a-f]{4,}$/i.test(trimmed)) return true;
+  return Boolean(email) && trimmed.toLowerCase() === email?.toLowerCase();
+}
 
 /** "Nathan Amos" → "NA"; a single name → its first letter. */
 function initialsOf(name: string): string {
@@ -31,6 +81,17 @@ export interface VisitorClaims {
   inboxId: string;
   contactId: string;
   conversationId: string;
+  /**
+   * The routing option this visitor picked on the pre-chat form, if any.
+   *
+   * In the token rather than sent with the message it applies to, because the
+   * token is signed: a visitor can't hand themselves to a different team by
+   * editing a request body, and — the reason that matters less than it sounds —
+   * the choice survives a reload, which sending it with the first message would
+   * not. Still checked against the channel's live options when it is used; a
+   * signed id is not a promise that the option still exists.
+   */
+  optionId?: string;
 }
 
 /** A visitor session lasts a working week: long enough that someone who comes
@@ -98,13 +159,108 @@ export class NestChatService {
   }
 
   private parseAppearance(raw: string | undefined): NestChatAppearance {
-    if (!raw) return DEFAULT_NESTCHAT_APPEARANCE;
-    try {
-      const parsed = nestchatAppearanceSchema.safeParse(JSON.parse(raw));
-      return parsed.success ? parsed.data : DEFAULT_NESTCHAT_APPEARANCE;
-    } catch {
-      return DEFAULT_NESTCHAT_APPEARANCE;
+    return parseBlob(raw, nestchatAppearanceSchema, DEFAULT_NESTCHAT_APPEARANCE);
+  }
+
+  /* ---- the pre-chat form ---- */
+
+  /** What this channel asks before the conversation starts. */
+  async preChatFor(inboxId: string): Promise<NestChatPreChat> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return parseBlob(config?.preChat, nestchatPreChatSchema, DEFAULT_NESTCHAT_PRECHAT);
+  }
+
+  /**
+   * Replace the pre-chat form.
+   *
+   * Whole rather than merged: it holds nested field objects, and a patch that
+   * half-lands ("asked" saved, "required" lost) is a form that behaves
+   * differently from the one the admin was looking at when they hit save.
+   */
+  async updatePreChat(inboxId: string, preChat: NestChatPreChat): Promise<void> {
+    await this.requireNestChatInbox(inboxId);
+    await this.store.updateInbox(inboxId, {
+      channelConfig: { preChat: JSON.stringify(nestchatPreChatSchema.parse(preChat)) },
+    });
+  }
+
+  /* ---- the routing menu ---- */
+
+  /** The menu of things a visitor can say they're here about. */
+  async routingFor(inboxId: string): Promise<NestChatRouting> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return parseBlob(config?.routing, nestchatRoutingSchema, DEFAULT_NESTCHAT_ROUTING);
+  }
+
+  /**
+   * Replace the routing menu.
+   *
+   * Two checks that the schema can't make, because neither is a fact about the
+   * shape of the data:
+   *
+   *  - every option must name a team this channel actually routes to. The
+   *    widget's header shows the faces of those teams, so an option pointing
+   *    anywhere else shows a visitor one set of people and hands them to
+   *    another — and `RoutingService` would be assigning into a team the
+   *    channel's own settings say has nothing to do with it.
+   *  - ids must be unique. Two options sharing one is not a validation nicety:
+   *    the id is what a signed token carries, so the visitor's choice would
+   *    resolve to whichever came first in the array and the other option would
+   *    quietly route to the wrong team forever.
+   */
+  async updateRouting(inboxId: string, routing: NestChatRouting): Promise<void> {
+    const inbox = await this.requireNestChatInbox(inboxId);
+    const parsed = nestchatRoutingSchema.parse(routing);
+
+    const seen = new Set<string>();
+    for (const option of parsed.options) {
+      if (seen.has(option.id)) {
+        throw new BadRequestException(`Two options share the id "${option.id}"`);
+      }
+      seen.add(option.id);
+      if (!inbox.teamIds.includes(option.teamId)) {
+        throw new BadRequestException(
+          `“${option.label}” routes to a team this channel doesn’t serve. ` +
+            `Add the team to the channel first, under Channels.`,
+        );
+      }
     }
+
+    await this.store.updateInbox(inboxId, {
+      channelConfig: { routing: JSON.stringify(parsed) },
+    });
+  }
+
+  /**
+   * Turn the option id a visitor's token carries into something to route on.
+   *
+   * Re-checked against the live channel rather than trusted, even though the id
+   * arrived signed. The signature proves *we* issued it, not that it still
+   * means anything: options get renamed, deleted, and pointed at teams that are
+   * later taken off the channel, all while somebody sits with the widget open.
+   *
+   * A stale option still returns its label with a null team. What the visitor
+   * said they wanted is true and worth showing the agent even when the team
+   * that used to answer it has gone; only the routing falls back.
+   */
+  async resolveOption(
+    inbox: Inbox,
+    optionId: string | undefined,
+  ): Promise<{ option: NestChatRoutingOption; teamId: string | null } | undefined> {
+    if (!optionId) return undefined;
+    const routing = await this.routingFor(inbox.id);
+    if (!routing.enabled) return undefined;
+    const option = routing.options.find((o) => o.id === optionId);
+    if (!option) return undefined;
+    return { option, teamId: inbox.teamIds.includes(option.teamId) ? option.teamId : null };
+  }
+
+  /** The teams this channel routes to — the only ones an option may name. */
+  async teamsFor(inbox: Inbox): Promise<Array<{ id: string; name: string; icon?: string | null }>> {
+    const teams = await this.store.listTeams();
+    return teams
+      .filter((t) => inbox.teamIds.includes(t.id))
+      .map((t) => ({ id: t.id, name: t.name, icon: t.icon }));
   }
 
   /** Everything the settings pane shows for one NestChat channel. */
@@ -116,6 +272,9 @@ export class NestChatService {
       inboxId,
       widgetKey,
       appearance: await this.appearanceFor(inboxId),
+      preChat: await this.preChatFor(inboxId),
+      routing: await this.routingFor(inboxId),
+      teams: await this.teamsFor(inbox),
       embedUrl: `${base}/widget.html?key=${widgetKey}`,
       scriptUrl: `${base}/nestchat.js`,
       // The same faces the visitor's header would carry, so the preview beside
@@ -177,6 +336,11 @@ export class NestChatService {
         inboxId: claims.inboxId,
         contactId: claims.contactId,
         conversationId: claims.conversationId,
+        // Named explicitly like the rest. A field left out of this rebuild is
+        // not "defaulted" — it is silently dropped the next time the token is
+        // re-signed, and the visitor's routing choice would evaporate on their
+        // first message, which is the one moment it is read.
+        optionId: claims.optionId,
       };
     } catch {
       throw new ForbiddenException("Chat session expired");
@@ -220,6 +384,91 @@ export class NestChatService {
       .filter((m): m is NestChatMessage => Boolean(m));
   }
 
+  /* ---- who the visitor is ---- */
+
+  /**
+   * The visitor gives their name, email or phone — from the pre-chat form or
+   * from the card inside the thread — so a reply can reach them after they
+   * close the tab, and so we know who they are.
+   *
+   * The interesting case is when those details already belong to somebody. A
+   * visitor typing the email we have on file for a customer IS that customer,
+   * and the right outcome is one record with the whole history on it, not a
+   * second one holding a browser id. So a match merges: the known customer
+   * wins, and the visitor's conversation and browser identity move onto them.
+   *
+   * Matching runs *before* the name is written, which is the opposite of the
+   * obvious order and the only one that works. A merge deletes the contact the
+   * visitor's token names, so a name written first is written to the record
+   * that is about to be thrown away — and with the pre-chat form asking for a
+   * name and an email together, that is now the common path rather than a
+   * corner of one.
+   */
+  async identifyVisitor(
+    claims: VisitorClaims,
+    input: { name?: string; email?: string; phone?: string },
+  ): Promise<{ saved: Array<"name" | "email" | "phone">; linked: boolean; contactId: string }> {
+    const inbox = await this.store.getInbox(claims.inboxId);
+    if (!inbox) throw new NotFoundException("Chat unavailable");
+
+    const saved: Array<"name" | "email" | "phone"> = [];
+    let contactId = claims.contactId;
+    let linked = false;
+
+    for (const [kind, raw] of [
+      ["email", input.email],
+      ["phone", input.phone],
+    ] as const) {
+      const value = raw?.trim();
+      if (!value) continue;
+      const existing = await this.store.findContactByIdentity({
+        orgId: inbox.orgId,
+        kind,
+        value,
+      });
+      if (existing && existing.id !== contactId) {
+        // Somebody we already know. Merge onto them — they have the history,
+        // the tags and the owner; the visitor has a browser id and one thread.
+        const winner = await this.store.mergeContacts({
+          winnerId: existing.id,
+          loserIds: [contactId],
+        });
+        contactId = winner.id;
+        linked = true;
+        saved.push(kind);
+        continue;
+      }
+      if (existing) {
+        // Already ours — nothing to write, but it is still "saved" as far as
+        // the person who typed it is concerned.
+        saved.push(kind);
+        continue;
+      }
+      // Case only means anything in an address; a phone keeps whatever shape
+      // they typed it in, and the store normalises it for matching either way.
+      await this.store.updateContact(contactId, {
+        [kind]: kind === "email" ? value.toLowerCase() : value,
+      });
+      saved.push(kind);
+    }
+
+    const name = input.name?.trim();
+    if (name) {
+      const survivor = await this.store.getContact(contactId);
+      // A name typed into a web form does not get to overwrite the name on a
+      // customer record — that one was put there by an agent, or by a channel
+      // that proved who they were. The exception is a record still carrying a
+      // placeholder, which is a customer we have only ever met anonymously:
+      // there, the name they just typed is the best one anybody has.
+      if (!linked || isPlaceholderName(survivor?.displayName, survivor?.email)) {
+        await this.store.updateContact(contactId, { displayName: name });
+        saved.push("name");
+      }
+    }
+
+    return { saved, linked, contactId };
+  }
+
   /* ---- who is behind the counter ---- */
 
   /**
@@ -233,9 +482,27 @@ export class NestChatService {
    * Deliberately thin — a name and a face. The full member list, roles and
    * addresses stay on the agent side of the fence.
    */
-  async teamFacesFor(inbox: Inbox): Promise<{ name?: string; faces: NestChatAgentFace[]; total: number }> {
+  async teamFacesFor(
+    inbox: Inbox,
+    /**
+     * Narrow to one team — the team a visitor's routing choice just picked.
+     *
+     * Before they choose, the header is honest about the whole channel: any of
+     * these people might pick it up. Once they've said "billing", the people
+     * who handle billing are the answer to "who am I talking to", and showing
+     * them the sales team as well is showing them somebody who won't reply.
+     *
+     * Ignored when the team isn't one this channel routes to, which is the
+     * stale-option case — a header that quietly empties itself is worse than
+     * one showing a team that is slightly too broad.
+     */
+    opts?: { teamId?: string | null },
+  ): Promise<{ name?: string; faces: NestChatAgentFace[]; total: number }> {
     const teams = await this.store.listTeams();
-    const serving = teams.filter((t) => inbox.teamIds.includes(t.id));
+    const only = opts?.teamId && inbox.teamIds.includes(opts.teamId) ? opts.teamId : undefined;
+    const serving = teams.filter((t) =>
+      only ? t.id === only : inbox.teamIds.includes(t.id),
+    );
     const seen = new Set<string>();
     const members: User[] = [];
     for (const team of serving) {

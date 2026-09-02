@@ -16,9 +16,17 @@ import type {
   OpeningDay,
   OpeningHoursDay,
   NestChatAppearance,
+  NestChatPreChat,
+  NestChatRouting,
+  NestChatRoutingOption,
   NestChatTeam,
 } from "@ding/schemas";
-import { WHATSAPP_VERTICALS, OPENING_DAYS } from "@ding/schemas";
+import {
+  WHATSAPP_VERTICALS,
+  OPENING_DAYS,
+  NESTCHAT_MAX_ROUTING_OPTIONS,
+  fillVisitorName,
+} from "@ding/schemas";
 import {
   useContacts,
   useCreateInbox,
@@ -1373,6 +1381,19 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
 
 /* ── NestChat widget ─────────────────────────────────────────────────────── */
 
+/**
+ * Everything the pane is editing for one channel.
+ *
+ * The three sections a NestChat channel stores, held together because they are
+ * saved together: the appearance, the form shown before a chat starts, and the
+ * menu that decides which team answers it.
+ */
+type WidgetDraft = {
+  appearance: NestChatAppearance;
+  preChat: NestChatPreChat;
+  routing: NestChatRouting;
+};
+
 /** The text fields, in the order the widget reads them out loud. */
 const NESTCHAT_WORDS: Array<{
   key: keyof NestChatAppearance;
@@ -1388,6 +1409,23 @@ const NESTCHAT_WORDS: Array<{
   { key: "launcherLabel", label: "Launcher tooltip", hint: "On the floating bubble" },
   { key: "askEmailLabel", label: "Email prompt" },
   { key: "askPhoneLabel", label: "Phone prompt", hint: "Only shown if you ask for one" },
+];
+
+/**
+ * The three things the pre-chat form can ask for.
+ *
+ * A table rather than three hand-written blocks because each one is the same
+ * two decisions (do we ask, must they answer) plus the words the visitor reads,
+ * and three copies of that is three places for them to drift apart.
+ */
+const PRECHAT_FIELDS: Array<{
+  key: "name" | "email" | "phone";
+  labelKey: "nameLabel" | "emailLabel" | "phoneLabel";
+  label: string;
+}> = [
+  { key: "name", labelKey: "nameLabel", label: "Ask for their name" },
+  { key: "email", labelKey: "emailLabel", label: "Ask for an email address" },
+  { key: "phone", labelKey: "phoneLabel", label: "Ask for a phone number" },
 ];
 
 /**
@@ -1410,6 +1448,9 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   const [embed, setEmbed] = useState<EmbedKind>("script");
   const [copied, setCopied] = useState(false);
 
+  /** The teams this channel routes to — the only ones an option may name. */
+  const teams = settings.data?.teams ?? [];
+
   /**
    * One draft per channel, not one draft.
    *
@@ -1418,9 +1459,13 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
    * has to hold an edit per channel rather than a single form the channel picker
    * points at. Keeping them keyed by inbox id also means switching channels
    * mid-edit doesn't quietly throw your work away, which a single draft did.
+   *
+   * All three sections travel together in one draft. They are saved in one call
+   * and share one dirty marker, so splitting them into three maps would only
+   * mean three of everything that has to stay in step.
    */
-  const [drafts, setDrafts] = useState<Record<string, NestChatAppearance>>({});
-  const [saved, setSaved] = useState<Record<string, NestChatAppearance>>({});
+  const [drafts, setDrafts] = useState<Record<string, WidgetDraft>>({});
+  const [saved, setSaved] = useState<Record<string, WidgetDraft>>({});
   const draft = inboxId ? drafts[inboxId] : undefined;
 
   // Seed a channel's draft from what's stored, once. Keyed on the id so a
@@ -1428,20 +1473,52 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   useEffect(() => {
     const data = settings.data;
     if (!data) return;
-    setSaved((m) => ({ ...m, [data.inboxId]: data.appearance }));
-    setDrafts((m) => (m[data.inboxId] ? m : { ...m, [data.inboxId]: data.appearance }));
+    const next: WidgetDraft = {
+      appearance: data.appearance,
+      preChat: data.preChat,
+      routing: data.routing,
+    };
+    setSaved((m) => ({ ...m, [data.inboxId]: next }));
+    setDrafts((m) => (m[data.inboxId] ? m : { ...m, [data.inboxId]: next }));
   }, [settings.data]);
 
-  const set = <K extends keyof NestChatAppearance>(key: K, value: NestChatAppearance[K]) =>
+  /** Replace one section of the current channel's draft. */
+  const setSection = <S extends keyof WidgetDraft>(section: S, value: WidgetDraft[S]) =>
     setDrafts((m) => {
       const current = inboxId ? m[inboxId] : undefined;
       if (!inboxId || !current) return m;
-      // Spread a typed one-key object rather than using a computed key inline:
-      // `{ ...current, [key]: value }` widens the key to `string` and stops
-      // being assignable to the appearance type.
-      const patch = { [key]: value } as Pick<NestChatAppearance, K>;
-      return { ...m, [inboxId]: { ...current, ...patch } };
+      return { ...m, [inboxId]: { ...current, [section]: value } };
     });
+
+  const set = <K extends keyof NestChatAppearance>(key: K, value: NestChatAppearance[K]) => {
+    if (!draft) return;
+    // Spread a typed one-key object rather than using a computed key inline:
+    // `{ ...current, [key]: value }` widens the key to `string` and stops
+    // being assignable to the appearance type.
+    const patch = { [key]: value } as Pick<NestChatAppearance, K>;
+    setSection("appearance", { ...draft.appearance, ...patch });
+  };
+
+  const setPreChat = <K extends keyof NestChatPreChat>(key: K, value: NestChatPreChat[K]) => {
+    if (!draft) return;
+    const patch = { [key]: value } as Pick<NestChatPreChat, K>;
+    setSection("preChat", { ...draft.preChat, ...patch });
+  };
+
+  const setRouting = <K extends keyof NestChatRouting>(key: K, value: NestChatRouting[K]) => {
+    if (!draft) return;
+    const patch = { [key]: value } as Pick<NestChatRouting, K>;
+    setSection("routing", { ...draft.routing, ...patch });
+  };
+
+  /** Replace one routing option in place. */
+  const setOption = (id: string, patch: Partial<NestChatRoutingOption>) => {
+    if (!draft) return;
+    setSection("routing", {
+      ...draft.routing,
+      options: draft.routing.options.map((o) => (o.id === id ? { ...o, ...patch } : o)),
+    });
+  };
 
   /** Channels with edits that haven't been saved yet — marked in the picker, so
    *  a pending change on a channel you've switched away from stays visible. */
@@ -1453,14 +1530,26 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
     if (!inboxId || !draft) return;
     const name = channels.find((c) => c.id === inboxId)?.name ?? "Widget";
     update.mutate(
-      { inboxId, input: { appearance: draft } },
+      { inboxId, input: draft },
       {
         onSuccess: (res) => {
-          setSaved((m) => ({ ...m, [res.inboxId]: res.appearance }));
-          setDrafts((m) => ({ ...m, [res.inboxId]: res.appearance }));
+          const next: WidgetDraft = {
+            appearance: res.appearance,
+            preChat: res.preChat,
+            routing: res.routing,
+          };
+          setSaved((m) => ({ ...m, [res.inboxId]: next }));
+          setDrafts((m) => ({ ...m, [res.inboxId]: next }));
           onToast(`${name} updated`);
         },
-        onError: () => onToast("Only admins & managers can change the widget"),
+        // The server refuses a routing option pointing at a team this channel
+        // doesn't serve, and says which one — worth passing on verbatim rather
+        // than flattening every failure into "you're not allowed".
+        onError: (err: unknown) =>
+          onToast(
+            (err instanceof Error && err.message) ||
+              "Only admins & managers can change the widget",
+          ),
       },
     );
   };
@@ -1468,7 +1557,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   // Built from the draft, not the saved settings, so the snippet you copy
   // matches the colour and label you are looking at.
   const snippet =
-    settings.data && draft ? embedSnippet(embed, settings.data, draft) : "";
+    settings.data && draft ? embedSnippet(embed, settings.data, draft.appearance) : "";
 
   const copy = () => {
     void navigator.clipboard.writeText(snippet).then(
@@ -1557,12 +1646,12 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   <div className="ncw__colour">
                     <input
                       type="color"
-                      value={draft.accent}
+                      value={draft.appearance.accent}
                       onChange={(e) => set("accent", e.target.value)}
                       aria-label="Brand colour"
                     />
                     <input
-                      value={draft.accent}
+                      value={draft.appearance.accent}
                       onChange={(e) => set("accent", e.target.value)}
                       spellCheck={false}
                     />
@@ -1573,12 +1662,12 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   <div className="ncw__colour">
                     <input
                       type="color"
-                      value={draft.accentText}
+                      value={draft.appearance.accentText}
                       onChange={(e) => set("accentText", e.target.value)}
                       aria-label="Text on the brand colour"
                     />
                     <input
-                      value={draft.accentText}
+                      value={draft.appearance.accentText}
                       onChange={(e) => set("accentText", e.target.value)}
                       spellCheck={false}
                     />
@@ -1589,7 +1678,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                 <label className="field">
                   <span>Theme</span>
                   <select
-                    value={draft.theme}
+                    value={draft.appearance.theme}
                     onChange={(e) => set("theme", e.target.value as NestChatAppearance["theme"])}
                   >
                     <option value="light">Light</option>
@@ -1600,7 +1689,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                 <label className="field">
                   <span>Launcher corner</span>
                   <select
-                    value={draft.position}
+                    value={draft.appearance.position}
                     onChange={(e) =>
                       set("position", e.target.value as NestChatAppearance["position"])
                     }
@@ -1622,12 +1711,12 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   {f.multiline ? (
                     <textarea
                       rows={2}
-                      value={String(draft[f.key] ?? "")}
+                      value={String(draft.appearance[f.key] ?? "")}
                       onChange={(e) => set(f.key, e.target.value as never)}
                     />
                   ) : (
                     <input
-                      value={String(draft[f.key] ?? "")}
+                      value={String(draft.appearance[f.key] ?? "")}
                       onChange={(e) => set(f.key, e.target.value as never)}
                     />
                   )}
@@ -1637,43 +1726,264 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
 
             <section className="ncw__group">
               <h3>Behaviour</h3>
-              <label className={"check" + (draft.askEmail ? " on" : "")}>
+              <label className={"check" + (draft.appearance.askEmail ? " on" : "")}>
                 <input
                   type="checkbox"
-                  checked={draft.askEmail}
+                  checked={draft.appearance.askEmail}
                   onChange={(e) => set("askEmail", e.target.checked)}
                 />
                 Ask for an email address, so a reply can reach someone who has left
               </label>
-              <label className={"check" + (draft.askPhone ? " on" : "")}>
+              <label className={"check" + (draft.appearance.askPhone ? " on" : "")}>
                 <input
                   type="checkbox"
-                  checked={draft.askPhone}
+                  checked={draft.appearance.askPhone}
                   onChange={(e) => set("askPhone", e.target.checked)}
                 />
                 Ask for a phone number too
               </label>
-              <label className={"check" + (draft.showTeam ? " on" : "")}>
+              <label className={"check" + (draft.appearance.showTeam ? " on" : "")}>
                 <input
                   type="checkbox"
-                  checked={draft.showTeam}
+                  checked={draft.appearance.showTeam}
                   onChange={(e) => set("showTeam", e.target.checked)}
                 />
                 Show the faces of the team that answers this channel
               </label>
-              <label className={"check" + (draft.showBranding ? " on" : "")}>
+              <label className={"check" + (draft.appearance.showBranding ? " on" : "")}>
                 <input
                   type="checkbox"
-                  checked={draft.showBranding}
+                  checked={draft.appearance.showBranding}
                   onChange={(e) => set("showBranding", e.target.checked)}
                 />
                 Show “Powered by Nest Connect”
               </label>
             </section>
+
+            <section className="ncw__group">
+              <h3>Before the chat</h3>
+              <p className="fieldhint">
+                Ask who someone is before they write, and let them say what it’s about. Details
+                given here are matched against your customers, so a chat from someone you already
+                know opens on <strong>their</strong> record — with their history and their name in
+                the queue — instead of on an anonymous visitor.
+              </p>
+
+              <label className={"check" + (draft.preChat.enabled ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.preChat.enabled}
+                  onChange={(e) => setPreChat("enabled", e.target.checked)}
+                />
+                Ask for their details before the first message
+              </label>
+
+              {draft.preChat.enabled && (
+                <div className="ncw__sub">
+                  <label className="field">
+                    <span>Intro</span>
+                    <textarea
+                      rows={2}
+                      value={draft.preChat.intro}
+                      onChange={(e) => setPreChat("intro", e.target.value)}
+                    />
+                  </label>
+
+                  {/* One row per field, because "asked" and "must answer" are
+                      different decisions and a business will want them set
+                      differently — an optional email converts better than a
+                      required one, and some businesses need the address more
+                      than they need the conversation. */}
+                  {PRECHAT_FIELDS.map((f) => (
+                    <div className="ncwfield" key={f.key}>
+                      <label className={"check" + (draft.preChat[f.key].enabled ? " on" : "")}>
+                        <input
+                          type="checkbox"
+                          checked={draft.preChat[f.key].enabled}
+                          onChange={(e) =>
+                            setPreChat(f.key, {
+                              enabled: e.target.checked,
+                              // Turning a field off drops its requirement with
+                              // it: a hidden field nobody can fill in must not
+                              // stay on a list of things they have to.
+                              required: e.target.checked && draft.preChat[f.key].required,
+                            })
+                          }
+                        />
+                        {f.label}
+                      </label>
+                      {draft.preChat[f.key].enabled && (
+                        <>
+                          <input
+                            className="ncwfield__label"
+                            aria-label={`${f.label} — what the visitor sees`}
+                            value={draft.preChat[f.labelKey]}
+                            onChange={(e) => setPreChat(f.labelKey, e.target.value)}
+                          />
+                          <label className="ncwfield__req">
+                            <input
+                              type="checkbox"
+                              checked={draft.preChat[f.key].required}
+                              onChange={(e) =>
+                                setPreChat(f.key, {
+                                  enabled: true,
+                                  required: e.target.checked,
+                                })
+                              }
+                            />
+                            Required
+                          </label>
+                        </>
+                      )}
+                    </div>
+                  ))}
+
+                  <div className="setform__grid two">
+                    <label className="field">
+                      <span>Button</span>
+                      <input
+                        value={draft.preChat.submitLabel}
+                        onChange={(e) => setPreChat("submitLabel", e.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>
+                        Skip link <em>Only shown when nothing is required</em>
+                      </span>
+                      <input
+                        value={draft.preChat.skipLabel}
+                        onChange={(e) => setPreChat("skipLabel", e.target.value)}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              <label className={"check" + (draft.routing.enabled ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.routing.enabled}
+                  onChange={(e) => setRouting("enabled", e.target.checked)}
+                />
+                Let them choose what it’s about, and send it to the right team
+              </label>
+
+              {draft.routing.enabled && (
+                <div className="ncw__sub">
+                  <label className="field">
+                    <span>Question</span>
+                    <input
+                      value={draft.routing.prompt}
+                      onChange={(e) => setRouting("prompt", e.target.value)}
+                    />
+                  </label>
+                  <label className={"check" + (draft.routing.required ? " on" : "")}>
+                    <input
+                      type="checkbox"
+                      checked={draft.routing.required}
+                      onChange={(e) => setRouting("required", e.target.checked)}
+                    />
+                    They must choose before they can start
+                  </label>
+
+                  {teams.length === 0 ? (
+                    <p className="fieldhint">
+                      This channel isn’t routed to a team yet. Give it one under{" "}
+                      <strong>Channels</strong> and its teams appear here.
+                    </p>
+                  ) : (
+                    <>
+                      {draft.routing.options.map((o) => (
+                        <div className="ncwopt" key={o.id}>
+                          <input
+                            className="ncwopt__icon"
+                            aria-label="Emoji"
+                            placeholder="💬"
+                            value={o.icon ?? ""}
+                            onChange={(e) => setOption(o.id, { icon: e.target.value || undefined })}
+                          />
+                          <div className="ncwopt__body">
+                            <input
+                              aria-label="What the visitor sees"
+                              placeholder="Billing question"
+                              value={o.label}
+                              onChange={(e) => setOption(o.id, { label: e.target.value })}
+                            />
+                            <input
+                              aria-label="A line under it (optional)"
+                              placeholder="Invoices, payments, refunds"
+                              value={o.description ?? ""}
+                              onChange={(e) =>
+                                setOption(o.id, { description: e.target.value || undefined })
+                              }
+                            />
+                          </div>
+                          {/* Only this channel's teams. An option pointing
+                              anywhere else would show a visitor the faces of
+                              one team in the header and hand them to another —
+                              the server refuses it for the same reason. */}
+                          <select
+                            aria-label="Team that answers it"
+                            value={o.teamId}
+                            onChange={(e) => setOption(o.id, { teamId: e.target.value })}
+                          >
+                            {teams.map((t) => (
+                              <option key={t.id} value={t.id}>
+                                {t.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="ncwopt__del"
+                            aria-label={`Remove ${o.label || "option"}`}
+                            onClick={() =>
+                              setRouting(
+                                "options",
+                                draft.routing.options.filter((x) => x.id !== o.id),
+                              )
+                            }
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={draft.routing.options.length >= NESTCHAT_MAX_ROUTING_OPTIONS}
+                        onClick={() =>
+                          setRouting("options", [
+                            ...draft.routing.options,
+                            {
+                              // Minted here and never reused, because it is what
+                              // a visitor's signed choice carries — renaming an
+                              // option must not strand anyone mid-chat.
+                              id: `opt_${Math.random().toString(36).slice(2, 10)}`,
+                              label: "",
+                              teamId: teams[0].id,
+                            },
+                          ])
+                        }
+                      >
+                        {draft.routing.options.length >= NESTCHAT_MAX_ROUTING_OPTIONS
+                          ? `That’s the limit of ${NESTCHAT_MAX_ROUTING_OPTIONS}`
+                          : "Add an option"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
           </div>
 
           <div className="ncw__side">
-            <NestChatPreview appearance={draft} team={settings.data?.team} />
+            <NestChatPreview
+              appearance={draft.appearance}
+              preChat={draft.preChat}
+              routing={draft.routing}
+              team={settings.data?.team}
+            />
 
             <section className="ncw__group">
               <h3>Install {channels.find((c) => c.id === inboxId)?.name}</h3>
@@ -1718,14 +2028,27 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
  *  enough to judge colour and copy by; the real thing lives in its own bundle. */
 function NestChatPreview({
   appearance,
+  preChat,
+  routing,
   team,
 }: {
   appearance: NestChatAppearance;
+  preChat: NestChatPreChat;
+  routing: NestChatRouting;
   team?: NestChatTeam;
 }) {
   const dark = appearance.theme === "dark";
   // Same stack the visitor sees, so switching the faces on shows the faces.
   const faces = appearance.showTeam ? (team?.faces ?? []) : [];
+  /**
+   * Whether a first-time visitor would meet a form rather than a message box.
+   *
+   * The preview shows the *first* screen, which is the one being configured —
+   * so the moment either half is switched on it swaps the sample conversation
+   * for the form. A routing menu with nothing in it is not a form: it renders
+   * as nothing in the widget too.
+   */
+  const gate = preChat.enabled || (routing.enabled && routing.options.length > 0);
   return (
     <div
       className={"ncprev" + (dark ? " ncprev--dark" : "")}
@@ -1757,14 +2080,55 @@ function NestChatPreview({
         </div>
       </div>
       <div className="ncprev__thread">
-        <div className="ncprev__in">{appearance.greeting}</div>
-        <div className="ncprev__out">Hi — do you deliver on Saturdays?</div>
-        <div className="ncprev__in">We do, right up until 2pm.</div>
+        {/* A sample name, so the greeting shows what {name} actually does. The
+            same helper the widget uses, so the spacing agrees — including for
+            a greeting with no token in it, which is most of them. */}
+        <div className="ncprev__in">{fillVisitorName(appearance.greeting, "Sam Whitfield")}</div>
+        {gate ? (
+          <div className="ncprev__gate">
+            {preChat.enabled && (
+              <>
+                {preChat.intro && <p className="ncprev__gateintro">{preChat.intro}</p>}
+                {PRECHAT_FIELDS.filter((f) => preChat[f.key].enabled).map((f) => (
+                  <div className="ncprev__gatefield" key={f.key}>
+                    <span>
+                      {preChat[f.labelKey]}
+                      {preChat[f.key].required ? "" : " (optional)"}
+                    </span>
+                    <i />
+                  </div>
+                ))}
+              </>
+            )}
+            {routing.enabled && routing.options.length > 0 && (
+              <>
+                <p className="ncprev__gateq">{routing.prompt}</p>
+                {routing.options.map((o, i) => (
+                  <div key={o.id} className={"ncprev__opt" + (i === 0 ? " on" : "")}>
+                    {o.icon && <span>{o.icon}</span>}
+                    <b>{o.label || "Untitled option"}</b>
+                  </div>
+                ))}
+              </>
+            )}
+            <div className="ncprev__gatego">{preChat.submitLabel}</div>
+          </div>
+        ) : (
+          <>
+            <div className="ncprev__out">Hi — do you deliver on Saturdays?</div>
+            <div className="ncprev__in">We do, right up until 2pm.</div>
+          </>
+        )}
       </div>
-      <div className="ncprev__composer">
-        <span>{appearance.placeholder}</span>
-        <i />
-      </div>
+      {/* The composer isn't there while the form is: the widget hides it too,
+          and a preview that showed one would be showing a screen that never
+          exists. */}
+      {!gate && (
+        <div className="ncprev__composer">
+          <span>{appearance.placeholder}</span>
+          <i />
+        </div>
+      )}
       {appearance.showBranding && <div className="ncprev__brand">Powered by Nest Connect</div>}
     </div>
   );

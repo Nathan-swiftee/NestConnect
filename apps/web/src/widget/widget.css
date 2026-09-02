@@ -565,3 +565,202 @@ body {
   color: var(--muted);
   font-size: 14px;
 }
+
+/* ── The pre-chat form ─────────────────────────────────────────────────────
+   Drawn as a card in the thread rather than a screen of its own. A separate
+   screen makes a chat widget feel like a form with a chat attached; this way
+   the greeting is still above it and the conversation has visibly already
+   started, which is the thing that gets people to finish it. */
+
+.nc__prechat {
+  align-self: stretch;
+  margin-left: 34px;
+  margin-right: 8px;
+  padding: 14px 15px 15px;
+  border-radius: 18px 18px 18px 6px;
+  background: var(--bubble-in);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -6px rgba(16, 24, 40, 0.12);
+}
+
+.nc__prechatintro {
+  margin: 0 0 12px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.nc__pcfield {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.nc__pcfield > span {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* "(optional)" carries real information — it is the difference between a form
+   you must finish and one you may leave — so it is legible rather than
+   decorative, just quieter than the label it qualifies. */
+.nc__pcfield em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.nc__pcfield input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 11px;
+  font: inherit;
+  /* 16px so iOS doesn't zoom the host page when it takes focus. */
+  font-size: 16px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.nc__pcfield input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nc__pcfield input[aria-invalid="true"] {
+  border-color: #d1453b;
+}
+
+.nc__pcerr {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: #d1453b;
+}
+
+/* ── The routing menu ───────────────────────────────────────────────────── */
+
+.nc__options {
+  margin: 14px 0 4px;
+}
+
+.nc__optionsq {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Full-width rows rather than wrapped chips: the labels are a business's own
+   words ("Something about an existing order") and wrapping them into a chip
+   grid produces a ragged block nobody can scan. */
+.nc__option {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 9px 11px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  cursor: pointer;
+}
+
+.nc__option:hover {
+  border-color: var(--accent);
+}
+
+/* The chosen one is filled with the brand colour, like the visitor's own
+   bubbles — it is a thing they said. */
+.nc__option.on {
+  color: var(--accent-text);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.nc__option:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nc__optionicon {
+  flex: none;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.nc__optiontext {
+  display: block;
+  min-width: 0;
+}
+
+.nc__optiontext b {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.nc__optiontext small {
+  display: block;
+  margin-top: 1px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.nc__prechatgo {
+  margin-top: 12px;
+  padding: 9px 16px;
+  border: 0;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.nc__prechatgo:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* A link, not a second button: skipping is a way past the form, not the other
+   half of a choice, and two buttons side by side would read as one. */
+.nc__prechatskip {
+  margin: 12px 0 0 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ── "Chatting as …" ───────────────────────────────────────────────────── */
+
+.nc__asme {
+  align-self: flex-start;
+  margin-left: 34px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.nc__asme button {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}

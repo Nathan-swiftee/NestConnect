@@ -25,6 +25,18 @@ export class NestChatAdminController {
     return this.nestchat.settingsFor(inboxId);
   }
 
+  /**
+   * Save any combination of the three sections.
+   *
+   * Each is applied only when it was sent, so the pane can save the whole form
+   * in one call while a narrower caller (a future API client, a migration)
+   * touches one section without having to restate the other two.
+   *
+   * `updateRouting` is the one that can refuse: an option pointing at a team
+   * this channel doesn't route to is rejected rather than stored, because the
+   * widget's own header would then be advertising the wrong people. It runs
+   * before the settings are re-read so a rejected save changes nothing at all.
+   */
   @Patch(":inboxId")
   async update(
     @CurrentUserId() userId: string,
@@ -32,7 +44,10 @@ export class NestChatAdminController {
     @Body(new ZodValidationPipe(updateNestchatInputSchema)) body: UpdateNestchatInput,
   ) {
     await this.requireManager(userId);
-    return this.nestchat.updateAppearance(inboxId, body.appearance);
+    if (body.routing) await this.nestchat.updateRouting(inboxId, body.routing);
+    if (body.preChat) await this.nestchat.updatePreChat(inboxId, body.preChat);
+    if (body.appearance) return this.nestchat.updateAppearance(inboxId, body.appearance);
+    return this.nestchat.settingsFor(inboxId);
   }
 
   /** How a channel looks to the public is a channel setting, so it takes the
