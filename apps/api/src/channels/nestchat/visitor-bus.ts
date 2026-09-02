@@ -9,7 +9,10 @@ export type VisitorEvent =
   | { kind: "typing"; who: string; typing: boolean }
   /** An agent has read what the visitor wrote — the widget's "Seen". */
   | { kind: "read"; at: string }
-  | { kind: "closed" };
+  /** An agent closed the chat: the widget says so and stops taking messages. */
+  | { kind: "closed" }
+  /** …and reopened it, so the widget lets them write again without a reload. */
+  | { kind: "reopened" };
 
 const CHANNEL = "nestchat:visitor";
 

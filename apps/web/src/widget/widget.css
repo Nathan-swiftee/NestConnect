@@ -764,3 +764,38 @@ body {
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ── A closed chat ─────────────────────────────────────────────────────────
+   Centred and unbubbled, unlike everything else in the thread. Bubbles are
+   things people said; this is the conversation itself ending, so it reads as
+   an event in the transcript rather than as a message from either side. */
+
+.nc__closed {
+  align-self: center;
+  max-width: 88%;
+  margin: 4px 0;
+  padding: 12px 14px;
+  text-align: center;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+
+.nc__closed p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.nc__newchat {
+  padding: 8px 15px;
+  border: 0;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-text);
+  background: var(--accent);
+  cursor: pointer;
+}

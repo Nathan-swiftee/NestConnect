@@ -1404,6 +1404,13 @@ const NESTCHAT_WORDS: Array<{
   { key: "title", label: "Header title" },
   { key: "subtitle", label: "Header subtitle", hint: "Shown while someone is online" },
   { key: "awayMessage", label: "Away message", hint: "Replaces the subtitle when nobody is", multiline: true },
+  {
+    key: "closedMessage",
+    label: "Closing message",
+    hint: "Shown when an agent closes the chat; blank says nothing",
+    multiline: true,
+  },
+  { key: "newChatLabel", label: "New chat button", hint: "The way back in after a chat is closed" },
   { key: "greeting", label: "Greeting", hint: "The first thing in an empty chat", multiline: true },
   { key: "placeholder", label: "Message box placeholder" },
   { key: "launcherLabel", label: "Launcher tooltip", hint: "On the floating bubble" },

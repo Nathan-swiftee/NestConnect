@@ -143,6 +143,35 @@ describe("gateFor", () => {
     expect(gateFor(input({ preChat: form(), form: filled, starting: true })).blocked).toBe(true);
   });
 
+  it("asks why they're back, but not who they are, after a chat is closed", () => {
+    // What "Start a new chat" leaves behind: `identified` survives (we know
+    // them), `chosen` and `startDone` are cleared, and the thread is emptied so
+    // the gate reopens. The next conversation may be for a different team than
+    // the last, which is the whole reason for asking again.
+    const afterClose = input({
+      preChat: form(),
+      routing: menu(),
+      identified: true,
+      chosen: false,
+      hasThread: false,
+      startDone: false,
+    });
+    const gate = gateFor(afterClose);
+    expect(gate.gated).toBe(true);
+    expect(gate.wantsIdentity).toBe(false);
+    expect(gate.wantsOption).toBe(true);
+    // Nothing on the identity half is in their way — the only thing to answer
+    // is the menu.
+    expect(gate.blocked).toBe(true);
+    expect(gateFor({ ...afterClose, optionId: "opt_sales" }).blocked).toBe(false);
+  });
+
+  it("puts a known visitor straight back to the box when there is no menu", () => {
+    // A channel that doesn't ask what it's about has nothing to re-ask after a
+    // close, so a returning visitor should not meet a form at all.
+    expect(gateFor(input({ preChat: form(), identified: true })).gated).toBe(false);
+  });
+
   it("can offer a routing menu with no form at all", () => {
     const gate = gateFor(input({ routing: menu() }));
     expect(gate.gated).toBe(true);

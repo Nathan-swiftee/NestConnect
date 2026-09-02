@@ -167,6 +167,8 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   const [startError, setStartError] = useState<string>();
   /** They're through the form — by answering it, or by skipping it. */
   const [startDone, setStartDone] = useState(false);
+  /** An agent has closed this chat: it is read-only until they start a new one. */
+  const [closed, setClosed] = useState(false);
   /** What we told them we saved — the confirmation that used to be missing. */
   const [detailsSaved, setDetailsSaved] = useState<{ linked: boolean } | null>(null);
   const [detailsError, setDetailsError] = useState(false);
@@ -233,9 +235,23 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           | { kind: "message"; payload: NestChatMessage }
           | { kind: "typing"; typing: boolean }
           | { kind: "read"; at: string }
-          | { kind: "closed" };
+          | { kind: "closed" }
+          | { kind: "reopened" };
         if (event.kind === "read") {
           setSeenAt(event.at);
+          return;
+        }
+        if (event.kind === "closed") {
+          setClosed(true);
+          // Whatever they were mid-way through saying, nobody is going to read
+          // it — take it off the agent's screen rather than leave a draft
+          // hanging under a chat that has ended.
+          setAgentTyping(false);
+          clearTimeout(previewTimer.current);
+          return;
+        }
+        if (event.kind === "reopened") {
+          setClosed(false);
           return;
         }
         if (event.kind === "typing") {
@@ -251,6 +267,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         }
         if (event.kind !== "message") return;
         setAgentTyping(false);
+        // A reply is proof the chat is live, whether or not we caught the
+        // "reopened" frame — an agent typing to somebody who can't answer is
+        // the worse failure of the two.
+        setClosed(false);
         setMessages((prev) =>
           // The reply may already be here: an optimistic echo, or a reconnect
           // that refetched. Matching on id keeps it to one bubble.
@@ -458,6 +478,33 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   );
 
   /**
+   * "Start a new chat", after an agent has closed the last one.
+   *
+   * Their identity is deliberately kept: we know who they are, and asking a
+   * returning customer their name again is the widget forgetting somebody it
+   * has already met. What is cleared is the routing choice — the whole reason
+   * for asking is that the next conversation may be for a different team than
+   * the last, so "what's it about?" is put again and the answer re-routes.
+   *
+   * Emptying the thread is what makes the pre-chat gate reopen (it stands down
+   * once there are messages), and it is also honest: the closed conversation
+   * has ended, and the next message starts a new one server-side rather than
+   * continuing this one.
+   */
+  const startNewChat = useCallback(() => {
+    setClosed(false);
+    setMessages([]);
+    setLive(false);
+    setSeenAt(undefined);
+    acked.current = {};
+    setStartDone(false);
+    setChosen(undefined);
+    setOptionId(undefined);
+    setStartError(undefined);
+    setDetailsSaved(null);
+  }, []);
+
+  /**
    * "Not you?" — hand the widget back to whoever is actually sitting there.
    *
    * The browser id goes with the name, and a fresh session is opened against a
@@ -531,7 +578,11 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   // pre-chat form has already asked, and asking twice reads as the first one
   // having failed.
   const asking =
-    !preChat && (appearance.askEmail || appearance.askPhone) && !detailsSaved && messages.length > 0;
+    !closed &&
+    !preChat &&
+    (appearance.askEmail || appearance.askPhone) &&
+    !detailsSaved &&
+    messages.length > 0;
 
   // The last thing the visitor themselves said — the only bubble a "Seen"
   // belongs under, and only once an agent has actually read it.
@@ -834,6 +885,18 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           </div>
         ) : null}
 
+        {/* The end of the conversation, drawn as an event in it rather than as a
+            banner over it — it happened at a moment, and it belongs after the
+            last thing anybody said. */}
+        {closed ? (
+          <div className="nc__closed">
+            {appearance.closedMessage ? <p>{appearance.closedMessage}</p> : null}
+            <button type="button" className="nc__newchat" onClick={startNewChat}>
+              {appearance.newChatLabel || "Start a new chat"}
+            </button>
+          </div>
+        ) : null}
+
         {/* Said once, in the thread, so it is clear it actually landed. */}
         {detailsSaved ? (
           <div className="nc__note">
@@ -844,10 +907,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         ) : null}
       </div>
 
-      {/* Hidden rather than disabled while the form is up: a greyed-out message
-          box next to a form reads as something broken, and the form is the only
-          thing to do. */}
-      {gated ? null : (
+      {/* Hidden rather than disabled while the form is up, or once the chat has
+          been closed: a greyed-out message box reads as something broken, and in
+          both cases there is exactly one thing to do and it is on screen. */}
+      {gated || closed ? null : (
       <div className="nc__composer">
         <textarea
           ref={inputRef}

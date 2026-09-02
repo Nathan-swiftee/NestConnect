@@ -21,6 +21,7 @@ import type { OutboundTemplate } from "../channels/channel-provider";
 import { OutboundQueue } from "../queue/outbound-queue";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PushService } from "../push/push.service";
+import { NestChatService } from "../channels/nestchat/nestchat.service";
 import { sanitizeOutboundHtml, htmlToText } from "../channels/email/html-sanitize";
 import { forwardSubject } from "../channels/email/email.provider";
 
@@ -69,6 +70,7 @@ export class ConversationsService {
     private readonly queue: OutboundQueue,
     private readonly notifications: NotificationsService,
     private readonly push: PushService,
+    private readonly nestchat: NestChatService,
   ) {}
 
   list(view: string, userId: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
@@ -375,6 +377,13 @@ export class ConversationsService {
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     // Broadcast so every client drops (or restores) it from the active lists live.
     this.realtime.emitConversationUpdated(conv);
+    // A NestChat visitor has a widget open on the other end of this, and closing
+    // is the one change that happens to them without anything being said. Keyed
+    // on the conversation's origin channel: a thread that merely *replied* over
+    // NestChat has no widget waiting on it.
+    if (conv.channel === "nestchat") {
+      this.nestchat.publishStatusToVisitor(conv.id, conv.status);
+    }
     return conv;
   }
 

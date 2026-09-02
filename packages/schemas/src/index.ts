@@ -910,6 +910,21 @@ export const nestchatAppearanceSchema = z.object({
     .string()
     .max(200)
     .default("We're away right now — leave a message and we'll reply by email."),
+  /**
+   * Said to the visitor when an agent closes the chat.
+   *
+   * Written by the business because closing means different things to
+   * different ones — a resolved ticket, an ended shift, a booking confirmed —
+   * and the sentence that fits is theirs. Blank says nothing and still ends the
+   * session: some businesses would rather the chat simply stop than announce
+   * that it has.
+   */
+  closedMessage: z
+    .string()
+    .max(300)
+    .default("This chat has been closed. Thanks for getting in touch!"),
+  /** The way back in, once a chat has been closed. */
+  newChatLabel: z.string().max(40).default("Start a new chat"),
   /** Ask for an email before the first message, so a reply can reach someone
    *  who has closed the tab. */
   askEmail: z.boolean().default(true),
