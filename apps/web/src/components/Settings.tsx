@@ -1917,8 +1917,8 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                               onChange={(e) => setOption(o.id, { label: e.target.value })}
                             />
                             <input
-                              aria-label="A line under it (optional)"
-                              placeholder="Invoices, payments, refunds"
+                              aria-label="A note for the option (optional)"
+                              placeholder="Invoices, payments, refunds — shown on hover"
                               value={o.description ?? ""}
                               onChange={(e) =>
                                 setOption(o.id, { description: e.target.value || undefined })
@@ -2093,6 +2093,20 @@ function NestChatPreview({
         <div className="ncprev__in">{fillVisitorName(appearance.greeting, "Sam Whitfield")}</div>
         {gate ? (
           <div className="ncprev__gate">
+            {/* Same order as the widget: what they need, then who they are. */}
+            {routing.enabled && routing.options.length > 0 && (
+              <>
+                <p className="ncprev__gateq">{routing.prompt}</p>
+                <div className="ncprev__opts">
+                  {routing.options.map((o, i) => (
+                    <span key={o.id} className={"ncprev__opt" + (i === 0 ? " on" : "")}>
+                      {o.icon && <span>{o.icon}</span>}
+                      {o.label || "Untitled option"}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
             {preChat.enabled && (
               <>
                 {preChat.intro && <p className="ncprev__gateintro">{preChat.intro}</p>}
@@ -2103,17 +2117,6 @@ function NestChatPreview({
                       {preChat[f.key].required ? "" : " (optional)"}
                     </span>
                     <i />
-                  </div>
-                ))}
-              </>
-            )}
-            {routing.enabled && routing.options.length > 0 && (
-              <>
-                <p className="ncprev__gateq">{routing.prompt}</p>
-                {routing.options.map((o, i) => (
-                  <div key={o.id} className={"ncprev__opt" + (i === 0 ? " on" : "")}>
-                    {o.icon && <span>{o.icon}</span>}
-                    <b>{o.label || "Untitled option"}</b>
                   </div>
                 ))}
               </>

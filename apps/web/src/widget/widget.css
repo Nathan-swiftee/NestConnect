@@ -570,33 +570,38 @@ body {
    Drawn as a card in the thread rather than a screen of its own. A separate
    screen makes a chat widget feel like a form with a chat attached; this way
    the greeting is still above it and the conversation has visibly already
-   started, which is the thing that gets people to finish it. */
+   started, which is the thing that gets people to finish it.
+
+   Kept deliberately tight. This sits between somebody and the question they
+   came to ask, so every millimetre of it is a millimetre of hesitation — the
+   whole card should read as one small ask, not as a page. */
 
 .nc__prechat {
   align-self: stretch;
   margin-left: 34px;
   margin-right: 8px;
-  padding: 14px 15px 15px;
-  border-radius: 18px 18px 18px 6px;
+  padding: 11px 12px 12px;
+  border-radius: 16px 16px 16px 5px;
   background: var(--bubble-in);
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -6px rgba(16, 24, 40, 0.12);
 }
 
 .nc__prechatintro {
-  margin: 0 0 12px;
-  font-size: 13.5px;
-  line-height: 1.45;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
   color: var(--text);
 }
 
 .nc__pcfield {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .nc__pcfield > span {
   display: block;
-  font-size: 12.5px;
+  margin-bottom: 4px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text);
 }
@@ -613,15 +618,16 @@ body {
 .nc__pcfield input {
   display: block;
   width: 100%;
-  margin-top: 6px;
-  padding: 9px 11px;
+  padding: 7px 10px;
   font: inherit;
-  /* 16px so iOS doesn't zoom the host page when it takes focus. */
+  /* 16px so iOS doesn't zoom the host page when it takes focus. The row is kept
+     short with padding instead — shrinking the text is what causes the zoom. */
   font-size: 16px;
+  line-height: 1.25;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 9px;
 }
 
 .nc__pcfield input:focus-visible {
@@ -635,41 +641,52 @@ body {
 
 .nc__pcerr {
   display: block;
-  margin-top: 5px;
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 11.5px;
   color: #d1453b;
 }
 
 /* ── The routing menu ───────────────────────────────────────────────────── */
 
 .nc__options {
-  margin: 14px 0 4px;
+  margin: 0 0 12px;
 }
 
 .nc__optionsq {
-  margin: 0 0 8px;
-  font-size: 12.5px;
+  margin: 0 0 7px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text);
 }
 
-/* Full-width rows rather than wrapped chips: the labels are a business's own
-   words ("Something about an existing order") and wrapping them into a chip
-   grid produces a ragged block nobody can scan. */
-.nc__option {
+/* Brick-laid pills: each one only as wide as its own label, wrapping onto the
+   next line when it runs out of room. Eight short labels then take two or three
+   lines instead of eight, and the eye reads them as a set of choices rather
+   than as a list of rows to work down. */
+.nc__optionlist {
   display: flex;
-  gap: 9px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nc__option {
+  display: inline-flex;
   align-items: center;
-  width: 100%;
-  margin-bottom: 6px;
-  padding: 9px 11px;
+  gap: 5px;
+  padding: 6px 11px;
   font: inherit;
-  text-align: left;
+  font-size: 12.5px;
+  line-height: 1.3;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 999px;
   cursor: pointer;
+  /* A long label stays one pill rather than breaking mid-word into a lump. */
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nc__option:hover {
@@ -689,37 +706,13 @@ body {
   outline-offset: 1px;
 }
 
-.nc__optionicon {
-  flex: none;
-  font-size: 16px;
-  line-height: 1;
-}
-
-.nc__optiontext {
-  display: block;
-  min-width: 0;
-}
-
-.nc__optiontext b {
-  display: block;
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.nc__optiontext small {
-  display: block;
-  margin-top: 1px;
-  font-size: 12px;
-  opacity: 0.75;
-}
-
 .nc__prechatgo {
-  margin-top: 12px;
-  padding: 9px 16px;
+  margin-top: 2px;
+  padding: 8px 14px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 9px;
   font: inherit;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--accent-text);
   background: var(--accent);
@@ -734,12 +727,12 @@ body {
 /* A link, not a second button: skipping is a way past the form, not the other
    half of a choice, and two buttons side by side would read as one. */
 .nc__prechatskip {
-  margin: 12px 0 0 12px;
+  margin: 0 0 0 12px;
   padding: 0;
   border: 0;
   background: none;
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--muted);
   text-decoration: underline;
   cursor: pointer;

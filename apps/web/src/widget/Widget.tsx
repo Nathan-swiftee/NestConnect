@@ -661,6 +661,45 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
 
         {gated ? (
           <div className="nc__prechat">
+            {/* What they need, then who they are.
+                
+                The menu goes first because it is the question the visitor came
+                with an answer to: "billing" costs one tap and is the thing that
+                decides who picks this up. Name and email are our questions, not
+                theirs, and a form that opens with them reads as a gate to get
+                past rather than a conversation starting. It is also the order
+                every conversational widget has converged on — topic buttons up
+                front, contact details once the person is already engaged. */}
+            {wantsOption && routing ? (
+              /* Pills rather than rows or a <select>. A dropdown on a phone is a
+                 modal sheet to answer something that should cost one tap, and
+                 full-width rows turn eight short labels into eight lines of
+                 mostly empty space. Wrapping pills let the labels set their own
+                 width and the list take only the height it needs.
+
+                 The description isn't drawn — it would put a second line inside
+                 every pill and undo the point. It rides along as the title, for
+                 anyone who hovers. */
+              <div className="nc__options" role="group" aria-label={routing.prompt}>
+                <p className="nc__optionsq">{routing.prompt}</p>
+                <div className="nc__optionlist">
+                  {routing.options.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className={optionId === o.id ? "nc__option on" : "nc__option"}
+                      aria-pressed={optionId === o.id}
+                      title={o.description || undefined}
+                      onClick={() => setOptionId(o.id)}
+                    >
+                      {o.icon ? <span aria-hidden="true">{o.icon}</span> : null}
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {wantsIdentity && preChat ? (
               <>
                 {preChat.intro ? <p className="nc__prechatintro">{preChat.intro}</p> : null}
@@ -714,42 +753,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                   </label>
                 ) : null}
               </>
-            ) : null}
-
-            {wantsOption && routing ? (
-              /* Buttons in a group rather than a <select>: there are at most
-                 eight, they are the most important question on the form, and a
-                 dropdown on a phone is a modal sheet to answer something that
-                 should cost one tap. */
-              <div
-                className="nc__options"
-                role="group"
-                aria-label={routing.prompt}
-              >
-                <p className="nc__optionsq">{routing.prompt}</p>
-                {routing.options.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    className={optionId === o.id ? "nc__option on" : "nc__option"}
-                    aria-pressed={optionId === o.id}
-                    onClick={() => setOptionId(o.id)}
-                  >
-                    {o.icon ? (
-                      <span className="nc__optionicon" aria-hidden="true">
-                        {o.icon}
-                      </span>
-                    ) : null}
-                    <span className="nc__optiontext">
-                      <b>{o.label}</b>
-                      {o.description ? <small>{o.description}</small> : null}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            {startError ? <p className="nc__askerr">{startError}</p> : null}
+            ) : null}            {startError ? <p className="nc__askerr">{startError}</p> : null}
 
             <button
               type="button"
