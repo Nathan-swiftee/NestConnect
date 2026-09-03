@@ -37,6 +37,15 @@ jobs:
       - name: Inbound threading rule
         run: pnpm check:threading
 
+      # Which team a new conversation lands on. Sibling to the rule above and
+      # failing the same way: a chat routed to the wrong people looks completely
+      # normal — it typechecks, it builds, nothing errors — it is simply sitting
+      # in front of a team that isn't going to answer it, while the customer
+      # waits. The check has existed since the routing menu shipped and was only
+      # ever run by hand, which protects nobody.
+      - name: Routing rule
+        run: pnpm check:routing
+
       # Hooks called below an early return. React throws #310 and unmounts the
       # whole tree, so the symptom is a white page with nothing in the console
       # that names the component — and it typechecks and builds perfectly. It has
