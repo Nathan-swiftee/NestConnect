@@ -11,7 +11,7 @@ const routing = (over: Partial<NestChatRouting> = {}): NestChatRouting => ({
   enabled: true,
   options: [
     { id: "opt_sales", label: "Sales", teamId: "team_sales", icon: "💷" },
-    { id: "opt_billing", label: "Billing", description: "Invoices", teamId: "team_billing" },
+    { id: "opt_billing", label: "Billing", teamId: "team_billing" },
   ],
   ...over,
 });
@@ -20,8 +20,8 @@ describe("toPublicRouting", () => {
   it("never sends a team id to the visitor", () => {
     const out = toPublicRouting(routing(), ["team_sales", "team_billing"]);
     expect(out?.options).toEqual([
-      { id: "opt_sales", label: "Sales", description: undefined, icon: "💷" },
-      { id: "opt_billing", label: "Billing", description: "Invoices", icon: undefined },
+      { id: "opt_sales", label: "Sales", icon: "💷" },
+      { id: "opt_billing", label: "Billing", icon: undefined },
     ]);
     for (const o of out?.options ?? []) expect(o).not.toHaveProperty("teamId");
   });
@@ -31,6 +31,22 @@ describe("toPublicRouting", () => {
     // lands in the default queue.
     const out = toPublicRouting(routing(), ["team_sales"]);
     expect(out?.options.map((o) => o.id)).toEqual(["opt_sales"]);
+  });
+
+  it("drops a description left over from before the field existed", () => {
+    // Saved menus still carry one in their stored JSON. Zod strips unknown keys
+    // on the way in, so it never reaches a visitor's browser and never needs a
+    // migration — but it should be pinned, because "the old field quietly comes
+    // back" is exactly the kind of thing nothing else would catch.
+    const legacy = routing({
+      options: [
+        { id: "opt_sales", label: "Sales", teamId: "team_sales", description: "Quotes" },
+        // Cast through unknown: the point of the test is that this shape no
+        // longer type-checks, which is exactly why it can only arrive as data.
+      ] as unknown as NestChatRouting["options"],
+    });
+    const out = toPublicRouting(legacy, ["team_sales"]);
+    expect(out?.options[0]).not.toHaveProperty("description");
   });
 
   it("returns nothing when the menu is off", () => {

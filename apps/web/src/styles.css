@@ -70,12 +70,14 @@ input,textarea{font:inherit}
 .btn-ghost:active{transform:scale(.97)}
 
 /* soft, carved input field — no outlined rectangles */
-.field input,.field select,.setadd input,.setform input,.addmember input,.memrow input,.connect__creds input,.routesel select{
+.field input,.field select,.setadd input,.setform input,.addmember input,.memrow input,.connect__creds input,.routesel select,
+.ncwfield input[type="text"],.ncwfield__label,.ncwopt input,.ncwopt select{
   width:100%;padding:var(--sp-2) var(--sp-3);border:1px solid transparent;border-radius:var(--r-12);
   background:var(--surface-2);color:var(--text);font-size:var(--fs-md);font-weight:500;outline:none;
   box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow var(--t-base),background var(--t-base),border-color var(--t-base)}
 .field input:focus,.field select:focus,.setadd input:focus,.setform input:focus,
-.addmember input:focus,.memrow input:focus,.connect__creds input:focus,.routesel select:focus{
+.addmember input:focus,.memrow input:focus,.connect__creds input:focus,.routesel select:focus,
+.ncwfield__label:focus,.ncwopt input:focus,.ncwopt select:focus{
   border-color:var(--brand);background-color:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
 
 /* the shared floating-surface recipe — identical for every temporary surface.
@@ -1867,9 +1869,9 @@ input,textarea{font:inherit}
 .iconpick__btn svg{width:20px;height:20px}
 
 /* selects: match the field system, custom chevron, no OS default look */
-.field select,.setform select,.addmember select,.routesel select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
+.field select,.setform select,.addmember select,.routesel select,.ncwopt select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586762' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px}
-:root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select,:root[data-theme="dark"] .routesel select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E")}
+:root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select,:root[data-theme="dark"] .routesel select,:root[data-theme="dark"] .ncwopt select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E")}
 
 /* settings & customers — an in-app page (fills the area beside the icon rail),
    not a full-screen modal takeover */
@@ -2912,6 +2914,10 @@ button.tpl-row:active{transform:scale(.97)}
 @media (max-width:1100px){.ncw{grid-template-columns:minmax(0,1fr)}}
 .ncw__form,.ncw__side{display:grid;gap:var(--sp-4);min-width:0}
 .ncw__group{display:grid;gap:var(--sp-3);min-width:0}
+/* An author `display` beats the UA stylesheet's `[hidden]{display:none}`, so the
+   tabbed sections need this or `hidden` silently does nothing and every group
+   renders at once. */
+.ncw__group[hidden]{display:none}
 .ncw__group h3{margin:0;font-size:var(--fs-xs);font-weight:600;letter-spacing:.04em;
   text-transform:uppercase;color:var(--text-faint)}
 /* The swatch and its hex sit on one line: the picker is the fast way in, the
@@ -2931,18 +2937,22 @@ button.tpl-row:active{transform:scale(.97)}
 .ncprev{border:1px solid var(--border);border-radius:var(--r-14);overflow:hidden;
   background:#fff;color:#12151a;box-shadow:var(--shadow)}
 .ncprev--dark{background:#14171c;color:#eef1f5;border-color:#2a2f38}
-.ncprev__head{display:flex;align-items:center;gap:9px;padding:12px 14px;
-  background:var(--pv-accent);color:var(--pv-on)}
-.ncprev__headtext{min-width:0}
-.ncprev__title{font-size:var(--fs-sm);font-weight:650}
-.ncprev__sub{margin-top:2px;font-size:11.5px;opacity:.85}
+/* Stacked, like the widget's own — faces in the far corner, then the greeting. */
+.ncprev__head{display:flex;flex-direction:column;align-items:stretch;gap:22px;
+  padding:12px 14px 16px;background:var(--pv-head,var(--pv-accent));color:var(--pv-on)}
+.ncprev__headtop{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:26px}
+.ncprev__logo{max-height:20px;max-width:100px;width:auto;object-fit:contain;display:block}
+.ncprev__headtext{min-width:0;width:100%}
+.ncprev__headline{font-size:16px;font-weight:680;line-height:1.25;letter-spacing:-.02em;opacity:.62}
+.ncprev__title{font-size:16px;font-weight:680;line-height:1.25;letter-spacing:-.02em}
+.ncprev__sub{margin-top:4px;font-size:11.5px;opacity:.85}
 /* The header face stack, scaled down — same construction as the widget's own:
    overlapped with the first on top, ringed in the header colour, and the glyph
    nudged into the visible part of every circle but the first. */
 .ncprev__faces{display:flex;align-items:center;flex:none}
 .ncprev__face{position:relative;width:26px;height:26px;margin-left:-7px;flex:none;
   border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:700;
-  color:var(--pv-on);box-shadow:0 0 0 1.5px var(--pv-accent)}
+  color:var(--pv-on)}
 .ncprev__face:first-child{margin-left:0}
 .ncprev__face:not(:first-child)>b{margin-left:4.5px}
 .ncprev__face img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
@@ -2968,22 +2978,28 @@ button.tpl-row:active{transform:scale(.97)}
 /* The pre-chat form, in the preview. Deliberately flatter than the widget's own
    — these are shapes standing in for fields, not fields, and drawing them as
    real inputs invites somebody to try typing into the preview. */
-.ncprev__gate{justify-self:stretch;padding:10px 11px 11px;border-radius:14px;
-  border-bottom-left-radius:4px;background:#fff;color:#12151a}
-.ncprev--dark .ncprev__gate{background:#232830;color:#eef1f5}
-.ncprev__gateintro{margin:0 0 9px;font-size:12px;line-height:1.45}
+/* Not a card, matching the widget: the pills sit straight on the thread. */
+.ncprev__gate{justify-self:stretch;color:#12151a}
+.ncprev--dark .ncprev__gate{color:#eef1f5}
+.ncprev__gateintro{margin:0 0 8px;font-size:12px;line-height:1.4}
 .ncprev__gatefield{margin-bottom:8px;font-size:11px}
 .ncprev__gatefield span{display:block;font-weight:600;margin-bottom:4px}
-.ncprev__gatefield i{display:block;height:26px;border-radius:8px;background:#f0f2f5}
-.ncprev--dark .ncprev__gatefield i{background:#171b21}
-.ncprev__gateq{margin:10px 0 6px;font-size:11px;font-weight:600}
-.ncprev__opt{display:flex;align-items:center;gap:6px;margin-bottom:5px;padding:6px 9px;
-  font-size:11.5px;border-radius:9px;background:#f0f2f5}
-.ncprev--dark .ncprev__opt{background:#171b21}
-/* The first option is shown chosen, so the accent is visible in the state that
-   actually carries it — an all-grey menu tells you nothing about your colour. */
-.ncprev__opt.on{background:var(--pv-accent);color:var(--pv-on)}
-.ncprev__gatego{margin-top:10px;padding:7px 12px;width:fit-content;border-radius:9px;
+.ncprev__gatefield i{display:block;height:26px;border-radius:8px;background:#fff;
+  border:1px solid #e4e7ec}
+.ncprev--dark .ncprev__gatefield i{background:#232830;border-color:#2a2f38}
+.ncprev__gateq{margin:0 0 6px;font-size:11px;font-weight:600}
+/* Brick-laid pills, like the widget's own — the preview is only useful if the
+   shape it shows is the shape that ships. */
+.ncprev__opts{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+/* Filled, like the widget's — and the first shown chosen with the rest dimmed,
+   which is the whole of how selection reads there. */
+.ncprev__opt{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;
+  font-size:11px;font-weight:550;line-height:1.3;border-radius:999px;
+  background:var(--pv-accent);color:var(--pv-on);white-space:nowrap}
+.ncprev__opts[data-chosen="yes"] .ncprev__opt{opacity:.45}
+.ncprev__opts[data-chosen="yes"] .ncprev__opt.on{opacity:1}
+.ncprev__opt.on::before{content:"✓";font-size:10px;line-height:1}
+.ncprev__gatego{margin-top:8px;padding:6px 12px;width:fit-content;border-radius:9px;
   font-size:11.5px;font-weight:600;background:var(--pv-accent);color:var(--pv-on)}
 
 /* Settings for a toggle live under it, indented and ruled, so it reads as
@@ -2998,17 +3014,39 @@ button.tpl-row:active{transform:scale(.97)}
 .ncwfield__req{display:flex;align-items:center;gap:5px;flex:none;
   font-size:var(--fs-xs);color:var(--text-faint);white-space:nowrap}
 
-/* One routing option. The emoji is a single character, the team is a fixed
-   choice, and the words in between take whatever is left. */
-.ncwopt{display:flex;align-items:flex-start;gap:var(--sp-2);padding:var(--sp-2);
-  border:1px solid var(--border);border-radius:var(--r-10);background:var(--surface-2)}
-.ncwopt__icon{flex:none;width:44px;text-align:center}
-.ncwopt__body{flex:1 1 auto;min-width:0;display:grid;gap:6px}
-.ncwopt select{flex:0 0 auto;max-width:150px}
-.ncwopt__del{flex:none;width:28px;height:28px;border:0;border-radius:var(--r-8);
-  background:transparent;color:var(--text-faint);cursor:pointer;line-height:1}
-.ncwopt__del:hover{background:var(--surface);color:var(--danger)}
-@media (max-width:700px){
-  .ncwopt{flex-wrap:wrap}
-  .ncwopt select{max-width:none;flex:1 1 100%}
+/* The widget's settings, split into tabs — four groups down one column had
+   grown past the point where you could find anything in it. */
+.ncwsub{display:flex;gap:2px;padding:3px;border-radius:var(--r-10);
+  background:var(--surface-2);border:1px solid var(--border)}
+.ncwsub__tab{flex:1 1 0;padding:7px 10px;border:0;border-radius:var(--r-8);
+  background:transparent;color:var(--text-muted);font-size:var(--fs-xs);font-weight:600;
+  cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ncwsub__tab:hover{color:var(--text)}
+.ncwsub__tab.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-sm,0 1px 2px rgba(16,24,40,.06))}
+
+/* The logo, shown on the colour it will actually sit on. */
+.ncwlogo{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.ncwlogo__well{flex:none;display:grid;place-items:center;width:150px;height:56px;
+  padding:0 var(--sp-3);border-radius:var(--r-10);overflow:hidden}
+.ncwlogo__well img{max-width:100%;max-height:30px;width:auto;object-fit:contain;display:block}
+.ncwlogo__well span{font-size:var(--fs-xs);opacity:.7}
+.ncwlogo__acts{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;min-width:0}
+.ncwlogo__acts .fieldhint{flex:1 1 100%;margin:0}
+
+/* Routing options as a small table: one row each, headed once. */
+.ncwopts{display:grid;gap:6px}
+.ncwopt{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,150px) 32px;
+  align-items:center;gap:var(--sp-2)}
+.ncwopt--head{padding:0 0 2px}
+.ncwopt--head span{font-size:var(--fs-2xs,11px);font-weight:600;letter-spacing:.03em;
+  text-transform:uppercase;color:var(--text-faint)}
+.ncwopt__icon{text-align:center;padding-left:0;padding-right:0}
+.ncwopt__del{display:grid;place-items:center;width:32px;height:32px;border:0;
+  border-radius:var(--r-8);background:transparent;color:var(--text-faint);cursor:pointer}
+.ncwopt__del:hover{background:var(--danger-tint);color:var(--danger)}
+.ncwopt__del svg{width:15px;height:15px}
+@media (max-width:760px){
+  .ncwopt{grid-template-columns:52px minmax(0,1fr) 32px}
+  .ncwopt select{grid-column:2 / span 2}
+  .ncwopt--head{display:none}
 }

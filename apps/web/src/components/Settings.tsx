@@ -1388,6 +1388,16 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
  * saved together: the appearance, the form shown before a chat starts, and the
  * menu that decides which team answers it.
  */
+/** The tabs the widget's settings are split across. */
+type SettingsSection = "brand" | "words" | "prechat" | "behaviour";
+
+const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
+  { key: "brand", label: "Brand" },
+  { key: "words", label: "Words" },
+  { key: "prechat", label: "Before the chat" },
+  { key: "behaviour", label: "Behaviour" },
+];
+
 type WidgetDraft = {
   appearance: NestChatAppearance;
   preChat: NestChatPreChat;
@@ -1401,9 +1411,17 @@ const NESTCHAT_WORDS: Array<{
   hint?: string;
   multiline?: boolean;
 }> = [
-  { key: "title", label: "Header title" },
+  { key: "headline", label: "Header greeting", hint: "The quiet line above the title; {name} becomes their name" },
+  { key: "title", label: "Header title", hint: "The bold line — usually a question" },
   { key: "subtitle", label: "Header subtitle", hint: "Shown while someone is online" },
   { key: "awayMessage", label: "Away message", hint: "Replaces the subtitle when nobody is", multiline: true },
+  {
+    key: "closedMessage",
+    label: "Closing message",
+    hint: "Shown when an agent closes the chat; blank says nothing",
+    multiline: true,
+  },
+  { key: "newChatLabel", label: "New chat button", hint: "The way back in after a chat is closed" },
   { key: "greeting", label: "Greeting", hint: "The first thing in an empty chat", multiline: true },
   { key: "placeholder", label: "Message box placeholder" },
   { key: "launcherLabel", label: "Launcher tooltip", hint: "On the floating bubble" },
@@ -1450,6 +1468,53 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
 
   /** The teams this channel routes to — the only ones an option may name. */
   const teams = settings.data?.teams ?? [];
+
+  /**
+   * Which half of the form is on screen.
+   *
+   * Four groups down one column had grown past the point where you could find
+   * anything: the routing menu sat below a dozen text fields, and the preview
+   * beside it had scrolled away by the time you got there. Tabs keep the thing
+   * you are editing next to the thing that shows it.
+   */
+  const [tab, setTab] = useState<SettingsSection>("brand");
+  const logoRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  /** Upload a logo and point this channel at it. */
+  const pickLogo = async (file: File | undefined) => {
+    if (!file || !draft) return;
+    if (!file.type.startsWith("image/")) {
+      onToast("That file isn’t an image.");
+      return;
+    }
+    if (file.size > 2_000_000) {
+      onToast("Logo is too large — keep it under 2 MB.");
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const att = await api.uploadMedia(file, { kind: "image", filename: file.name });
+      // The id, not the url: the public address is derived from the widget key
+      // when the widget asks for its config, so a rotated key can't strand it.
+      setTab("brand");
+      setDrafts((m) =>
+        inboxId && m[inboxId]
+          ? {
+              ...m,
+              [inboxId]: {
+                ...m[inboxId],
+                appearance: { ...m[inboxId].appearance, logoAttachmentId: att.id, logoUrl: "" },
+              },
+            }
+          : m,
+      );
+    } catch {
+      onToast("Couldn’t upload that logo — please try again.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   /**
    * One draft per channel, not one draft.
@@ -1519,6 +1584,18 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
       options: draft.routing.options.map((o) => (o.id === id ? { ...o, ...patch } : o)),
     });
   };
+
+  /**
+   * Where the pane itself loads the logo from.
+   *
+   * The session-guarded media route, not the widget's public one: this is the
+   * agent app, it has a session, and the public route only serves what is
+   * *saved* — so an upload you haven't saved yet would show nothing, which
+   * reads as an upload that failed.
+   */
+  const logoSrc = draft?.appearance.logoAttachmentId
+    ? `/api/media/${encodeURIComponent(draft.appearance.logoAttachmentId)}`
+    : draft?.appearance.logoUrl || "";
 
   /** Channels with edits that haven't been saved yet — marked in the picker, so
    *  a pending change on a channel you've switched away from stays visible. */
@@ -1638,7 +1715,22 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
       ) : (
         <div className="ncw">
           <div className="ncw__form">
-            <section className="ncw__group">
+            <div className="ncwsub" role="tablist" aria-label="Widget settings sections">
+              {SETTINGS_SECTIONS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.key}
+                  className={"ncwsub__tab" + (tab === t.key ? " on" : "")}
+                  onClick={() => setTab(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <section className="ncw__group" hidden={tab !== "brand"}>
               <h3>Brand</h3>
               <div className="setform__grid two">
                 <label className="field">
@@ -1674,6 +1766,95 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   </div>
                 </label>
               </div>
+              <div className="field">
+                <span>
+                  Logo <em>Top-left of the header</em>
+                </span>
+                <div className="ncwlogo">
+                  {/* Shown on the brand colour, because that is the only place
+                      it is ever seen — a dark logo that looks fine on white and
+                      vanishes on a blue header is exactly the mistake this
+                      preview exists to catch. */}
+                  <div
+                    className="ncwlogo__well"
+                    style={{
+                      background: draft.appearance.headerGradient
+                        ? `linear-gradient(135deg, ${draft.appearance.accent}, ${draft.appearance.accentTo})`
+                        : draft.appearance.accent,
+                    }}
+                  >
+                    {logoSrc ? (
+                      <img src={logoSrc} alt="" />
+                    ) : (
+                      <span style={{ color: draft.appearance.accentText }}>No logo</span>
+                    )}
+                  </div>
+                  <div className="ncwlogo__acts">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => logoRef.current?.click()}
+                      disabled={uploadingLogo}
+                    >
+                      {uploadingLogo ? "Uploading…" : logoSrc ? "Replace" : "Upload a logo"}
+                    </button>
+                    {logoSrc && (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => {
+                          set("logoAttachmentId", "");
+                          set("logoUrl", "");
+                        }}
+                        disabled={uploadingLogo}
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <small className="fieldhint">PNG, SVG or JPG, up to 2 MB. Use a light
+                      version — it sits on your brand colour.</small>
+                  </div>
+                </div>
+                <input
+                  ref={logoRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    void pickLogo(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+
+              <label className={"check" + (draft.appearance.headerGradient ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.appearance.headerGradient}
+                  onChange={(e) => set("headerGradient", e.target.checked)}
+                />
+                Run the header as a gradient
+              </label>
+              {draft.appearance.headerGradient && (
+                <label className="field">
+                  <span>
+                    Gradient runs to <em>The header only — buttons and bubbles stay flat</em>
+                  </span>
+                  <div className="ncw__colour">
+                    <input
+                      type="color"
+                      value={draft.appearance.accentTo}
+                      onChange={(e) => set("accentTo", e.target.value)}
+                      aria-label="Second colour"
+                    />
+                    <input
+                      value={draft.appearance.accentTo}
+                      onChange={(e) => set("accentTo", e.target.value)}
+                      spellCheck={false}
+                    />
+                  </div>
+                </label>
+              )}
               <div className="setform__grid two">
                 <label className="field">
                   <span>Theme</span>
@@ -1701,7 +1882,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
               </div>
             </section>
 
-            <section className="ncw__group">
+            <section className="ncw__group" hidden={tab !== "words"}>
               <h3>Words</h3>
               {NESTCHAT_WORDS.map((f) => (
                 <label className="field" key={f.key}>
@@ -1724,7 +1905,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
               ))}
             </section>
 
-            <section className="ncw__group">
+            <section className="ncw__group" hidden={tab !== "behaviour"}>
               <h3>Behaviour</h3>
               <label className={"check" + (draft.appearance.askEmail ? " on" : "")}>
                 <input
@@ -1760,7 +1941,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
               </label>
             </section>
 
-            <section className="ncw__group">
+            <section className="ncw__group" hidden={tab !== "prechat"}>
               <h3>Before the chat</h3>
               <p className="fieldhint">
                 Ask who someone is before they write, and let them say what it’s about. Details
@@ -1877,6 +2058,11 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                       onChange={(e) => setRouting("prompt", e.target.value)}
                     />
                   </label>
+                  <p className="fieldhint">
+                    Each option is one pill the visitor taps, so keep the labels short — they
+                    sit side by side and wrap onto the next line. There’s no second line to
+                    explain one: if a label needs explaining, reword the label.
+                  </p>
                   <label className={"check" + (draft.routing.required ? " on" : "")}>
                     <input
                       type="checkbox"
@@ -1893,61 +2079,66 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                     </p>
                   ) : (
                     <>
-                      {draft.routing.options.map((o) => (
-                        <div className="ncwopt" key={o.id}>
-                          <input
-                            className="ncwopt__icon"
-                            aria-label="Emoji"
-                            placeholder="💬"
-                            value={o.icon ?? ""}
-                            onChange={(e) => setOption(o.id, { icon: e.target.value || undefined })}
-                          />
-                          <div className="ncwopt__body">
+                      <div className="ncwopts">
+                        {/* Column headings once, rather than a placeholder in
+                            every box repeating what the column is. */}
+                        <div className="ncwopt ncwopt--head" aria-hidden="true">
+                          <span />
+                          <span>Label</span>
+                          <span>Answered by</span>
+                          <span />
+                        </div>
+                        {draft.routing.options.map((o) => (
+                          <div className="ncwopt" key={o.id}>
                             <input
+                              className="ncwopt__icon"
+                              aria-label="Emoji"
+                              placeholder="🙂"
+                              maxLength={4}
+                              value={o.icon ?? ""}
+                              onChange={(e) =>
+                                setOption(o.id, { icon: e.target.value || undefined })
+                              }
+                            />
+                            <input
+                              className="ncwopt__label"
                               aria-label="What the visitor sees"
                               placeholder="Billing question"
                               value={o.label}
                               onChange={(e) => setOption(o.id, { label: e.target.value })}
                             />
-                            <input
-                              aria-label="A line under it (optional)"
-                              placeholder="Invoices, payments, refunds"
-                              value={o.description ?? ""}
-                              onChange={(e) =>
-                                setOption(o.id, { description: e.target.value || undefined })
+                            {/* Only this channel's teams. An option pointing
+                                anywhere else would show a visitor the faces of
+                                one team in the header and hand them to another —
+                                the server refuses it for the same reason. */}
+                            <select
+                              aria-label="Team that answers it"
+                              value={o.teamId}
+                              onChange={(e) => setOption(o.id, { teamId: e.target.value })}
+                            >
+                              {teams.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className="ncwopt__del"
+                              title="Remove this option"
+                              aria-label={`Remove ${o.label || "option"}`}
+                              onClick={() =>
+                                setRouting(
+                                  "options",
+                                  draft.routing.options.filter((x) => x.id !== o.id),
+                                )
                               }
-                            />
+                            >
+                              <TrashIcon />
+                            </button>
                           </div>
-                          {/* Only this channel's teams. An option pointing
-                              anywhere else would show a visitor the faces of
-                              one team in the header and hand them to another —
-                              the server refuses it for the same reason. */}
-                          <select
-                            aria-label="Team that answers it"
-                            value={o.teamId}
-                            onChange={(e) => setOption(o.id, { teamId: e.target.value })}
-                          >
-                            {teams.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            className="ncwopt__del"
-                            aria-label={`Remove ${o.label || "option"}`}
-                            onClick={() =>
-                              setRouting(
-                                "options",
-                                draft.routing.options.filter((x) => x.id !== o.id),
-                              )
-                            }
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                       <button
                         type="button"
                         className="btn-ghost"
@@ -2052,10 +2243,24 @@ function NestChatPreview({
   return (
     <div
       className={"ncprev" + (dark ? " ncprev--dark" : "")}
-      style={{ ["--pv-accent" as string]: appearance.accent, ["--pv-on" as string]: appearance.accentText }}
+      style={{
+        ["--pv-accent" as string]: appearance.accent,
+        ["--pv-on" as string]: appearance.accentText,
+        // Same rule the widget uses: the header takes the gradient, everything
+        // else keeps the flat accent.
+        ["--pv-head" as string]: appearance.headerGradient
+          ? `linear-gradient(135deg, ${appearance.accent}, ${appearance.accentTo})`
+          : appearance.accent,
+      }}
       aria-hidden="true"
     >
       <div className="ncprev__head">
+        <div className="ncprev__headtop">
+        {appearance.logoUrl ? (
+          <img className="ncprev__logo" src={appearance.logoUrl} alt="" />
+        ) : (
+          <span />
+        )}
         {faces.length > 0 && (
           <div className="ncprev__faces">
             {faces.map((f, i) => (
@@ -2074,8 +2279,14 @@ function NestChatPreview({
             )}
           </div>
         )}
+        </div>
         <div className="ncprev__headtext">
-          <div className="ncprev__title">{appearance.title}</div>
+          {appearance.headline && (
+            <div className="ncprev__headline">
+              {fillVisitorName(appearance.headline, "Sam Whitfield")}
+            </div>
+          )}
+          <div className="ncprev__title">{fillVisitorName(appearance.title, "Sam Whitfield")}</div>
           <div className="ncprev__sub">{appearance.subtitle}</div>
         </div>
       </div>
@@ -2086,6 +2297,20 @@ function NestChatPreview({
         <div className="ncprev__in">{fillVisitorName(appearance.greeting, "Sam Whitfield")}</div>
         {gate ? (
           <div className="ncprev__gate">
+            {/* Same order as the widget: what they need, then who they are. */}
+            {routing.enabled && routing.options.length > 0 && (
+              <>
+                <p className="ncprev__gateq">{routing.prompt}</p>
+                <div className="ncprev__opts" data-chosen="yes">
+                  {routing.options.map((o, i) => (
+                    <span key={o.id} className={"ncprev__opt" + (i === 0 ? " on" : "")}>
+                      {o.icon && <span>{o.icon}</span>}
+                      {o.label || "Untitled option"}
+                    </span>
+                  ))}
+                </div>
+              </>
+            )}
             {preChat.enabled && (
               <>
                 {preChat.intro && <p className="ncprev__gateintro">{preChat.intro}</p>}
@@ -2096,17 +2321,6 @@ function NestChatPreview({
                       {preChat[f.key].required ? "" : " (optional)"}
                     </span>
                     <i />
-                  </div>
-                ))}
-              </>
-            )}
-            {routing.enabled && routing.options.length > 0 && (
-              <>
-                <p className="ncprev__gateq">{routing.prompt}</p>
-                {routing.options.map((o, i) => (
-                  <div key={o.id} className={"ncprev__opt" + (i === 0 ? " on" : "")}>
-                    {o.icon && <span>{o.icon}</span>}
-                    <b>{o.label || "Untitled option"}</b>
                   </div>
                 ))}
               </>

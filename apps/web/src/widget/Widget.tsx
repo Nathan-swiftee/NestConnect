@@ -83,10 +83,38 @@ function applyAppearance(a: NestChatAppearance): void {
   const root = document.documentElement;
   root.style.setProperty("--accent", a.accent);
   root.style.setProperty("--accent-text", a.accentText);
+  // The header's own fill: one colour, or a gradient travelling across it.
+  // Everything else in the widget keeps the flat accent.
+  root.style.setProperty(
+    "--head-bg",
+    a.headerGradient ? `linear-gradient(135deg, ${a.accent}, ${a.accentTo})` : a.accent,
+  );
+  /*
+   * What the overlapping faces are ringed in.
+   *
+   * A flat header can ring them in its own colour, which makes the overlap read
+   * as cut out of the surface. A gradient has no single colour to cut out of —
+   * the ring would match at one end of the header and be visibly wrong at the
+   * other — so it becomes a soft outline in the header's own text colour, which
+   * is right at both ends and is what the gradient messengers do.
+   */
+  root.style.setProperty("--head-ring", a.headerGradient ? withAlpha(a.accentText, 0.4) : a.accent);
   const dark =
     a.theme === "dark" ||
     (a.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   root.dataset.theme = dark ? "dark" : "light";
+}
+
+/**
+ * A validated `#rgb`/`#rrggbb` as `rgba(...)`, so a colour the business chose
+ * can be used at partial strength without a second setting for it.
+ */
+function withAlpha(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = Number.parseInt(full, 16);
+  if (!Number.isFinite(n)) return hex;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 /**
@@ -167,6 +195,8 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   const [startError, setStartError] = useState<string>();
   /** They're through the form — by answering it, or by skipping it. */
   const [startDone, setStartDone] = useState(false);
+  /** An agent has closed this chat: it is read-only until they start a new one. */
+  const [closed, setClosed] = useState(false);
   /** What we told them we saved — the confirmation that used to be missing. */
   const [detailsSaved, setDetailsSaved] = useState<{ linked: boolean } | null>(null);
   const [detailsError, setDetailsError] = useState(false);
@@ -233,9 +263,23 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           | { kind: "message"; payload: NestChatMessage }
           | { kind: "typing"; typing: boolean }
           | { kind: "read"; at: string }
-          | { kind: "closed" };
+          | { kind: "closed" }
+          | { kind: "reopened" };
         if (event.kind === "read") {
           setSeenAt(event.at);
+          return;
+        }
+        if (event.kind === "closed") {
+          setClosed(true);
+          // Whatever they were mid-way through saying, nobody is going to read
+          // it — take it off the agent's screen rather than leave a draft
+          // hanging under a chat that has ended.
+          setAgentTyping(false);
+          clearTimeout(previewTimer.current);
+          return;
+        }
+        if (event.kind === "reopened") {
+          setClosed(false);
           return;
         }
         if (event.kind === "typing") {
@@ -251,6 +295,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         }
         if (event.kind !== "message") return;
         setAgentTyping(false);
+        // A reply is proof the chat is live, whether or not we caught the
+        // "reopened" frame — an agent typing to somebody who can't answer is
+        // the worse failure of the two.
+        setClosed(false);
         setMessages((prev) =>
           // The reply may already be here: an optimistic echo, or a reconnect
           // that refetched. Matching on id keeps it to one bubble.
@@ -458,6 +506,33 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   );
 
   /**
+   * "Start a new chat", after an agent has closed the last one.
+   *
+   * Their identity is deliberately kept: we know who they are, and asking a
+   * returning customer their name again is the widget forgetting somebody it
+   * has already met. What is cleared is the routing choice — the whole reason
+   * for asking is that the next conversation may be for a different team than
+   * the last, so "what's it about?" is put again and the answer re-routes.
+   *
+   * Emptying the thread is what makes the pre-chat gate reopen (it stands down
+   * once there are messages), and it is also honest: the closed conversation
+   * has ended, and the next message starts a new one server-side rather than
+   * continuing this one.
+   */
+  const startNewChat = useCallback(() => {
+    setClosed(false);
+    setMessages([]);
+    setLive(false);
+    setSeenAt(undefined);
+    acked.current = {};
+    setStartDone(false);
+    setChosen(undefined);
+    setOptionId(undefined);
+    setStartError(undefined);
+    setDetailsSaved(null);
+  }, []);
+
+  /**
    * "Not you?" — hand the widget back to whoever is actually sitting there.
    *
    * The browser id goes with the name, and a fresh session is opened against a
@@ -531,7 +606,11 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   // pre-chat form has already asked, and asking twice reads as the first one
   // having failed.
   const asking =
-    !preChat && (appearance.askEmail || appearance.askPhone) && !detailsSaved && messages.length > 0;
+    !closed &&
+    !preChat &&
+    (appearance.askEmail || appearance.askPhone) &&
+    !detailsSaved &&
+    messages.length > 0;
 
   // The last thing the visitor themselves said — the only bubble a "Seen"
   // belongs under, and only once an agent has actually read it.
@@ -540,7 +619,30 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
 
   return (
     <div className="nc" ref={rootRef}>
+      {/* Stacked rather than side by side: the faces get a line of their own,
+          the title sits under them at a size worth reading, and the header has
+          the height a gradient needs to actually travel across. It is the shape
+          every modern messenger has landed on, and it is the difference between
+          a title bar and somewhere a person answers. */}
       <header className="nc__head">
+        <div className="nc__headtop">
+        {/* The business's own mark, opposite the faces. Its height is capped in
+            CSS rather than trusted from the file: a logo is whatever size its
+            owner exported it at, and one 900px tall would take the header with
+            it. Silent on error — a broken-image glyph in the corner of somebody
+            else's website is worse than no logo. */}
+        {appearance.logoUrl ? (
+          <img
+            className="nc__logo"
+            src={appearance.logoUrl}
+            alt={appearance.title}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        ) : (
+          <span />
+        )}
         {team?.faces.length ? (
           /* Who is behind the counter. Overlapped left-to-right with the first
              face on top, so the stack reads as a group rather than a row.
@@ -585,8 +687,14 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
             <i className={online ? "nc__pip nc__pip--online" : "nc__pip"} />
           </div>
         )}
+        </div>
         <div className="nc__headtext">
-          <div className="nc__title">{appearance.title}</div>
+          {/* The greeting takes their name; the title asks the question. Empty
+              headline drops the line rather than leaving a gap where it was. */}
+          {appearance.headline ? (
+            <div className="nc__headline">{fillVisitorName(appearance.headline, visitorName)}</div>
+          ) : null}
+          <div className="nc__title">{fillVisitorName(appearance.title, visitorName)}</div>
           <div className="nc__sub">{online ? appearance.subtitle : appearance.awayMessage}</div>
         </div>
       </header>
@@ -610,6 +718,40 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
 
         {gated ? (
           <div className="nc__prechat">
+            {/* What they need, then who they are.
+
+                The menu goes first because it is the question the visitor came
+                with an answer to: "billing" costs one tap and is the thing that
+                decides who picks this up. Name and email are our questions, not
+                theirs, and a form that opens with them reads as a gate to get
+                past rather than a conversation starting. It is also the order
+                every conversational widget has converged on — topic buttons up
+                front, contact details once the person is already engaged. */}
+            {wantsOption && routing ? (
+              /* Pills rather than rows or a <select>. A dropdown on a phone is a
+                 modal sheet to answer something that should cost one tap, and
+                 full-width rows turn eight short labels into eight lines of
+                 mostly empty space. Wrapping pills let the labels set their own
+                 width and the list take only the height it needs. */
+              <div className="nc__options" role="group" aria-label={routing.prompt}>
+                <p className="nc__optionsq">{routing.prompt}</p>
+                <div className="nc__optionlist" data-chosen={optionId ? "yes" : "no"}>
+                  {routing.options.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      className={optionId === o.id ? "nc__option on" : "nc__option"}
+                      aria-pressed={optionId === o.id}
+                      onClick={() => setOptionId(o.id)}
+                    >
+                      {o.icon ? <span aria-hidden="true">{o.icon}</span> : null}
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {wantsIdentity && preChat ? (
               <>
                 {preChat.intro ? <p className="nc__prechatintro">{preChat.intro}</p> : null}
@@ -663,42 +805,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                   </label>
                 ) : null}
               </>
-            ) : null}
-
-            {wantsOption && routing ? (
-              /* Buttons in a group rather than a <select>: there are at most
-                 eight, they are the most important question on the form, and a
-                 dropdown on a phone is a modal sheet to answer something that
-                 should cost one tap. */
-              <div
-                className="nc__options"
-                role="group"
-                aria-label={routing.prompt}
-              >
-                <p className="nc__optionsq">{routing.prompt}</p>
-                {routing.options.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    className={optionId === o.id ? "nc__option on" : "nc__option"}
-                    aria-pressed={optionId === o.id}
-                    onClick={() => setOptionId(o.id)}
-                  >
-                    {o.icon ? (
-                      <span className="nc__optionicon" aria-hidden="true">
-                        {o.icon}
-                      </span>
-                    ) : null}
-                    <span className="nc__optiontext">
-                      <b>{o.label}</b>
-                      {o.description ? <small>{o.description}</small> : null}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            {startError ? <p className="nc__askerr">{startError}</p> : null}
+            ) : null}            {startError ? <p className="nc__askerr">{startError}</p> : null}
 
             <button
               type="button"
@@ -834,6 +941,18 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           </div>
         ) : null}
 
+        {/* The end of the conversation, drawn as an event in it rather than as a
+            banner over it — it happened at a moment, and it belongs after the
+            last thing anybody said. */}
+        {closed ? (
+          <div className="nc__closed">
+            {appearance.closedMessage ? <p>{appearance.closedMessage}</p> : null}
+            <button type="button" className="nc__newchat" onClick={startNewChat}>
+              {appearance.newChatLabel || "Start a new chat"}
+            </button>
+          </div>
+        ) : null}
+
         {/* Said once, in the thread, so it is clear it actually landed. */}
         {detailsSaved ? (
           <div className="nc__note">
@@ -844,10 +963,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         ) : null}
       </div>
 
-      {/* Hidden rather than disabled while the form is up: a greyed-out message
-          box next to a form reads as something broken, and the form is the only
-          thing to do. */}
-      {gated ? null : (
+      {/* Hidden rather than disabled while the form is up, or once the chat has
+          been closed: a greyed-out message box reads as something broken, and in
+          both cases there is exactly one thing to do and it is on screen. */}
+      {gated || closed ? null : (
       <div className="nc__composer">
         <textarea
           ref={inputRef}

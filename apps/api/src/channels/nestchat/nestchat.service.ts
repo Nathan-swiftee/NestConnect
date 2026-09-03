@@ -557,4 +557,23 @@ export class NestChatService {
     if (!visible) return;
     this.bus.publish(conversationId, { kind: "message", payload: visible });
   }
+
+  /**
+   * Tell a visitor's open widget that the chat was closed — or reopened.
+   *
+   * An agent closing a thread is the one state change that happens *to* a
+   * visitor rather than being said to them: no message arrives, and without
+   * this the widget sits there looking live, taking messages into a
+   * conversation nobody is watching any more.
+   *
+   * Reopening is published too, so a chat an agent takes back does not need the
+   * visitor to reload before they can answer. Anything other than these two
+   * transitions (snoozed, pending) is deliberately not sent: they are how the
+   * team organises its own queue, and none of them means the visitor should
+   * stop typing.
+   */
+  publishStatusToVisitor(conversationId: string, status: string): void {
+    if (status === "closed") this.bus.publish(conversationId, { kind: "closed" });
+    else if (status === "open") this.bus.publish(conversationId, { kind: "reopened" });
+  }
 }

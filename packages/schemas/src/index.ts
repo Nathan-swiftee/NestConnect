@@ -896,9 +896,30 @@ export const nestchatAppearanceSchema = z.object({
    *  needs dark text and we can't guess which without a contrast calculation
    *  the business may disagree with. */
   accentText: hexColor.default("#ffffff"),
+  /**
+   * Run the header as a gradient from `accent` to `accentTo`.
+   *
+   * Off by default, and only the header: the launcher, the send button and the
+   * visitor's own bubbles stay flat. A gradient is a surface — it wants room to
+   * travel and reads as depth across a header-sized block. On a 26px button it
+   * is two colours fighting in a space too small to tell them apart.
+   */
+  headerGradient: z.boolean().default(false),
+  /** The far end of that gradient. Ignored while `headerGradient` is off, so it
+   *  keeps a sensible value to switch on rather than turning the header black. */
+  accentTo: hexColor.default("#7c3aed"),
   /** "auto" follows the visitor's own OS preference. */
   theme: z.enum(["light", "dark", "auto"]).default("light"),
-  title: z.string().max(60).default("Chat with us"),
+  /**
+   * The quiet line above the title — "Hello Marta." to the title's "How can we
+   * help?".
+   *
+   * Two lines rather than one because they do different jobs: this one is a
+   * greeting and takes the visitor's name, the title is the question. Dimmed,
+   * so the eye lands on the question. Blank drops the line entirely.
+   */
+  headline: z.string().max(60).default("Hello {name} 👋"),
+  title: z.string().max(60).default("How can we help?"),
   subtitle: z.string().max(120).default("We usually reply in a few minutes"),
   /** The first thing in the empty thread — shown before the visitor writes. */
   greeting: z.string().max(300).default("Hi 👋 How can we help today?"),
@@ -910,6 +931,21 @@ export const nestchatAppearanceSchema = z.object({
     .string()
     .max(200)
     .default("We're away right now — leave a message and we'll reply by email."),
+  /**
+   * Said to the visitor when an agent closes the chat.
+   *
+   * Written by the business because closing means different things to
+   * different ones — a resolved ticket, an ended shift, a booking confirmed —
+   * and the sentence that fits is theirs. Blank says nothing and still ends the
+   * session: some businesses would rather the chat simply stop than announce
+   * that it has.
+   */
+  closedMessage: z
+    .string()
+    .max(300)
+    .default("This chat has been closed. Thanks for getting in touch!"),
+  /** The way back in, once a chat has been closed. */
+  newChatLabel: z.string().max(40).default("Start a new chat"),
   /** Ask for an email before the first message, so a reply can reach someone
    *  who has closed the tab. */
   askEmail: z.boolean().default(true),
@@ -922,6 +958,35 @@ export const nestchatAppearanceSchema = z.object({
    *  you who is behind the counter. */
   showTeam: z.boolean().default(true),
   showBranding: z.boolean().default(true),
+  /**
+   * The business's own logo, in the top-left of the header.
+   *
+   * A URL rather than an upload: every business embedding this already hosts a
+   * logo on the site the widget is going on, and asking them to upload a second
+   * copy is asking them to keep two in sync. Blank shows no logo, which is the
+   * default — a widget with a broken image in the corner is worse than one
+   * without a logo.
+   *
+   * https only. The widget is an iframe that can be embedded on a secure page,
+   * and an http image there is blocked as mixed content — so it would simply
+   * not appear, which is the most confusing possible outcome for a setting you
+   * can see is filled in.
+   */
+  logoUrl: z
+    .string()
+    .max(500)
+    .default("")
+    .refine((v) => v === "" || /^https:\/\/\S+$/.test(v), "Must be an https:// address"),
+  /**
+   * A logo uploaded here rather than linked, which is what the settings pane
+   * offers — most businesses would rather drop a file in than find a URL.
+   *
+   * The id of a stored attachment, not a URL. The bytes are served by the
+   * channel's own public logo route, so the address is derived from the widget
+   * key at read time: a logo whose URL was baked in at upload time would break
+   * the day a key was rotated. Wins over `logoUrl` when both are set.
+   */
+  logoAttachmentId: z.string().max(64).default(""),
   /** Which corner the script embed's launcher sits in. */
   position: z.enum(["right", "left"]).default("right"),
 });
@@ -996,9 +1061,17 @@ export const nestchatRoutingOptionSchema = z.object({
    * would strand everyone who picked it and hadn't written yet.
    */
   id: z.string().min(1).max(40),
+  /**
+   * What the visitor reads on the pill, and all they read.
+   *
+   * There is no second line by design. A pill is as wide as its own label and
+   * wraps with its neighbours, which is what keeps a menu of eight to two or
+   * three rows; a description would put a second line inside every one of them
+   * and undo exactly that. If a label needs explaining, it is the label that
+   * wants rewording.
+   */
   label: z.string().min(1).max(60),
-  description: z.string().max(120).optional(),
-  /** An emoji for the chip. Deliberately not an icon key: this is drawn on
+  /** An emoji for the pill. Deliberately not an icon key: this is drawn on
    *  somebody else's website, where our icon set doesn't exist. */
   icon: z.string().max(8).optional(),
   /**
@@ -1043,7 +1116,6 @@ export const DEFAULT_NESTCHAT_ROUTING: NestChatRouting = nestchatRoutingSchema.p
 export const nestchatPublicOptionSchema = z.object({
   id: z.string(),
   label: z.string(),
-  description: z.string().optional(),
   icon: z.string().optional(),
 });
 export type NestChatPublicOption = z.infer<typeof nestchatPublicOptionSchema>;
@@ -1079,7 +1151,7 @@ export function toPublicRouting(
   if (!routing.enabled) return undefined;
   const options = routing.options
     .filter((o) => teamIds.includes(o.teamId))
-    .map((o) => ({ id: o.id, label: o.label, description: o.description, icon: o.icon }));
+    .map((o) => ({ id: o.id, label: o.label, icon: o.icon }));
   if (!options.length) return undefined;
   return { prompt: routing.prompt, required: routing.required, options };
 }

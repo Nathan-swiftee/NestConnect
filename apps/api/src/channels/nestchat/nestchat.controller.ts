@@ -84,7 +84,23 @@ export class NestChatController {
     const preChat = await this.nestchat.preChatFor(inbox.id);
     const routing = await this.nestchat.routingFor(inbox.id);
     return {
-      appearance,
+      appearance: {
+        ...appearance,
+        /*
+         * An uploaded logo is served by this channel's own public route, so its
+         * address is built here rather than stored.
+         *
+         * Root-relative for the same reason the avatar route is: the only thing
+         * that loads it is the widget document, served from whatever origin the
+         * customer pointed their embed at, so the browser resolves it against
+         * the host actually answering. Building it from a configured app URL
+         * instead 404s on every deployment where the two aren't the same
+         * string, and fails silently — you just get no logo.
+         */
+        logoUrl: appearance.logoAttachmentId
+          ? `/api/nestchat/${encodeURIComponent(widgetKey)}/logo`
+          : appearance.logoUrl,
+      },
       online: await this.realtime.hasOnlineAgents(inbox.orgId),
       // Only when the business asked for it: showing who is behind the counter
       // is a choice, not a default we make on their behalf.
@@ -120,6 +136,34 @@ export class NestChatController {
     res.setHeader("Content-Type", file.mime || "application/octet-stream");
     // A face doesn't change often, and this is on somebody else's page.
     res.setHeader("Cache-Control", "public, max-age=3600");
+    res.end(file.bytes);
+  }
+
+  /**
+   * The channel's uploaded logo.
+   *
+   * Its own public route for the same reason the avatar one exists: the
+   * ordinary media endpoint is session-guarded and a visitor has no session.
+   * Scoped to exactly the file this channel's own settings name — the id is
+   * never taken from the request, so this cannot be turned into a reader for
+   * arbitrary attachments.
+   */
+  @Get(":widgetKey/logo")
+  async logo(@Param("widgetKey") widgetKey: string, @Res() res: Response): Promise<void> {
+    const inbox = await this.nestchat.inboxForWidgetKey(widgetKey);
+    const appearance = await this.nestchat.appearanceFor(inbox.id);
+    const file = appearance.logoAttachmentId
+      ? await this.media.load(appearance.logoAttachmentId)
+      : null;
+    if (!file) throw new NotFoundException("No logo");
+    res.setHeader("Content-Type", file.mime || "application/octet-stream");
+    // A logo changes about never, and this is on somebody else's page.
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    // Never inline-render an SVG from our own origin as a document: it can
+    // carry script. As an <img> source it is inert, and this header stops it
+    // being opened as a page.
+    res.setHeader("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.end(file.bytes);
   }
 
