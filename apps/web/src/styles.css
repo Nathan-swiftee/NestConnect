@@ -2954,6 +2954,11 @@ button.tpl-row:active{transform:scale(.97)}
   border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:700;
   color:var(--pv-on)}
 .ncprev__face:first-child{margin-left:0}
+/* Same cut-out gap as the widget, scaled to the preview: a 26px face pulled 7px
+   under the one before it puts that centre 6px left of this edge. */
+.ncprev__face:not(:first-child){
+  -webkit-mask-image:radial-gradient(circle 15px at -6px 50%,transparent 100%,#000 100%);
+  mask-image:radial-gradient(circle 15px at -6px 50%,transparent 100%,#000 100%)}
 .ncprev__face:not(:first-child)>b{margin-left:4.5px}
 .ncprev__face img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
 .ncprev__face--plain::before{content:"";position:absolute;inset:0;border-radius:50%;
@@ -3038,7 +3043,7 @@ button.tpl-row:active{transform:scale(.97)}
 .ncwopt{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,150px) 32px;
   align-items:center;gap:var(--sp-2)}
 /* Home cards carry a sublabel and a link, so they get two more columns. */
-.ncwopt--card{grid-template-columns:52px minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) 32px}
+.ncwopt--card{grid-template-columns:118px minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) 32px}
 .ncwopt--head{padding:0 0 2px}
 .ncwopt--head span{font-size:var(--fs-2xs,11px);font-weight:600;letter-spacing:.03em;
   text-transform:uppercase;color:var(--text-faint)}
@@ -3048,7 +3053,7 @@ button.tpl-row:active{transform:scale(.97)}
 .ncwopt__del:hover{background:var(--danger-tint);color:var(--danger)}
 .ncwopt__del svg{width:15px;height:15px}
 @media (max-width:1200px){
-  .ncwopt--card{grid-template-columns:52px minmax(0,1fr) 32px}
+  .ncwopt--card{grid-template-columns:118px minmax(0,1fr) 32px}
   .ncwopt--card input:nth-of-type(3),.ncwopt--card input:nth-of-type(4){grid-column:2 / span 2}
   .ncwopt--card.ncwopt--head{display:none}
 }

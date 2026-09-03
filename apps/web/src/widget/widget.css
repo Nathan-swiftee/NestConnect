@@ -220,6 +220,24 @@ body {
   margin-left: 0;
 }
 
+/*
+ * The gap between stacked faces, cut out rather than drawn.
+ *
+ * A ring in some colour is a collar, and on a gradient there is no colour that
+ * is right at both ends of it. A mask takes a bite out of each face where the
+ * one in front overlaps it, so what shows through the gap is the header itself
+ * — the faces stack with real space between them and no border at all.
+ *
+ * The geometry follows the stack, so it has to move if either number does: a
+ * face is 34px (r 17) pulled 9px under the one before it, which puts that
+ * one's centre 8px to the left of this one's left edge. The hole is its radius
+ * plus the gap we want.
+ */
+.nc__face:not(:first-child) {
+  -webkit-mask-image: radial-gradient(circle 19.5px at -8px 50%, transparent 100%, #000 100%);
+  mask-image: radial-gradient(circle 19.5px at -8px 50%, transparent 100%, #000 100%);
+}
+
 /* The stack descends in z-order, so every face after the first has its left
    edge — 9px of overlap plus the 2px ring — under the one in front of it.
    Initials centred in the whole circle are then half-hidden: the first letter
@@ -640,8 +658,20 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 4px 14px 18px;
-  background: var(--panel);
+  /*
+   * Pulled up into the header's fade, so the first card sits over the place the
+   * gradient is dissolving rather than starting after it. That overlap is what
+   * makes the two read as one surface with a card resting on it — a card that
+   * begins where the colour stops reads as two stacked panels.
+   *
+   * Transparent, not `--panel`: the cards are the only opaque things here, and
+   * the strip above the first one has to show the gradient through it.
+   */
+  margin-top: -26px;
+  padding: 0 14px 18px;
+  /* Transparent for exactly the overlapped strip, thread colour below it — so
+     the gradient shows through beside the first card and nowhere else. */
+  background: linear-gradient(to bottom, transparent 0 26px, var(--panel) 26px);
 }
 
 .nc__card {

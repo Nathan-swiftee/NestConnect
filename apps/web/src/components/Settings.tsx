@@ -16,6 +16,7 @@ import type {
   OpeningDay,
   OpeningHoursDay,
   NestChatAppearance,
+  NestChatCardIcon,
   NestChatHome,
   NestChatHomeCard,
   NestChatPreChat,
@@ -26,6 +27,8 @@ import type {
 import {
   WHATSAPP_VERTICALS,
   OPENING_DAYS,
+  NESTCHAT_CARD_ICONS,
+  nestchatHeaderBackground,
   NESTCHAT_MAX_HOME_CARDS,
   NESTCHAT_MAX_ROUTING_OPTIONS,
   fillVisitorName,
@@ -1800,9 +1803,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   <div
                     className="ncwlogo__well"
                     style={{
-                      background: draft.appearance.headerGradient
-                        ? `linear-gradient(135deg, ${draft.appearance.accent}, ${draft.appearance.accentTo})`
-                        : draft.appearance.accent,
+                      background: nestchatHeaderBackground(draft.appearance),
                     }}
                   >
                     {logoSrc ? (
@@ -2013,14 +2014,26 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                     </div>
                     {draft.home.cards.map((c) => (
                       <div className="ncwopt ncwopt--card" key={c.id}>
-                        <input
-                          className="ncwopt__icon"
-                          aria-label="Emoji"
-                          placeholder="🙂"
-                          maxLength={4}
+                        {/* A fixed set, not free text: these are drawn by the
+                            widget so a WhatsApp card carries the WhatsApp mark
+                            on every device, rather than whatever that
+                            visitor's OS makes of an emoji. */}
+                        <select
+                          aria-label="Icon"
                           value={c.icon ?? ""}
-                          onChange={(e) => setCard(c.id, { icon: e.target.value || undefined })}
-                        />
+                          onChange={(e) =>
+                            setCard(c.id, {
+                              icon: (e.target.value || undefined) as NestChatCardIcon | undefined,
+                            })
+                          }
+                        >
+                          <option value="">No icon</option>
+                          {NESTCHAT_CARD_ICONS.map((n) => (
+                            <option key={n} value={n}>
+                              {n.charAt(0).toUpperCase() + n.slice(1)}
+                            </option>
+                          ))}
+                        </select>
                         <input
                           aria-label="What the visitor sees"
                           placeholder="Message us on WhatsApp"
@@ -2393,9 +2406,8 @@ function NestChatPreview({
         ["--pv-on" as string]: appearance.accentText,
         // Same rule the widget uses: the header takes the gradient, everything
         // else keeps the flat accent.
-        ["--pv-head" as string]: appearance.headerGradient
-          ? `linear-gradient(135deg, ${appearance.accent}, ${appearance.accentTo})`
-          : appearance.accent,
+        // The same builder the widget uses, so the toggle previews what it does.
+        ["--pv-head" as string]: nestchatHeaderBackground(appearance),
       }}
       aria-hidden="true"
     >
