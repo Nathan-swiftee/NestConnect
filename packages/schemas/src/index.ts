@@ -1207,7 +1207,14 @@ export function nestchatHeaderBackground(a: {
   if (!a.headerGradient) return a.accent;
   return [
     `radial-gradient(90% 80% at 82% 8%, ${withAlpha(a.accentTo, 0.95)} 0%, transparent 62%)`,
-    `radial-gradient(85% 90% at 5% 92%, ${withAlpha(shade(a.accent, -0.42), 0.92)} 0%, transparent 66%)`,
+    // The depth anchor, and the reason it is at 58% rather than in the bottom
+    // corner where it started: the home screen dissolves the last 74px of this
+    // header into the panel, and a dark blob sitting inside that ramp gives the
+    // fade something to travel across. Contrast is what makes a dissolve
+    // visible. Lifted clear of it, the bottom of the header is an even, light
+    // field and the fade has almost nothing left to give away — which is how
+    // the gradients this is modelled on finish.
+    `radial-gradient(80% 78% at 2% 58%, ${withAlpha(shade(a.accent, -0.42), 0.92)} 0%, transparent 62%)`,
     `linear-gradient(152deg, ${a.accent} 0%, ${mix(a.accent, a.accentTo, 0.5)} 52%, ${a.accentTo} 100%)`,
   ].join(", ");
 }
