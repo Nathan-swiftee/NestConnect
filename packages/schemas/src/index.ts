@@ -977,6 +977,16 @@ export const nestchatAppearanceSchema = z.object({
     .max(500)
     .default("")
     .refine((v) => v === "" || /^https:\/\/\S+$/.test(v), "Must be an https:// address"),
+  /**
+   * A logo uploaded here rather than linked, which is what the settings pane
+   * offers — most businesses would rather drop a file in than find a URL.
+   *
+   * The id of a stored attachment, not a URL. The bytes are served by the
+   * channel's own public logo route, so the address is derived from the widget
+   * key at read time: a logo whose URL was baked in at upload time would break
+   * the day a key was rotated. Wins over `logoUrl` when both are set.
+   */
+  logoAttachmentId: z.string().max(64).default(""),
   /** Which corner the script embed's launcher sits in. */
   position: z.enum(["right", "left"]).default("right"),
 });

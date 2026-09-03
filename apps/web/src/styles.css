@@ -70,12 +70,14 @@ input,textarea{font:inherit}
 .btn-ghost:active{transform:scale(.97)}
 
 /* soft, carved input field — no outlined rectangles */
-.field input,.field select,.setadd input,.setform input,.addmember input,.memrow input,.connect__creds input,.routesel select{
+.field input,.field select,.setadd input,.setform input,.addmember input,.memrow input,.connect__creds input,.routesel select,
+.ncwfield input[type="text"],.ncwfield__label,.ncwopt input,.ncwopt select{
   width:100%;padding:var(--sp-2) var(--sp-3);border:1px solid transparent;border-radius:var(--r-12);
   background:var(--surface-2);color:var(--text);font-size:var(--fs-md);font-weight:500;outline:none;
   box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow var(--t-base),background var(--t-base),border-color var(--t-base)}
 .field input:focus,.field select:focus,.setadd input:focus,.setform input:focus,
-.addmember input:focus,.memrow input:focus,.connect__creds input:focus,.routesel select:focus{
+.addmember input:focus,.memrow input:focus,.connect__creds input:focus,.routesel select:focus,
+.ncwfield__label:focus,.ncwopt input:focus,.ncwopt select:focus{
   border-color:var(--brand);background-color:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
 
 /* the shared floating-surface recipe — identical for every temporary surface.
@@ -1867,9 +1869,9 @@ input,textarea{font:inherit}
 .iconpick__btn svg{width:20px;height:20px}
 
 /* selects: match the field system, custom chevron, no OS default look */
-.field select,.setform select,.addmember select,.routesel select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
+.field select,.setform select,.addmember select,.routesel select,.ncwopt select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586762' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px}
-:root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select,:root[data-theme="dark"] .routesel select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E")}
+:root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select,:root[data-theme="dark"] .routesel select,:root[data-theme="dark"] .ncwopt select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E")}
 
 /* settings & customers — an in-app page (fills the area beside the icon rail),
    not a full-screen modal takeover */
@@ -2912,6 +2914,10 @@ button.tpl-row:active{transform:scale(.97)}
 @media (max-width:1100px){.ncw{grid-template-columns:minmax(0,1fr)}}
 .ncw__form,.ncw__side{display:grid;gap:var(--sp-4);min-width:0}
 .ncw__group{display:grid;gap:var(--sp-3);min-width:0}
+/* An author `display` beats the UA stylesheet's `[hidden]{display:none}`, so the
+   tabbed sections need this or `hidden` silently does nothing and every group
+   renders at once. */
+.ncw__group[hidden]{display:none}
 .ncw__group h3{margin:0;font-size:var(--fs-xs);font-weight:600;letter-spacing:.04em;
   text-transform:uppercase;color:var(--text-faint)}
 /* The swatch and its hex sit on one line: the picker is the fast way in, the
@@ -3008,17 +3014,39 @@ button.tpl-row:active{transform:scale(.97)}
 .ncwfield__req{display:flex;align-items:center;gap:5px;flex:none;
   font-size:var(--fs-xs);color:var(--text-faint);white-space:nowrap}
 
-/* One routing option, on one line: the emoji is a single character, the team is
-   a fixed choice, and the label takes whatever is left. */
-.ncwopt{display:flex;align-items:center;gap:var(--sp-2);padding:var(--sp-2);
-  border:1px solid var(--border);border-radius:var(--r-10);background:var(--surface-2)}
-.ncwopt__icon{flex:none;width:44px;text-align:center}
-.ncwopt__label{flex:1 1 auto;min-width:0}
-.ncwopt select{flex:0 0 auto;max-width:150px}
-.ncwopt__del{flex:none;width:28px;height:28px;border:0;border-radius:var(--r-8);
-  background:transparent;color:var(--text-faint);cursor:pointer;line-height:1}
-.ncwopt__del:hover{background:var(--surface);color:var(--danger)}
-@media (max-width:700px){
-  .ncwopt{flex-wrap:wrap}
-  .ncwopt select{max-width:none;flex:1 1 100%}
+/* The widget's settings, split into tabs — four groups down one column had
+   grown past the point where you could find anything in it. */
+.ncwsub{display:flex;gap:2px;padding:3px;border-radius:var(--r-10);
+  background:var(--surface-2);border:1px solid var(--border)}
+.ncwsub__tab{flex:1 1 0;padding:7px 10px;border:0;border-radius:var(--r-8);
+  background:transparent;color:var(--text-muted);font-size:var(--fs-xs);font-weight:600;
+  cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ncwsub__tab:hover{color:var(--text)}
+.ncwsub__tab.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow-sm,0 1px 2px rgba(16,24,40,.06))}
+
+/* The logo, shown on the colour it will actually sit on. */
+.ncwlogo{display:flex;align-items:center;gap:var(--sp-3);flex-wrap:wrap}
+.ncwlogo__well{flex:none;display:grid;place-items:center;width:150px;height:56px;
+  padding:0 var(--sp-3);border-radius:var(--r-10);overflow:hidden}
+.ncwlogo__well img{max-width:100%;max-height:30px;width:auto;object-fit:contain;display:block}
+.ncwlogo__well span{font-size:var(--fs-xs);opacity:.7}
+.ncwlogo__acts{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;min-width:0}
+.ncwlogo__acts .fieldhint{flex:1 1 100%;margin:0}
+
+/* Routing options as a small table: one row each, headed once. */
+.ncwopts{display:grid;gap:6px}
+.ncwopt{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,150px) 32px;
+  align-items:center;gap:var(--sp-2)}
+.ncwopt--head{padding:0 0 2px}
+.ncwopt--head span{font-size:var(--fs-2xs,11px);font-weight:600;letter-spacing:.03em;
+  text-transform:uppercase;color:var(--text-faint)}
+.ncwopt__icon{text-align:center;padding-left:0;padding-right:0}
+.ncwopt__del{display:grid;place-items:center;width:32px;height:32px;border:0;
+  border-radius:var(--r-8);background:transparent;color:var(--text-faint);cursor:pointer}
+.ncwopt__del:hover{background:var(--danger-tint);color:var(--danger)}
+.ncwopt__del svg{width:15px;height:15px}
+@media (max-width:760px){
+  .ncwopt{grid-template-columns:52px minmax(0,1fr) 32px}
+  .ncwopt select{grid-column:2 / span 2}
+  .ncwopt--head{display:none}
 }

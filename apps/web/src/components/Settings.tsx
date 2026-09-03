@@ -1388,6 +1388,16 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
  * saved together: the appearance, the form shown before a chat starts, and the
  * menu that decides which team answers it.
  */
+/** The tabs the widget's settings are split across. */
+type SettingsSection = "brand" | "words" | "prechat" | "behaviour";
+
+const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
+  { key: "brand", label: "Brand" },
+  { key: "words", label: "Words" },
+  { key: "prechat", label: "Before the chat" },
+  { key: "behaviour", label: "Behaviour" },
+];
+
 type WidgetDraft = {
   appearance: NestChatAppearance;
   preChat: NestChatPreChat;
@@ -1460,6 +1470,53 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   const teams = settings.data?.teams ?? [];
 
   /**
+   * Which half of the form is on screen.
+   *
+   * Four groups down one column had grown past the point where you could find
+   * anything: the routing menu sat below a dozen text fields, and the preview
+   * beside it had scrolled away by the time you got there. Tabs keep the thing
+   * you are editing next to the thing that shows it.
+   */
+  const [tab, setTab] = useState<SettingsSection>("brand");
+  const logoRef = useRef<HTMLInputElement>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  /** Upload a logo and point this channel at it. */
+  const pickLogo = async (file: File | undefined) => {
+    if (!file || !draft) return;
+    if (!file.type.startsWith("image/")) {
+      onToast("That file isn’t an image.");
+      return;
+    }
+    if (file.size > 2_000_000) {
+      onToast("Logo is too large — keep it under 2 MB.");
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const att = await api.uploadMedia(file, { kind: "image", filename: file.name });
+      // The id, not the url: the public address is derived from the widget key
+      // when the widget asks for its config, so a rotated key can't strand it.
+      setTab("brand");
+      setDrafts((m) =>
+        inboxId && m[inboxId]
+          ? {
+              ...m,
+              [inboxId]: {
+                ...m[inboxId],
+                appearance: { ...m[inboxId].appearance, logoAttachmentId: att.id, logoUrl: "" },
+              },
+            }
+          : m,
+      );
+    } catch {
+      onToast("Couldn’t upload that logo — please try again.");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  /**
    * One draft per channel, not one draft.
    *
    * Every widget is styled separately — two NestChat channels can be two
@@ -1527,6 +1584,18 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
       options: draft.routing.options.map((o) => (o.id === id ? { ...o, ...patch } : o)),
     });
   };
+
+  /**
+   * Where the pane itself loads the logo from.
+   *
+   * The session-guarded media route, not the widget's public one: this is the
+   * agent app, it has a session, and the public route only serves what is
+   * *saved* — so an upload you haven't saved yet would show nothing, which
+   * reads as an upload that failed.
+   */
+  const logoSrc = draft?.appearance.logoAttachmentId
+    ? `/api/media/${encodeURIComponent(draft.appearance.logoAttachmentId)}`
+    : draft?.appearance.logoUrl || "";
 
   /** Channels with edits that haven't been saved yet — marked in the picker, so
    *  a pending change on a channel you've switched away from stays visible. */
@@ -1646,7 +1715,22 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
       ) : (
         <div className="ncw">
           <div className="ncw__form">
-            <section className="ncw__group">
+            <div className="ncwsub" role="tablist" aria-label="Widget settings sections">
+              {SETTINGS_SECTIONS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.key}
+                  className={"ncwsub__tab" + (tab === t.key ? " on" : "")}
+                  onClick={() => setTab(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            <section className="ncw__group" hidden={tab !== "brand"}>
               <h3>Brand</h3>
               <div className="setform__grid two">
                 <label className="field">
@@ -1682,19 +1766,66 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   </div>
                 </label>
               </div>
-              <label className="field">
+              <div className="field">
                 <span>
-                  Logo <em>Top-left of the header. https only; blank shows none</em>
+                  Logo <em>Top-left of the header</em>
                 </span>
+                <div className="ncwlogo">
+                  {/* Shown on the brand colour, because that is the only place
+                      it is ever seen — a dark logo that looks fine on white and
+                      vanishes on a blue header is exactly the mistake this
+                      preview exists to catch. */}
+                  <div
+                    className="ncwlogo__well"
+                    style={{
+                      background: draft.appearance.headerGradient
+                        ? `linear-gradient(135deg, ${draft.appearance.accent}, ${draft.appearance.accentTo})`
+                        : draft.appearance.accent,
+                    }}
+                  >
+                    {logoSrc ? (
+                      <img src={logoSrc} alt="" />
+                    ) : (
+                      <span style={{ color: draft.appearance.accentText }}>No logo</span>
+                    )}
+                  </div>
+                  <div className="ncwlogo__acts">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => logoRef.current?.click()}
+                      disabled={uploadingLogo}
+                    >
+                      {uploadingLogo ? "Uploading…" : logoSrc ? "Replace" : "Upload a logo"}
+                    </button>
+                    {logoSrc && (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => {
+                          set("logoAttachmentId", "");
+                          set("logoUrl", "");
+                        }}
+                        disabled={uploadingLogo}
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <small className="fieldhint">PNG, SVG or JPG, up to 2 MB. Use a light
+                      version — it sits on your brand colour.</small>
+                  </div>
+                </div>
                 <input
-                  type="url"
-                  inputMode="url"
-                  placeholder="https://yoursite.com/logo.svg"
-                  value={draft.appearance.logoUrl}
-                  onChange={(e) => set("logoUrl", e.target.value)}
-                  spellCheck={false}
+                  ref={logoRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    void pickLogo(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
                 />
-              </label>
+              </div>
 
               <label className={"check" + (draft.appearance.headerGradient ? " on" : "")}>
                 <input
@@ -1751,7 +1882,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
               </div>
             </section>
 
-            <section className="ncw__group">
+            <section className="ncw__group" hidden={tab !== "words"}>
               <h3>Words</h3>
               {NESTCHAT_WORDS.map((f) => (
                 <label className="field" key={f.key}>
@@ -1774,7 +1905,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
               ))}
             </section>
 
-            <section className="ncw__group">
+            <section className="ncw__group" hidden={tab !== "behaviour"}>
               <h3>Behaviour</h3>
               <label className={"check" + (draft.appearance.askEmail ? " on" : "")}>
                 <input
@@ -1810,7 +1941,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
               </label>
             </section>
 
-            <section className="ncw__group">
+            <section className="ncw__group" hidden={tab !== "prechat"}>
               <h3>Before the chat</h3>
               <p className="fieldhint">
                 Ask who someone is before they write, and let them say what it’s about. Details
@@ -1948,52 +2079,66 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                     </p>
                   ) : (
                     <>
-                      {draft.routing.options.map((o) => (
-                        <div className="ncwopt" key={o.id}>
-                          <input
-                            className="ncwopt__icon"
-                            aria-label="Emoji"
-                            placeholder="💬"
-                            value={o.icon ?? ""}
-                            onChange={(e) => setOption(o.id, { icon: e.target.value || undefined })}
-                          />
-                          <input
-                            className="ncwopt__label"
-                            aria-label="What the visitor sees"
-                            placeholder="Billing question"
-                            value={o.label}
-                            onChange={(e) => setOption(o.id, { label: e.target.value })}
-                          />
-                          {/* Only this channel's teams. An option pointing
-                              anywhere else would show a visitor the faces of
-                              one team in the header and hand them to another —
-                              the server refuses it for the same reason. */}
-                          <select
-                            aria-label="Team that answers it"
-                            value={o.teamId}
-                            onChange={(e) => setOption(o.id, { teamId: e.target.value })}
-                          >
-                            {teams.map((t) => (
-                              <option key={t.id} value={t.id}>
-                                {t.name}
-                              </option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            className="ncwopt__del"
-                            aria-label={`Remove ${o.label || "option"}`}
-                            onClick={() =>
-                              setRouting(
-                                "options",
-                                draft.routing.options.filter((x) => x.id !== o.id),
-                              )
-                            }
-                          >
-                            ✕
-                          </button>
+                      <div className="ncwopts">
+                        {/* Column headings once, rather than a placeholder in
+                            every box repeating what the column is. */}
+                        <div className="ncwopt ncwopt--head" aria-hidden="true">
+                          <span />
+                          <span>Label</span>
+                          <span>Answered by</span>
+                          <span />
                         </div>
-                      ))}
+                        {draft.routing.options.map((o) => (
+                          <div className="ncwopt" key={o.id}>
+                            <input
+                              className="ncwopt__icon"
+                              aria-label="Emoji"
+                              placeholder="🙂"
+                              maxLength={4}
+                              value={o.icon ?? ""}
+                              onChange={(e) =>
+                                setOption(o.id, { icon: e.target.value || undefined })
+                              }
+                            />
+                            <input
+                              className="ncwopt__label"
+                              aria-label="What the visitor sees"
+                              placeholder="Billing question"
+                              value={o.label}
+                              onChange={(e) => setOption(o.id, { label: e.target.value })}
+                            />
+                            {/* Only this channel's teams. An option pointing
+                                anywhere else would show a visitor the faces of
+                                one team in the header and hand them to another —
+                                the server refuses it for the same reason. */}
+                            <select
+                              aria-label="Team that answers it"
+                              value={o.teamId}
+                              onChange={(e) => setOption(o.id, { teamId: e.target.value })}
+                            >
+                              {teams.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className="ncwopt__del"
+                              title="Remove this option"
+                              aria-label={`Remove ${o.label || "option"}`}
+                              onClick={() =>
+                                setRouting(
+                                  "options",
+                                  draft.routing.options.filter((x) => x.id !== o.id),
+                                )
+                              }
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                       <button
                         type="button"
                         className="btn-ghost"
