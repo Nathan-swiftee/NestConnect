@@ -918,7 +918,7 @@ export const nestchatAppearanceSchema = z.object({
    * greeting and takes the visitor's name, the title is the question. Dimmed,
    * so the eye lands on the question. Blank drops the line entirely.
    */
-  headline: z.string().max(60).default("Hello {name}."),
+  headline: z.string().max(60).default("Hello {name} 👋"),
   title: z.string().max(60).default("How can we help?"),
   subtitle: z.string().max(120).default("We usually reply in a few minutes"),
   /** The first thing in the empty thread — shown before the visitor writes. */
@@ -958,6 +958,25 @@ export const nestchatAppearanceSchema = z.object({
    *  you who is behind the counter. */
   showTeam: z.boolean().default(true),
   showBranding: z.boolean().default(true),
+  /**
+   * The business's own logo, in the top-left of the header.
+   *
+   * A URL rather than an upload: every business embedding this already hosts a
+   * logo on the site the widget is going on, and asking them to upload a second
+   * copy is asking them to keep two in sync. Blank shows no logo, which is the
+   * default — a widget with a broken image in the corner is worse than one
+   * without a logo.
+   *
+   * https only. The widget is an iframe that can be embedded on a secure page,
+   * and an http image there is blocked as mixed content — so it would simply
+   * not appear, which is the most confusing possible outcome for a setting you
+   * can see is filled in.
+   */
+  logoUrl: z
+    .string()
+    .max(500)
+    .default("")
+    .refine((v) => v === "" || /^https:\/\/\S+$/.test(v), "Must be an https:// address"),
   /** Which corner the script embed's launcher sits in. */
   position: z.enum(["right", "left"]).default("right"),
 });

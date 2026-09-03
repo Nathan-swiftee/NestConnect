@@ -626,6 +626,23 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           a title bar and somewhere a person answers. */}
       <header className="nc__head">
         <div className="nc__headtop">
+        {/* The business's own mark, opposite the faces. Its height is capped in
+            CSS rather than trusted from the file: a logo is whatever size its
+            owner exported it at, and one 900px tall would take the header with
+            it. Silent on error — a broken-image glyph in the corner of somebody
+            else's website is worse than no logo. */}
+        {appearance.logoUrl ? (
+          <img
+            className="nc__logo"
+            src={appearance.logoUrl}
+            alt={appearance.title}
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+          />
+        ) : (
+          <span />
+        )}
         {team?.faces.length ? (
           /* Who is behind the counter. Overlapped left-to-right with the first
              face on top, so the stack reads as a group rather than a row.

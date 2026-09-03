@@ -1682,6 +1682,20 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   </div>
                 </label>
               </div>
+              <label className="field">
+                <span>
+                  Logo <em>Top-left of the header. https only; blank shows none</em>
+                </span>
+                <input
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://yoursite.com/logo.svg"
+                  value={draft.appearance.logoUrl}
+                  onChange={(e) => set("logoUrl", e.target.value)}
+                  spellCheck={false}
+                />
+              </label>
+
               <label className={"check" + (draft.appearance.headerGradient ? " on" : "")}>
                 <input
                   type="checkbox"
@@ -2097,6 +2111,11 @@ function NestChatPreview({
     >
       <div className="ncprev__head">
         <div className="ncprev__headtop">
+        {appearance.logoUrl ? (
+          <img className="ncprev__logo" src={appearance.logoUrl} alt="" />
+        ) : (
+          <span />
+        )}
         {faces.length > 0 && (
           <div className="ncprev__faces">
             {faces.map((f, i) => (

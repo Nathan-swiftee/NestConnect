@@ -126,9 +126,22 @@ body {
    way, and high enough that they are the first thing on the panel. */
 .nc__headtop {
   display: flex;
-  justify-content: flex-end;
+  /* Logo one end, faces the other. The empty span the widget renders when there
+     is no logo is what keeps the faces in their corner rather than sliding
+     left — space-between with one child centres it. */
+  justify-content: space-between;
   align-items: center;
+  gap: 12px;
   min-height: 34px;
+}
+
+.nc__logo {
+  /* Capped, not trusted: a logo is whatever size its owner exported it at. */
+  max-height: 26px;
+  max-width: 130px;
+  width: auto;
+  object-fit: contain;
+  display: block;
 }
 
 /* The team, stacked. Overlapping rather than in a row because a row of five
@@ -151,10 +164,14 @@ body {
   font-size: 11.5px;
   font-weight: 700;
   color: var(--accent-text);
-  /* Ringed in the header's fill so the overlap reads as depth, not a blur. On a
-     gradient there is no single fill, so it becomes a soft outline in the
-     header's text colour instead — see applyAppearance. */
-  box-shadow: 0 0 0 2px var(--head-ring, var(--accent));
+  /* No ring.
+
+     A ring in the header's own colour reads as cut out of a flat surface, but
+     on a gradient there is no single colour to cut out of — it becomes a
+     visible white outline, and three circles in white collars look like
+     stickers. The overlap on its own is enough to read as a stack, and letting
+     the faces touch is what makes them look like people standing together
+     rather than avatars in frames. */
 }
 
 /*

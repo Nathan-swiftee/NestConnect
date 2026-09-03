@@ -2934,7 +2934,8 @@ button.tpl-row:active{transform:scale(.97)}
 /* Stacked, like the widget's own — faces in the far corner, then the greeting. */
 .ncprev__head{display:flex;flex-direction:column;align-items:stretch;gap:22px;
   padding:12px 14px 16px;background:var(--pv-head,var(--pv-accent));color:var(--pv-on)}
-.ncprev__headtop{display:flex;justify-content:flex-end;align-items:center;min-height:26px}
+.ncprev__headtop{display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:26px}
+.ncprev__logo{max-height:20px;max-width:100px;width:auto;object-fit:contain;display:block}
 .ncprev__headtext{min-width:0;width:100%}
 .ncprev__headline{font-size:16px;font-weight:680;line-height:1.25;letter-spacing:-.02em;opacity:.62}
 .ncprev__title{font-size:16px;font-weight:680;line-height:1.25;letter-spacing:-.02em}
@@ -2945,7 +2946,7 @@ button.tpl-row:active{transform:scale(.97)}
 .ncprev__faces{display:flex;align-items:center;flex:none}
 .ncprev__face{position:relative;width:26px;height:26px;margin-left:-7px;flex:none;
   border-radius:50%;display:grid;place-items:center;font-size:9px;font-weight:700;
-  color:var(--pv-on);box-shadow:0 0 0 1.5px color-mix(in srgb, var(--pv-on) 40%, transparent)}
+  color:var(--pv-on)}
 .ncprev__face:first-child{margin-left:0}
 .ncprev__face:not(:first-child)>b{margin-left:4.5px}
 .ncprev__face img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
