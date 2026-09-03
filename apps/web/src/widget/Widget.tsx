@@ -702,7 +702,9 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           the height a gradient needs to actually travel across. It is the shape
           every modern messenger has landed on, and it is the difference between
           a title bar and somewhere a person answers. */}
-      <header className="nc__head">
+      {/* The fade belongs to the home screen only — see the CSS for why a
+          dissolve over a scrolling thread reads as unfinished. */}
+      <header className={view === "home" && home ? "nc__head nc__head--fade" : "nc__head"}>
         <div className="nc__headtop">
         {/* Back to the cards. Only when there is a home screen and they are not
             already on it — and it takes the logo's place rather than sitting

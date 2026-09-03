@@ -123,26 +123,45 @@ body {
    * gradient rather than an uneven colour.
    */
   gap: 64px;
-  /* The deep bottom padding is not decoration — it is what keeps the subtitle
-     clear of the fade below it. Text sitting inside the dissolve is text nobody
-     can read, and the away message is the line that most needs reading. */
-  padding: 18px 20px 40px;
   /*
-   * Three layers, top to bottom:
+   * The chat's header: colour at full strength to the last pixel, then a clean
+   * cut into the conversation.
    *
-   *  1. a fade into the thread's own colour across the last fifth, so the
-   *     header dissolves into the conversation instead of stopping at a hard
-   *     line. This is the part that reads as considered;
-   *  2. the lift toward the top-left, which makes the block a surface rather
-   *     than a fill;
-   *  3. `--head-bg` — the flat accent, or a gradient across it.
+   * No dissolve here, and that is the point. A fade works on the home screen
+   * because the first card rides up into it and the two read as one surface —
+   * over a scrolling thread there is nothing to catch it, so the same fade is
+   * just colour going muddy above the messages. A defined edge is what reads as
+   * finished.
+   *
+   * Two layers: the lift toward the top-left, which makes the block a surface
+   * rather than a fill, over `--head-bg` — the flat accent, or the mesh
+   * gradient across it.
    */
+  padding: 18px 20px 24px;
   background:
-    linear-gradient(to bottom, transparent 78%, var(--panel) 100%),
     radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.17), transparent 60%),
     var(--head-bg, var(--accent));
   color: var(--accent-text);
   flex: 0 0 auto;
+}
+
+/*
+ * The home screen's header, which does dissolve.
+ *
+ * There it earns its keep: the first card is pulled 26px up into the fade, so
+ * the gradient and the cards resolve into a single surface with something
+ * resting on it. That only works because something is there to overlap it.
+ *
+ * The extra bottom padding goes with it rather than being a separate decision —
+ * it is what keeps the subtitle clear of the dissolve, and text sitting inside
+ * a dissolve is text nobody can read.
+ */
+.nc__head--fade {
+  padding-bottom: 40px;
+  background:
+    linear-gradient(to bottom, transparent 78%, var(--panel) 100%),
+    radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.17), transparent 60%),
+    var(--head-bg, var(--accent));
 }
 
 
