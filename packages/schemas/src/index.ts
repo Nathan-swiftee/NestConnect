@@ -1045,6 +1045,173 @@ export const nestchatPreChatSchema = z.object({
 export type NestChatPreChat = z.infer<typeof nestchatPreChatSchema>;
 export const DEFAULT_NESTCHAT_PRECHAT: NestChatPreChat = nestchatPreChatSchema.parse({});
 
+/* ---- the home screen ---- */
+
+/**
+ * The marks a home card can carry.
+ *
+ * Deliberately short. Every one of these is a channel a business actually
+ * staffs; a picker with forty icons in it is a picker somebody has to shop in.
+ */
+export const NESTCHAT_CARD_ICONS = [
+  "chat",
+  "whatsapp",
+  "email",
+  "phone",
+  "instagram",
+  "facebook",
+  "telegram",
+  "link",
+] as const;
+export type NestChatCardIcon = (typeof NESTCHAT_CARD_ICONS)[number];
+
+/**
+ * One card on the widget's home screen — a way to reach the business that
+ * isn't this chat.
+ *
+ * Plenty of businesses answer faster on WhatsApp than on a website widget, and
+ * a visitor who would rather email should not have to hunt the footer for the
+ * address. Offering those next to the chat costs a row and stops the widget
+ * pretending it is the only door.
+ */
+export const nestchatHomeCardSchema = z.object({
+  id: z.string().min(1).max(40),
+  label: z.string().min(1).max(60),
+  /** The quiet second line — "Usually answers within the hour". */
+  sublabel: z.string().max(80).default(""),
+  /**
+   * Which mark to draw, from a fixed set.
+   *
+   * A key rather than an emoji, unlike the routing pills. An emoji is drawn by
+   * the visitor's own operating system: 💬 is a different object on Windows,
+   * Android and a Mac, and the row of them ends up in four styles at four
+   * weights. These are drawn by us, so a WhatsApp card carries the WhatsApp
+   * glyph everywhere and the set looks like one set.
+   *
+   * `.catch` rather than a bare enum: an unrecognised value degrades to no
+   * icon, instead of failing the whole blob and taking the entire home screen
+   * down with it.
+   */
+  icon: z.enum(NESTCHAT_CARD_ICONS).optional().catch(undefined),
+  /**
+   * Where it goes.
+   *
+   * Deliberately a three-scheme allowlist rather than a URL check. This string
+   * is set by an admin and rendered as an `href` inside an iframe on a
+   * customer's own website: `javascript:` there is script execution on our
+   * origin, and `data:` is a page we would be hosting. Neither is a link, and
+   * neither has any business in a "reach us on another channel" card.
+   */
+  href: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine(
+      (v) => /^(https:\/\/|mailto:|tel:)/i.test(v),
+      "Must start with https://, mailto: or tel:",
+    ),
+});
+export type NestChatHomeCard = z.infer<typeof nestchatHomeCardSchema>;
+
+/** Enough for the channels a business actually staffs. */
+export const NESTCHAT_MAX_HOME_CARDS = 6;
+
+/**
+ * The screen a visitor lands on before the conversation.
+ *
+ * Off by default, and that is a considered default rather than caution: it puts
+ * a tap between somebody and the message box. A business that answers on one
+ * channel doesn't need it; one that answers on four does.
+ *
+ * The chat card is not in `cards` because it is not a link — it is the widget's
+ * own front door, always first and never removable. Its words are configurable;
+ * its existence isn't.
+ */
+export const nestchatHomeSchema = z.object({
+  enabled: z.boolean().default(false),
+  chatLabel: z.string().max(60).default("Send us a message"),
+  chatSublabel: z.string().max(80).default("We usually reply in a few minutes"),
+  cards: z.array(nestchatHomeCardSchema).max(NESTCHAT_MAX_HOME_CARDS).default([]),
+});
+export type NestChatHome = z.infer<typeof nestchatHomeSchema>;
+export const DEFAULT_NESTCHAT_HOME: NestChatHome = nestchatHomeSchema.parse({});
+
+/* ---- the header's fill ---- */
+
+/** A validated `#rgb`/`#rrggbb` as its three channels. */
+function rgbOf(hex: string): [number, number, number] | undefined {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = Number.parseInt(full, 16);
+  if (!Number.isFinite(n) || full.length !== 6) return undefined;
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+const hexOf = (c: number[]): string => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+
+/** One of the business's colours at partial strength — a pool of light without
+ *  a second setting to author. */
+function withAlpha(hex: string, alpha: number): string {
+  const c = rgbOf(hex);
+  return c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})` : hex;
+}
+
+/** Toward black (negative) or white (positive), for depth in the header. */
+function shade(hex: string, amount: number): string {
+  const c = rgbOf(hex);
+  if (!c) return hex;
+  const to = amount < 0 ? 0 : 255;
+  const t = Math.abs(amount);
+  return hexOf(c.map((v) => Math.round(v + (to - v) * t)));
+}
+
+/** Between two of the business's colours, for the gradient's middle stop. */
+function mix(a: string, b: string, t: number): string {
+  const x = rgbOf(a);
+  const y = rgbOf(b);
+  if (!x || !y) return a;
+  return hexOf(x.map((v, i) => Math.round(v + (y[i] - v) * t)));
+}
+
+/**
+ * The CSS `background` for a widget header.
+ *
+ * Shared rather than written twice because the settings preview has to agree
+ * with the widget about what the gradient toggle actually produces, and "close
+ * enough" in a preview is a preview nobody trusts.
+ *
+ * A gradient here is three layers, not one ramp. A single
+ * `linear-gradient(135deg, a, b)` moves along exactly one axis and reads as
+ * flat colour that happens to change; two off-axis pools of light over a
+ * three-stop diagonal give it somewhere to come from and somewhere to go. Both
+ * pools are derived from the two colours the business already chose — nobody is
+ * being asked to author a mesh.
+ */
+export function nestchatHeaderRing(a: {
+  accent: string;
+  accentText: string;
+  headerGradient: boolean;
+}): string {
+  // A flat header can ring the presence dot in its own colour, which cuts the
+  // dot out of the surface. A gradient has no single colour to cut out of, so
+  // it takes a soft outline in the header's own text colour instead — right at
+  // both ends of the ramp.
+  return a.headerGradient ? withAlpha(a.accentText, 0.4) : a.accent;
+}
+
+export function nestchatHeaderBackground(a: {
+  accent: string;
+  accentTo: string;
+  headerGradient: boolean;
+}): string {
+  if (!a.headerGradient) return a.accent;
+  return [
+    `radial-gradient(90% 80% at 82% 8%, ${withAlpha(a.accentTo, 0.95)} 0%, transparent 62%)`,
+    `radial-gradient(85% 90% at 5% 92%, ${withAlpha(shade(a.accent, -0.42), 0.92)} 0%, transparent 66%)`,
+    `linear-gradient(152deg, ${a.accent} 0%, ${mix(a.accent, a.accentTo, 0.5)} 52%, ${a.accentTo} 100%)`,
+  ].join(", ");
+}
+
 /**
  * One thing a visitor can say they are here about, and the team that answers it.
  *
@@ -1210,6 +1377,7 @@ export const nestchatSettingsSchema = z.object({
   appearance: nestchatAppearanceSchema,
   preChat: nestchatPreChatSchema,
   routing: nestchatRoutingSchema,
+  home: nestchatHomeSchema,
   /**
    * The teams this channel routes to — the only teams a routing option may
    * name, so the pane can offer exactly those and no more.
@@ -1247,6 +1415,7 @@ export const updateNestchatInputSchema = z.object({
   appearance: nestchatAppearanceSchema.partial().optional(),
   preChat: nestchatPreChatSchema.optional(),
   routing: nestchatRoutingSchema.optional(),
+  home: nestchatHomeSchema.optional(),
 });
 export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
 
@@ -1271,6 +1440,9 @@ export const nestchatConfigSchema = z.object({
   /** The menu of things a visitor can say they're here about. Absent when the
    *  channel has no menu, or has one with nothing in it. */
   routing: nestchatPublicRoutingSchema.optional(),
+  /** The cards to show before the conversation. Absent when the channel has no
+   *  home screen, so the widget's question stays "is there one?". */
+  home: nestchatHomeSchema.optional(),
 });
 export type NestChatConfig = z.infer<typeof nestchatConfigSchema>;
 

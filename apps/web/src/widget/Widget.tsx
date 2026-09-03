@@ -2,11 +2,18 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type {
   NestChatAppearance,
   NestChatConfig,
+  NestChatCardIcon,
+  NestChatHome,
   NestChatMessage,
   NestChatPreChat,
   NestChatPublicRouting,
 } from "@ding/schemas";
-import { fillVisitorName, TYPING_PREVIEW_MS } from "@ding/schemas";
+import {
+  fillVisitorName,
+  nestchatHeaderBackground,
+  nestchatHeaderRing,
+  TYPING_PREVIEW_MS,
+} from "@ding/schemas";
 import {
   attachmentUrl,
   fetchConfig,
@@ -83,12 +90,9 @@ function applyAppearance(a: NestChatAppearance): void {
   const root = document.documentElement;
   root.style.setProperty("--accent", a.accent);
   root.style.setProperty("--accent-text", a.accentText);
-  // The header's own fill: one colour, or a gradient travelling across it.
-  // Everything else in the widget keeps the flat accent.
-  root.style.setProperty(
-    "--head-bg",
-    a.headerGradient ? `linear-gradient(135deg, ${a.accent}, ${a.accentTo})` : a.accent,
-  );
+  // One implementation, shared with the settings preview — see
+  // nestchatHeaderBackground for why a gradient here is three layers.
+  root.style.setProperty("--head-bg", nestchatHeaderBackground(a));
   /*
    * What the overlapping faces are ringed in.
    *
@@ -98,7 +102,7 @@ function applyAppearance(a: NestChatAppearance): void {
    * other — so it becomes a soft outline in the header's own text colour, which
    * is right at both ends and is what the gradient messengers do.
    */
-  root.style.setProperty("--head-ring", a.headerGradient ? withAlpha(a.accentText, 0.4) : a.accent);
+  root.style.setProperty("--head-ring", nestchatHeaderRing(a));
   const dark =
     a.theme === "dark" ||
     (a.theme === "auto" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -106,15 +110,75 @@ function applyAppearance(a: NestChatAppearance): void {
 }
 
 /**
- * A validated `#rgb`/`#rrggbb` as `rgba(...)`, so a colour the business chose
- * can be used at partial strength without a second setting for it.
+ * The mark on a home card.
+ *
+ * Drawn here rather than left to an emoji, because an emoji is rendered by the
+ * visitor's own operating system: the same character is a different object on
+ * Windows, Android and a Mac, and a column of them lands in several styles at
+ * several weights. These are one set at one weight everywhere.
+ *
+ * The brand marks are the official glyphs — a WhatsApp card that doesn't carry
+ * the WhatsApp mark is a card people don't see. They inherit `currentColor`, so
+ * they take the accent like the chevron beside them rather than importing a
+ * second palette into the widget.
  */
-function withAlpha(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const n = Number.parseInt(full, 16);
-  if (!Number.isFinite(n)) return hex;
-  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+function CardIcon({ name }: { name: NestChatCardIcon }): JSX.Element {
+  const common = { width: 20, height: 20, viewBox: "0 0 24 24", "aria-hidden": true } as const;
+  switch (name) {
+    case "whatsapp":
+      return (
+        <svg {...common} fill="currentColor">
+          <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.46 1.32 4.96L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 1.67c2.2 0 4.27.86 5.83 2.42a8.2 8.2 0 0 1 2.41 5.82c0 4.54-3.7 8.24-8.25 8.24a8.23 8.23 0 0 1-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.26-8.24Zm-2.6 4.03c-.15 0-.4.06-.61.29-.21.23-.8.79-.8 1.92 0 1.13.82 2.22.94 2.38.11.15 1.6 2.44 3.87 3.42.54.23.96.37 1.29.48.54.17 1.03.15 1.42.09.44-.07 1.34-.55 1.53-1.08.19-.53.19-.98.13-1.08-.06-.09-.21-.15-.44-.27-.23-.11-1.34-.66-1.55-.74-.21-.08-.36-.11-.51.11-.15.23-.58.74-.71.89-.13.15-.26.17-.49.06-.23-.12-.96-.36-1.83-1.13-.68-.6-1.13-1.35-1.27-1.58-.13-.23-.01-.35.1-.47.1-.1.23-.27.34-.4.11-.14.15-.23.23-.38.08-.16.04-.29-.02-.4-.06-.12-.51-1.23-.7-1.68-.18-.44-.37-.38-.51-.39h-.43Z" />
+        </svg>
+      );
+    case "email":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2.5" y="4.5" width="19" height="15" rx="2.5" />
+          <path d="m3.5 7 7.4 5.3a2 2 0 0 0 2.2 0L20.5 7" />
+        </svg>
+      );
+    case "phone":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7.7 3.5h-2A2.2 2.2 0 0 0 3.5 6c.4 6.9 6.1 12.6 13 13a2.2 2.2 0 0 0 2.5-2.2v-2a1.5 1.5 0 0 0-1.2-1.47l-2.6-.52a1.5 1.5 0 0 0-1.5.63l-.7 1a12.4 12.4 0 0 1-5-5l1-.7a1.5 1.5 0 0 0 .63-1.5l-.52-2.6A1.5 1.5 0 0 0 7.7 3.5Z" />
+        </svg>
+      );
+    case "instagram":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="5" />
+          <circle cx="12" cy="12" r="4" />
+          <circle cx="17.2" cy="6.8" r="1.1" fill="currentColor" stroke="none" />
+        </svg>
+      );
+    case "facebook":
+      return (
+        <svg {...common} fill="currentColor">
+          <path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.52 1.49-3.91 3.77-3.91 1.09 0 2.24.2 2.24.2v2.47h-1.26c-1.24 0-1.63.78-1.63 1.57v1.88h2.78l-.45 2.91h-2.33V22c4.78-.76 8.44-4.92 8.44-9.94Z" />
+        </svg>
+      );
+    case "telegram":
+      return (
+        <svg {...common} fill="currentColor">
+          <path d="M21.7 4.3c-.28-.24-.72-.28-1.3-.05L3.1 11.2c-.6.24-.95.6-.93.98.02.38.4.68 1.03.85l4.2 1.16 1.66 4.9c.13.38.36.6.66.63.3.03.6-.13.86-.44l2.3-2.7 4.4 3.24c.36.27.7.36.98.27.28-.1.48-.4.58-.85l3.1-14.1c.13-.6.06-1-.24-1.24ZM8.9 14.1l8.5-5.6-6.9 6.6-.3 3.1-1.3-4.1Z" />
+        </svg>
+      );
+    case "link":
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M3.2 12h17.6M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18Z" />
+        </svg>
+      );
+    case "chat":
+    default:
+      return (
+        <svg {...common} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.8-.4L4 21l1.4-4a8.2 8.2 0 0 1-1.4-4.6 8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8 7.5Z" />
+        </svg>
+      );
+  }
 }
 
 /**
@@ -174,6 +238,15 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
 
   /* ---- the pre-chat form ---- */
 
+  const [home, setHome] = useState<NestChatHome>();
+  /**
+   * Which screen is up.
+   *
+   * "home" is the card list; "chat" is the conversation. A channel without a
+   * home screen never leaves "chat", so the state costs nothing when the
+   * feature is off.
+   */
+  const [view, setView] = useState<"home" | "chat">("chat");
   const [preChat, setPreChat] = useState<NestChatPreChat>();
   const [routing, setRouting] = useState<NestChatPublicRouting>();
   /** Their name, as they gave it — for the greeting, and so they can see who we
@@ -227,6 +300,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         setTeam(config.team);
         setPreChat(config.preChat);
         setRouting(config.routing);
+        setHome(config.home);
 
         const session = await openSession(widgetKey, { visitorId: readLocal(widgetKey, "visitor") });
         if (!alive) return;
@@ -234,6 +308,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         setToken(session.token);
         setLive(session.hasConversation);
         setMessages(session.messages);
+        // Somebody with a conversation already open is dropped straight into
+        // it: they came back to read a reply, not to be shown the front door
+        // again.
+        setView(config.home && !session.hasConversation ? "home" : "chat");
         setPhase("ready");
       } catch {
         // A key that doesn't resolve, or an API that can't be reached. Either
@@ -626,6 +704,26 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           a title bar and somewhere a person answers. */}
       <header className="nc__head">
         <div className="nc__headtop">
+        {/* Back to the cards. Only when there is a home screen and they are not
+            already on it — and it takes the logo's place rather than sitting
+            beside it, because both are the top-left corner and only one of them
+            is something to press. */}
+        {home && view === "chat" ? (
+          <button type="button" className="nc__back" onClick={() => setView("home")}>
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M15 5l-7 7 7 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Back
+          </button>
+        ) : (
+        <>
         {/* The business's own mark, opposite the faces. Its height is capped in
             CSS rather than trusted from the file: a logo is whatever size its
             owner exported it at, and one 900px tall would take the header with
@@ -642,6 +740,8 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           />
         ) : (
           <span />
+        )}
+        </>
         )}
         {team?.faces.length ? (
           /* Who is behind the counter. Overlapped left-to-right with the first
@@ -699,6 +799,57 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         </div>
       </header>
 
+      {view === "home" && home ? (
+        /* The front door: the chat, and every other way this business answers.
+           The chat card is first and is not one of the configured ones — it is
+           the widget's own door, not a link out. */
+        <div className="nc__home">
+          <button type="button" className="nc__card nc__card--chat" onClick={() => setView("chat")}>
+            <span className="nc__cardtext">
+              <b>{home.chatLabel}</b>
+              {home.chatSublabel ? <small>{home.chatSublabel}</small> : null}
+            </span>
+            <svg className="nc__cardgo" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 21l20-9L2 3l0 7 14 2-14 2z" fill="currentColor" />
+            </svg>
+          </button>
+
+          {home.cards.map((c) => (
+            <a
+              key={c.id}
+              className="nc__card"
+              href={c.href}
+              /* Out of the iframe and into a real tab. `noopener` because the
+                 opened page must not get a handle back to this document, and
+                 `noreferrer` because which of our customers' sites a visitor
+                 came from is not the linked party's business. */
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {c.icon ? (
+                <span className="nc__cardicon">
+                  <CardIcon name={c.icon} />
+                </span>
+              ) : null}
+              <span className="nc__cardtext">
+                <b>{c.label}</b>
+                {c.sublabel ? <small>{c.sublabel}</small> : null}
+              </span>
+              <svg className="nc__cardgo" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 6l6 6-6 6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </a>
+          ))}
+        </div>
+      ) : (
+      <>
       <div className="nc__thread" ref={threadRef}>
         {messages.length === 0 && appearance.greeting ? (
           <div className="nc__greeting">{fillVisitorName(appearance.greeting, visitorName)}</div>
@@ -996,6 +1147,9 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           </svg>
         </button>
       </div>
+      )}
+
+      </>
       )}
 
       {appearance.showBranding ? (

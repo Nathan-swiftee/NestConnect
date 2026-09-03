@@ -4,9 +4,11 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import {
   DEFAULT_NESTCHAT_APPEARANCE,
+  DEFAULT_NESTCHAT_HOME,
   DEFAULT_NESTCHAT_PRECHAT,
   DEFAULT_NESTCHAT_ROUTING,
   nestchatAppearanceSchema,
+  nestchatHomeSchema,
   nestchatPreChatSchema,
   nestchatRoutingSchema,
   type Inbox,
@@ -14,6 +16,7 @@ import {
   type NestChatAppearance,
   type NestChatAgentFace,
   type NestChatMessage,
+  type NestChatHome,
   type NestChatPreChat,
   type NestChatRouting,
   type NestChatRoutingOption,
@@ -184,6 +187,28 @@ export class NestChatService {
     });
   }
 
+  /* ---- the home screen ---- */
+
+  /** The cards a visitor meets before the conversation. */
+  async homeFor(inboxId: string): Promise<NestChatHome> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return parseBlob(config?.home, nestchatHomeSchema, DEFAULT_NESTCHAT_HOME);
+  }
+
+  /** Replace the home screen. Whole, like the other list-bearing sections. */
+  async updateHome(inboxId: string, home: NestChatHome): Promise<void> {
+    await this.requireNestChatInbox(inboxId);
+    const parsed = nestchatHomeSchema.parse(home);
+    const seen = new Set<string>();
+    for (const card of parsed.cards) {
+      if (seen.has(card.id)) {
+        throw new BadRequestException(`Two cards share the id "${card.id}"`);
+      }
+      seen.add(card.id);
+    }
+    await this.store.updateInbox(inboxId, { channelConfig: { home: JSON.stringify(parsed) } });
+  }
+
   /* ---- the routing menu ---- */
 
   /** The menu of things a visitor can say they're here about. */
@@ -274,6 +299,7 @@ export class NestChatService {
       appearance: await this.appearanceFor(inboxId),
       preChat: await this.preChatFor(inboxId),
       routing: await this.routingFor(inboxId),
+      home: await this.homeFor(inboxId),
       teams: await this.teamsFor(inbox),
       embedUrl: `${base}/widget.html?key=${widgetKey}`,
       scriptUrl: `${base}/nestchat.js`,

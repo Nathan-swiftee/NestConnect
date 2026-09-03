@@ -16,6 +16,9 @@ import type {
   OpeningDay,
   OpeningHoursDay,
   NestChatAppearance,
+  NestChatCardIcon,
+  NestChatHome,
+  NestChatHomeCard,
   NestChatPreChat,
   NestChatRouting,
   NestChatRoutingOption,
@@ -24,6 +27,9 @@ import type {
 import {
   WHATSAPP_VERTICALS,
   OPENING_DAYS,
+  NESTCHAT_CARD_ICONS,
+  nestchatHeaderBackground,
+  NESTCHAT_MAX_HOME_CARDS,
   NESTCHAT_MAX_ROUTING_OPTIONS,
   fillVisitorName,
 } from "@ding/schemas";
@@ -1389,11 +1395,12 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
  * menu that decides which team answers it.
  */
 /** The tabs the widget's settings are split across. */
-type SettingsSection = "brand" | "words" | "prechat" | "behaviour";
+type SettingsSection = "brand" | "words" | "home" | "prechat" | "behaviour";
 
 const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "brand", label: "Brand" },
   { key: "words", label: "Words" },
+  { key: "home", label: "Home" },
   { key: "prechat", label: "Before the chat" },
   { key: "behaviour", label: "Behaviour" },
 ];
@@ -1402,6 +1409,7 @@ type WidgetDraft = {
   appearance: NestChatAppearance;
   preChat: NestChatPreChat;
   routing: NestChatRouting;
+  home: NestChatHome;
 };
 
 /** The text fields, in the order the widget reads them out loud. */
@@ -1542,6 +1550,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
       appearance: data.appearance,
       preChat: data.preChat,
       routing: data.routing,
+      home: data.home,
     };
     setSaved((m) => ({ ...m, [data.inboxId]: next }));
     setDrafts((m) => (m[data.inboxId] ? m : { ...m, [data.inboxId]: next }));
@@ -1568,6 +1577,21 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
     if (!draft) return;
     const patch = { [key]: value } as Pick<NestChatPreChat, K>;
     setSection("preChat", { ...draft.preChat, ...patch });
+  };
+
+  const setHome = <K extends keyof NestChatHome>(key: K, value: NestChatHome[K]) => {
+    if (!draft) return;
+    const patch = { [key]: value } as Pick<NestChatHome, K>;
+    setSection("home", { ...draft.home, ...patch });
+  };
+
+  /** Replace one home card in place. */
+  const setCard = (id: string, patch: Partial<NestChatHomeCard>) => {
+    if (!draft) return;
+    setSection("home", {
+      ...draft.home,
+      cards: draft.home.cards.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+    });
   };
 
   const setRouting = <K extends keyof NestChatRouting>(key: K, value: NestChatRouting[K]) => {
@@ -1614,6 +1638,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
             appearance: res.appearance,
             preChat: res.preChat,
             routing: res.routing,
+            home: res.home,
           };
           setSaved((m) => ({ ...m, [res.inboxId]: next }));
           setDrafts((m) => ({ ...m, [res.inboxId]: next }));
@@ -1778,9 +1803,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   <div
                     className="ncwlogo__well"
                     style={{
-                      background: draft.appearance.headerGradient
-                        ? `linear-gradient(135deg, ${draft.appearance.accent}, ${draft.appearance.accentTo})`
-                        : draft.appearance.accent,
+                      background: nestchatHeaderBackground(draft.appearance),
                     }}
                   >
                     {logoSrc ? (
@@ -1939,6 +1962,141 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                 />
                 Show “Powered by Nest Connect”
               </label>
+            </section>
+
+            <section className="ncw__group" hidden={tab !== "home"}>
+              <h3>Home</h3>
+              <p className="fieldhint">
+                A screen of cards before the conversation — the chat itself, then every other way
+                you answer. Worth it if you staff more than one channel; a tap in the way if you
+                don’t.
+              </p>
+
+              <label className={"check" + (draft.home.enabled ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.home.enabled}
+                  onChange={(e) => setHome("enabled", e.target.checked)}
+                />
+                Show a home screen before the chat
+              </label>
+
+              {draft.home.enabled && (
+                <div className="ncw__sub">
+                  <div className="setform__grid two">
+                    <label className="field">
+                      <span>Chat card</span>
+                      <input
+                        value={draft.home.chatLabel}
+                        onChange={(e) => setHome("chatLabel", e.target.value)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Under it</span>
+                      <input
+                        value={draft.home.chatSublabel}
+                        onChange={(e) => setHome("chatSublabel", e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <p className="fieldhint">
+                    The chat is always the first card and can’t be removed — it’s the widget’s own
+                    door. Everything below it is a link out.
+                  </p>
+
+                  <div className="ncwopts">
+                    <div className="ncwopt ncwopt--card ncwopt--head" aria-hidden="true">
+                      <span />
+                      <span>Label</span>
+                      <span>Under it</span>
+                      <span>Link</span>
+                      <span />
+                    </div>
+                    {draft.home.cards.map((c) => (
+                      <div className="ncwopt ncwopt--card" key={c.id}>
+                        {/* A fixed set, not free text: these are drawn by the
+                            widget so a WhatsApp card carries the WhatsApp mark
+                            on every device, rather than whatever that
+                            visitor's OS makes of an emoji. */}
+                        <select
+                          aria-label="Icon"
+                          value={c.icon ?? ""}
+                          onChange={(e) =>
+                            setCard(c.id, {
+                              icon: (e.target.value || undefined) as NestChatCardIcon | undefined,
+                            })
+                          }
+                        >
+                          <option value="">No icon</option>
+                          {NESTCHAT_CARD_ICONS.map((n) => (
+                            <option key={n} value={n}>
+                              {n.charAt(0).toUpperCase() + n.slice(1)}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          aria-label="What the visitor sees"
+                          placeholder="Message us on WhatsApp"
+                          value={c.label}
+                          onChange={(e) => setCard(c.id, { label: e.target.value })}
+                        />
+                        <input
+                          aria-label="The line under it"
+                          placeholder="Usually answers within the hour"
+                          value={c.sublabel}
+                          onChange={(e) => setCard(c.id, { sublabel: e.target.value })}
+                        />
+                        <input
+                          aria-label="Where it goes"
+                          placeholder="https://wa.me/44…"
+                          value={c.href}
+                          spellCheck={false}
+                          onChange={(e) => setCard(c.id, { href: e.target.value })}
+                        />
+                        <button
+                          type="button"
+                          className="ncwopt__del"
+                          title="Remove this card"
+                          aria-label={`Remove ${c.label || "card"}`}
+                          onClick={() =>
+                            setHome(
+                              "cards",
+                              draft.home.cards.filter((x) => x.id !== c.id),
+                            )
+                          }
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={draft.home.cards.length >= NESTCHAT_MAX_HOME_CARDS}
+                    onClick={() =>
+                      setHome("cards", [
+                        ...draft.home.cards,
+                        {
+                          id: `card_${Math.random().toString(36).slice(2, 10)}`,
+                          label: "",
+                          sublabel: "",
+                          href: "",
+                        },
+                      ])
+                    }
+                  >
+                    {draft.home.cards.length >= NESTCHAT_MAX_HOME_CARDS
+                      ? `That’s the limit of ${NESTCHAT_MAX_HOME_CARDS}`
+                      : "Add a card"}
+                  </button>
+                  <p className="fieldhint">
+                    Links must start with <code>https://</code>, <code>mailto:</code> or{" "}
+                    <code>tel:</code> — a chat widget is not somewhere to run arbitrary URLs.
+                  </p>
+                </div>
+              )}
             </section>
 
             <section className="ncw__group" hidden={tab !== "prechat"}>
@@ -2248,9 +2406,8 @@ function NestChatPreview({
         ["--pv-on" as string]: appearance.accentText,
         // Same rule the widget uses: the header takes the gradient, everything
         // else keeps the flat accent.
-        ["--pv-head" as string]: appearance.headerGradient
-          ? `linear-gradient(135deg, ${appearance.accent}, ${appearance.accentTo})`
-          : appearance.accent,
+        // The same builder the widget uses, so the toggle previews what it does.
+        ["--pv-head" as string]: nestchatHeaderBackground(appearance),
       }}
       aria-hidden="true"
     >
