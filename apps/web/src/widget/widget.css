@@ -118,11 +118,16 @@ body {
    * The room between the logo row and the greeting.
    *
    * This is the whole difference between a header and a title bar, and it was
-   * the thing that read as squashed: 30px is a gap, 64px is a space somebody
+   * the thing that read as squashed: 30px is a gap, 48px is a space somebody
    * designed. It is also the distance the gradient needs in order to be a
    * gradient rather than an uneven colour.
+   *
+   * It was 64px, which sat the greeting so low that only 14px separated the
+   * away message from the first card — the text read as belonging to the card
+   * rather than to the header. The 16px taken off here is given back below, so
+   * the header is the same height and the greeting simply sits higher in it.
    */
-  gap: 64px;
+  gap: 48px;
   /*
    * The chat's header: colour at full strength to the last pixel, then a clean
    * cut into the conversation.
@@ -157,7 +162,10 @@ body {
  * a dissolve is text nobody can read.
  */
 .nc__head--fade {
-  padding-bottom: 40px;
+  /* 16px more than the 40px this needs to clear the dissolve, which is the
+     other half of the trade above: the greeting rises, the space under it
+     grows, and the gap to the first card goes from 14px to 30px. */
+  padding-bottom: 56px;
   background:
     linear-gradient(to bottom, transparent 78%, var(--panel) 100%),
     radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.17), transparent 60%),
