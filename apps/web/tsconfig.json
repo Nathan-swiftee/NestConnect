@@ -5,6 +5,33 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "types": ["vite/client"],
+    /*
+     * Pin every `react` in this program to the web app's own copy of the types.
+     *
+     * The workspace installs hoisted (see .npmrc — Metro can't read pnpm's
+     * symlinked store), so the root node_modules holds ONE @types/react and the
+     * mobile app's React 19 wins it. The web app's React 18 types get a nested
+     * copy. A dependency's .d.ts — @tiptap/react is the one that bites — sits at
+     * the root and so resolves `react` upward to v19, while this app's own
+     * source resolves it to v18 next door.
+     *
+     * The compiler then holds two structurally different `ReactNode` types and
+     * refuses to accept `EditorContent` as a JSX component, naming `bigint`:
+     * the member React 19 added. Nothing is actually wrong with the code, which
+     * is why it survived five commits of red CI.
+     *
+     * Mapped rather than aligned on one version, because the two apps genuinely
+     * disagree: mobile runs React 19.2.3, this runs 18.3.1, and typechecking
+     * either against the other's types would be describing the wrong runtime.
+     * Scoped to this tsconfig, so mobile is untouched.
+     */
+    "paths": {
+      "react": ["./node_modules/@types/react"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
+      "react/jsx-dev-runtime": ["./node_modules/@types/react/jsx-dev-runtime"],
+      "react-dom": ["./node_modules/@types/react-dom"],
+      "react-dom/client": ["./node_modules/@types/react-dom/client"]
+    },
     "noEmit": true,
     "declaration": false
   },
