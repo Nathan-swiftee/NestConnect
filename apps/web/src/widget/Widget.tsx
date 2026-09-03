@@ -702,7 +702,9 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           the height a gradient needs to actually travel across. It is the shape
           every modern messenger has landed on, and it is the difference between
           a title bar and somewhere a person answers. */}
-      <header className="nc__head">
+      {/* The fade belongs to the home screen only — see the CSS for why a
+          dissolve over a scrolling thread reads as unfinished. */}
+      <header className={view === "home" && home ? "nc__head nc__head--fade" : "nc__head"}>
         <div className="nc__headtop">
         {/* Back to the cards. Only when there is a home screen and they are not
             already on it — and it takes the logo's place rather than sitting
@@ -804,7 +806,14 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
            The chat card is first and is not one of the configured ones — it is
            the widget's own door, not a link out. */
         <div className="nc__home">
-          <button type="button" className="nc__card nc__card--chat" onClick={() => setView("chat")}>
+          {/* `--i` is what the CSS staggers on: the chat card is always first,
+              the configured ones follow in their own order. */}
+          <button
+            type="button"
+            className="nc__card nc__card--chat"
+            style={{ ["--i" as string]: 0 }}
+            onClick={() => setView("chat")}
+          >
             <span className="nc__cardtext">
               <b>{home.chatLabel}</b>
               {home.chatSublabel ? <small>{home.chatSublabel}</small> : null}
@@ -814,10 +823,11 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
             </svg>
           </button>
 
-          {home.cards.map((c) => (
+          {home.cards.map((c, i) => (
             <a
               key={c.id}
               className="nc__card"
+              style={{ ["--i" as string]: i + 1 }}
               href={c.href}
               /* Out of the iframe and into a real tab. `noopener` because the
                  opened page must not get a handle back to this document, and
@@ -887,11 +897,12 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
               <div className="nc__options" role="group" aria-label={routing.prompt}>
                 <p className="nc__optionsq">{routing.prompt}</p>
                 <div className="nc__optionlist" data-chosen={optionId ? "yes" : "no"}>
-                  {routing.options.map((o) => (
+                  {routing.options.map((o, i) => (
                     <button
                       key={o.id}
                       type="button"
                       className={optionId === o.id ? "nc__option on" : "nc__option"}
+                      style={{ ["--i" as string]: i }}
                       aria-pressed={optionId === o.id}
                       onClick={() => setOptionId(o.id)}
                     >
