@@ -65,6 +65,47 @@ body {
   background: var(--bg);
 }
 
+/* ── motion ─────────────────────────────────────────────────────────────────
+   Two curves and three keyframes, shared by everything that moves.
+
+   Only `opacity` and `transform` are ever animated. Both are handled by the
+   compositor, so they stay smooth on a mid-range phone that is also rendering
+   somebody else's marketing site around this iframe — animating height, top or
+   box-shadow instead is what makes a widget feel cheap on exactly the hardware
+   most visitors have.
+
+   Every duration here is under a third of a second. Motion is meant to say
+   "this arrived" and get out of the way; anything long enough to notice as an
+   animation is long enough to wait for on the fifth visit. */
+
+:root {
+  /* Deceleration — fast out of the gate, gently into place. For things
+     arriving, which is most of this. */
+  --nc-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  /* A little overshoot, for things responding to a finger. */
+  --nc-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+@keyframes nc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+}
+
+@keyframes nc-pop {
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+@keyframes nc-tick {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
 /* ── header ─────────────────────────────────────────────────────────────── */
 
 .nc__head {
@@ -312,6 +353,17 @@ body {
 .nc__msg {
   display: flex;
   flex-direction: column;
+  /* Every message lands the same way, whoever sent it — including the visitor's
+     own optimistic echo, so their message appears to be placed rather than to
+     have always been there. No stagger: these arrive one at a time in real
+     life, and a queue of them on reconnect should not cascade. */
+  animation: nc-rise 0.26s var(--nc-enter);
+}
+
+.nc__greeting,
+.nc__closed,
+.nc__note {
+  animation: nc-rise 0.3s var(--nc-enter);
 }
 
 .nc__row {
@@ -466,12 +518,7 @@ body {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .nc__typing i {
-    animation: none;
-    opacity: 0.55;
-  }
-}
+
 
 /* ── email ask ──────────────────────────────────────────────────────────── */
 
@@ -689,12 +736,30 @@ body {
   border-radius: 14px;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 20px -14px rgba(16, 24, 40, 0.28);
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition: transform 0.16s var(--nc-spring), box-shadow 0.16s ease;
+  /*
+   * Dealt rather than shown all at once.
+   *
+   * `--i` is the card's position, set by the widget; 55ms between them is
+   * enough to read as a sequence and short enough that the last card of six is
+   * still in under half a second. `backwards` holds the first frame during the
+   * delay — without it every card flashes at full opacity before its turn,
+   * which is worse than no animation at all.
+   */
+  animation: nc-rise 0.34s var(--nc-enter) backwards;
+  animation-delay: calc(var(--i, 0) * 55ms);
 }
 
 .nc__card:hover {
   transform: translateY(-1px);
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 12px 26px -14px rgba(16, 24, 40, 0.34);
+}
+
+/* Under a finger. The dip is what makes a card feel like a physical thing
+   rather than a link that happened to change page. */
+.nc__card:active {
+  transform: scale(0.978);
+  transition-duration: 0.06s;
 }
 
 .nc__card:focus-visible {
@@ -797,6 +862,14 @@ body {
 .nc__pcfield {
   display: block;
   margin-bottom: 8px;
+  /* After the pills above them — the form reads top to bottom, so it should
+     arrive that way. Fixed rather than indexed: there are at most three. */
+  animation: nc-rise 0.32s var(--nc-enter) backwards;
+  animation-delay: 0.1s;
+}
+
+.nc__pcfield + .nc__pcfield {
+  animation-delay: 0.16s;
 }
 
 .nc__pcfield > span {
@@ -854,6 +927,7 @@ body {
 }
 
 .nc__optionsq {
+  animation: nc-rise 0.3s var(--nc-enter) backwards;
   margin: 0 0 7px;
   font-size: 11.5px;
   font-weight: 600;
@@ -896,7 +970,18 @@ body {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: opacity 0.12s ease;
+  transition: opacity 0.18s ease, transform 0.16s var(--nc-spring);
+  /* Same deal as the cards, quicker: pills are smaller and there can be eight,
+     so 38ms keeps the whole row under 300ms. */
+  animation: nc-rise 0.3s var(--nc-enter) backwards;
+  animation-delay: calc(var(--i, 0) * 38ms);
+}
+
+/* The press. Small — a pill is small, and a 6% dip on something this size is
+   plenty to feel while staying invisible as an effect. */
+.nc__option:active {
+  transform: scale(0.94);
+  transition-duration: 0.06s;
 }
 
 /* Every pill is filled, so "chosen" can't be shown by filling one — it is shown
@@ -909,6 +994,24 @@ body {
 
 .nc__optionlist[data-chosen="yes"] .nc__option.on {
   opacity: 1;
+}
+
+/*
+ * The pop on being chosen.
+ *
+ * Selection was doing its whole job through an opacity change on the *other*
+ * pills, which means the thing you actually pressed gave you nothing back — the
+ * press registered somewhere else on screen. This is the acknowledgement, on
+ * the pill under the finger, and it overrides the entrance animation harmlessly
+ * because that finished long before anybody could click.
+ */
+.nc__option.on {
+  animation: nc-pop 0.26s var(--nc-spring);
+}
+
+.nc__option.on::before {
+  animation: nc-tick 0.24s var(--nc-spring) backwards;
+  animation-delay: 0.04s;
 }
 
 .nc__option:hover {
@@ -930,6 +1033,9 @@ body {
 }
 
 .nc__prechatgo {
+  animation: nc-rise 0.32s var(--nc-enter) backwards;
+  animation-delay: 0.22s;
+  transition: transform 0.16s var(--nc-spring), opacity 0.16s ease;
   margin-top: 2px;
   padding: 8px 14px;
   border: 0;
@@ -945,6 +1051,11 @@ body {
 .nc__prechatgo:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.nc__prechatgo:not(:disabled):active {
+  transform: scale(0.96);
+  transition-duration: 0.06s;
 }
 
 /* A link, not a second button: skipping is a way past the form, not the other
@@ -1005,6 +1116,7 @@ body {
 }
 
 .nc__newchat {
+  transition: transform 0.16s var(--nc-spring);
   padding: 8px 15px;
   border: 0;
   border-radius: 9px;
@@ -1014,4 +1126,56 @@ body {
   color: var(--accent-text);
   background: var(--accent);
   cursor: pointer;
+}
+
+/*
+ * Last in the file on purpose: a media query carries no extra specificity,
+ * so it can only override the rules above by coming after them. Placed with
+ * the typing dots as it was originally, every rule defined further down —
+ * which is all of them — quietly won, and the setting did nothing.
+ *
+ * Everything above is decoration, and for some people it is worse than that:
+ * vestibular disorders make travelling UI genuinely unpleasant, and the OS
+ * setting is how those people say so. Honouring it is not a nicety.
+ *
+ * Motion goes; state does not. The pills still dim when one is chosen, the tick
+ * still appears, buttons still respond — those carry meaning. Only the movement
+ * and the timing that carries it are removed, which is the distinction the
+ * setting is actually asking for.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .nc__typing i {
+    animation: none;
+    opacity: 0.55;
+  }
+
+  .nc__card,
+  .nc__option,
+  .nc__optionsq,
+  .nc__pcfield,
+  .nc__pcfield + .nc__pcfield,
+  .nc__prechatgo,
+  .nc__msg,
+  .nc__greeting,
+  .nc__closed,
+  .nc__note,
+  .nc__option.on,
+  .nc__option.on::before {
+    animation: none;
+    animation-delay: 0s;
+  }
+
+  .nc__card,
+  .nc__option,
+  .nc__prechatgo,
+  .nc__newchat {
+    transition: opacity 0.18s ease;
+  }
+
+  .nc__card:hover,
+  .nc__card:active,
+  .nc__option:active,
+  .nc__prechatgo:not(:disabled):active {
+    transform: none;
+  }
 }
