@@ -79,17 +79,27 @@ body {
    animation is long enough to wait for on the fifth visit. */
 
 :root {
-  /* Deceleration — fast out of the gate, gently into place. For things
-     arriving, which is most of this. */
-  --nc-enter: cubic-bezier(0.22, 1, 0.36, 1);
-  /* A little overshoot, for things responding to a finger. */
-  --nc-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  /*
+   * Deceleration — most of the distance covered early, then a long quiet
+   * settle. For things arriving, which is most of this.
+   *
+   * A near-exponential curve rather than a gentler one, because curve and
+   * duration have to be chosen together: a long animation on a shallow curve
+   * spends its time in the middle, drifting, and drifting is what reads as
+   * slow. This spends its time arriving.
+   */
+  --nc-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  /* A little overshoot, for things responding to a finger. Eased back from a
+     sharper bounce — over a longer duration that read as a wobble. */
+  --nc-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
 }
 
 @keyframes nc-rise {
   from {
     opacity: 0;
-    transform: translateY(9px);
+    /* Further than before. Distance and duration travel together — a longer
+       animation over the same 9px reads as hesitation rather than movement. */
+    transform: translateY(13px);
   }
 }
 
@@ -384,13 +394,13 @@ body {
      own optimistic echo, so their message appears to be placed rather than to
      have always been there. No stagger: these arrive one at a time in real
      life, and a queue of them on reconnect should not cascade. */
-  animation: nc-rise 0.26s var(--nc-enter);
+  animation: nc-rise 0.4s var(--nc-enter);
 }
 
 .nc__greeting,
 .nc__closed,
 .nc__note {
-  animation: nc-rise 0.3s var(--nc-enter);
+  animation: nc-rise 0.46s var(--nc-enter);
 }
 
 .nc__row {
@@ -763,7 +773,7 @@ body {
   border-radius: 14px;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 20px -14px rgba(16, 24, 40, 0.28);
-  transition: transform 0.16s var(--nc-spring), box-shadow 0.16s ease;
+  transition: transform 0.28s var(--nc-spring), box-shadow 0.28s ease;
   /*
    * Dealt rather than shown all at once.
    *
@@ -773,8 +783,18 @@ body {
    * delay — without it every card flashes at full opacity before its turn,
    * which is worse than no animation at all.
    */
-  animation: nc-rise 0.34s var(--nc-enter) backwards;
-  animation-delay: calc(var(--i, 0) * 55ms);
+  animation: nc-rise 0.52s var(--nc-enter) backwards;
+  /*
+   * Capped, not just multiplied.
+   *
+   * The stagger is what makes a list feel dealt rather than dumped, but it
+   * compounds: at 80ms a seventh card would start two thirds of a second after
+   * the first and finish a full second in, which stops being elegant and starts
+   * being a wait. The cap keeps the cascade to a third of a second however many
+   * cards there are — the first few still arrive in sequence, the tail just
+   * catches up.
+   */
+  animation-delay: min(calc(var(--i, 0) * 80ms), 320ms);
 }
 
 .nc__card:hover {
@@ -786,7 +806,7 @@ body {
    rather than a link that happened to change page. */
 .nc__card:active {
   transform: scale(0.978);
-  transition-duration: 0.06s;
+  transition-duration: 0.09s;
 }
 
 .nc__card:focus-visible {
@@ -891,12 +911,12 @@ body {
   margin-bottom: 8px;
   /* After the pills above them — the form reads top to bottom, so it should
      arrive that way. Fixed rather than indexed: there are at most three. */
-  animation: nc-rise 0.32s var(--nc-enter) backwards;
-  animation-delay: 0.1s;
+  animation: nc-rise 0.5s var(--nc-enter) backwards;
+  animation-delay: 0.16s;
 }
 
 .nc__pcfield + .nc__pcfield {
-  animation-delay: 0.16s;
+  animation-delay: 0.26s;
 }
 
 .nc__pcfield > span {
@@ -954,7 +974,7 @@ body {
 }
 
 .nc__optionsq {
-  animation: nc-rise 0.3s var(--nc-enter) backwards;
+  animation: nc-rise 0.46s var(--nc-enter) backwards;
   margin: 0 0 7px;
   font-size: 11.5px;
   font-weight: 600;
@@ -997,18 +1017,19 @@ body {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: opacity 0.18s ease, transform 0.16s var(--nc-spring);
+  transition: opacity 0.3s ease, transform 0.28s var(--nc-spring);
   /* Same deal as the cards, quicker: pills are smaller and there can be eight,
      so 38ms keeps the whole row under 300ms. */
-  animation: nc-rise 0.3s var(--nc-enter) backwards;
-  animation-delay: calc(var(--i, 0) * 38ms);
+  animation: nc-rise 0.46s var(--nc-enter) backwards;
+  /* Capped for the same reason as the cards, tighter: there can be eight. */
+  animation-delay: min(calc(var(--i, 0) * 52ms), 260ms);
 }
 
 /* The press. Small — a pill is small, and a 6% dip on something this size is
    plenty to feel while staying invisible as an effect. */
 .nc__option:active {
   transform: scale(0.94);
-  transition-duration: 0.06s;
+  transition-duration: 0.09s;
 }
 
 /* Every pill is filled, so "chosen" can't be shown by filling one — it is shown
@@ -1033,12 +1054,12 @@ body {
  * because that finished long before anybody could click.
  */
 .nc__option.on {
-  animation: nc-pop 0.26s var(--nc-spring);
+  animation: nc-pop 0.42s var(--nc-spring);
 }
 
 .nc__option.on::before {
-  animation: nc-tick 0.24s var(--nc-spring) backwards;
-  animation-delay: 0.04s;
+  animation: nc-tick 0.36s var(--nc-spring) backwards;
+  animation-delay: 0.07s;
 }
 
 .nc__option:hover {
@@ -1060,9 +1081,9 @@ body {
 }
 
 .nc__prechatgo {
-  animation: nc-rise 0.32s var(--nc-enter) backwards;
-  animation-delay: 0.22s;
-  transition: transform 0.16s var(--nc-spring), opacity 0.16s ease;
+  animation: nc-rise 0.5s var(--nc-enter) backwards;
+  animation-delay: 0.36s;
+  transition: transform 0.28s var(--nc-spring), opacity 0.22s ease;
   margin-top: 2px;
   padding: 8px 14px;
   border: 0;
@@ -1082,7 +1103,7 @@ body {
 
 .nc__prechatgo:not(:disabled):active {
   transform: scale(0.96);
-  transition-duration: 0.06s;
+  transition-duration: 0.09s;
 }
 
 /* A link, not a second button: skipping is a way past the form, not the other
@@ -1143,7 +1164,7 @@ body {
 }
 
 .nc__newchat {
-  transition: transform 0.16s var(--nc-spring);
+  transition: transform 0.28s var(--nc-spring);
   padding: 8px 15px;
   border: 0;
   border-radius: 9px;
