@@ -1045,6 +1045,66 @@ export const nestchatPreChatSchema = z.object({
 export type NestChatPreChat = z.infer<typeof nestchatPreChatSchema>;
 export const DEFAULT_NESTCHAT_PRECHAT: NestChatPreChat = nestchatPreChatSchema.parse({});
 
+/* ---- the home screen ---- */
+
+/**
+ * One card on the widget's home screen — a way to reach the business that
+ * isn't this chat.
+ *
+ * Plenty of businesses answer faster on WhatsApp than on a website widget, and
+ * a visitor who would rather email should not have to hunt the footer for the
+ * address. Offering those next to the chat costs a row and stops the widget
+ * pretending it is the only door.
+ */
+export const nestchatHomeCardSchema = z.object({
+  id: z.string().min(1).max(40),
+  label: z.string().min(1).max(60),
+  /** The quiet second line — "Usually answers within the hour". */
+  sublabel: z.string().max(80).default(""),
+  icon: z.string().max(8).optional(),
+  /**
+   * Where it goes.
+   *
+   * Deliberately a three-scheme allowlist rather than a URL check. This string
+   * is set by an admin and rendered as an `href` inside an iframe on a
+   * customer's own website: `javascript:` there is script execution on our
+   * origin, and `data:` is a page we would be hosting. Neither is a link, and
+   * neither has any business in a "reach us on another channel" card.
+   */
+  href: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine(
+      (v) => /^(https:\/\/|mailto:|tel:)/i.test(v),
+      "Must start with https://, mailto: or tel:",
+    ),
+});
+export type NestChatHomeCard = z.infer<typeof nestchatHomeCardSchema>;
+
+/** Enough for the channels a business actually staffs. */
+export const NESTCHAT_MAX_HOME_CARDS = 6;
+
+/**
+ * The screen a visitor lands on before the conversation.
+ *
+ * Off by default, and that is a considered default rather than caution: it puts
+ * a tap between somebody and the message box. A business that answers on one
+ * channel doesn't need it; one that answers on four does.
+ *
+ * The chat card is not in `cards` because it is not a link — it is the widget's
+ * own front door, always first and never removable. Its words are configurable;
+ * its existence isn't.
+ */
+export const nestchatHomeSchema = z.object({
+  enabled: z.boolean().default(false),
+  chatLabel: z.string().max(60).default("Send us a message"),
+  chatSublabel: z.string().max(80).default("We usually reply in a few minutes"),
+  cards: z.array(nestchatHomeCardSchema).max(NESTCHAT_MAX_HOME_CARDS).default([]),
+});
+export type NestChatHome = z.infer<typeof nestchatHomeSchema>;
+export const DEFAULT_NESTCHAT_HOME: NestChatHome = nestchatHomeSchema.parse({});
+
 /**
  * One thing a visitor can say they are here about, and the team that answers it.
  *
@@ -1210,6 +1270,7 @@ export const nestchatSettingsSchema = z.object({
   appearance: nestchatAppearanceSchema,
   preChat: nestchatPreChatSchema,
   routing: nestchatRoutingSchema,
+  home: nestchatHomeSchema,
   /**
    * The teams this channel routes to — the only teams a routing option may
    * name, so the pane can offer exactly those and no more.
@@ -1247,6 +1308,7 @@ export const updateNestchatInputSchema = z.object({
   appearance: nestchatAppearanceSchema.partial().optional(),
   preChat: nestchatPreChatSchema.optional(),
   routing: nestchatRoutingSchema.optional(),
+  home: nestchatHomeSchema.optional(),
 });
 export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
 
@@ -1271,6 +1333,9 @@ export const nestchatConfigSchema = z.object({
   /** The menu of things a visitor can say they're here about. Absent when the
    *  channel has no menu, or has one with nothing in it. */
   routing: nestchatPublicRoutingSchema.optional(),
+  /** The cards to show before the conversation. Absent when the channel has no
+   *  home screen, so the widget's question stays "is there one?". */
+  home: nestchatHomeSchema.optional(),
 });
 export type NestChatConfig = z.infer<typeof nestchatConfigSchema>;
 

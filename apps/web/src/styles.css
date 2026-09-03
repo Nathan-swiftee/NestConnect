@@ -3037,6 +3037,8 @@ button.tpl-row:active{transform:scale(.97)}
 .ncwopts{display:grid;gap:6px}
 .ncwopt{display:grid;grid-template-columns:52px minmax(0,1fr) minmax(0,150px) 32px;
   align-items:center;gap:var(--sp-2)}
+/* Home cards carry a sublabel and a link, so they get two more columns. */
+.ncwopt--card{grid-template-columns:52px minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr) 32px}
 .ncwopt--head{padding:0 0 2px}
 .ncwopt--head span{font-size:var(--fs-2xs,11px);font-weight:600;letter-spacing:.03em;
   text-transform:uppercase;color:var(--text-faint)}
@@ -3045,6 +3047,11 @@ button.tpl-row:active{transform:scale(.97)}
   border-radius:var(--r-8);background:transparent;color:var(--text-faint);cursor:pointer}
 .ncwopt__del:hover{background:var(--danger-tint);color:var(--danger)}
 .ncwopt__del svg{width:15px;height:15px}
+@media (max-width:1200px){
+  .ncwopt--card{grid-template-columns:52px minmax(0,1fr) 32px}
+  .ncwopt--card input:nth-of-type(3),.ncwopt--card input:nth-of-type(4){grid-column:2 / span 2}
+  .ncwopt--card.ncwopt--head{display:none}
+}
 @media (max-width:760px){
   .ncwopt{grid-template-columns:52px minmax(0,1fr) 32px}
   .ncwopt select{grid-column:2 / span 2}

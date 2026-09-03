@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from "react"
 import type {
   NestChatAppearance,
   NestChatConfig,
+  NestChatHome,
   NestChatMessage,
   NestChatPreChat,
   NestChatPublicRouting,
@@ -174,6 +175,15 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
 
   /* ---- the pre-chat form ---- */
 
+  const [home, setHome] = useState<NestChatHome>();
+  /**
+   * Which screen is up.
+   *
+   * "home" is the card list; "chat" is the conversation. A channel without a
+   * home screen never leaves "chat", so the state costs nothing when the
+   * feature is off.
+   */
+  const [view, setView] = useState<"home" | "chat">("chat");
   const [preChat, setPreChat] = useState<NestChatPreChat>();
   const [routing, setRouting] = useState<NestChatPublicRouting>();
   /** Their name, as they gave it — for the greeting, and so they can see who we
@@ -227,6 +237,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         setTeam(config.team);
         setPreChat(config.preChat);
         setRouting(config.routing);
+        setHome(config.home);
 
         const session = await openSession(widgetKey, { visitorId: readLocal(widgetKey, "visitor") });
         if (!alive) return;
@@ -234,6 +245,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         setToken(session.token);
         setLive(session.hasConversation);
         setMessages(session.messages);
+        // Somebody with a conversation already open is dropped straight into
+        // it: they came back to read a reply, not to be shown the front door
+        // again.
+        setView(config.home && !session.hasConversation ? "home" : "chat");
         setPhase("ready");
       } catch {
         // A key that doesn't resolve, or an API that can't be reached. Either
@@ -626,6 +641,26 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           a title bar and somewhere a person answers. */}
       <header className="nc__head">
         <div className="nc__headtop">
+        {/* Back to the cards. Only when there is a home screen and they are not
+            already on it — and it takes the logo's place rather than sitting
+            beside it, because both are the top-left corner and only one of them
+            is something to press. */}
+        {home && view === "chat" ? (
+          <button type="button" className="nc__back" onClick={() => setView("home")}>
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M15 5l-7 7 7 7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Back
+          </button>
+        ) : (
+        <>
         {/* The business's own mark, opposite the faces. Its height is capped in
             CSS rather than trusted from the file: a logo is whatever size its
             owner exported it at, and one 900px tall would take the header with
@@ -642,6 +677,8 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           />
         ) : (
           <span />
+        )}
+        </>
         )}
         {team?.faces.length ? (
           /* Who is behind the counter. Overlapped left-to-right with the first
@@ -699,6 +736,57 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         </div>
       </header>
 
+      {view === "home" && home ? (
+        /* The front door: the chat, and every other way this business answers.
+           The chat card is first and is not one of the configured ones — it is
+           the widget's own door, not a link out. */
+        <div className="nc__home">
+          <button type="button" className="nc__card nc__card--chat" onClick={() => setView("chat")}>
+            <span className="nc__cardtext">
+              <b>{home.chatLabel}</b>
+              {home.chatSublabel ? <small>{home.chatSublabel}</small> : null}
+            </span>
+            <svg className="nc__cardgo" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 21l20-9L2 3l0 7 14 2-14 2z" fill="currentColor" />
+            </svg>
+          </button>
+
+          {home.cards.map((c) => (
+            <a
+              key={c.id}
+              className="nc__card"
+              href={c.href}
+              /* Out of the iframe and into a real tab. `noopener` because the
+                 opened page must not get a handle back to this document, and
+                 `noreferrer` because which of our customers' sites a visitor
+                 came from is not the linked party's business. */
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {c.icon ? (
+                <span className="nc__cardicon" aria-hidden="true">
+                  {c.icon}
+                </span>
+              ) : null}
+              <span className="nc__cardtext">
+                <b>{c.label}</b>
+                {c.sublabel ? <small>{c.sublabel}</small> : null}
+              </span>
+              <svg className="nc__cardgo" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M9 6l6 6-6 6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </a>
+          ))}
+        </div>
+      ) : (
+      <>
       <div className="nc__thread" ref={threadRef}>
         {messages.length === 0 && appearance.greeting ? (
           <div className="nc__greeting">{fillVisitorName(appearance.greeting, visitorName)}</div>
@@ -996,6 +1084,9 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           </svg>
         </button>
       </div>
+      )}
+
+      </>
       )}
 
       {appearance.showBranding ? (

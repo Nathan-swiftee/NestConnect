@@ -83,6 +83,7 @@ export class NestChatController {
     const appearance = await this.nestchat.appearanceFor(inbox.id);
     const preChat = await this.nestchat.preChatFor(inbox.id);
     const routing = await this.nestchat.routingFor(inbox.id);
+    const home = await this.nestchat.homeFor(inbox.id);
     return {
       appearance: {
         ...appearance,
@@ -107,6 +108,9 @@ export class NestChatController {
       team: appearance.showTeam ? await this.nestchat.teamFacesFor(inbox) : undefined,
       preChat: preChat.enabled ? preChat : undefined,
       routing: toPublicRouting(routing, inbox.teamIds),
+      // Sent whole: unlike the routing menu, nothing on a home card is internal
+      // — a label, a line of text and a link the business wants people to use.
+      home: home.enabled ? home : undefined,
     };
   }
 

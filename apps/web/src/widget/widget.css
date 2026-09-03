@@ -70,24 +70,40 @@ body {
 .nc__head {
   display: flex;
   /* A column, not a row: the faces get their own line and the title sits under
-     them with room to be read. It also gives the header the height a gradient
-     needs — across 40px of title bar a gradient is just a slightly uneven
-     colour. */
+     them with room to be read. */
   flex-direction: column;
   align-items: stretch;
-  /* The gap between the faces and the greeting is most of what makes this read
-     as a space rather than a bar — it is the room the gradient travels through. */
-  gap: 30px;
-  padding: 16px 18px 22px;
-  /* `--head-bg` is the flat accent, or a gradient across it when the business
-     asked for one. The slight lift toward the top-left sits on top either way
-     and is what makes the block read as a surface rather than a fill. */
+  /*
+   * The room between the logo row and the greeting.
+   *
+   * This is the whole difference between a header and a title bar, and it was
+   * the thing that read as squashed: 30px is a gap, 64px is a space somebody
+   * designed. It is also the distance the gradient needs in order to be a
+   * gradient rather than an uneven colour.
+   */
+  gap: 64px;
+  /* The deep bottom padding is not decoration — it is what keeps the subtitle
+     clear of the fade below it. Text sitting inside the dissolve is text nobody
+     can read, and the away message is the line that most needs reading. */
+  padding: 18px 20px 40px;
+  /*
+   * Three layers, top to bottom:
+   *
+   *  1. a fade into the thread's own colour across the last fifth, so the
+   *     header dissolves into the conversation instead of stopping at a hard
+   *     line. This is the part that reads as considered;
+   *  2. the lift toward the top-left, which makes the block a surface rather
+   *     than a fill;
+   *  3. `--head-bg` — the flat accent, or a gradient across it.
+   */
   background:
+    linear-gradient(to bottom, transparent 78%, var(--panel) 100%),
     radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.17), transparent 60%),
     var(--head-bg, var(--accent));
   color: var(--accent-text);
   flex: 0 0 auto;
 }
+
 
 /* Someone is there: the business's initials, with a presence dot. Stands in for
    the team photos a bigger product would show. */
@@ -237,7 +253,7 @@ body {
    on the question under it. Same size and weight as the title so the two read
    as one block with the emphasis moved, rather than as a label and a heading. */
 .nc__headline {
-  font-size: 21px;
+  font-size: 25px;
   font-weight: 680;
   line-height: 1.25;
   letter-spacing: -0.02em;
@@ -245,14 +261,14 @@ body {
 }
 
 .nc__title {
-  font-size: 21px;
+  font-size: 25px;
   font-weight: 680;
   line-height: 1.25;
   letter-spacing: -0.02em;
 }
 
 .nc__sub {
-  margin-top: 6px;
+  margin-top: 8px;
   font-size: 12.5px;
   line-height: 1.35;
   /* The subtitle rides on the brand colour, so it can't take a fixed grey —
@@ -610,6 +626,113 @@ body {
   text-align: center;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* ── The home screen ───────────────────────────────────────────────────────
+   The cards a visitor meets before the conversation: the chat itself, then
+   every other way this business answers. Sized like something to press, not
+   like a list to read — each is one decision. */
+
+.nc__home {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 14px 18px;
+  background: var(--panel);
+}
+
+.nc__card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 15px 16px;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--bubble-in);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 20px -14px rgba(16, 24, 40, 0.28);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.nc__card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 12px 26px -14px rgba(16, 24, 40, 0.34);
+}
+
+.nc__card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nc__cardicon {
+  flex: none;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.nc__cardtext {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nc__cardtext b {
+  display: block;
+  font-size: 14px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+.nc__cardtext small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+/* The chevron/paper-plane is the affordance, so it carries the brand colour —
+   it is the only coloured thing on an otherwise white card, which is what makes
+   the row read as pressable rather than as a panel. */
+.nc__cardgo {
+  flex: none;
+  color: var(--accent);
+}
+
+/* Back to the cards, in the header. Sits on the brand colour, so it borrows the
+   header's own text colour rather than a fixed grey. */
+.nc__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: -6px;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+.nc__back:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.nc__back:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }
 
 /* ── The pre-chat form ─────────────────────────────────────────────────────
