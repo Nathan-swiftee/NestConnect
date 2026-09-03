@@ -20,6 +20,11 @@
   --muted: #646c7a;
   --line: #e4e7ec;
   --bubble-in: #ffffff;
+  /* `--panel` again, as channels, because the home screen's fade has to reach
+     it at nine different alphas and `rgb()` is the only way to do that without
+     `color-mix()` — which this widget renders in browsers too old to have it.
+     The two must be edited together: this is the same colour, written twice. */
+  --panel-rgb: 246 247 249;
 
   color-scheme: light;
 }
@@ -31,6 +36,7 @@
   --muted: #98a1b0;
   --line: #2a2f38;
   --bubble-in: #232830;
+  --panel-rgb: 27 31 38;
 
   color-scheme: dark;
 }
@@ -163,21 +169,53 @@ body {
 /*
  * The home screen's header, which does dissolve.
  *
- * There it earns its keep: the first card is pulled 26px up into the fade, so
- * the gradient and the cards resolve into a single surface with something
- * resting on it. That only works because something is there to overlap it.
+ * Two things decide whether a dissolve reads as soft or as a band, and the
+ * first version of this got both wrong.
  *
- * The extra bottom padding goes with it rather than being a separate decision —
- * it is what keeps the subtitle clear of the dissolve, and text sitting inside
- * a dissolve is text nobody can read.
+ * **It has to end underneath something.** A fade that finishes in open space
+ * finishes at a line, and a line is exactly what a fade is trying not to be.
+ * So the colour is still live behind the first card's top and dies out under
+ * its lower third — the card is what the last of the gradient goes behind,
+ * which is why the eye never finds the place it stops.
+ *
+ * **The ramp has to ease.** A two-stop `transparent → panel` changes alpha at
+ * a constant rate and then stops changing, and the eye reads that corner as an
+ * edge even though there is no edge in the pixels — a Mach band, the same
+ * illusion that makes a linear grey wedge look ridged. The stops below are a
+ * smoothstep (`t²(3−2t)`) sampled eight times: the rate of change starts at
+ * zero, peaks in the middle and returns to zero, so there is no corner at
+ * either end for the eye to catch.
+ *
+ * Measured from the bottom rather than in percentages, because the header's
+ * height moves — a wrapped headline, a logo, a longer away message — and a
+ * fade pinned at 78% moves with it. Anchored to the bottom edge, the ramp
+ * always starts 6px under the last line of text and always ends 20px above the
+ * header's own bottom, whatever is written above it.
  */
 .nc__head--fade {
-  /* 16px more than the 40px this needs to clear the dissolve, which is the
-     other half of the trade above: the greeting rises, the space under it
-     grows, and the gap to the first card goes from 14px to 30px. */
-  padding-bottom: 56px;
+  /*
+   * Room for the ramp, and the other half of the overlap.
+   *
+   * 100px of padding with the cards pulled 70px back up is the same 30px gap
+   * between the away message and the first card as 56/26 was — the header is
+   * taller, the panel below it is not, and nothing moves. What the extra 44px
+   * buys is a 74px ramp instead of a 57px one — and, more to the point, room
+   * to spend it on a curve rather than a straight line.
+   */
+  padding-bottom: 100px;
   background:
-    linear-gradient(to bottom, transparent 78%, var(--panel) 100%),
+    linear-gradient(
+      to bottom,
+      rgb(var(--panel-rgb) / 0) calc(100% - 94px),
+      rgb(var(--panel-rgb) / 0.043) calc(100% - 85px),
+      rgb(var(--panel-rgb) / 0.156) calc(100% - 75px),
+      rgb(var(--panel-rgb) / 0.316) calc(100% - 66px),
+      rgb(var(--panel-rgb) / 0.5) calc(100% - 57px),
+      rgb(var(--panel-rgb) / 0.684) calc(100% - 48px),
+      rgb(var(--panel-rgb) / 0.844) calc(100% - 38px),
+      rgb(var(--panel-rgb) / 0.957) calc(100% - 29px),
+      rgb(var(--panel-rgb) / 1) calc(100% - 20px)
+    ),
     radial-gradient(120% 140% at 0% 0%, rgba(255, 255, 255, 0.17), transparent 60%),
     var(--head-bg, var(--accent));
 }
@@ -743,19 +781,29 @@ body {
   flex-direction: column;
   gap: 10px;
   /*
-   * Pulled up into the header's fade, so the first card sits over the place the
-   * gradient is dissolving rather than starting after it. That overlap is what
-   * makes the two read as one surface with a card resting on it — a card that
-   * begins where the colour stops reads as two stacked panels.
+   * Pulled up into the header's fade, far enough that the gradient runs *under*
+   * the first card rather than stopping above it.
    *
-   * Transparent, not `--panel`: the cards are the only opaque things here, and
-   * the strip above the first one has to show the gradient through it.
+   * 26px used to put the card's top edge exactly where the colour ran out,
+   * which is the worst place for it: the card looked like a lid on the
+   * gradient and the join read as a seam. 70px puts the card's top well inside
+   * the live colour and the end of the ramp — 20px above this container's own
+   * top — behind the card's lower third, where there is nothing to see it
+   * happen. Beside the card the fade finishes in the open 14px gutters, but it
+   * finishes there at its softest, and by then it has almost nothing left to
+   * lose.
+   *
+   * The number is load-bearing in both directions: it is the header's
+   * `padding-bottom` minus the 30px of air the away message needs above the
+   * cards. Change one and the other has to move.
    */
-  margin-top: -26px;
+  margin-top: -70px;
   padding: 0 14px 18px;
   /* Transparent for exactly the overlapped strip, thread colour below it — so
-     the gradient shows through beside the first card and nowhere else. */
-  background: linear-gradient(to bottom, transparent 0 26px, var(--panel) 26px);
+     the gradient shows through beside the first card and nowhere else. The
+     header has already resolved to `--panel` by 50px into this strip, so the
+     two meet as the same flat colour and the handover is invisible. */
+  background: linear-gradient(to bottom, transparent 0 70px, var(--panel) 70px);
 }
 
 .nc__card {
