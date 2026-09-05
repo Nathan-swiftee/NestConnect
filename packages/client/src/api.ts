@@ -50,6 +50,8 @@ import type {
   User,
   WhatsAppBusinessProfile,
   UpdateWhatsAppBusinessProfileInput,
+  WhatsAppNumberState,
+  WhatsAppRegisterResult,
   SendBroadcastInput,
   BroadcastResult,
   AnalyticsResult,
@@ -371,6 +373,16 @@ export const api = {
     form.append("file", file, file instanceof File ? file.name : "profile.jpg");
     return request<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}/photo`, { method: "POST", body: form });
   },
+  // WhatsApp Cloud API registration — what Meta says about a number, and the
+  // one call that moves it from "Pending" to usable.
+  //
+  // The PIN is the only thing sent: the Phone number ID and access token are
+  // read from the channel's own stored config on the server, which is the only
+  // place the token has ever been.
+  whatsappNumberStatus: (channelId: string) =>
+    get<WhatsAppNumberState>(`/channels/${channelId}/whatsapp/status`),
+  registerWhatsappNumber: (channelId: string, pin: string) =>
+    post<WhatsAppRegisterResult>(`/channels/${channelId}/whatsapp/register`, { pin }),
   // WhatsApp broadcast — send an approved template to many recipients at once
   sendBroadcast: (input: SendBroadcastInput) => post<BroadcastResult>("/whatsapp/broadcast", input),
   assign: (

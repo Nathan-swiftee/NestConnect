@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { embedSnippet, type EmbedKind } from "../lib/nestchat-embed";
+import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
 import type {
   ChannelType,
   Inbox,
@@ -54,6 +55,7 @@ import {
   useMe,
   usePeople,
   useReorderTeams,
+  useRegisterWhatsappNumber,
   useRerouteInbox,
   useSetDefaultTemplate,
   useSyncTemplates,
@@ -545,6 +547,10 @@ function ChannelEditor({
           <span>Also move this channel’s open conversations to the new routing (chats on a team it no longer serves).</span>
         </label>
       )}
+      {/* What Meta actually says about the number, and the one action that fixes
+          the state everybody gets stuck in. Only for WhatsApp: no other channel
+          has a registration step. */}
+      {inbox.type === "whatsapp" && <WhatsAppRegistration channelId={inbox.id} onToast={onToast} />}
       {kind && kind.fields.length > 0 && (
         <div className="connect__creds">
           <div className="connect__credhead">Update credentials <em>— leave blank to keep current</em></div>
@@ -592,11 +598,21 @@ function ConnectChannel({
 }) {
   const teams = useTeams();
   const create = useCreateInbox();
+  const registerNumber = useRegisterWhatsappNumber();
   const qc = useQueryClient();
   const [kind, setKind] = useState<ChannelKind | null>(null);
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
   const [cfg, setCfg] = useState<Record<string, string>>({});
+  /*
+   * The two-step verification PIN, kept apart from `cfg` on purpose.
+   *
+   * Everything in `cfg` is written to the channel's stored config on submit.
+   * This must not be: it is used for one call to Meta and discarded. Keeping it
+   * in its own state is what makes that structural rather than a rule somebody
+   * has to remember when they next edit the submit handler.
+   */
+  const [pin, setPin] = useState("");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [strategy, setStrategy] = useState<RoutingStrategy>("manual");
 
@@ -665,7 +681,32 @@ function ConnectChannel({
         channelConfig,
       },
       {
-        onSuccess: () => {
+        onSuccess: (inbox) => {
+          // The channel exists now, so registration can use its stored
+          // credentials rather than posting the token back out of the browser.
+          // Skipped when no PIN was given: plenty of numbers are already
+          // registered, and this step is only for the ones Meta left Pending.
+          if (kind.type === "whatsapp" && pin.length === 6) {
+            registerNumber.mutate(
+              { channelId: inbox.id, pin },
+              {
+                onSettled: () => setPin(""),
+                onSuccess: (r) => {
+                  onToast(
+                    r.ok
+                      ? `${kind.label} connected and registered with Meta`
+                      : `${kind.label} connected, but registration failed: ${r.state.detail}`,
+                  );
+                  onDone();
+                },
+                onError: () => {
+                  onToast(`${kind.label} connected, but the number couldn't be registered`);
+                  onDone();
+                },
+              },
+            );
+            return;
+          }
           onToast(`${kind.label} connected`);
           onDone();
         },
@@ -770,6 +811,19 @@ function ConnectChannel({
             </label>
           ))}
         </div>
+        {/* Optional, because a number Meta has already registered needs nothing
+            here — and required in practice for the ones it hasn't, which is why
+            the hint says which case is which rather than leaving somebody to
+            discover it from a "Pending" badge later. */}
+        {kind.type === "whatsapp" && (
+          <div className="connect__pin">
+            <WhatsAppPinField value={pin} onChange={setPin} optional />
+            <p className="fieldhint">
+              Only needed if Meta shows this number as <b>Pending</b> — “please register this phone number
+              using the registration API”. You can also do it later from the channel’s settings.
+            </p>
+          </div>
+        )}
       </div>
       )}
 

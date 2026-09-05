@@ -1009,6 +1009,48 @@ export function useSetWhatsappProfilePhoto() {
   });
 }
 
+/* ---- WhatsApp Cloud API registration ---- */
+/**
+ * What Meta says about a number right now.
+ *
+ * Not cached for long and never in the background: this is read when an admin
+ * opens the channel editor to answer "why can't this number send", and a
+ * five-minute-old answer to that question is worse than no answer. `retry:
+ * false` because a failure here is itself the information — the hook resolves
+ * with a status like `auth_failed` rather than throwing, so there is nothing
+ * for a retry to improve.
+ */
+export const useWhatsappNumberStatus = (channelId: string | null) =>
+  useQuery({
+    queryKey: ["wa-number-status", channelId],
+    queryFn: () => api.whatsappNumberStatus(channelId as string),
+    enabled: !!channelId,
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+  });
+
+/**
+ * Register the number with Meta using its two-step verification PIN.
+ *
+ * The PIN is an argument and nothing else: it is not put in a query key, not
+ * cached, and not kept after the mutation settles. The result carries Meta's
+ * fresh state, which replaces the status query's data so the editor updates
+ * without a second round trip.
+ */
+export function useRegisterWhatsappNumber() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { channelId: string; pin: string }) =>
+      api.registerWhatsappNumber(v.channelId, v.pin),
+    onSuccess: (data, v) => {
+      qc.setQueryData(["wa-number-status", v.channelId], data.state);
+      // A number that just came online changes what the channel list shows.
+      if (data.ok) qc.invalidateQueries({ queryKey: ["inboxes"] });
+    },
+  });
+}
+
 /* ---- WhatsApp broadcast ---- */
 /** Send an approved template to many recipients at once (a compliant 1:1 loop). */
 export function useSendBroadcast() {

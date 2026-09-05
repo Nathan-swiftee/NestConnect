@@ -615,6 +615,94 @@ export const whatsAppNumberSchema = z.object({
 });
 export type WhatsAppNumber = z.infer<typeof whatsAppNumberSchema>;
 
+/* ---- WhatsApp Cloud API phone-number registration ---- */
+
+/**
+ * What Meta says about a number, reduced to the five things an admin can act on.
+ *
+ * This is deliberately not `Inbox.connected`, which only asks whether we have
+ * credentials saved. A number can have a perfectly good Phone number ID and
+ * token and still be unusable, because adding a number in WhatsApp Manager is
+ * only half of it: until somebody calls `POST /{phone-number-id}/register` the
+ * number sits at PENDING and Meta tells you to "register this phone number
+ * using the registration API". That is the gap this status closes.
+ */
+export const whatsAppNumberStatusSchema = z.enum([
+  /** Meta reports CONNECTED — the number can send and receive. */
+  "connected",
+  /** Meta has the number but it is not registered on the Cloud API yet. */
+  "registration_required",
+  /** The stored token was rejected, or lacks the permissions this needs. */
+  "auth_failed",
+  /** Nothing to ask Meta with: no Phone number ID / token, or the id is wrong. */
+  "configuration_error",
+  /** Meta answered, but with something we cannot fix from here. */
+  "meta_error",
+]);
+export type WhatsAppNumberStatus = z.infer<typeof whatsAppNumberStatusSchema>;
+
+/** What the channel editor shows for each status, and whether it offers the
+ *  Register button. Shared so the web and native apps cannot word it
+ *  differently. */
+export const WHATSAPP_STATUS_LABEL: Record<WhatsAppNumberStatus, string> = {
+  connected: "Connected",
+  registration_required: "Registration required",
+  auth_failed: "Authentication failed",
+  configuration_error: "Configuration error",
+  meta_error: "Meta API error",
+};
+
+/** Only one status is fixable by registering, and offering the button for any
+ *  of the others would be a dead end (a banned number does not want a PIN). */
+export function whatsAppCanRegister(status: WhatsAppNumberStatus): boolean {
+  return status === "registration_required";
+}
+
+export const whatsAppNumberStateSchema = z.object({
+  status: whatsAppNumberStatusSchema,
+  /** One sentence an admin can act on. Never carries a token or a PIN. */
+  detail: z.string(),
+  /** Meta's own status string (CONNECTED, PENDING, FLAGGED, …) when it answered,
+   *  so a support conversation can quote the real thing rather than our word
+   *  for it. */
+  metaStatus: z.string().optional(),
+  /** Meta's `code_verification_status` (VERIFIED / NOT_VERIFIED / EXPIRED) —
+   *  the difference between "register it" and "verify it in WhatsApp Manager
+   *  first", which is otherwise a very confusing dead end. */
+  codeVerificationStatus: z.string().optional(),
+  displayNumber: z.string().optional(),
+  verifiedName: z.string().optional(),
+  qualityRating: z.string().optional(),
+});
+export type WhatsAppNumberState = z.infer<typeof whatsAppNumberStateSchema>;
+
+/**
+ * The two-step verification PIN, on its way to `POST /{id}/register`.
+ *
+ * Six digits exactly — Meta rejects anything else, and catching it here means
+ * a typo costs a form error instead of one of the six guesses Meta allows
+ * before it locks the number out for a day.
+ *
+ * This value is used for one request and discarded. It is never written to
+ * channelConfig, never logged, and never returned in a response.
+ */
+export const whatsAppRegisterInputSchema = z.object({
+  pin: z
+    .string()
+    .regex(/^[0-9]{6}$/, "The two-step verification PIN is exactly 6 digits."),
+});
+export type WhatsAppRegisterInput = z.infer<typeof whatsAppRegisterInputSchema>;
+
+/** The outcome of a registration attempt: what Meta says now, plus whether this
+ *  attempt is what changed it (an already-registered number reports
+ *  `alreadyRegistered`, which is a success, not a failure). */
+export const whatsAppRegisterResultSchema = z.object({
+  ok: z.boolean(),
+  alreadyRegistered: z.boolean(),
+  state: whatsAppNumberStateSchema,
+});
+export type WhatsAppRegisterResult = z.infer<typeof whatsAppRegisterResultSchema>;
+
 /**
  * Meta's fixed set of business categories (the `vertical` on a number's public
  * profile). Kept in Meta's own SCREAMING_CASE so the values round-trip to the

@@ -46,6 +46,16 @@ jobs:
       - name: Routing rule
         run: pnpm check:routing
 
+      # Registering a WhatsApp number on the Cloud API. Fails silently in the
+      # worst way available: a number Meta has left at PENDING has perfectly
+      # good credentials saved, so it reads as "Connected" everywhere in the app
+      # and cannot send a single message. The check also holds the line on not
+      # spending one of Meta's few PIN guesses on a number that is already
+      # registered — get that wrong and a retry loop locks the number out for a
+      # day.
+      - name: WhatsApp registration
+        run: pnpm check:whatsapp-register
+
       # Hooks called below an early return. React throws #310 and unmounts the
       # whole tree, so the symptom is a white page with nothing in the console
       # that names the component — and it typechecks and builds perfectly. It has
