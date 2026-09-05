@@ -1982,6 +1982,31 @@ input,textarea{font:inherit}
 .connect__credhead{font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint);margin-bottom:10px}
 .connect__creds .field input{background:var(--surface)}
 
+/* The two-step PIN, set apart from the credentials it sits under: those are
+   saved with the channel, this one is used once and thrown away, and the rule
+   above is the seam between the two. */
+.connect__pin{margin-top:var(--sp-3);padding-top:var(--sp-3);border-top:1px solid var(--border);display:grid;gap:6px;max-width:340px}
+.connect__pin .fieldhint{margin:0}
+
+/* ─── WhatsApp registration: what Meta says, and the one button that fixes it ─
+   Read from Meta rather than inferred from whether credentials happen to be
+   saved — which is the whole point, since a Pending number has perfectly good
+   credentials and still cannot send. */
+.wareg{border:1px solid var(--border);border-radius:var(--r-12);padding:var(--sp-3);background:var(--surface-2);display:grid;gap:6px}
+.wareg__row{display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap}
+.wareg__label{font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-faint)}
+/* Pushed to the far end so the pill reads with the label and the actions stay
+   out of the sentence. */
+.wareg__acts{margin-left:auto;display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.wareg__detail{margin:0;font-size:var(--fs-sm);line-height:1.45;color:var(--text-muted)}
+.wareg__meta{margin:0;font-size:var(--fs-2xs);color:var(--text-faint);font-variant-numeric:tabular-nums}
+.wareg__form{margin-top:2px;padding-top:var(--sp-3);border-top:1px solid var(--border);display:grid;gap:var(--sp-2);max-width:340px}
+.wareg__formacts{display:flex;justify-content:flex-end;gap:6px}
+/* A dead token or a wrong id is not "nearly connected", and amber would say it
+   was. Same danger tone the rest of the app uses for something that is broken. */
+.connpill.bad{background:color-mix(in srgb,var(--danger,#E5484D) 14%,transparent);color:var(--danger,#E5484D)}
+.connpill.bad .connpill__dot{background:var(--danger,#E5484D)}
+
 /* ---- Setup (integration credentials) ---- */
 .copyrow{display:flex;gap:var(--sp-2);align-items:stretch}
 .copyrow input{flex:1;min-width:0;font-family:var(--mono);font-size:var(--fs-xs)}
