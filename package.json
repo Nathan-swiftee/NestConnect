@@ -14,6 +14,7 @@
     "check:threading": "tsx tools/check-threading.ts",
     "check:routing": "tsx tools/check-routing.ts",
     "check:whatsapp-register": "tsx tools/check-whatsapp-register.ts",
+    "check:whatsapp-delivery": "tsx tools/check-whatsapp-delivery.ts",
     "check:hooks": "node tools/check-hook-order.mjs",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",

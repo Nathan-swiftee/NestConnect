@@ -776,9 +776,19 @@ export abstract class Store {
     status: MessageStatus,
   ): Promise<MessageStatusChange[]>;
 
+  /**
+   * Apply a provider status webhook to the message it names.
+   *
+   * `failureReason` is Meta's own explanation of a `failed` status, and is only
+   * meaningful with one: the provider tells us exactly why it gave up, and
+   * without somewhere to put it that answer reached the log and nowhere else,
+   * leaving the thread to say "Not delivered" about something an admin could
+   * have fixed in a minute.
+   */
   abstract updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,
+    failureReason?: string,
   ): Promise<{ conversationId: string; message: Message } | undefined>;
 
   /**

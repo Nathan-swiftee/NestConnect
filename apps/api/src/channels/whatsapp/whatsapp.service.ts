@@ -6,6 +6,7 @@ import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { MediaService } from "../../storage/media.service";
 import { IngestService } from "../ingest.service";
 import { GroupsService } from "../groups/groups.service";
+import { deliveryFailureReason } from "./delivery-failure";
 
 /** A WhatsApp media object as it appears on an inbound message. */
 interface WaMedia {
@@ -52,7 +53,14 @@ export interface WhatsAppWebhookBody {
           /** Present on a `failed` status — Meta's reason (e.g. 131052 "Media
            *  download error"). This is why a message that sent fine can still
            *  show "this media is no longer available" on the recipient's phone. */
-          errors?: Array<{ code?: number; title?: string; error_data?: { details?: string } }>;
+          errors?: Array<{
+            code?: number;
+            title?: string;
+            /** Older payloads carry the sentence here instead of in `title` —
+             *  worth reading, since it is the only text some errors have. */
+            message?: string;
+            error_data?: { details?: string };
+          }>;
         }>;
         participants?: Array<{ wa_id?: string; user?: string; action?: string; profile?: { name?: string } }>;
       };
@@ -166,16 +174,26 @@ export class WhatsAppService {
           try {
             // Meta reports WHY a message failed here — the decisive signal for a
             // send that we accepted but the recipient can't open (media download
-            // errors, test-number limits, etc.).
+            // errors, billing not configured, test-number limits, etc.).
+            //
+            // The log keeps the whole thing, links and all, for whoever is going
+            // to fix it. `reason` is the same answer trimmed to a line, and goes
+            // onto the message itself: this used to be logged and nowhere else,
+            // so a thread said "Not delivered" about failures that named their
+            // own cure — a currency Meta wanted configuring, a reply window that
+            // had closed — and the only way to find out was to read the server
+            // log, which is not a thing an agent can do mid-conversation.
+            let reason: string | undefined;
             if (st.errors?.length) {
               const e = st.errors[0];
               this.logger.warn(
                 `WhatsApp delivery failed for ${st.id}: code=${e.code} title="${e.title ?? ""}" details="${e.error_data?.details ?? ""}"`,
               );
+              reason = deliveryFailureReason(e);
             }
             const status = this.mapStatus(st.status);
             if (!status) continue;
-            const updated = await this.store.updateMessageStatusByChannelId(st.id, status);
+            const updated = await this.store.updateMessageStatusByChannelId(st.id, status, reason);
             if (updated) {
               this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
               statuses += 1;

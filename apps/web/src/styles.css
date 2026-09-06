@@ -586,10 +586,26 @@ input,textarea{font:inherit}
 .msg .tick.pending{opacity:.75}
 .tick.failed{color:var(--danger)}
 /* Undelivered outbound: a red line under the bubble stating why, with a retry. */
-.msgfail{display:flex;align-items:center;gap:6px;margin-top:3px;padding:0 2px;
+/* `flex-start`, not `center`: the reason wraps now, and a centred icon beside
+   three lines of text floats in the middle of them instead of marking where
+   they start. */
+.msgfail{display:flex;align-items:flex-start;gap:6px;margin-top:3px;padding:0 2px;
   font-size:var(--fs-2xs);font-weight:500;color:var(--danger);align-self:flex-end;max-width:100%}
-.msgfail svg{width:13px;height:13px;flex:0 0 13px}
-.msgfail__txt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* The icon and the retry sit on the first line whatever the text does. */
+.msgfail svg{width:13px;height:13px;flex:0 0 13px;margin-top:2px}
+/*
+ * Wraps rather than truncates.
+ *
+ * One nowrap line was fine while every reason was four words of ours
+ * ("WhatsApp: rate limited"). Now that Meta's own explanation goes here, the
+ * clipped version reads "Business eligibility payment issue — Messa…" — the
+ * half that names the problem survives and the half that says what to do about
+ * it is thrown away, which is the wrong half to lose and the whole point of
+ * carrying the reason through. Capped at three lines so a verbose provider
+ * can't push the conversation off the screen.
+ */
+.msgfail__txt{min-width:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;
+  -webkit-line-clamp:3;line-clamp:3;line-height:1.4;text-align:left}
 .msgfail__retry{flex:0 0 auto;color:var(--danger);font-weight:600;text-decoration:underline;
   text-underline-offset:2px;padding:2px 3px;border-radius:var(--r-8);transition:opacity var(--t-fast)}
 .msgfail__retry:hover{opacity:.7}
