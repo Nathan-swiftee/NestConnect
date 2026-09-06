@@ -9,8 +9,35 @@ import bcrypt from "bcryptjs";
 const prisma = new PrismaClient();
 
 const ORG = "org_swiftee";
-// Dev password shared by all seeded users. Change via AUTH_DEV_PASSWORD.
-const passwordHash = bcrypt.hashSync(process.env.AUTH_DEV_PASSWORD ?? "ding1234", 8);
+
+/**
+ * The password the first admin account is created with.
+ *
+ * Deliberately not computed at module load with a built-in fallback, which is
+ * what this used to do. `AUTH_DEV_PASSWORD ?? "ding1234"` put a password that
+ * is public — it is right here, in the repository — on the admin account of any
+ * database seeded without that variable set. And a password is the whole of it:
+ * the API grants a full session on password alone, and the two-factor enrolment
+ * gate is drawn by the *client*, so a non-browser caller never meets it.
+ *
+ * Outside production the convenience is worth it and the default stands. In
+ * production there is no default: refuse to create the account rather than
+ * create it with a known password. Called only where users are about to be
+ * created, so an existing workspace — which never reaches that code — is
+ * unaffected either way.
+ */
+function seedPasswordHash(): string {
+  const chosen = process.env.AUTH_DEV_PASSWORD;
+  if (!chosen && process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Refusing to seed a production database with the built-in demo password.\n" +
+        "This is a brand-new workspace, so the first admin account is about to be created.\n" +
+        "Set AUTH_DEV_PASSWORD to a strong, random value and deploy again; change it in the\n" +
+        "app once you are signed in.",
+    );
+  }
+  return bcrypt.hashSync(chosen ?? "ding1234", 8);
+}
 
 // Demo timestamps relative to real "now" so a freshly-seeded thread looks
 // current — 2 days ago / Yesterday / Today, with rolling date dividers like
@@ -29,6 +56,13 @@ async function main() {
   // Is this a brand-new database? Checked BEFORE we ensure the org row exists.
   const firstRun =
     (await prisma.organization.findUnique({ where: { id: ORG }, select: { id: true } })) === null;
+
+  // Before the first write, not at the point of use. Throwing later would leave
+  // the organization row behind — and `firstRun` is false once that exists, so
+  // the next deploy would skip the seed entirely and the workspace would sit
+  // there permanently with no users and no second warning. Fail before touching
+  // anything, and a corrected deploy starts from a clean slate.
+  const passwordHash = firstRun ? seedPasswordHash() : "";
 
   await prisma.organization.upsert({
     where: { id: ORG },
@@ -60,10 +94,15 @@ async function main() {
     { id: "usr_james", name: "James", email: "james@swiftee.co.uk", role: "agent" as const, avatarColor: "linear-gradient(135deg,#0EA5E9,#22D3EE)", online: true },
     { id: "usr_amara", name: "Amara", email: "amara@swiftee.co.uk", role: "agent" as const, avatarColor: "linear-gradient(135deg,#F43F5E,#F59E0B)", online: false },
   ];
+  // Reached only on a first run, so these users do not exist yet. The upsert's
+  // `update` deliberately does nothing: it used to reset `passwordHash`, which
+  // was harmless only because the guard above kept it unreachable — and would
+  // have silently undone every password change in the workspace the day
+  // somebody moved that guard.
   for (const u of users) {
     await prisma.user.upsert({
       where: { id: u.id },
-      update: { passwordHash },
+      update: {},
       create: { orgId: ORG, passwordHash, ...u },
     });
   }

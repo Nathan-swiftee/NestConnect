@@ -209,7 +209,18 @@ export function assertProdSecrets(logger: { warn: (m: string) => void } = consol
     logger.warn(`CORS_ORIGIN is still "${env.corsOrigin}" in production — set it to your real web origin.`);
   }
   if (env.auth.devPassword === "ding1234") {
-    logger.warn("AUTH_DEV_PASSWORD is the built-in default — seeded demo users share it. Invite real users to get unique credentials.");
+    // Worth being blunt about. This is not "a weak default" in the abstract: it
+    // is a password published in the repository, and the API grants a full
+    // session on a password alone — the two-factor enrolment gate is drawn by
+    // the client, so a caller that is not a browser never meets it. If this
+    // workspace was seeded without AUTH_DEV_PASSWORD set, its seeded accounts
+    // are reachable by anyone who can read the source.
+    logger.warn(
+      "AUTH_DEV_PASSWORD is unset, so it is the built-in default — a password that is public in the " +
+        "repository. Any account seeded with it can be signed into by anyone who has read the source, " +
+        "and a password alone is enough for API access. Change those accounts' passwords in the app now, " +
+        "and set AUTH_DEV_PASSWORD so a future fresh database is not seeded with a known one.",
+    );
   }
   if (!env.secretKey) {
     logger.warn("SECRET_ENCRYPTION_KEY is not set — integration credentials (OAuth tokens, app secrets) are stored UNENCRYPTED. Set a 32-byte key and run `pnpm --filter @ding/api db:encrypt-secrets`.");
