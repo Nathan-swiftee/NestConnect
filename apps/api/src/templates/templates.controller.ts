@@ -78,7 +78,7 @@ export class TemplatesController {
   }
 
   @Post("sync")
-  async sync(@CurrentUserId() userId: string): Promise<{ synced: number }> {
+  async sync(@CurrentUserId() userId: string): Promise<{ synced: number; pruned: number }> {
     await this.requireManager(userId);
     return this.templates.syncFromMeta();
   }

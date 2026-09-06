@@ -138,6 +138,21 @@ export class ConversationsService {
     if (input.template) {
       const tpl = await this.store.getTemplate(input.template.id);
       if (!tpl) throw new NotFoundException("Template not found");
+      // A template belongs to one WhatsApp account, and no other account has
+      // ever heard of it. Sending it from the wrong number is accepted here,
+      // queued, and rejected by Meta with 132001 "template name does not exist"
+      // — a failure that arrives late, out of context, and reads like the
+      // template is broken rather than pointed at the wrong number. The pickers
+      // filter by account so this should be unreachable from the UI; it is the
+      // backstop for an API caller, a stale tab, or a number that moved
+      // accounts between the list loading and Send being pressed.
+      const sendingWabaId = (await this.store.getInboxConfig(conv.inboxId))?.wabaId;
+      if (tpl.wabaId && sendingWabaId && tpl.wabaId !== sendingWabaId) {
+        throw new BadRequestException(
+          `The template “${tpl.name}” belongs to a different WhatsApp account and can't be sent from this number. ` +
+            "Pick one of this number's own templates.",
+        );
+      }
       body = fillTemplate(tpl.body, input.template.params);
       template = { name: tpl.name, language: tpl.language, params: input.template.params };
     }

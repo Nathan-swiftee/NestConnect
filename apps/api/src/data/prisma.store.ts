@@ -65,6 +65,7 @@ import {
   messageTypeForKind,
   parseReactions,
   previewFromBody, previewForType,
+  canonicalLang,
   sameTemplateLang,
 } from "./mappers";
 import { PrismaService } from "./prisma.service";
@@ -355,15 +356,29 @@ export class PrismaStore extends Store {
 
   async upsertTemplateByName(
     orgId: string,
-    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"] },
+    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"]; wabaId?: string },
   ): Promise<Template> {
-    // Match the exact (name, language) first; fall back to the same primary
-    // language so Meta's locale-qualified "en_US" updates a locally-stored "en"
-    // copy rather than inserting a stale duplicate.
-    const sameName = await this.prisma.template.findMany({ where: { orgId, name: input.name } });
+    // Only this account's rows, plus the unclaimed ones. Another account's
+    // "order_update" is a different template and must not be overwritten by
+    // this one — which is the whole reason the column exists.
+    const sameName = await this.prisma.template.findMany({
+      where: {
+        orgId,
+        name: input.name,
+        ...(input.wabaId ? { OR: [{ wabaId: input.wabaId }, { wabaId: null }] } : {}),
+      },
+    });
+    // Exact (name, language) first; then the same primary language, so Meta's
+    // locale-qualified "en_US" updates a locally-stored "en" copy rather than
+    // inserting a stale duplicate. Within each pass a row already claimed by
+    // this account beats an unclaimed one, so a sync never adopts a stranger
+    // when it has its own row sitting right there.
+    const claimedFirst = [...sameName].sort(
+      (a, b) => Number(b.wabaId === input.wabaId) - Number(a.wabaId === input.wabaId),
+    );
     const match =
-      sameName.find((t) => t.language === input.language) ??
-      sameName.find((t) => sameTemplateLang(t.language, input.language));
+      claimedFirst.find((t) => t.language === input.language) ??
+      claimedFirst.find((t) => sameTemplateLang(t.language, input.language));
     const fields = {
       category: input.category,
       body: input.body,
@@ -373,13 +388,36 @@ export class PrismaStore extends Store {
       ? await this.prisma.template.update({
           where: { id: match.id },
           // Adopt Meta's exact language code so outbound template sends use the
-          // code the template is actually approved under.
-          data: { language: input.language, ...fields },
+          // code the template is actually approved under — and claim the row for
+          // this account, which is how a pre-existing template learns whose it is.
+          data: { language: input.language, ...(input.wabaId ? { wabaId: input.wabaId } : {}), ...fields },
         })
       : await this.prisma.template.create({
-          data: { orgId, name: input.name, language: input.language, ...fields },
+          data: {
+            orgId,
+            name: input.name,
+            language: input.language,
+            ...(input.wabaId ? { wabaId: input.wabaId } : {}),
+            ...fields,
+          },
         });
     return mapTemplate(row);
+  }
+
+  async pruneTemplatesForWaba(
+    orgId: string,
+    wabaId: string,
+    keep: Array<{ name: string; language: string }>,
+  ): Promise<number> {
+    const mine = await this.prisma.template.findMany({ where: { orgId, wabaId } });
+    // Compare on the primary language subtag for the same reason the upsert
+    // does: Meta may answer "en_US" for a row we hold as "en", and deleting it
+    // as missing would drop a template that is very much still there.
+    const wanted = keep.map((k) => `${k.name}\u0000${canonicalLang(k.language)}`);
+    const doomed = mine.filter((t) => !wanted.includes(`${t.name}\u0000${canonicalLang(t.language)}`));
+    if (!doomed.length) return 0;
+    await this.prisma.template.deleteMany({ where: { id: { in: doomed.map((t) => t.id) } } });
+    return doomed.length;
   }
 
   async listTeams(): Promise<Team[]> {

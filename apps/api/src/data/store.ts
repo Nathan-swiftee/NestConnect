@@ -306,11 +306,36 @@ export abstract class Store {
   abstract createTemplate(orgId: string, input: CreateTemplateInput): Promise<Template>;
   abstract updateTemplate(id: string, input: UpdateTemplateInput): Promise<Template | undefined>;
   abstract deleteTemplate(id: string): Promise<void>;
-  /** Upsert a template synced from Meta, keyed by (orgId, name, language). */
+  /**
+   * Upsert a template synced from Meta, keyed by (orgId, wabaId, name, language).
+   *
+   * `wabaId` is which WhatsApp account the template came from. Two accounts may
+   * each hold their own "order_update" in English and they are different
+   * templates, so the account is part of the key rather than a detail on the
+   * row. An unclaimed row (no wabaId) matching by name and language is adopted
+   * rather than duplicated — that is how templates stored before accounts were
+   * tracked find out whose they are.
+   */
   abstract upsertTemplateByName(
     orgId: string,
-    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"] },
+    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"]; wabaId?: string },
   ): Promise<Template>;
+
+  /**
+   * Delete this account's templates that Meta no longer has, naming the ones it
+   * does. Returns how many went.
+   *
+   * Sync was append-only, so a template deleted at Meta lingered here forever
+   * and an agent could still pick it — a send that fails at Meta rather than a
+   * template that quietly disappears. Only rows already claimed by this account
+   * are touched: unclaimed ones may belong to another account we have not
+   * synced yet, and locally authored ones belong to nobody.
+   */
+  abstract pruneTemplatesForWaba(
+    orgId: string,
+    wabaId: string,
+    keep: Array<{ name: string; language: string }>,
+  ): Promise<number>;
 
   /* ---- settings: teams & people ---- */
   abstract listTeams(): Promise<Team[]>;

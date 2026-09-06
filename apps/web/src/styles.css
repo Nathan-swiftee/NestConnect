@@ -2381,6 +2381,11 @@ button.tpl-row:active{transform:scale(.97)}
 .tpl-default{margin-left:var(--sp-2);font-size:var(--fs-2xs);font-weight:600;letter-spacing:var(--ls-caps);
   text-transform:uppercase;color:var(--brand-strong);background:var(--brand-tint);
   padding:2px var(--sp-2);border-radius:var(--r-full);vertical-align:middle}
+/* Which WhatsApp account a template belongs to. Quiet — it is a qualifier on
+   the name, not a status: two accounts can hold the same template name, and
+   this is what tells them apart. */
+.tpl-waba{margin-left:6px;font-size:var(--fs-2xs);font-weight:500;color:var(--text-faint);
+  white-space:nowrap}
 /* Closed-window notice above the composer. Deliberately quiet: the composer
    below it still behaves normally, so this explains rather than blocks. */
 .tplfallback{display:flex;align-items:flex-start;gap:var(--sp-2);padding:0 var(--sp-1) var(--sp-2);

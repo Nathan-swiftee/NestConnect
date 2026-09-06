@@ -42,6 +42,7 @@ import {
   type UpdateWhatsAppBusinessProfileInput,
   type SendBroadcastInput,
   type AnalyticsRange,
+  templatesForWaba,
 } from "@ding/schemas";
 import { api, type MeResponse } from "./api";
 import { clientConfig } from "./config";
@@ -1007,6 +1008,28 @@ export function useSetWhatsappProfilePhoto() {
       api.setWhatsappProfilePhoto(v.inboxId, v.file),
     onSuccess: (data, v) => qc.setQueryData(["wa-profile", v.inboxId], data),
   });
+}
+
+/**
+ * The templates a given channel's WhatsApp account can actually send.
+ *
+ * Filtered by WABA, not by inbox: two numbers under one account share every
+ * template, so filtering by channel would hide templates the selected number is
+ * entitled to send. The account id rides along on the inbox's public config —
+ * `wabaId` is an identifier, not a credential, so it already reaches the client.
+ *
+ * Falls back to the whole list when the inbox is unknown or carries no account
+ * (a channel with no credentials yet, a non-WhatsApp one): an empty picker
+ * would be a worse answer than an unfiltered one.
+ */
+export function useTemplatesForInbox(inboxId: string | null | undefined) {
+  const templates = useTemplates();
+  const inboxes = useInboxes();
+  const wabaId = inboxId
+    ? inboxes.data?.find((i) => i.id === inboxId)?.channelConfigPublic?.wabaId
+    : undefined;
+  const data = templates.data ? templatesForWaba(templates.data, wabaId) : undefined;
+  return { ...templates, data, wabaId };
 }
 
 /* ---- WhatsApp Cloud API registration ---- */

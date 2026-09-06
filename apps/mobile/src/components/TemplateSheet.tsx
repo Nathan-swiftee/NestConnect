@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
-import { useSendMessage, useTemplates } from "@ding/client";
+import { useSendMessage, useTemplatesForInbox } from "@ding/client";
 import type { ChannelType, Template } from "@ding/schemas";
 import { approvalLabel, renderPreview } from "../templates";
 import { BackIcon, BoltIcon, XIcon } from "../icons";
@@ -31,11 +31,16 @@ import { useToast } from "./Toast";
  */
 export function TemplateSheet({
   conversationId,
+  inboxId,
   channel,
   visible,
   onClose,
 }: {
   conversationId: string;
+  /** The conversation's channel, so the list can be narrowed to the templates
+   *  its WhatsApp account actually has — a template belongs to one account, and
+   *  offering another's is offering a send Meta rejects. */
+  inboxId?: string;
   /** The channel to send on. In a cross-channel thread this carries the
    *  composer's WhatsApp selection — without it the send falls back to the
    *  conversation's own channel and a template goes out by email. */
@@ -44,7 +49,7 @@ export function TemplateSheet({
   onClose: () => void;
 }) {
   const { c } = useTheme();
-  const { data: templates, isLoading } = useTemplates();
+  const { data: templates, isLoading } = useTemplatesForInbox(inboxId);
   const send = useSendMessage();
   const toast = useToast();
   const [selected, setSelected] = useState<Template | null>(null);

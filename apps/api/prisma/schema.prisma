@@ -526,9 +526,32 @@ model Template {
   body           String
   approvalStatus String @default("pending")
 
+  /// The WhatsApp Business Account this template lives on.
+  ///
+  /// Templates belong to a WABA, not to a phone number: every number under one
+  /// WABA can send all of its templates, and no number can send another WABA's.
+  /// Without this column a workspace with two accounts shows one merged list,
+  /// and roughly half of it fails at Meta with "template name does not exist"
+  /// depending on which number the agent happened to be sending from.
+  ///
+  /// Null means "not claimed by any account yet" — a locally authored template,
+  /// or one written before this column existed. Those show for every account
+  /// until a sync tells us whose they are, because hiding a template everywhere
+  /// is worse than showing it in one place too many.
+  wabaId         String?
+
   org Organization @relation(fields: [orgId], references: [id])
 
-  @@unique([orgId, name, language])
+  /// Two accounts may each have their own "order_update" in English, and they
+  /// are different templates. Postgres treats NULLs as distinct here, so
+  /// unclaimed rows never block a synced one from being inserted.
+  ///
+  /// That same NULL handling would also let two *unclaimed* rows share a name,
+  /// which the old workspace-wide key prevented. A partial unique index in the
+  /// migration keeps that guarantee for rows belonging to no account; Prisma
+  /// has no syntax for a partial index, so it lives in SQL only and this
+  /// comment is the pointer to it.
+  @@unique([orgId, wabaId, name, language])
 }
 
 model RoutingRule {

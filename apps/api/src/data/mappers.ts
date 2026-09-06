@@ -132,7 +132,10 @@ export function mapTemplate(t: Prisma.TemplateGetPayload<object>): Template {
     body: t.body,
     approvalStatus: t.approvalStatus as TemplateApproval,
     variableCount: templateVariableCount(t.body),
-    // The workspace default is an org setting, applied by TemplatesService.
+    // Null in the column means "no account has claimed this yet"; the domain
+    // type says that with an absent field rather than a null.
+    ...(t.wabaId ? { wabaId: t.wabaId } : {}),
+    // The per-account default is an org setting, applied by TemplatesService.
     isDefault: false,
   };
 }

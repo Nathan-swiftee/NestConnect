@@ -10,7 +10,7 @@ import {
   useMe,
   usePeople,
   useSendMessage,
-  useTemplates,
+  useTemplatesForInbox,
   useTypingSignal,
   windowLeft,
 } from "@ding/client";
@@ -133,7 +133,9 @@ export function Composer({
   // thing: that one is shown to the *customer*. Each ping keeps it alive about
   // 25 seconds, so it is throttled far harder than the agent-facing one.
   const waTyping = useRef(0);
-  const { data: templates } = useTemplates();
+  // Narrowed to the WhatsApp account behind this conversation's number: a
+  // template belongs to one account, and the fallback below sends by itself.
+  const { data: templates } = useTemplatesForInbox(conv.inboxId);
   const toast = useToast();
   const inputRef = useRef<TextInput>(null);
   const [body, setBody] = useState("");
@@ -247,8 +249,10 @@ export function Composer({
   const msLeft = conv.waWindow?.expiresAt ? new Date(conv.waWindow.expiresAt).getTime() - Date.now() : null;
   const closingSoon = msLeft != null && msLeft < 60 * 60 * 1000;
 
-  // Closed window: fall back to the workspace's default single-variable
-  // template, so what the agent typed still goes out as the message body.
+  // Closed window: fall back to this account's default single-variable template,
+  // so what the agent typed still goes out as the message body. Per account,
+  // because another account's default is one Meta would reject — chosen
+  // automatically, with nobody having picked it.
   const defaultTemplate = templates?.find((t) => t.isDefault && t.variableCount === 1) ?? null;
   const templateFallback = windowClosed && !internal && !!defaultTemplate;
   const locked = windowClosed && !internal && !defaultTemplate;
@@ -1089,6 +1093,7 @@ export function Composer({
           an email-origin conversation would otherwise go out by email. */}
       <TemplateSheet
         conversationId={conv.id}
+        inboxId={conv.inboxId}
         channel={channel}
         visible={templateSheet}
         onClose={() => setTemplateSheet(false)}

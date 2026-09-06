@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
 import type { ChannelType, Template, TemplateApproval, TemplateCategory } from "@ding/schemas";
-import { useSendMessage, useTemplates } from "../hooks";
+import { useSendMessage, useTemplatesForInbox } from "../hooks";
 import { unlock } from "../lib/sound";
 import { BackIcon, BoltIcon, SendIcon, XIcon } from "../lib/icons";
 import { useScrollLock } from "../lib/useScrollLock";
@@ -58,6 +58,10 @@ function renderPreview(body: string, params: string[]): JSX.Element[] {
 
 interface Props {
   conversationId: string;
+  /** The channel this conversation belongs to, so the list can be narrowed to
+   *  the templates its WhatsApp account actually has. A template belongs to one
+   *  account; offering another account's is offering a send that Meta rejects. */
+  inboxId?: string;
   /** The channel to send the template on. Templates are a WhatsApp feature, so
    *  in a cross-channel thread (e.g. an email-origin conversation) this carries
    *  the composer's WhatsApp selection — without it the send would fall back to
@@ -82,8 +86,8 @@ function TemplateBadges({ tpl }: { tpl: Template }) {
   );
 }
 
-export function TemplatePicker({ conversationId, channel, onClose, onToast }: Props) {
-  const { data: templates, isLoading } = useTemplates();
+export function TemplatePicker({ conversationId, inboxId, channel, onClose, onToast }: Props) {
+  const { data: templates, isLoading } = useTemplatesForInbox(inboxId);
   const send = useSendMessage();
   const boxRef = useRef<HTMLDivElement>(null);
   useScrollLock(boxRef);

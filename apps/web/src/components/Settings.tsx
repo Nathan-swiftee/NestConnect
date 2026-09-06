@@ -26,6 +26,7 @@ import type {
   NestChatTeam,
 } from "@ding/schemas";
 import {
+  templatesForWaba,
   WHATSAPP_VERTICALS,
   OPENING_DAYS,
   NESTCHAT_CARD_ICONS,
@@ -2563,6 +2564,13 @@ function NestChatPreview({
 
 function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
   const templates = useTemplates();
+  const inboxes = useInboxes();
+  /** The number(s) behind a template's account, for the list's account chip. */
+  const tplAccount = (wabaId?: string) => {
+    if (!wabaId) return "Any account";
+    const on = (inboxes.data ?? []).filter((i) => i.channelConfigPublic?.wabaId === wabaId);
+    return on.length ? on.map((i) => i.name).join(", ") : "Another account";
+  };
   const del = useDeleteTemplate();
   const sync = useSyncTemplates();
   const setDefault = useSetDefaultTemplate();
@@ -2632,6 +2640,11 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
                 <span className="dcell dcell__t">
                   {t.name}
                   {t.isDefault && <span className="tpl-default">Default</span>}
+                  {/* Which WhatsApp account holds it. Two accounts can each have
+                      their own "order_update" and they are different templates,
+                      so without this the list is two things wearing one name.
+                      Unclaimed templates say so rather than pretending. */}
+                  <span className="tpl-waba">{tplAccount(t.wabaId)}</span>
                 </span>
                 <span className="dcell"><span className={"tpl-cat tpl-cat--" + t.category}>{t.category}</span></span>
                 <span className="dcell dcell--muted">{t.language}</span>
@@ -3122,7 +3135,6 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
   const send = useSendBroadcast();
 
   const waNumbers = (inboxes.data ?? []).filter((i) => i.type === "whatsapp");
-  const approved = (templates.data ?? []).filter((t) => t.approvalStatus === "approved");
 
   const [inboxId, setInboxId] = useState<string | null>(null);
   useEffect(() => {
@@ -3130,8 +3142,19 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
   }, [waNumbers, inboxId]);
   const selected = waNumbers.find((n) => n.id === inboxId) ?? null;
 
+  // Only the templates the chosen number's account actually holds. Sending
+  // another account's is a broadcast that fails at Meta for every recipient —
+  // the one place where getting this wrong is wrong hundreds of times over.
+  const approved = templatesForWaba(templates.data ?? [], selected?.channelConfigPublic?.wabaId).filter(
+    (t) => t.approvalStatus === "approved",
+  );
+
   const [templateId, setTemplateId] = useState<string>("");
   const template = approved.find((t) => t.id === templateId) ?? null;
+  // Changing the number can strand a template that belongs to the old one.
+  useEffect(() => {
+    if (templateId && !approved.some((t) => t.id === templateId)) setTemplateId("");
+  }, [templateId, approved]);
   const [params, setParams] = useState<string[]>([]);
   const [recipientsRaw, setRecipientsRaw] = useState("");
   const [result, setResult] = useState<BroadcastResult | null>(null);

@@ -555,12 +555,45 @@ export const templateSchema = z.object({
   approvalStatus: templateApprovalSchema,
   /** How many {{n}} variables the body has (derived; drives the fill form). */
   variableCount: z.number().int().nonnegative().default(0),
-  /** The workspace's default template — the one the composer sends behind the
-   *  scenes once a 24-hour window has closed. Derived from an org setting, so
-   *  exactly one template carries it. */
+  /**
+   * The WhatsApp Business Account this template lives on.
+   *
+   * Templates belong to a WABA, not to a phone number — every number under one
+   * account can send all of its templates, and none of another's. Absent means
+   * the template has not been claimed by an account: authored here, or stored
+   * before this field existed.
+   */
+  wabaId: z.string().optional(),
+  /** The default template **for its own account** — the one the composer sends
+   *  behind the scenes once a 24-hour window has closed. One per WABA, because
+   *  a workspace-wide default would be a template the other account cannot
+   *  send, chosen automatically at the worst possible moment. */
   isDefault: z.boolean().default(false),
 });
 export type Template = z.infer<typeof templateSchema>;
+
+/**
+ * The templates a given WhatsApp account can actually send.
+ *
+ * Filtered by WABA rather than by channel on purpose: two numbers under one
+ * account share every template, so filtering by inbox would hide templates the
+ * selected number is perfectly entitled to send.
+ *
+ * Unclaimed templates (no `wabaId`) are included for every account. We do not
+ * know whose they are — locally authored, or stored before templates were
+ * scoped — and showing one in a place it does not belong is a send that fails
+ * with a clear message, while hiding one everywhere is a template nobody can
+ * find. A sync claims them as soon as Meta says who owns them.
+ */
+export function templatesForWaba<T extends { wabaId?: string }>(
+  templates: T[],
+  wabaId: string | undefined | null,
+): T[] {
+  // No account to filter by (an unconfigured channel, a non-WhatsApp one):
+  // narrowing to "unclaimed only" would empty the list for no good reason.
+  if (!wabaId) return templates;
+  return templates.filter((t) => !t.wabaId || t.wabaId === wabaId);
+}
 
 /** Set (or clear, with null) the workspace's default WhatsApp template. */
 export const setDefaultTemplateInputSchema = z.object({
