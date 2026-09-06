@@ -302,6 +302,7 @@ export class MemoryStore extends Store {
       body: input.body,
       approvalStatus: "draft",
       variableCount: templateVariableCount(input.body),
+      variableDefaults: input.variableDefaults ?? [],
     };
     this.templates.push(tpl);
     return tpl;
@@ -317,6 +318,7 @@ export class MemoryStore extends Store {
       tpl.body = input.body;
       tpl.variableCount = templateVariableCount(input.body);
     }
+    if (input.variableDefaults !== undefined) tpl.variableDefaults = input.variableDefaults;
     if (input.approvalStatus !== undefined) tpl.approvalStatus = input.approvalStatus;
     return tpl;
   }
@@ -327,7 +329,13 @@ export class MemoryStore extends Store {
 
   async upsertTemplateByName(
     _orgId: string,
-    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"]; wabaId?: string },
+    // `variableDefaults` is deliberately not accepted: a sync brings Meta's
+    // name, body and status, while what we pre-fill the variables with is
+    // ours, and a re-sync must never reset it.
+    input: Omit<CreateTemplateInput, "variableDefaults"> & {
+      approvalStatus: Template["approvalStatus"];
+      wabaId?: string;
+    },
   ): Promise<Template> {
     // Only this account's rows and the unclaimed ones: another account's
     // "order_update" is a different template and must not be overwritten.
@@ -363,6 +371,10 @@ export class MemoryStore extends Store {
       body: input.body,
       approvalStatus: input.approvalStatus,
       variableCount: templateVariableCount(input.body),
+      // A sync brings Meta's name, body and status. The pre-fill defaults are
+      // ours, so a re-sync must never reset them — hence they are set only when
+      // the row is created, and left alone on every update above.
+      variableDefaults: [],
       ...(input.wabaId ? { wabaId: input.wabaId } : {}),
     };
     this.templates.push(tpl);

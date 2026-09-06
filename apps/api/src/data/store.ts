@@ -318,7 +318,13 @@ export abstract class Store {
    */
   abstract upsertTemplateByName(
     orgId: string,
-    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"]; wabaId?: string },
+    // `variableDefaults` is deliberately not accepted: a sync brings Meta's
+    // name, body and status, while what we pre-fill the variables with is
+    // ours, and a re-sync must never reset it.
+    input: Omit<CreateTemplateInput, "variableDefaults"> & {
+      approvalStatus: Template["approvalStatus"];
+      wabaId?: string;
+    },
   ): Promise<Template>;
 
   /**

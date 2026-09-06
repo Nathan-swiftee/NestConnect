@@ -3682,6 +3682,14 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         <TemplatePicker
           conversationId={conv.id}
           inboxId={conv.inboxId}
+          fill={{
+            contactName: conv.contact.displayName,
+            contactCompany: conv.contact.company,
+            contactPhone: conv.contact.phone,
+            contactEmail: conv.contact.email,
+            agentName: me?.user.name,
+            channelName: inboxes?.find((i) => i.id === conv.inboxId)?.name,
+          }}
           channel={composeChannel}
           onClose={() => setPicker(false)}
           onToast={onToast}

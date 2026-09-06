@@ -2386,6 +2386,32 @@ button.tpl-row:active{transform:scale(.97)}
    this is what tells them apart. */
 .tpl-waba{margin-left:6px;font-size:var(--fs-2xs);font-weight:500;color:var(--text-faint);
   white-space:nowrap}
+
+/* ─── Template variable pre-fill ─────────────────────────────────────────
+   What each {{n}} starts out as. A row per variable: the number, a box, and
+   the menu of values that can go in it. */
+.tplvars{border:1px dashed var(--border-strong);border-radius:var(--r-12);padding:var(--sp-3);
+  background:var(--surface-2);display:grid;gap:var(--sp-2)}
+.tplvars__head{font-size:var(--fs-2xs);font-weight:600;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--text-faint)}
+.tplvars__head em{font-style:normal;text-transform:none;letter-spacing:0;font-weight:500}
+/* The number is a fixed column so the boxes line up down the list however many
+   variables there are. */
+.tplvar{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:var(--sp-2)}
+.tplvar__n{font-family:var(--mono);font-size:var(--fs-2xs);color:var(--text-faint);
+  padding-top:9px;white-space:nowrap}
+.tplvar__field{display:grid;gap:3px;min-width:0}
+.tplvar__field input{background:var(--surface)}
+/* The resolved value, because a token is invisible until it resolves — this is
+   where a typo'd {{contact.frist_name}} shows itself before a customer sees it. */
+.tplvar__preview{font-size:var(--fs-2xs);color:var(--text-faint);overflow-wrap:anywhere}
+.tplvar__insert{flex:0 0 auto;max-width:150px}
+@media (max-width:640px){
+  .tplvar{grid-template-columns:auto 1fr;grid-template-areas:"n f" ". i"}
+  .tplvar__n{grid-area:n}
+  .tplvar__field{grid-area:f}
+  .tplvar__insert{grid-area:i;max-width:none;justify-self:start}
+}
 /* Closed-window notice above the composer. Deliberately quiet: the composer
    below it still behaves normally, so this explains rather than blocks. */
 .tplfallback{display:flex;align-items:flex-start;gap:var(--sp-2);padding:0 var(--sp-1) var(--sp-2);

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { createPortal } from "react-dom";
-import type { ChannelType, Template, TemplateApproval, TemplateCategory } from "@ding/schemas";
+import type {
+  ChannelType,
+  Template,
+  TemplateApproval,
+  TemplateCategory,
+  TemplateFillContext,
+} from "@ding/schemas";
+import { templateDefaults } from "@ding/schemas";
 import { useSendMessage, useTemplatesForInbox } from "../hooks";
 import { unlock } from "../lib/sound";
 import { BackIcon, BoltIcon, SendIcon, XIcon } from "../lib/icons";
@@ -58,6 +65,10 @@ function renderPreview(body: string, params: string[]): JSX.Element[] {
 
 interface Props {
   conversationId: string;
+  /** The facts a template's saved pre-fill can draw on — customer name, the
+   *  agent sending, the number it goes from. Absent fields just resolve to
+   *  nothing; a template with no defaults is unaffected either way. */
+  fill?: TemplateFillContext;
   /** The channel this conversation belongs to, so the list can be narrowed to
    *  the templates its WhatsApp account actually has. A template belongs to one
    *  account; offering another account's is offering a send that Meta rejects. */
@@ -86,7 +97,7 @@ function TemplateBadges({ tpl }: { tpl: Template }) {
   );
 }
 
-export function TemplatePicker({ conversationId, inboxId, channel, onClose, onToast }: Props) {
+export function TemplatePicker({ conversationId, inboxId, fill, channel, onClose, onToast }: Props) {
   const { data: templates, isLoading } = useTemplatesForInbox(inboxId);
   const send = useSendMessage();
   const boxRef = useRef<HTMLDivElement>(null);
@@ -106,7 +117,10 @@ export function TemplatePicker({ conversationId, inboxId, channel, onClose, onTo
   const varCount = selected?.variableCount ?? 0;
   const pick = (tpl: Template) => {
     setSelected(tpl);
-    setParams(Array.from({ length: tpl.variableCount }, () => ""));
+    // Start from whatever the template says its variables should be, resolved
+    // against this conversation. Every box stays editable — this is a head
+    // start, not a decision.
+    setParams(templateDefaults(tpl, fill ?? {}));
   };
   const setParam = (i: number, v: string) =>
     setParams((p) => p.map((x, idx) => (idx === i ? v : x)));

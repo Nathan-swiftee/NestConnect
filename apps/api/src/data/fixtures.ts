@@ -301,10 +301,10 @@ export function makeSeed() {
   // A few pre-approved WhatsApp templates for the demo, so the composer's
   // closed-window flow (e.g. conv_acme, which has no inbound) has something to send.
   const templates: Template[] = [
-    { id: "tpl_order_update", name: "order_update", category: "utility", language: "en", approvalStatus: "approved", variableCount: 3, body: "Hi {{1}}, your order {{2}} is on its way and should arrive by {{3}}. Reply here if you need anything!" , isDefault: false },
-    { id: "tpl_appointment_reminder", name: "appointment_reminder", category: "utility", language: "en", approvalStatus: "approved", variableCount: 3, body: "Hi {{1}}, a quick reminder of your appointment on {{2}} at {{3}}. Reply here to reschedule." , isDefault: false },
-    { id: "tpl_payment_reminder", name: "payment_reminder", category: "utility", language: "en", approvalStatus: "approved", variableCount: 3, body: "Hi {{1}}, invoice {{2}} for {{3}} is now due. You can reply here with any questions." , isDefault: false },
-    { id: "tpl_welcome_back", name: "welcome_back", category: "marketing", language: "en", approvalStatus: "approved", variableCount: 1, body: "Hi {{1}} 👋 It's been a little while — reply here and we'll pick up right where we left off." , isDefault: false },
+    { id: "tpl_order_update", name: "order_update", category: "utility", language: "en", approvalStatus: "approved", variableCount: 3, variableDefaults: ["{{contact.first_name}}"], body: "Hi {{1}}, your order {{2}} is on its way and should arrive by {{3}}. Reply here if you need anything!" , isDefault: false },
+    { id: "tpl_appointment_reminder", name: "appointment_reminder", category: "utility", language: "en", approvalStatus: "approved", variableCount: 3, variableDefaults: ["{{contact.first_name}}"], body: "Hi {{1}}, a quick reminder of your appointment on {{2}} at {{3}}. Reply here to reschedule." , isDefault: false },
+    { id: "tpl_payment_reminder", name: "payment_reminder", category: "utility", language: "en", approvalStatus: "approved", variableCount: 3, variableDefaults: ["{{contact.first_name}}"], body: "Hi {{1}}, invoice {{2}} for {{3}} is now due. You can reply here with any questions." , isDefault: false },
+    { id: "tpl_welcome_back", name: "welcome_back", category: "marketing", language: "en", approvalStatus: "approved", variableCount: 1, variableDefaults: ["{{contact.first_name}}"], body: "Hi {{1}} 👋 It's been a little while — reply here and we'll pick up right where we left off." , isDefault: false },
   ];
 
   return { users, teams, membership, inboxes, conversations, templates, labels: Object.values(LABEL) };
