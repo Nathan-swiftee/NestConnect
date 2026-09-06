@@ -16,6 +16,7 @@
     "check:whatsapp-register": "tsx tools/check-whatsapp-register.ts",
     "check:whatsapp-delivery": "tsx tools/check-whatsapp-delivery.ts",
     "check:template-scope": "tsx tools/check-template-scope.ts",
+    "check:2fa-gate": "tsx --tsconfig apps/api/tsconfig.json tools/check-2fa-gate.ts",
     "check:hooks": "node tools/check-hook-order.mjs",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rm -rf node_modules",

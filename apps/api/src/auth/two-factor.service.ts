@@ -32,6 +32,34 @@ export class TwoFactorService {
     private readonly mailer: Mailer,
   ) {}
 
+  /** userId → when we last saw a second factor on the account. */
+  private readonly enrolled = new Map<string, number>();
+  private static readonly ENROLLED_TTL_MS = 60_000;
+
+  /**
+   * Does this person have a second factor? Asked by the guard on every request
+   * where the workspace requires one.
+   *
+   * Only the `true` answer is cached, and that asymmetry is the whole design.
+   * Enrolled is the steady state for almost everyone almost always, so caching
+   * it keeps a lookup off the hot path; not-enrolled is a state somebody is
+   * actively trying to leave, and caching *that* would leave them staring at
+   * the gate for another minute after they'd finished setting it up. Nobody
+   * would read that as a cache — they'd read it as the setup not having worked,
+   * and try again.
+   *
+   * A cached `true` is dropped by `disable` below, so turning a second factor
+   * off takes hold on the next request rather than up to a minute later.
+   */
+  async isEnrolled(userId: string): Promise<boolean> {
+    const hit = this.enrolled.get(userId);
+    if (hit !== undefined && Date.now() - hit < TwoFactorService.ENROLLED_TTL_MS) return true;
+    const on = (await this.store.getUser(userId))?.twoFactorEnabled === true;
+    if (on) this.enrolled.set(userId, Date.now());
+    else this.enrolled.delete(userId);
+    return on;
+  }
+
   private totp(secret: string, label: string): OTPAuth.TOTP {
     return new OTPAuth.TOTP({
       issuer: ISSUER,
@@ -142,6 +170,9 @@ export class TwoFactorService {
 
   /** Turn 2FA off entirely and wipe secrets + recovery codes. */
   async disable(userId: string): Promise<void> {
+    // Before the write, not after: a request landing in between would otherwise
+    // refill the cache with the `true` this is about to make false.
+    this.enrolled.delete(userId);
     await this.store.updateTwoFactor(userId, {
       enabled: false,
       method: null,

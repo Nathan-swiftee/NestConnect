@@ -34,6 +34,7 @@ import { SessionService } from "./session.service";
 import { TwoFactorService } from "./two-factor.service";
 import { Mailer } from "../mail/mailer.service";
 import { Public } from "./public.decorator";
+import { EnrolmentAllowed } from "./enrolment-allowed.decorator";
 import { CurrentUserId, CurrentSessionId } from "./current-user.decorator";
 
 /** Cookie carrying the half-authenticated "2FA pending" token (password OK,
@@ -142,6 +143,8 @@ export class AuthController {
       res.cookie(PENDING_COOKIE, pending, { ...cookieOptions(), maxAge: 5 * 60 * 1000 });
       return challenge;
     }
+    // 2FA required but never set up: this is a real session, and the guard
+    // holds it at the enrolment routes until they have one.
     return this.grantSession(user.id, req, res, body.tokenAuth);
   }
 
@@ -202,6 +205,7 @@ export class AuthController {
   }
 
   @Public()
+  @EnrolmentAllowed()
   @Post("logout")
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     // Revoking the session is what actually signs a token client out — it has no
@@ -213,6 +217,7 @@ export class AuthController {
     return { ok: true };
   }
 
+  @EnrolmentAllowed()
   @Get("session")
   session(@CurrentUserId() userId: string) {
     return this.meResponse(userId);
@@ -276,17 +281,20 @@ export class AuthController {
 
   /* ---- two-factor auth ---- */
 
+  @EnrolmentAllowed()
   @Get("2fa/status")
   twoFactorStatus(@CurrentUserId() userId: string) {
     return this.twoFactor.status(userId);
   }
 
   /** Begin authenticator setup → QR + manual key (not enabled until confirmed). */
+  @EnrolmentAllowed()
   @Post("2fa/totp/start")
   async startTotp(@CurrentUserId() userId: string) {
     return this.twoFactor.startTotpSetup(await this.requireUser(userId));
   }
 
+  @EnrolmentAllowed()
   @Post("2fa/totp/enable")
   async enableTotp(
     @CurrentUserId() userId: string,
@@ -298,12 +306,14 @@ export class AuthController {
   }
 
   /** Email a code to start (or re-start) email-method setup. */
+  @EnrolmentAllowed()
   @Post("2fa/email/start")
   async startEmail(@CurrentUserId() userId: string) {
     await this.twoFactor.sendEmailCode(await this.requireUser(userId));
     return { ok: true };
   }
 
+  @EnrolmentAllowed()
   @Post("2fa/email/enable")
   async enableEmail(
     @CurrentUserId() userId: string,
@@ -321,6 +331,11 @@ export class AuthController {
 
   @Post("2fa/disable")
   async disableTwoFactor(@CurrentUserId() userId: string) {
+    // Where the workspace requires a second factor this puts the person back
+    // behind the enrolment gate on every device, because the guard asks whether
+    // the account has one rather than what a token said when it was minted. It
+    // stays allowed rather than refused: turning it off is also how somebody
+    // moves from email codes to an authenticator app.
     await this.twoFactor.disable(userId);
     return { ok: true };
   }

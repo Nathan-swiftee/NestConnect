@@ -103,6 +103,14 @@ export class RealtimeGateway
       client.disconnect();
       return;
     }
+    // Held at the mandatory two-factor gate. The HTTP guard refuses those
+    // sessions every route but enrolment; this is the one way into the org's
+    // traffic that doesn't go through it, and it streams the lot.
+    if (env.auth.require2fa && !user.twoFactorEnabled) {
+      this.logger.debug(`socket rejected (two-factor not set up): ${client.id}`);
+      client.disconnect();
+      return;
+    }
     client.data.userId = user.id;
     client.data.orgId = user.orgId;
     client.join(orgRoom(user.orgId));

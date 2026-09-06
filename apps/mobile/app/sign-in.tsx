@@ -52,6 +52,15 @@ export default function SignIn() {
     // is not brought back by an invalidate. Without this, Settings shows no
     // name and an admin gets no Insights tab until the app is relaunched.
     seedIdentity(qc, result);
+    // Mandatory 2FA with nothing enrolled: the server has handed back a session
+    // it will hold at the enrolment gate, so the inbox is a screen of 403s.
+    // Straight to enrolment instead — and no invalidate, because warming the
+    // caches would only fill them with those failures. An absent flag is an API
+    // older than this build, and those always enforce.
+    if (result.twoFactorEnforced !== false && !result.user?.twoFactorEnabled) {
+      router.replace("/enrol-2fa");
+      return;
+    }
     await qc.invalidateQueries();
     router.replace("/(app)/(tabs)");
   }

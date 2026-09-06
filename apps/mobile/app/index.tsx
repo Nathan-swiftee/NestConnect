@@ -30,5 +30,14 @@ export default function Index() {
       </View>
     );
   }
-  return session.data?.user ? <Redirect href="/(app)/(tabs)" /> : <Redirect href="/sign-in" />;
+  const user = session.data?.user;
+  if (!user) return <Redirect href="/sign-in" />;
+  // Mandatory 2FA. The server holds a session that hasn't enrolled away from
+  // everything but the enrolment routes, so this isn't a nicety — landing on
+  // the inbox instead would be a screen of failed requests with no way out.
+  // An absent flag is an API older than this build, and those always enforce.
+  if (session.data?.twoFactorEnforced !== false && !user.twoFactorEnabled) {
+    return <Redirect href="/enrol-2fa" />;
+  }
+  return <Redirect href="/(app)/(tabs)" />;
 }
