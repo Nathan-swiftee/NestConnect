@@ -1959,6 +1959,7 @@ export class PrismaStore extends Store {
   async updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,
+    failureReason?: string,
   ): Promise<{ conversationId: string; message: Message } | undefined> {
     const msg = await this.prisma.message.findFirst({ where: { channelMsgId } });
     if (!msg) return undefined;
@@ -1966,7 +1967,13 @@ export class PrismaStore extends Store {
     if (!canAdvanceStatus(msg.status as MessageStatus, status)) return undefined;
     const updated = await this.prisma.message.update({
       where: { id: msg.id },
-      data: { status },
+      data: {
+        status,
+        // Only on the way to "failed", and only when the provider said why: a
+        // later "delivered" must not leave a stale explanation under a message
+        // that arrived perfectly well.
+        ...(status === "failed" && failureReason ? { failureReason } : {}),
+      },
       include: { attachments: true },
     });
     return { conversationId: updated.conversationId, message: mapMessage(updated) };

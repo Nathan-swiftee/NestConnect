@@ -1706,6 +1706,7 @@ export class MemoryStore extends Store {
   async updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,
+    failureReason?: string,
   ): Promise<{ conversationId: string; message: Message } | undefined> {
     for (const rec of this.conversations) {
       const m = rec.messages.find((x) => x.channelMsgId === channelMsgId);
@@ -1713,6 +1714,10 @@ export class MemoryStore extends Store {
         // Never regress the ladder (out-of-order/duplicate webhooks are common).
         if (!canAdvanceStatus(m.status, status)) return undefined;
         m.status = status;
+        // Only on the way to "failed", and only when the provider said why:
+        // a later "delivered" must not leave a stale explanation under a
+        // message that arrived perfectly well.
+        if (status === "failed" && failureReason) m.failureReason = failureReason;
         return { conversationId: rec.id, message: m };
       }
     }

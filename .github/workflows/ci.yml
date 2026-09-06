@@ -56,6 +56,14 @@ jobs:
       - name: WhatsApp registration
         run: pnpm check:whatsapp-register
 
+      # What a failed WhatsApp message tells the agent reading the thread. Meta
+      # says exactly why it gave up — a billing setting, a closed reply window —
+      # and that answer used to reach the log and nowhere else, leaving the
+      # thread to say "Not delivered" about something fixable in a minute. A
+      # wrong reason is worse than none, because somebody acts on it.
+      - name: WhatsApp delivery reasons
+        run: pnpm check:whatsapp-delivery
+
       # Hooks called below an early return. React throws #310 and unmounts the
       # whole tree, so the symptom is a white page with nothing in the console
       # that names the component — and it typechecks and builds perfectly. It has
