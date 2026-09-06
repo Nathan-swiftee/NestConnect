@@ -526,6 +526,15 @@ model Template {
   body           String
   approvalStatus String @default("pending")
 
+  /// What each {{1}}, {{2}} … starts out as when somebody sends this.
+  ///
+  /// Index-aligned with the body's variables, and free text with {{token}}
+  /// placeholders in it (see TEMPLATE_TOKENS) so "Hi from {{agent.name}}",
+  /// plain "Order update" and a bare "{{contact.name}}" are all one kind of
+  /// thing. Pre-filled, never forced: the fill form still opens and an agent
+  /// can change any of it before sending.
+  variableDefaults String[] @default([])
+
   /// The WhatsApp Business Account this template lives on.
   ///
   /// Templates belong to a WABA, not to a phone number: every number under one

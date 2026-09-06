@@ -26,6 +26,8 @@ import type {
   NestChatTeam,
 } from "@ding/schemas";
 import {
+  resolveTemplateDefault,
+  TEMPLATE_TOKENS,
   templatesForWaba,
   WHATSAPP_VERTICALS,
   OPENING_DAYS,
@@ -2700,6 +2702,97 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
   );
 }
 
+/**
+ * One variable's pre-fill: a text box, a menu of things we can put in it, and a
+ * preview of what it comes out as.
+ *
+ * One box rather than a "type" dropdown plus a value, because the useful cases
+ * mix: "Hi from {{agent.name}}" is text *and* a token, and making somebody
+ * choose between the two would rule that out. The preview earns its place
+ * because a token is invisible until it resolves — without it the only way to
+ * find out that {{contact.frist_name}} is a typo is to send it to a customer.
+ */
+function VariableDefaultRow({
+  index,
+  value,
+  onChange,
+}: {
+  index: number;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const insert = (token: string) => {
+    const el = ref.current;
+    // At the cursor, so a token can be dropped into the middle of a sentence
+    // rather than only appended. Falls back to the end when the box was never
+    // focused (picking straight from the menu).
+    const at = el?.selectionStart ?? value.length;
+    const next = `${value.slice(0, at)}{{${token}}}${value.slice(el?.selectionEnd ?? at)}`;
+    onChange(next);
+    requestAnimationFrame(() => {
+      el?.focus();
+      const caret = at + token.length + 4;
+      el?.setSelectionRange(caret, caret);
+    });
+  };
+  const preview = value
+    ? resolveTemplateDefault(
+        value,
+        Object.fromEntries(
+          TEMPLATE_TOKENS.map((t) => [
+            // The context keys the resolver reads, from the same table the menu
+            // is built from — so a token added there previews without any
+            // further wiring here.
+            ({
+              "contact.name": "contactName",
+              "contact.first_name": "contactName",
+              "contact.company": "contactCompany",
+              "contact.phone": "contactPhone",
+              "contact.email": "contactEmail",
+              "agent.name": "agentName",
+              "agent.first_name": "agentName",
+              "channel.name": "channelName",
+            } as Record<string, string>)[t.token],
+            t.token.endsWith("first_name")
+              ? TEMPLATE_TOKENS.find((x) => x.token === t.token.replace("first_name", "name"))?.sample
+              : t.sample,
+          ]),
+        ),
+      )
+    : "";
+
+  return (
+    <div className="tplvar">
+      <span className="tplvar__n">{`{{${index + 1}}}`}</span>
+      <div className="tplvar__field">
+        <input
+          ref={ref}
+          value={value}
+          autoComplete="off"
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Type text, or insert a value →"
+        />
+        {preview && <small className="tplvar__preview">Sends as: {preview}</small>}
+      </div>
+      <select
+        className="tplvar__insert"
+        value=""
+        onChange={(e) => {
+          if (e.target.value) insert(e.target.value);
+          e.currentTarget.selectedIndex = 0;
+        }}
+        aria-label={`Insert a value into variable ${index + 1}`}
+      >
+        <option value="">Insert…</option>
+        {TEMPLATE_TOKENS.map((t) => (
+          <option key={t.token} value={t.token}>{t.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function TemplateForm({
   template,
   onDone,
@@ -2716,16 +2809,34 @@ function TemplateForm({
   const [category, setCategory] = useState<TemplateCategory>(template?.category ?? "utility");
   const [language, setLanguage] = useState(template?.language ?? "en");
   const [body, setBody] = useState(template?.body ?? "");
+  const [defaults, setDefaults] = useState<string[]>(template?.variableDefaults ?? []);
 
   const nameOk = /^[a-z0-9_]+$/.test(name);
   const varCount = countVariables(body);
+  const setDefaultAt = (i: number, v: string) =>
+    setDefaults((d) => {
+      const next = [...d];
+      // Pad rather than leave holes: the array is index-aligned with {{1}}…{{n}},
+      // and a sparse one would put {{3}}'s default under {{2}} on the way back.
+      while (next.length < i) next.push("");
+      next[i] = v;
+      return next;
+    });
   const valid = nameOk && language.trim().length >= 2 && body.trim().length > 0;
   const pending = create.isPending || update.isPending;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!valid) return;
-    const input = { name, category, language: language.trim(), body };
+    const input = {
+      name,
+      category,
+      language: language.trim(),
+      body,
+      // Trimmed to the body's own variable count: editing "Hi {{1}} {{2}}" down
+      // to one variable should not leave a second default stranded behind it.
+      variableDefaults: Array.from({ length: varCount }, (_, i) => defaults[i] ?? ""),
+    };
     if (editing) {
       update.mutate(
         { id: template.id, input },
@@ -2786,6 +2897,28 @@ function TemplateForm({
           Use <code>{"{{1}}"}</code>, <code>{"{{2}}"}</code> … for values filled in when the template is sent.
         </small>
       </label>
+
+      {/* What each variable starts out as. Pre-filled, not fixed — the send form
+          still opens and an agent can change any of it. */}
+      {varCount > 0 && (
+        <div className="tplvars">
+          <div className="tplvars__head">
+            Pre-fill <em>— what each variable starts as when you send this</em>
+          </div>
+          {Array.from({ length: varCount }, (_, i) => (
+            <VariableDefaultRow
+              key={i}
+              index={i}
+              value={defaults[i] ?? ""}
+              onChange={(v) => setDefaultAt(i, v)}
+            />
+          ))}
+          <small className="fieldhint">
+            Leave one blank to keep typing it each time. Anything here can still be changed before sending.
+          </small>
+        </div>
+      )}
+
       <div className="setform__foot">
         <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
         <button className="btn-primary" type="submit" disabled={pending || !valid}>
@@ -3131,6 +3264,7 @@ function parseRecipients(raw: string): { phone: string; name?: string }[] {
 
 function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
   const inboxes = useInboxes();
+  const me = useMe();
   const templates = useTemplates();
   const send = useSendBroadcast();
 
@@ -3181,9 +3315,18 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
       return n;
     });
 
-  const recipients =
+  /** A recipient plus the facts a template's pre-fill can draw on. The extra
+   *  fields are local: only phone, name and the resolved params are sent. */
+  const recipients: Array<{ phone: string; name?: string; company?: string; email?: string }> =
     mode === "contacts"
-      ? reachable.filter((c) => picked.has(c.id)).map((c) => ({ phone: c.phone as string, name: c.displayName }))
+      ? reachable
+          .filter((c) => picked.has(c.id))
+          .map((c) => ({
+            phone: c.phone as string,
+            name: c.displayName,
+            company: c.company,
+            email: c.email,
+          }))
       : parseRecipients(recipientsRaw);
   const varCount = template?.variableCount ?? 0;
   const paramsReady = Array.from({ length: varCount }).every((_, i) => (params[i] ?? "").trim().length > 0);
@@ -3193,12 +3336,37 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
   const doSend = () => {
     if (!selected || !template) return;
     setResult(null);
+    // Each recipient gets the boxes resolved against their own record, so one
+    // "{{contact.first_name}}" greets two hundred people by name. Anything with
+    // no token in it is the same for everyone, which is the ordinary case and
+    // costs nothing.
+    const agentName = me.data?.user.name;
+    const channelName = selected.name;
+    // Only phone, name and the resolved params go over the wire — the company
+    // and email are read here to resolve tokens and go no further, because the
+    // send has no use for them.
+    const withParams = recipients.map((r) => ({
+      phone: r.phone,
+      name: r.name,
+      params: params.slice(0, varCount).map((p) =>
+        resolveTemplateDefault(p ?? "", {
+          contactName: r.name,
+          contactCompany: r.company,
+          contactPhone: r.phone,
+          contactEmail: r.email,
+          agentName,
+          channelName,
+        }),
+      ),
+    }));
     send.mutate(
       {
         inboxId: selected.id,
         templateId: template.id,
+        // The unresolved patterns are still sent as the fallback the service
+        // uses when a recipient carries none of their own.
         params: params.slice(0, varCount).map((p) => p ?? ""),
-        recipients,
+        recipients: withParams,
       },
       {
         onSuccess: (r) => {
@@ -3256,8 +3424,15 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
             <select
               value={templateId}
               onChange={(e) => {
+                const next = approved.find((t) => t.id === e.target.value);
                 setTemplateId(e.target.value);
-                setParams([]);
+                // The template's saved pre-fill, left as written rather than
+                // resolved: a broadcast has many recipients, so
+                // "{{contact.first_name}}" here is one box that becomes a
+                // different name for each of them at send time.
+                setParams(
+                  next ? Array.from({ length: next.variableCount }, (_, i) => next.variableDefaults[i] ?? "") : [],
+                );
                 setResult(null);
               }}
             >
@@ -3294,6 +3469,12 @@ function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
                 </label>
               ))}
             </div>
+          )}
+          {varCount > 0 && params.some((p) => /\{\{[a-z_.]+\}\}/i.test(p ?? "")) && (
+            <small className="fieldhint">
+              Values like <code>{"{{contact.first_name}}"}</code> are filled in per recipient — each person gets
+              their own.
+            </small>
           )}
           {varCount > 0 && (
             <small className="fieldhint">

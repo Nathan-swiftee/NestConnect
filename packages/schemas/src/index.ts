@@ -564,6 +564,15 @@ export const templateSchema = z.object({
    * before this field existed.
    */
   wabaId: z.string().optional(),
+  /**
+   * What each `{{1}}`, `{{2}}` … starts out as when somebody sends this.
+   *
+   * Index-aligned with the body's variables and free text with `{{token}}`
+   * placeholders — see TEMPLATE_TOKENS. Saved once in settings so an agent is
+   * not retyping their own name into every template, and pre-filled rather than
+   * fixed: the boxes still open, and anything here can be changed before Send.
+   */
+  variableDefaults: z.array(z.string()).default([]),
   /** The default template **for its own account** — the one the composer sends
    *  behind the scenes once a 24-hour window has closed. One per WABA, because
    *  a workspace-wide default would be a template the other account cannot
@@ -571,6 +580,117 @@ export const templateSchema = z.object({
   isDefault: z.boolean().default(false),
 });
 export type Template = z.infer<typeof templateSchema>;
+
+/* ---- Template variable pre-fill ---- */
+
+/**
+ * What can be dropped into a template variable without anybody typing it.
+ *
+ * Deliberately only things we hold at the moment a template is filled in, and
+ * only things that cannot be subtly wrong. No dates: "your appointment on
+ * {{2}}" is a tempting one to automate and a timezone away from telling a
+ * customer the wrong day, which is worse than making somebody type it.
+ *
+ * The label is what the settings menu shows; the sample is what the preview
+ * renders, so an admin can see the shape of the result before saving.
+ */
+export const TEMPLATE_TOKENS = [
+  { token: "contact.name", label: "Customer name", sample: "Marta Kowalska" },
+  { token: "contact.first_name", label: "Customer first name", sample: "Marta" },
+  { token: "contact.company", label: "Customer company", sample: "Northside Logistics" },
+  { token: "contact.phone", label: "Customer phone", sample: "+44 7700 900123" },
+  { token: "contact.email", label: "Customer email", sample: "marta@example.com" },
+  { token: "agent.name", label: "Your name", sample: "Nathan A" },
+  { token: "agent.first_name", label: "Your first name", sample: "Nathan" },
+  { token: "channel.name", label: "Number this is sent from", sample: "Swiftee Support" },
+] as const;
+
+export type TemplateToken = (typeof TEMPLATE_TOKENS)[number]["token"];
+
+/**
+ * The facts a template variable can be filled from.
+ *
+ * Every field optional: a broadcast to a pasted list has no contact record, a
+ * conversation may have no company on file, and a missing fact must degrade to
+ * an empty string rather than putting the literal "{{contact.company}}" in
+ * front of a customer.
+ */
+export interface TemplateFillContext {
+  contactName?: string;
+  contactCompany?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  agentName?: string;
+  channelName?: string;
+}
+
+/** "Marta Kowalska" → "Marta". Whitespace-split, so it is wrong for no name
+ *  we can do better on without guessing at cultures we do not know. */
+function firstName(full?: string): string {
+  return (full ?? "").trim().split(/\s+/)[0] ?? "";
+}
+
+/**
+ * The value behind a token, or `null` when the token isn't one we know.
+ *
+ * The two cases have to stay apart. A token we know with nothing behind it — a
+ * customer with no company on file — is an empty string, and the sentence
+ * closes over the gap. A token we do not know is left as written, so a typo
+ * stays visible. Collapsing both into `undefined` sent the literal
+ * "{{contact.company}}" to anyone whose company we didn't have.
+ */
+function tokenValue(token: string, ctx: TemplateFillContext): string | null {
+  switch (token) {
+    case "contact.name": return ctx.contactName ?? "";
+    case "contact.first_name": return firstName(ctx.contactName);
+    case "contact.company": return ctx.contactCompany ?? "";
+    case "contact.phone": return ctx.contactPhone ?? "";
+    case "contact.email": return ctx.contactEmail ?? "";
+    case "agent.name": return ctx.agentName ?? "";
+    case "agent.first_name": return firstName(ctx.agentName);
+    case "channel.name": return ctx.channelName ?? "";
+    default: return null;
+  }
+}
+
+/**
+ * Resolve one saved default into the text that goes in the box.
+ *
+ * A default is free text with `{{token}}` placeholders in it, so "Hi from
+ * {{agent.name}}" and plain "Order update" and a bare "{{contact.name}}" are
+ * all the same kind of thing and there is no type to choose in the UI.
+ *
+ * An unknown token is left exactly as written rather than blanked. If somebody
+ * types `{{contact.nmae}}` the mistake stays visible in the box, where they can
+ * see and fix it — silently emptying it would send a half-finished sentence to
+ * a customer with nothing to show what went wrong.
+ */
+export function resolveTemplateDefault(pattern: string, ctx: TemplateFillContext): string {
+  return pattern.replace(/\{\{\s*([a-z_.]+)\s*\}\}/gi, (whole, token: string) => {
+    const value = tokenValue(token.trim().toLowerCase(), ctx);
+    // `null` means we have never heard of this token, so it is left as written.
+    // An empty string means we know it and have nothing — which resolves to
+    // nothing, not to the word "undefined" and not to the raw token.
+    return value === null ? whole : value;
+  }).trim();
+}
+
+/**
+ * The starting values for a template's fill form.
+ *
+ * Always `variableCount` long, so the form has a box per variable whether or
+ * not a default was saved for it. Nothing here is final: these are what the
+ * agent sees before they type, and they can change any of them.
+ */
+export function templateDefaults(
+  template: { variableCount: number; variableDefaults?: string[] },
+  ctx: TemplateFillContext,
+): string[] {
+  return Array.from({ length: template.variableCount }, (_, i) => {
+    const pattern = template.variableDefaults?.[i];
+    return pattern ? resolveTemplateDefault(pattern, ctx) : "";
+  });
+}
 
 /**
  * The templates a given WhatsApp account can actually send.
@@ -609,6 +729,7 @@ export const createTemplateInputSchema = z.object({
   category: templateCategorySchema.default("utility"),
   language: z.string().min(2).default("en"),
   body: z.string().min(1),
+  variableDefaults: z.array(z.string().max(500)).max(20).default([]),
 });
 export type CreateTemplateInput = z.infer<typeof createTemplateInputSchema>;
 
@@ -622,6 +743,9 @@ export const updateTemplateInputSchema = z.object({
   language: z.string().min(2).optional(),
   body: z.string().min(1).optional(),
   approvalStatus: templateApprovalSchema.optional(),
+  /** Editable even on a template synced from Meta: the name and body are
+   *  Meta's, but what we pre-fill its variables with is ours. */
+  variableDefaults: z.array(z.string().max(500)).max(20).optional(),
 });
 export type UpdateTemplateInput = z.infer<typeof updateTemplateInputSchema>;
 

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
 import { useSendMessage, useTemplatesForInbox } from "@ding/client";
-import type { ChannelType, Template } from "@ding/schemas";
+import type { ChannelType, Template, TemplateFillContext } from "@ding/schemas";
+import { templateDefaults } from "@ding/schemas";
 import { approvalLabel, renderPreview } from "../templates";
 import { BackIcon, BoltIcon, XIcon } from "../icons";
 import { haptics } from "../haptics";
@@ -32,11 +33,14 @@ import { useToast } from "./Toast";
 export function TemplateSheet({
   conversationId,
   inboxId,
+  fill,
   channel,
   visible,
   onClose,
 }: {
   conversationId: string;
+  /** The facts a template's saved pre-fill can draw on. */
+  fill?: TemplateFillContext;
   /** The conversation's channel, so the list can be narrowed to the templates
    *  its WhatsApp account actually has — a template belongs to one account, and
    *  offering another's is offering a send Meta rejects. */
@@ -68,7 +72,9 @@ export function TemplateSheet({
 
   const pick = (tpl: Template) => {
     setSelected(tpl);
-    setParams(Array.from({ length: tpl.variableCount }, () => ""));
+    // The template's own saved pre-fill, resolved against this conversation.
+    // Still editable — a head start, not a decision.
+    setParams(templateDefaults(tpl, fill ?? {}));
   };
 
   async function doSend() {

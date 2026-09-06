@@ -1094,6 +1094,13 @@ export function Composer({
       <TemplateSheet
         conversationId={conv.id}
         inboxId={conv.inboxId}
+        fill={{
+          contactName: conv.contact.displayName,
+          contactCompany: conv.contact.company,
+          contactPhone: conv.contact.phone,
+          contactEmail: conv.contact.email,
+          agentName: me?.user.name,
+        }}
         channel={channel}
         visible={templateSheet}
         onClose={() => setTemplateSheet(false)}

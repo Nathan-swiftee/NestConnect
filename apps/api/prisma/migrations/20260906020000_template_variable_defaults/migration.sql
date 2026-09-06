@@ -1,0 +1,12 @@
+-- What a template's {{1}}, {{2}} … start out as, so agents stop retyping their
+-- own name into every send.
+--
+-- Index-aligned with the body's variables and free text with {{token}}
+-- placeholders in it, which is why it is text and not a structured column:
+-- "Hi from {{agent.name}}", plain "Order update" and a bare "{{contact.name}}"
+-- are then all the same kind of value with no type for anyone to choose.
+--
+-- Empty array rather than null: "no defaults saved" and "defaults saved for
+-- none of the variables" are the same thing, and a nullable list would make
+-- every reader handle a difference that does not exist.
+ALTER TABLE "Template" ADD COLUMN "variableDefaults" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];

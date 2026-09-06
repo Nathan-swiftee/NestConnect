@@ -327,6 +327,7 @@ export class PrismaStore extends Store {
         language: input.language,
         body: input.body,
         approvalStatus: "draft",
+        variableDefaults: input.variableDefaults ?? [],
       },
     });
     return mapTemplate(row);
@@ -341,6 +342,7 @@ export class PrismaStore extends Store {
           ...(input.category !== undefined ? { category: input.category } : {}),
           ...(input.language !== undefined ? { language: input.language } : {}),
           ...(input.body !== undefined ? { body: input.body } : {}),
+          ...(input.variableDefaults !== undefined ? { variableDefaults: input.variableDefaults } : {}),
           ...(input.approvalStatus !== undefined ? { approvalStatus: input.approvalStatus } : {}),
         },
       });
@@ -356,7 +358,13 @@ export class PrismaStore extends Store {
 
   async upsertTemplateByName(
     orgId: string,
-    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"]; wabaId?: string },
+    // `variableDefaults` is deliberately not accepted: a sync brings Meta's
+    // name, body and status, while what we pre-fill the variables with is
+    // ours, and a re-sync must never reset it.
+    input: Omit<CreateTemplateInput, "variableDefaults"> & {
+      approvalStatus: Template["approvalStatus"];
+      wabaId?: string;
+    },
   ): Promise<Template> {
     // Only this account's rows, plus the unclaimed ones. Another account's
     // "order_update" is a different template and must not be overwritten by
