@@ -1,10 +1,12 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
 import { env } from "../config/env";
 import { AuthService } from "./auth.service";
 import { SessionService } from "./session.service";
+import { TwoFactorService } from "./two-factor.service";
 import { IS_PUBLIC_KEY } from "./public.decorator";
+import { IS_ENROLMENT_ALLOWED_KEY } from "./enrolment-allowed.decorator";
 
 /**
  * Global guard. Reads the session JWT from the httpOnly cookie, validates it,
@@ -19,6 +21,7 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
+    private readonly twoFactor: TwoFactorService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -58,6 +61,38 @@ export class AuthGuard implements CanActivate {
 
     if (isPublic) return true;
     if (!req.userId) throw new UnauthorizedException("Not authenticated");
+
+    /*
+     * Signed in, and held there until a second factor exists.
+     *
+     * This is the half of mandatory two-factor the server used to leave to the
+     * client. The web app draws an enrolment screen and does the right thing; a
+     * caller that is not the web app — curl, the mobile app, anything holding a
+     * bearer token — simply never met that screen, so a password alone was the
+     * whole of the credential for everything this workspace holds. It is
+     * enforced here now, where it cannot be skipped by not asking.
+     *
+     * The question is put to the account rather than to the token, which costs
+     * a cached lookup and buys two things. Sessions handed out before this
+     * existed are covered — otherwise a phone that signed in last month would
+     * carry an unchallenged 60-day token well into next year. And enrolling, or
+     * turning it back off, lands on every device at once instead of on whichever
+     * one happened to make the change.
+     */
+    if (env.auth.require2fa) {
+      const allowed = this.reflector.getAllAndOverride<boolean>(IS_ENROLMENT_ALLOWED_KEY, [
+        ctx.getHandler(),
+        ctx.getClass(),
+      ]);
+      // The allowlist is checked first because it settles the enrolment routes
+      // with no I/O at all — and those are the only ones a person in this state
+      // is going to be calling.
+      if (!allowed && !(await this.twoFactor.isEnrolled(req.userId))) {
+        throw new ForbiddenException(
+          "Set up two-factor authentication to finish signing in — this workspace requires it.",
+        );
+      }
+    }
     return true;
   }
 }

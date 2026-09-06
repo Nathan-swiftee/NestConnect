@@ -126,6 +126,7 @@ function Shell({ ready }: { ready: boolean }) {
             >
               <Stack.Screen name="index" />
               <Stack.Screen name="sign-in" options={{ animation: "fade" }} />
+              <Stack.Screen name="enrol-2fa" options={{ animation: "fade" }} />
               <Stack.Screen name="(app)" />
             </Stack>
       ) : (

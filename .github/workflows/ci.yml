@@ -73,6 +73,15 @@ jobs:
       - name: Template account scope
         run: pnpm check:template-scope
 
+      # The mandatory two-factor gate. It used to be drawn by the web app and
+      # nowhere else, so anything that wasn't the web app was never asked — a
+      # password alone was the whole credential. Now the guard holds those
+      # sessions away from every route but enrolment, and the allowlist is the
+      # dangerous part: too short and the one person who needs to enrol can't,
+      # too long and the hole is quietly back for whichever route was added.
+      - name: Two-factor enrolment gate
+        run: pnpm check:2fa-gate
+
       # Hooks called below an early return. React throws #310 and unmounts the
       # whole tree, so the symptom is a white page with nothing in the console
       # that names the component — and it typechecks and builds perfectly. It has
