@@ -42,7 +42,7 @@ import {
 } from "@ding/schemas";
 import { env } from "../config/env";
 import { threadsTogether } from "./email-threading";
-import { canAdvanceStatus, computeWaWindow, isWaChannel, messageTypeForKind, previewFromBody, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
+import { canAdvanceStatus, canonicalLang, computeWaWindow, isWaChannel, messageTypeForKind, previewFromBody, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
 import {
   Store,
@@ -327,27 +327,35 @@ export class MemoryStore extends Store {
 
   async upsertTemplateByName(
     _orgId: string,
-    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"] },
+    input: CreateTemplateInput & { approvalStatus: Template["approvalStatus"]; wabaId?: string },
   ): Promise<Template> {
-    // Match the exact (name, language) first; fall back to the same primary
-    // language so Meta's locale-qualified "en_US" updates a locally-stored "en"
-    // copy rather than inserting a stale duplicate.
+    // Only this account's rows and the unclaimed ones: another account's
+    // "order_update" is a different template and must not be overwritten.
+    // Within that, a row already claimed by this account beats an unclaimed one.
+    const candidates = this.templates
+      .filter((t) => t.name === input.name && (!input.wabaId || !t.wabaId || t.wabaId === input.wabaId))
+      .sort((a, b) => Number(b.wabaId === input.wabaId) - Number(a.wabaId === input.wabaId));
+    // Exact (name, language) first; fall back to the same primary language so
+    // Meta's locale-qualified "en_US" updates a locally-stored "en" copy rather
+    // than inserting a stale duplicate.
     const existing =
-      this.templates.find((t) => t.name === input.name && t.language === input.language) ??
-      this.templates.find((t) => t.name === input.name && sameTemplateLang(t.language, input.language));
+      candidates.find((t) => t.language === input.language) ??
+      candidates.find((t) => sameTemplateLang(t.language, input.language));
     if (existing) {
       // Adopt Meta's exact language code so outbound template sends use the code
-      // the template is actually approved under.
+      // the template is actually approved under — and claim the row for this
+      // account, which is how a pre-existing template learns whose it is.
       existing.language = input.language;
       existing.category = input.category;
       existing.body = input.body;
       existing.approvalStatus = input.approvalStatus;
       existing.variableCount = templateVariableCount(input.body);
+      if (input.wabaId) existing.wabaId = input.wabaId;
       return existing;
     }
     const tpl: Template = {
       id: `tpl_${++this.idSeq}`,
-      // The workspace default is an org setting, applied by TemplatesService.
+      // The per-account default is an org setting, applied by TemplatesService.
       isDefault: false,
       name: input.name,
       category: input.category,
@@ -355,9 +363,28 @@ export class MemoryStore extends Store {
       body: input.body,
       approvalStatus: input.approvalStatus,
       variableCount: templateVariableCount(input.body),
+      ...(input.wabaId ? { wabaId: input.wabaId } : {}),
     };
     this.templates.push(tpl);
     return tpl;
+  }
+
+  async pruneTemplatesForWaba(
+    _orgId: string,
+    wabaId: string,
+    keep: Array<{ name: string; language: string }>,
+  ): Promise<number> {
+    // Compare on the primary language subtag, as the upsert does: Meta may
+    // answer "en_US" for a row we hold as "en", and treating that as missing
+    // would delete a template that is very much still there.
+    const wanted = new Set(keep.map((k) => `${k.name}\u0000${canonicalLang(k.language)}`));
+    const before = this.templates.length;
+    // Only rows this account has claimed. Unclaimed ones may belong to an
+    // account we have not synced yet; locally authored ones belong to nobody.
+    this.templates = this.templates.filter(
+      (t) => t.wabaId !== wabaId || wanted.has(`${t.name}\u0000${canonicalLang(t.language)}`),
+    );
+    return before - this.templates.length;
   }
 
   async listTeams(): Promise<Team[]> {

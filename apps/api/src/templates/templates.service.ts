@@ -10,8 +10,24 @@ import { env } from "../config/env";
 import { ORG_ID } from "../data/fixtures";
 import { Store } from "../data/store";
 
-/* The org setting holding the default template's id. Empty string = none. */
+/*
+ * The org setting holding a WhatsApp account's default template id. Empty
+ * string = none.
+ *
+ * One per WABA rather than one per workspace, because this is the template the
+ * composer sends *by itself* when a 24-hour window has closed. A single
+ * workspace-wide default is guaranteed to be wrong for every account but one,
+ * and it would be chosen automatically, silently, at the moment an agent is
+ * trying to get back to a customer — the worst possible time to discover that
+ * the other account has never heard of it.
+ *
+ * The bare key is the pre-accounts setting. It is still read as the default for
+ * an account that has not chosen one, so a workspace that had a default before
+ * this change keeps it instead of quietly losing the fallback.
+ */
 const DEFAULT_TEMPLATE_KEY = "wa_default_template_id";
+const defaultTemplateKey = (wabaId?: string) =>
+  wabaId ? `${DEFAULT_TEMPLATE_KEY}:${wabaId}` : DEFAULT_TEMPLATE_KEY;
 
 /** The subset of Meta's message-template payload we read when syncing. */
 interface MetaTemplate {
@@ -33,24 +49,57 @@ export class TemplatesService {
 
   constructor(private readonly store: Store) {}
 
-  /** Templates, with the workspace default flagged. The default is an org
-   *  setting rather than a column on the row: it's one value for the whole
-   *  workspace, and keeping it here means only one template can ever hold it. */
+  /**
+   * Every template, each flagged if it is the default *for its own account*.
+   *
+   * The default lives in an org setting rather than a column, so that exactly
+   * one template per account can hold it — a column would let two rows both
+   * claim it and leave the winner to whichever query ran first.
+   */
   async list(): Promise<Template[]> {
-    const [templates, defaultId] = await Promise.all([
-      this.store.listTemplates(ORG_ID),
-      this.store.getAppSetting(ORG_ID, DEFAULT_TEMPLATE_KEY),
-    ]);
-    return templates.map((t) => ({ ...t, isDefault: t.id === defaultId }));
+    const templates = await this.store.listTemplates(ORG_ID);
+    // One lookup per distinct account, not one per template.
+    const wabaIds = [...new Set(templates.map((t) => t.wabaId).filter(Boolean))] as string[];
+    const defaults = new Map<string, string>();
+    await Promise.all(
+      wabaIds.map(async (wabaId) => {
+        const own = await this.store.getAppSetting(ORG_ID, defaultTemplateKey(wabaId));
+        // Fall back to the pre-accounts setting so a workspace that had a
+        // default before templates were scoped does not silently lose it.
+        const id = own || (await this.store.getAppSetting(ORG_ID, DEFAULT_TEMPLATE_KEY));
+        if (id) defaults.set(wabaId, id);
+      }),
+    );
+    const legacy = (await this.store.getAppSetting(ORG_ID, DEFAULT_TEMPLATE_KEY)) ?? "";
+    return templates.map((t) => ({
+      ...t,
+      // An unclaimed template still answers to the old workspace-wide setting:
+      // it belongs to no account, so there is no per-account key to consult.
+      isDefault: t.wabaId ? defaults.get(t.wabaId) === t.id : Boolean(legacy) && legacy === t.id,
+    }));
   }
 
-  /** Point the default at a template, or clear it with null. */
+  /**
+   * Make a template its account's default, or clear that account's default with
+   * null.
+   *
+   * Scoped by the template's own account, so setting one number's default never
+   * disturbs another's — the two are independent settings that happen to be
+   * edited from the same list.
+   */
   async setDefault(templateId: string | null): Promise<Template[]> {
-    if (templateId) {
-      const exists = (await this.store.listTemplates(ORG_ID)).some((t) => t.id === templateId);
-      if (!exists) throw new NotFoundException("Template not found");
+    if (!templateId) {
+      // Nothing names which account to clear, so clear them all — that is what
+      // "no default" means from a screen showing every account's templates.
+      const templates = await this.store.listTemplates(ORG_ID);
+      const keys = new Set(templates.map((t) => defaultTemplateKey(t.wabaId)));
+      keys.add(DEFAULT_TEMPLATE_KEY);
+      await Promise.all([...keys].map((k) => this.store.setAppSetting(ORG_ID, k, "")));
+      return this.list();
     }
-    await this.store.setAppSetting(ORG_ID, DEFAULT_TEMPLATE_KEY, templateId ?? "");
+    const template = (await this.store.listTemplates(ORG_ID)).find((t) => t.id === templateId);
+    if (!template) throw new NotFoundException("Template not found");
+    await this.store.setAppSetting(ORG_ID, defaultTemplateKey(template.wabaId), templateId);
     return this.list();
   }
 
@@ -69,23 +118,57 @@ export class TemplatesService {
   }
 
   /**
-   * Pull approved templates from Meta for the first connected WhatsApp number
-   * that carries a WABA id + token. A no-op (synced: 0) with no live number.
+   * Pull templates from **every** connected WhatsApp account.
+   *
+   * This used to sync the first WhatsApp inbox that happened to carry a WABA id
+   * — and `listInboxes()` has no ordering, so which account that was could
+   * change between calls. Combined with a sync that only ever inserted, a
+   * workspace with two accounts accumulated the union of both into one
+   * undifferentiated list, which looked like a feature and was in fact a
+   * non-deterministic picker plus an append-only store. Roughly half of that
+   * list would fail at Meta depending on which number was sending.
+   *
+   * Now: every account, each template tagged with the account it came from, and
+   * anything Meta no longer has for that account removed.
    */
-  async syncFromMeta(): Promise<{ synced: number }> {
-    const creds = await this.wabaCreds();
-    if (!creds) return { synced: 0 };
+  async syncFromMeta(): Promise<{ synced: number; pruned: number }> {
+    const accounts = await this.whatsAppAccounts();
+    if (!accounts.length) return { synced: 0, pruned: 0 };
+    let synced = 0;
+    let pruned = 0;
+    for (const account of accounts) {
+      const result = await this.syncAccount(account);
+      synced += result.synced;
+      pruned += result.pruned;
+    }
+    this.logger.log(
+      `Synced ${synced} template(s) from ${accounts.length} WhatsApp account(s)` +
+        (pruned ? `, removed ${pruned} no longer at Meta` : ""),
+    );
+    return { synced, pruned };
+  }
+
+  /** One account's templates. Isolated so one bad token doesn't stop the rest. */
+  private async syncAccount(account: { wabaId: string; token: string }): Promise<{
+    synced: number;
+    pruned: number;
+  }> {
     try {
       const url =
-        `https://graph.facebook.com/${env.whatsapp.apiVersion}/${creds.wabaId}` +
-        `/message_templates?limit=100&access_token=${encodeURIComponent(creds.token)}`;
-      const res = await fetch(url);
+        `https://graph.facebook.com/${env.whatsapp.apiVersion}/${account.wabaId}` +
+        `/message_templates?limit=100`;
+      // The token goes in the header, never the query string: a URL ends up in
+      // proxy logs and in the error message below.
+      const res = await fetch(url, { headers: { authorization: `Bearer ${account.token}` } });
       const json = (await res.json()) as { data?: MetaTemplate[]; error?: unknown };
       if (!res.ok || !json.data) {
-        this.logger.warn(`Template sync HTTP ${res.status}: ${JSON.stringify(json.error ?? json)}`);
-        return { synced: 0 };
+        this.logger.warn(
+          `Template sync for WABA ${account.wabaId} HTTP ${res.status}: ${JSON.stringify(json.error ?? json)}`,
+        );
+        return { synced: 0, pruned: 0 };
       }
       let synced = 0;
+      const seen: Array<{ name: string; language: string }> = [];
       for (const t of json.data) {
         const body = t.components?.find((c) => c.type?.toUpperCase() === "BODY")?.text;
         if (!body) continue;
@@ -95,25 +178,37 @@ export class TemplatesService {
           category: normalizeCategory(t.category),
           body,
           approvalStatus: normalizeStatus(t.status),
+          wabaId: account.wabaId,
         });
+        seen.push({ name: t.name, language: t.language });
         synced++;
       }
-      this.logger.log(`Synced ${synced} template(s) from Meta`);
-      return { synced };
+      // Only prune on a response we actually understood. An empty `data` from a
+      // permissions problem would otherwise wipe the account's templates.
+      const pruned = await this.store.pruneTemplatesForWaba(ORG_ID, account.wabaId, seen);
+      return { synced, pruned };
     } catch (err) {
-      this.logger.warn(`Template sync failed: ${String(err)}`);
-      return { synced: 0 };
+      this.logger.warn(`Template sync for WABA ${account.wabaId} failed: ${String(err)}`);
+      return { synced: 0, pruned: 0 };
     }
   }
 
-  /** WABA id + access token from the first WhatsApp inbox that has them. */
-  private async wabaCreds(): Promise<{ wabaId: string; token: string } | null> {
+  /**
+   * Every distinct WhatsApp account across the workspace's channels.
+   *
+   * Deduplicated by WABA, because two numbers can sit under one account and
+   * syncing it twice would just do the same work again.
+   */
+  private async whatsAppAccounts(): Promise<Array<{ wabaId: string; token: string }>> {
+    const byWaba = new Map<string, { wabaId: string; token: string }>();
     for (const inbox of await this.store.listInboxes()) {
-      if (inbox.type !== "whatsapp") continue;
+      if (inbox.type !== "whatsapp" && inbox.type !== "whatsapp_group") continue;
       const cfg = await this.store.getInboxConfig(inbox.id);
-      if (cfg?.wabaId && cfg?.accessToken) return { wabaId: cfg.wabaId, token: cfg.accessToken };
+      if (cfg?.wabaId && cfg?.accessToken && !byWaba.has(cfg.wabaId)) {
+        byWaba.set(cfg.wabaId, { wabaId: cfg.wabaId, token: cfg.accessToken });
+      }
     }
-    return null;
+    return [...byWaba.values()];
   }
 }
 

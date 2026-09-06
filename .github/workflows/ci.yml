@@ -64,6 +64,15 @@ jobs:
       - name: WhatsApp delivery reasons
         run: pnpm check:whatsapp-delivery
 
+      # Which templates a WhatsApp number may send. Templates belong to an
+      # account, not a number, and offering another account's is offering a send
+      # Meta rejects with 132001 — after the message is queued, so it reads as a
+      # broken template rather than the wrong number. The old behaviour (one
+      # merged list from whichever account got synced last) typechecked, built,
+      # and looked like a feature.
+      - name: Template account scope
+        run: pnpm check:template-scope
+
       # Hooks called below an early return. React throws #310 and unmounts the
       # whole tree, so the symptom is a white page with nothing in the console
       # that names the component — and it typechecks and builds perfectly. It has

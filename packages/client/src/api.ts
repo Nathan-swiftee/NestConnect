@@ -362,7 +362,7 @@ export const api = {
   deleteTemplate: (id: string) => del<{ ok: boolean }>(`/templates/${id}`),
   // Choose the workspace default template (null clears it).
   setDefaultTemplate: (templateId: string | null) => post<Template[]>("/templates/default", { templateId }),
-  syncTemplates: () => post<{ synced: number }>("/templates/sync", {}),
+  syncTemplates: () => post<{ synced: number; pruned: number }>("/templates/sync", {}),
   // WhatsApp business profile — the public "about" card on a number
   whatsappProfile: (inboxId: string) =>
     get<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}`),
