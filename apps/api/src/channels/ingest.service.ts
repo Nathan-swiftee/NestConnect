@@ -52,24 +52,41 @@ export interface EmailInbound {
  * payload — the routing, persistence, and realtime are shared.
  */
 /**
- * Who an unowned conversation belongs to.
+ * Who is told when a customer writes, and under which of their switches.
  *
- * A team's queue is that team's. An inbox with no team attached routes to no
- * assignee *and* no team, and that used to mean nobody was told — on any
- * surface, ever. It reads as broken rather than as a routing gap, so it belongs
- * to the whole workspace instead.
+ * Two audiences, and they are not alternatives:
  *
- * Both answers are the team-inbound class, which is off by default, so this
- * makes nothing louder for anyone who hasn't asked for it.
+ *   `assignee` is the person the thread belongs to, under "My conversations" —
+ *   on by default, because a message on your own thread is the one everybody
+ *   wants.
+ *
+ *   `team` is everybody else, under "Everything in my team's inboxes" — off by
+ *   default, because a shared inbox that tells everyone about everything is how
+ *   an app teaches people to switch it off.
+ *
+ * They used to be an if/else, and that was the bug: an assigned conversation
+ * told the assignee and returned, so somebody who had deliberately turned team
+ * inbound ON still heard nothing about most of the workspace — assigned is the
+ * normal state of an active thread. The setting says "any new inbound in an
+ * inbox my team owns"; an assigned one is still in the team's inbox.
+ *
+ * A conversation in a team's queue belongs to that team. One with no team at
+ * all — an inbox nobody has attached a team to — belongs to the whole
+ * workspace rather than, as it once did, to nobody.
  */
-export function unownedAudience(
+export function inboundAudience(
   members: { user: { id: string }; teamIds: string[] }[],
-  assignedTeamId: string | null,
-): string[] {
-  const audience = assignedTeamId
-    ? members.filter((m) => m.teamIds.includes(assignedTeamId))
+  conv: { assigneeUserId: string | null; assignedTeamId: string | null },
+): { assignee: string | null; team: string[] } {
+  const inTeam = conv.assignedTeamId
+    ? members.filter((m) => m.teamIds.includes(conv.assignedTeamId!))
     : members;
-  return audience.map((m) => m.user.id);
+  return {
+    assignee: conv.assigneeUserId,
+    // The assignee has already been told, as the person it is actually for.
+    // Telling them twice would be two banners and two chimes for one message.
+    team: inTeam.map((m) => m.user.id).filter((id) => id !== conv.assigneeUserId),
+  };
 }
 
 @Injectable()
@@ -105,28 +122,13 @@ export class IngestService {
     const title =
       conv.channel === "whatsapp_group" ? `${authorName} · ${conv.contact.displayName}` : authorName;
 
-    if (conv.assigneeUserId) {
-      this.push.notify({
-        userIds: [conv.assigneeUserId],
-        kind: "message",
-        title,
-        body,
-        conversationId,
-      });
-      return;
+    const { assignee, team } = inboundAudience(await this.store.listMembers(), conv);
+    if (assignee) {
+      this.push.notify({ userIds: [assignee], kind: "message", title, body, conversationId });
     }
-    // Nobody owns it yet. A conversation sitting in a team's queue belongs to
-    // that team; one with no team at all — an inbox nobody has attached a team
-    // to — belongs to the whole workspace rather than, as it used to, nobody.
-    //
-    // That last case mattered more once the desktop started taking its cue from
-    // here: an unrouted inbox notified no one on any surface, which read as
-    // "alerts are broken" rather than as a routing gap. Both are the
-    // team-inbound class, which is off by default, so nothing gets louder for
-    // anyone who hasn't asked — turning it on simply now covers this too.
-    const userIds = unownedAudience(await this.store.listMembers(), conv.assignedTeamId);
-    if (!userIds.length) return;
-    this.push.notify({ userIds, kind: "team_message", title, body, conversationId });
+    if (team.length) {
+      this.push.notify({ userIds: team, kind: "team_message", title, body, conversationId });
+    }
   }
 
   async ingestWhatsApp(input: WhatsAppInbound): Promise<{ conversationId: string; created: boolean } | undefined> {

@@ -29,7 +29,7 @@ import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { PushService } from "../apps/api/src/push/push.service";
 import type { PushProvider } from "../apps/api/src/push/push.provider";
 import type { RealtimeGateway } from "../apps/api/src/realtime/realtime.gateway";
-import { unownedAudience } from "../apps/api/src/channels/ingest.service";
+import { inboundAudience } from "../apps/api/src/channels/ingest.service";
 import { DEFAULT_PUSH_PREFERENCES } from "../packages/schemas/src/index";
 
 let failed = 0;
@@ -188,26 +188,42 @@ async function main(): Promise<void> {
   r = await run({ userId: "u_me", prefs: { assigned: false } }, inbound("message"));
   ok("nor anything I switched off", r.cued.length === 0);
 
-  console.log("\nWho an unowned conversation belongs to\n");
+  console.log("\nWho is told when a customer writes\n");
   const members = [
     { user: { id: "u_sales_1" }, teamIds: ["t_sales"] },
     { user: { id: "u_sales_2" }, teamIds: ["t_sales"] },
     { user: { id: "u_support" }, teamIds: ["t_support"] },
   ];
-  ok(
-    "a team's queue is that team's",
-    unownedAudience(members, "t_sales").join(",") === "u_sales_1,u_sales_2",
-    unownedAudience(members, "t_sales").join(", "),
-  );
+  const conv = (assigneeUserId: string | null, assignedTeamId: string | null) => ({
+    assigneeUserId,
+    assignedTeamId,
+  });
+
+  let who = inboundAudience(members, conv(null, "t_sales"));
+  ok("an unassigned thread is its team's", who.team.join(",") === "u_sales_1,u_sales_2", who.team.join(", "));
+  ok("with nobody named as its owner", who.assignee === null);
+
+  /*
+   * The bug this section grew for. An assigned conversation told its assignee
+   * and stopped — `return`, not `else` — so somebody who had deliberately
+   * switched "Everything in my team's inboxes" ON still heard nothing about
+   * most of the workspace, because assigned is the normal state of an active
+   * thread. The setting says "any new inbound in an inbox my team owns", and an
+   * assigned one is still in the team's inbox.
+   */
+  who = inboundAudience(members, conv("u_sales_1", "t_sales"));
+  ok("an assigned thread still reaches the rest of the team", who.team.includes("u_sales_2"));
+  ok("and names its owner separately", who.assignee === "u_sales_1");
+  // Two banners and two chimes for one message is its own bug.
+  ok("who is not told twice", !who.team.includes("u_sales_1"), who.team.join(", "));
+  ok("and nobody outside the team is told at all", !who.team.includes("u_support"));
+
   // An inbox nobody has attached a team to used to notify no one anywhere,
   // which reads as broken rather than as a gap in routing — and once the
   // desktop takes its cue from here, it would be a workspace with no sound.
-  ok(
-    "an inbox with no team belongs to everyone, not to nobody",
-    unownedAudience(members, null).length === 3,
-    `${unownedAudience(members, null).length} of ${members.length}`,
-  );
-  ok("and a team nobody is on reaches nobody", unownedAudience(members, "t_empty").length === 0);
+  who = inboundAudience(members, conv(null, null));
+  ok("an inbox with no team belongs to everyone, not to nobody", who.team.length === 3, `${who.team.length} of 3`);
+  ok("and a team nobody is on reaches nobody", inboundAudience(members, conv(null, "t_empty")).team.length === 0);
 
   console.log("\nThe kinds that already have a sound of their own\n");
   // A mention and a snooze coming due reach the web through the bell, which
