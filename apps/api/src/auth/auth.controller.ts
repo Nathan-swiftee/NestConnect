@@ -285,10 +285,18 @@ export class AuthController {
   async changePassword(
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(changePasswordInputSchema)) body: ChangePasswordInput,
+    @CurrentSessionId() sessionId?: string,
   ) {
     const ok = await this.auth.changePassword(userId, body.currentPassword, body.newPassword);
     if (!ok) throw new BadRequestException("Your current password is incorrect.");
-    return { ok: true };
+    // The same rule as a reset, from the other side. Somebody changing their
+    // password is often doing it because they think someone else has it, and
+    // leaving that someone signed in on their own device is the one outcome
+    // that makes the whole exercise pointless. This device keeps its session —
+    // signing yourself out of the screen you are standing at would read as the
+    // change having failed.
+    const signedOutOthers = await this.sessions.revokeOthers(userId, sessionId ?? "").catch(() => 0);
+    return { ok: true, signedOutOthers };
   }
 
   /* ---- signed-in sessions ("where you're logged in") ---- */

@@ -184,7 +184,10 @@ export const api = {
   // The current user's own profile — name, login email, photo.
   updateMyProfile: (input: UpdateMyProfileInput) => patch<User>("/me/profile", input),
   // Change your own password (current one is re-verified server-side).
-  changePassword: (input: ChangePasswordInput) => post<{ ok: boolean }>("/auth/change-password", input),
+  // `signedOutOthers` counts the other devices this signed out — a password
+  // change ends every session the old one opened, keeping only the one asking.
+  changePassword: (input: ChangePasswordInput) =>
+    post<{ ok: boolean; signedOutOthers: number }>("/auth/change-password", input),
   // Signed-in sessions ("where you're logged in").
   sessions: () => get<SessionInfo[]>("/auth/sessions"),
   revokeSession: (id: string) => del<{ ok: boolean }>(`/auth/sessions/${id}`),

@@ -22,6 +22,11 @@
  * The allowlist is asserted as a *set*, not just checked for the entries it
  * ought to contain. A route that gains the decorator without a line here fails.
  *
+ * The password routes are here too, because they are the ways around the gate
+ * rather than through it: a reset link that hands back a session is a second
+ * factor nobody had to produce, and a password change that leaves the old
+ * sessions running is a credential nobody had to give up.
+ *
  *     pnpm check:2fa-gate
  */
 import { Reflector } from "@nestjs/core";
@@ -299,6 +304,56 @@ async function main(): Promise<void> {
     rejected = true;
   }
   ok("a dead link gets neither", rejected);
+
+  console.log("\nChanging a password ends what the old one opened\n");
+  /*
+   * The same rule as a reset, from the other side. Somebody changing their
+   * password is often doing it because they think someone else has it, and
+   * leaving that someone signed in on their own device is the one outcome that
+   * makes the whole exercise pointless.
+   */
+  let passwordAccepted = true;
+  let keptId: string | undefined;
+  const pwAuth = { changePassword: async () => passwordAccepted } as unknown as AuthService;
+  const pwSessions = {
+    revokeOthers: async (userId: string, keepId: string) => {
+      revokedFor.push(userId);
+      keptId = keepId;
+      return 2;
+    },
+  } as unknown as SessionService;
+  const pwCtl = new AuthController(pwAuth, pwSessions, resetTwoFactor, resetStore, {} as Mailer);
+
+  revokedFor = [];
+  const changed = await pwCtl.changePassword(
+    "user_9",
+    { currentPassword: "old-one-here", newPassword: "new-one-here" },
+    "sess_here",
+  );
+  ok("the other devices are signed out", revokedFor.includes("user_9"));
+  ok(
+    "and this one is not",
+    // Signing somebody out of the screen they are standing at reads as the
+    // change having failed, and they change it again.
+    keptId === "sess_here",
+    String(keptId),
+  );
+  ok("the count comes back so the app can say so", changed.signedOutOthers === 2);
+
+  passwordAccepted = false;
+  revokedFor = [];
+  let refused = false;
+  try {
+    await pwCtl.changePassword(
+      "user_9",
+      { currentPassword: "wrong", newPassword: "new-one-here" },
+      "sess_here",
+    );
+  } catch {
+    refused = true;
+  }
+  ok("a wrong current password changes nothing", refused && revokedFor.length === 0);
+  passwordAccepted = true;
 
   console.log("\nEnrolment still needs a session\n");
   // Every enrolment route acts on "whoever is calling". A public one would let
