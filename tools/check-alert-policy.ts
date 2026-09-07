@@ -45,7 +45,13 @@ interface Round {
 }
 
 async function run(
-  who: { userId: string; hasPhone?: boolean; prefs?: Parameters<PushService["updatePreferences"]>[1] },
+  who: {
+    userId: string;
+    hasPhone?: boolean;
+    /** Has this thread open in front of them. */
+    viewing?: boolean;
+    prefs?: Parameters<PushService["updatePreferences"]>[1];
+  },
   req: Parameters<PushService["notifyAndWait"]>[0],
 ): Promise<Round> {
   const store = new MemoryStore();
@@ -60,8 +66,7 @@ async function run(
   const cued: string[] = [];
   const realtime = {
     emitMessageCue: (userIds: string[]) => cued.push(...userIds),
-    // The policy asks this before deciding; nobody is looking at anything here.
-    isViewing: async () => false,
+    isViewing: async () => who.viewing === true,
   } as unknown as RealtimeGateway;
 
   const pushed: string[] = [];
@@ -75,6 +80,30 @@ async function run(
   const svc = new PushService(store, provider, realtime);
   if (who.prefs) await svc.updatePreferences(who.userId, who.prefs);
   await svc.notifyAndWait(req);
+  return { cued, pushed };
+}
+
+/** Send the same message N times through ONE service, so the per-instance rate
+ *  limit actually accumulates the way it does in a running server. */
+async function runBurst(times: number): Promise<{ cued: number; pushed: number }> {
+  const store = new MemoryStore();
+  await store.upsertDevice({ userId: "u_me", pushToken: "ExponentPushToken[u_me]", platform: "ios" });
+  let cued = 0;
+  let pushed = 0;
+  const realtime = {
+    emitMessageCue: (userIds: string[]) => {
+      cued += userIds.length;
+    },
+    isViewing: async () => false,
+  } as unknown as RealtimeGateway;
+  const provider = {
+    send: async (messages: { to: string }[]) => {
+      pushed += messages.length;
+      return messages.map((m) => ({ ok: true as const, to: m.to, ticketId: "t" }));
+    },
+  } as unknown as PushProvider;
+  const svc = new PushService(store, provider, realtime);
+  for (let i = 0; i < times; i++) await svc.notifyAndWait(inbound("message"));
   return { cued, pushed };
 }
 
@@ -114,6 +143,40 @@ async function main(): Promise<void> {
   r = await run({ userId: "u_web", hasPhone: false }, { ...inbound("message"), userIds: ["u_web"] });
   ok("is still cued with no phone registered", r.cued.includes("u_web"));
   ok("and nothing is pushed, having nowhere to push", r.pushed.length === 0);
+
+  console.log("\nThe sound is not an interruption, and does not answer to those rules\n");
+  /*
+   * The bug this section exists for. The desktop cue was first shipped reusing
+   * the whole push policy, including the three rules that exist because a phone
+   * banner interrupts: not while the thread is open in front of you, not during
+   * quiet hours, and not more than five times a minute on one conversation.
+   *
+   * Every one of them is right for a banner and wrong for a sound. Together
+   * they made the sound land sometimes and not others — which teaches people
+   * that the app cannot be trusted to tell them, which is worse than no sound.
+   */
+  r = await run({ userId: "u_me", viewing: true }, inbound("message"));
+  ok("a message in the thread I'm looking at still sounds", r.cued.includes("u_me"));
+  ok("but doesn't also buzz the phone I'm holding", r.pushed.length === 0, `${r.pushed.length} push(es)`);
+
+  // Quiet hours: a window covering the whole day, so it holds whenever this runs.
+  const allNight = { quietHours: { start: "00:00", end: "23:59" } };
+  r = await run({ userId: "u_me", prefs: allNight }, inbound("message"));
+  ok("quiet hours hold the phone", r.pushed.length === 0);
+  ok("and not the screen I'm sitting at", r.cued.includes("u_me"));
+
+  // The sixth message in a minute on one thread. The rate limit lives on the
+  // service instance, so this has to drive ONE of them repeatedly — eight
+  // separate services would each start with a fresh count and prove nothing.
+  const burst = await runBurst(8);
+  ok("every message in a burst sounds", burst.cued === 8, `${burst.cued} of 8`);
+  ok(
+    "while the phone stops at the limit",
+    burst.pushed === 5,
+    // A conversation that goes silent after five replies is exactly the case
+    // that reads as broken — on a screen. On a phone it is mercy.
+    `${burst.pushed} push(es) of 8`,
+  );
 
   console.log("\nThe things that should stay silent\n");
   r = await run({ userId: "u_me" }, inbound("message", { actorUserId: "u_me" }));

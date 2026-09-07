@@ -44,14 +44,31 @@ export function Workspace() {
   const views = useViews();
   const convos = useConversations(view);
 
-  // Resume the audio context on the first user gesture (autoplay policy).
+  /* Keep the audio context resumed (autoplay policy).
+     
+     Deliberately not `{ once: true }`, which is what this was. A browser
+     suspends the context before the first gesture *and* again after the tab has
+     been in the background for a while, so a listener that removes itself after
+     the first click leaves the app permanently mute from the second suspension
+     onwards — with no error anywhere, because a suspended context accepts a cue
+     and simply never plays it. Resuming an already-running context costs
+     nothing, so the cheap thing is to keep asking. */
   useEffect(() => {
     const on = () => unlock();
-    window.addEventListener("pointerdown", on, { once: true });
-    window.addEventListener("keydown", on, { once: true });
+    window.addEventListener("pointerdown", on);
+    window.addEventListener("keydown", on);
+    // The case no gesture covers: away for a while, tab comes back, a message
+    // arrives before anything is clicked.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") unlock();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", on);
     return () => {
       window.removeEventListener("pointerdown", on);
       window.removeEventListener("keydown", on);
+      window.removeEventListener("focus", on);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 
