@@ -91,6 +91,73 @@ export function replyTargetsFor(conv: {
   return out;
 }
 
+/** The shape `sendingInbox` needs — satisfied by `Inbox`, and by anything else
+ *  carrying an id and a type. Generic so callers get their own type back. */
+export interface InboxIdentity {
+  id: string;
+  type: ChannelType;
+  name: string;
+  handle: string;
+}
+
+/** whatsapp_group and whatsapp are served by the same number. */
+const sameChannelFamily = (t: ChannelType): ChannelType => (t === "whatsapp_group" ? "whatsapp" : t);
+
+/**
+ * Which of our numbers or addresses a message goes out from — the one the
+ * customer sees it arrive from.
+ *
+ * A conversation has one inbox, but a reply can be sent on a channel it did not
+ * start on, and that reply goes from the channel's own inbox instead. So the
+ * answer is not simply "the conversation's inbox", and the difference is
+ * invisible in the UI unless something says it.
+ *
+ * This is the single copy of that rule. The dispatcher resolves the real send
+ * with it and the apps label the composer with it, which is the point: a
+ * composer that says one number while the server uses another is worse than
+ * saying nothing at all. `replyTargetsFor` above exists for the same reason —
+ * that rule was written out twice, and so the bug existed twice.
+ *
+ * `recordedInboxId` wins outright when present: a sent message knows where it
+ * actually went, and no amount of re-deriving should be allowed to disagree
+ * with it. Absent — inbound, or anything sent before we recorded it — the rule
+ * is re-run, which is right for every message that never crossed channels.
+ */
+export function sendingInbox<T extends InboxIdentity>(
+  inboxes: T[],
+  conv: { inboxId: string; channel: ChannelType },
+  opts?: { channel?: ChannelType | null; recordedInboxId?: string | null },
+): T | undefined {
+  const byId = (id: string) => inboxes.find((i) => i.id === id);
+  if (opts?.recordedInboxId) return byId(opts.recordedInboxId);
+
+  const channel = opts?.channel ?? conv.channel;
+  const convInbox = byId(conv.inboxId);
+  if (convInbox && sameChannelFamily(convInbox.type) === sameChannelFamily(channel)) return convInbox;
+  // The channel's default. `inboxes` is oldest-first (see Store.listInboxes),
+  // and taking the first is what makes this the same answer every time.
+  return inboxes.find((i) => i.type === sameChannelFamily(channel)) ?? convInbox;
+}
+
+/**
+ * How to write an inbox down in one line.
+ *
+ * A mailbox usually names itself — `support@swiftee.co.uk` is both the name and
+ * the handle — and printing that twice with a separator between looks like a
+ * bug. A number usually has a name worth keeping ("Sales") next to a handle
+ * nobody recognises without it.
+ */
+export function inboxLabel(inbox: Pick<InboxIdentity, "name" | "handle">): string {
+  const name = inbox.name.trim();
+  const handle = inbox.handle.trim();
+  if (!handle || name === handle) return name || handle;
+  // A name that is just the handle with the spacing rubbed out ("+44 20 7946"
+  // against "+44 20 7946 0100") adds nothing either.
+  const bare = (v: string) => v.replace(/[\s()\-+]/g, "").toLowerCase();
+  if (bare(handle).startsWith(bare(name)) || bare(name).startsWith(bare(handle))) return handle;
+  return `${name} · ${handle}`;
+}
+
 export const conversationStatusSchema = z.enum(["open", "pending", "snoozed", "closed"]);
 export type ConversationStatus = z.infer<typeof conversationStatusSchema>;
 

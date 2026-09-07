@@ -3,10 +3,11 @@ import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-nati
 import Animated from "react-native-reanimated";
 import { enter, exit, reflow } from "../motion";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { replyTargetsFor, typingPingMs } from "@ding/schemas";
+import { inboxLabel, replyTargetsFor, sendingInbox, typingPingMs } from "@ding/schemas";
 import {
   api,
   useIntegrations,
+  useInboxes,
   useMe,
   usePeople,
   useSendMessage,
@@ -227,6 +228,18 @@ export function Composer({
 
   const isWhatsApp = channel === "whatsapp" || channel === "whatsapp_group";
   const isEmail = channel === "email";
+
+  // Which of our numbers/addresses this reply will go from. Worth saying on a
+  // phone as much as on a desktop: switching the mode tabs above to WhatsApp on
+  // an email thread quietly changes which number the customer hears from, and
+  // nothing else on the screen would show it. Resolved with the same function
+  // the server sends with, so this can't promise one number and the send use
+  // another.
+  const inboxes = useInboxes();
+  const fromInbox = useMemo(
+    () => sendingInbox(inboxes.data ?? [], conv, { channel }),
+    [inboxes.data, conv.inboxId, conv.channel, channel],
+  );
 
   // Follow the thread's subject: it changes when this screen opens on another
   // conversation, and when a teammate renames the thread from the web. Keyed on
@@ -640,6 +653,15 @@ export function Composer({
         </View>
 
         <View className="min-w-0 flex-1 flex-row items-center justify-end gap-1">
+          {!internal && fromInbox ? (
+            <Text
+              style={{ color: c.textFaint }}
+              className="shrink text-2xs"
+              numberOfLines={1}
+            >
+              From {inboxLabel(fromInbox)} ·
+            </Text>
+          ) : null}
           {ctxLine.dot ? (
             <View
               style={{ backgroundColor: ctxLine.tone }}
