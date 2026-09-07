@@ -73,6 +73,14 @@ jobs:
       - name: Template account scope
         run: pnpm check:template-scope
 
+      # Who hears about a new message. The web used to chime for every arrival
+      # anywhere in the workspace, because the sound hung off a broadcast meant
+      # for keeping lists current. Both ways of getting the fix wrong are silent:
+      # reading the policy through the push path makes "never installed the app"
+      # mean "wants no alerts", and an inbox with no team routes to nobody at all.
+      - name: Alert policy
+        run: pnpm check:alert-policy
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those

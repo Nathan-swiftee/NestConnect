@@ -20,8 +20,10 @@ import {
   useSessions,
   useRevokeSession,
   useRevokeOtherSessions,
+  usePushPreferences,
+  useUpdatePushPreferences,
 } from "../hooks";
-import type { SessionInfo } from "@ding/schemas";
+import type { PushPreferences, SessionInfo } from "@ding/schemas";
 import { TwoFactorSettings } from "./TwoFactorSettings";
 import { useScrollLock } from "../lib/useScrollLock";
 import { api } from "../lib/api";
@@ -150,12 +152,33 @@ function timeAgo(iso: string): string {
  *    email they send. It rides the wire only — never shown on the thread bubble.
  *  - Password: change it after re-entering the current one.
  */
+/**
+ * The switches, in the order somebody reads them: mine first, then the noisy one.
+ *
+ * `teamInbound` is last and worded plainly because it is the one that gets
+ * turned on in a quiet week and blamed in a busy one. Every other entry is
+ * about something addressed to this person.
+ */
+const ALERT_TOGGLES: { key: keyof Pick<PushPreferences, "assigned" | "mentions" | "assignments" | "reminders" | "teamInbound">; label: string; detail: string }[] = [
+  { key: "assigned", label: "My conversations", detail: "A new message on something assigned to me" },
+  { key: "mentions", label: "Mentions", detail: "Someone @mentions me in an internal note" },
+  { key: "assignments", label: "Assignments", detail: "A conversation is handed to me" },
+  { key: "reminders", label: "Snooze reminders", detail: "Something I snoozed comes due" },
+  {
+    key: "teamInbound",
+    label: "Everything in my team's inboxes",
+    detail: "Every new message, not just mine — noisy on a busy shift",
+  },
+];
+
 export function PersonalSettings({ onClose, onToast }: { onClose: () => void; onToast: (msg: string) => void }) {
   const { data } = useMe();
   const me = data?.user;
   const update = useUpdateMyPreferences();
   const profile = useUpdateMyProfile();
   const changePw = useChangePassword();
+  const alertPrefs = usePushPreferences();
+  const updateAlerts = useUpdatePushPreferences();
   const sessionsQ = useSessions();
   const revokeSession = useRevokeSession();
   const revokeOthers = useRevokeOtherSessions();
@@ -358,7 +381,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
   );
 
   const roleLabel = me ? me.role.charAt(0).toUpperCase() + me.role.slice(1) : "";
-  const [tab, setTab] = useState<"profile" | "signature" | "security" | "sessions">("profile");
+  const [tab, setTab] = useState<"profile" | "signature" | "alerts" | "security" | "sessions">("profile");
 
   return createPortal(
     <div className="modal" onClick={onClose}>
@@ -371,6 +394,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
         <div className="pers-tabs" role="tablist" aria-label="Personal settings sections">
           <button type="button" role="tab" aria-selected={tab === "profile"} className={"pers-tab" + (tab === "profile" ? " on" : "")} onClick={() => setTab("profile")}>Profile</button>
           <button type="button" role="tab" aria-selected={tab === "signature"} className={"pers-tab" + (tab === "signature" ? " on" : "")} onClick={() => setTab("signature")}>Signature</button>
+          <button type="button" role="tab" aria-selected={tab === "alerts"} className={"pers-tab" + (tab === "alerts" ? " on" : "")} onClick={() => setTab("alerts")}>Alerts</button>
           <button type="button" role="tab" aria-selected={tab === "security"} className={"pers-tab" + (tab === "security" ? " on" : "")} onClick={() => setTab("security")}>Security</button>
           <button type="button" role="tab" aria-selected={tab === "sessions"} className={"pers-tab" + (tab === "sessions" ? " on" : "")} onClick={() => setTab("sessions")}>Sessions</button>
         </div>
@@ -507,6 +531,61 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
             </div>
           </div>
 
+          </>
+          )}
+
+          {tab === "alerts" && (
+          <>
+          {/* What makes a noise, and where.
+
+              One set of switches for the phone and this browser both. They used
+              to mean only "push my phone" while the desktop chimed at every
+              arrival in the workspace, whoever it belonged to — which is how a
+              shared inbox teaches people to turn sound off and then miss the
+              message that mattered. The server now decides both from what is
+              set here. */}
+          <div className="pers-field">
+            <div className="pers-field__hd">
+              <span className="pers-field__lbl">Alert me about</span>
+              <small className="pers-field__hint">Applies to this browser and your phone</small>
+            </div>
+            {alertPrefs.isLoading ? (
+              <small className="pers-field__hint">Loading…</small>
+            ) : alertPrefs.isError || !alertPrefs.data ? (
+              <small className="pers-field__hint">Couldn’t load your alert settings.</small>
+            ) : (
+              <div className="pers-alerts">
+                {ALERT_TOGGLES.map(({ key, label, detail }) => {
+                  const on = alertPrefs.data[key];
+                  return (
+                    <div key={key} className="pers-alert">
+                      <div className="pers-alert__txt">
+                        <span className="pers-alert__lbl">{label}</span>
+                        <small className="pers-field__hint">{detail}</small>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={label}
+                        className={"switch" + (on ? " on" : "")}
+                        disabled={updateAlerts.isPending}
+                        onClick={() => updateAlerts.mutate({ [key]: !on })}
+                      >
+                        <span className="switch__dot" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {/* The one people go looking for when the room goes quiet. Without
+                it, "my sound stopped working" has no answer on this screen. */}
+            <small className="pers-field__hint">
+              A sound plays here for anything ticked above. Nothing plays for a thread you’ve muted, a
+              conversation already open in front of you, or during quiet hours.
+            </small>
+          </div>
           </>
           )}
 

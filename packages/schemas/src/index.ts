@@ -2396,11 +2396,25 @@ export const ServerEvent = {
   Presence: "presence",
   InboxCounts: "inbox.counts",
   Notification: "notification",
+  MessageCue: "message.cue",
 } as const;
 export type ServerEventName = (typeof ServerEvent)[keyof typeof ServerEvent];
 
 export interface ServerToClientEvents {
   [ServerEvent.MessageCreated]: (p: { conversationId: string; message: Message }) => void;
+  /**
+   * "This one is for you" — the alert half of a new message, sent only to the
+   * people the notification policy picked.
+   *
+   * Separate from `MessageCreated` because that one is a broadcast: every open
+   * client in the workspace gets it, which is right for keeping lists and
+   * threads current and wrong for deciding whether to make a noise. Sounding on
+   * the broadcast is what made a shared inbox chime for every arrival, whoever
+   * it belonged to. This goes to `user:<id>` rooms instead, so the desktop is
+   * told exactly what the phone would have been told — same preferences, same
+   * mutes, same quiet hours, one rule.
+   */
+  [ServerEvent.MessageCue]: (p: { conversationId: string; kind: "message" | "team_message" }) => void;
   [ServerEvent.MessageUpdated]: (p: { conversationId: string; message: Message }) => void;
   [ServerEvent.ConversationUpdated]: (p: { conversation: Conversation }) => void;
   [ServerEvent.ConversationAssigned]: (p: {

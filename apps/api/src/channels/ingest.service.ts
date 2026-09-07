@@ -51,6 +51,27 @@ export interface EmailInbound {
  * realtime events. A new channel just needs to call this with a normalized
  * payload — the routing, persistence, and realtime are shared.
  */
+/**
+ * Who an unowned conversation belongs to.
+ *
+ * A team's queue is that team's. An inbox with no team attached routes to no
+ * assignee *and* no team, and that used to mean nobody was told — on any
+ * surface, ever. It reads as broken rather than as a routing gap, so it belongs
+ * to the whole workspace instead.
+ *
+ * Both answers are the team-inbound class, which is off by default, so this
+ * makes nothing louder for anyone who hasn't asked for it.
+ */
+export function unownedAudience(
+  members: { user: { id: string }; teamIds: string[] }[],
+  assignedTeamId: string | null,
+): string[] {
+  const audience = assignedTeamId
+    ? members.filter((m) => m.teamIds.includes(assignedTeamId))
+    : members;
+  return audience.map((m) => m.user.id);
+}
+
 @Injectable()
 export class IngestService {
   private readonly logger = new Logger(IngestService.name);
@@ -94,11 +115,18 @@ export class IngestService {
       });
       return;
     }
-    if (!conv.assignedTeamId) return;
-    const members = await this.store.listMembers();
-    const teamMembers = members.filter((m) => m.teamIds.includes(conv.assignedTeamId!)).map((m) => m.user.id);
-    if (!teamMembers.length) return;
-    this.push.notify({ userIds: teamMembers, kind: "team_message", title, body, conversationId });
+    // Nobody owns it yet. A conversation sitting in a team's queue belongs to
+    // that team; one with no team at all — an inbox nobody has attached a team
+    // to — belongs to the whole workspace rather than, as it used to, nobody.
+    //
+    // That last case mattered more once the desktop started taking its cue from
+    // here: an unrouted inbox notified no one on any surface, which read as
+    // "alerts are broken" rather than as a routing gap. Both are the
+    // team-inbound class, which is off by default, so nothing gets louder for
+    // anyone who hasn't asked — turning it on simply now covers this too.
+    const userIds = unownedAudience(await this.store.listMembers(), conv.assignedTeamId);
+    if (!userIds.length) return;
+    this.push.notify({ userIds, kind: "team_message", title, body, conversationId });
   }
 
   async ingestWhatsApp(input: WhatsAppInbound): Promise<{ conversationId: string; created: boolean } | undefined> {

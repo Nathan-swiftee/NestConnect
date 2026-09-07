@@ -212,6 +212,24 @@ export class RealtimeGateway
     this.server.to(orgRoom(orgId)).emit(ServerEvent.MessageCreated, { conversationId, message });
   }
 
+  /**
+   * Tell specific people that a message is theirs to hear about.
+   *
+   * Per user, not per org — which is the whole difference between this and
+   * `emitMessageCreated`. That one is a broadcast, because every open client
+   * needs its lists and threads to stay current whoever the message belongs to.
+   * This one carries the alert, and an alert that goes to everybody is the
+   * thing that makes people turn alerts off.
+   *
+   * The rooms are already joined at connect, so this costs one emit per
+   * recipient and nothing when the policy picked nobody.
+   */
+  emitMessageCue(userIds: string[], conversationId: string, kind: "message" | "team_message") {
+    for (const userId of new Set(userIds)) {
+      this.server.to(`user:${userId}`).emit(ServerEvent.MessageCue, { conversationId, kind });
+    }
+  }
+
   emitMessageUpdated(conversationId: string, message: Message, orgId: string = this.tenant.defaultOrgId) {
     this.server.to(orgRoom(orgId)).emit(ServerEvent.MessageUpdated, { conversationId, message });
   }
