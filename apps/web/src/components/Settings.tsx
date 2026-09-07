@@ -60,6 +60,7 @@ import {
   useReorderTeams,
   useRegisterWhatsappNumber,
   useRerouteInbox,
+  useSetDefaultInbox,
   useSetDefaultTemplate,
   useSyncTemplates,
   useTeams,
@@ -457,6 +458,11 @@ function ChannelEditor({
   const teams = useTeams();
   const update = useUpdateInbox();
   const reroute = useRerouteInbox();
+  const setDefault = useSetDefaultInbox();
+  const allInboxes = useInboxes();
+  // The other channels of this type — what makes "which one?" a real question.
+  const siblings = (allInboxes.data ?? []).filter((i) => i.type === inbox.type);
+  const defaultSibling = siblings.find((i) => i.isDefault);
   const kind = CHANNEL_KINDS.find((k) => k.type === inbox.type);
   const [name, setName] = useState(inbox.name);
   const [teamIds, setTeamIds] = useState<string[]>(inbox.teamIds);
@@ -549,6 +555,48 @@ function ChannelEditor({
           <input type="checkbox" checked={moveOpen} onChange={(e) => setMoveOpen(e.target.checked)} />
           <span>Also move this channel’s open conversations to the new routing (chats on a team it no longer serves).</span>
         </label>
+      )}
+      {/* Which of several numbers/mailboxes this channel replies from.
+
+          Only shown when there is more than one of the type, because with one
+          there is nothing to choose and the control would be a question with a
+          single answer. See `sendingInbox`: this is consulted when a reply is
+          switched onto a channel the thread didn't start on, which is the only
+          time the thread's own inbox can't answer. */}
+      {siblings.length > 1 && (
+        <div className="field">
+          <span>Send replies from</span>
+          <label className="reroutecheck">
+            <input
+              type="checkbox"
+              checked={inbox.isDefault}
+              disabled={setDefault.isPending}
+              onChange={(e) => {
+                setDefault.mutate(
+                  { inboxId: inbox.id, isDefault: e.target.checked },
+                  {
+                    onSuccess: () =>
+                      onToast(
+                        e.target.checked
+                          ? `Replies switched to ${kind?.label ?? inbox.type} will send from ${inbox.name}`
+                          : "Cleared — the oldest of this channel will be used",
+                      ),
+                    onError: () => onToast("Couldn’t change the default"),
+                  },
+                );
+              }}
+            />
+            <span>
+              Use this one when a reply is switched onto {kind?.label ?? inbox.type} from another
+              channel.{" "}
+              {defaultSibling && !inbox.isDefault ? (
+                <>Currently <b>{defaultSibling.name}</b>.</>
+              ) : inbox.isDefault ? null : (
+                <>Nothing is set, so the oldest is used.</>
+              )}
+            </span>
+          </label>
+        </div>
       )}
       {/* What Meta actually says about the number, and the one action that fixes
           the state everybody gets stuck in. Only for WhatsApp: no other channel

@@ -17,6 +17,7 @@ import {
   createUserInputSchema,
   reorderTeamsInputSchema,
   updateInboxInputSchema,
+  setDefaultInboxInputSchema,
   updateLabelInputSchema,
   updateMyPreferencesInputSchema,
   updateMyProfileInputSchema,
@@ -28,6 +29,7 @@ import {
   type CreateUserInput,
   type ReorderTeamsInput,
   type UpdateInboxInput,
+  type SetDefaultInboxInput,
   type UpdateLabelInput,
   type UpdateMyPreferencesInput,
   type UpdateMyProfileInput,
@@ -167,6 +169,27 @@ export class WorkspaceController {
     await this.requireManager(userId);
     await this.store.deleteInbox(id);
     return { ok: true };
+  }
+
+  /**
+   * Choose which of this channel's numbers/mailboxes replies go out from.
+   *
+   * Only relevant with more than one of a type: a reply switched onto another
+   * channel has to send from *something*, and without a choice that is the
+   * oldest — deterministic, but not necessarily the number a workspace wants to
+   * be known by. Setting one clears the channel's previous default; `false`
+   * clears it outright and hands the decision back to age.
+   */
+  @Post("inboxes/:id/default")
+  async setDefaultInbox(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(setDefaultInboxInputSchema)) body: SetDefaultInboxInput,
+  ) {
+    await this.requireManager(userId);
+    const inbox = await this.store.setDefaultInbox(id, body.isDefault);
+    if (!inbox) throw new NotFoundException("Channel not found");
+    return inbox;
   }
 
   /** Move this channel's still-open conversations onto its current routing. */

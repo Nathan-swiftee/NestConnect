@@ -178,6 +178,10 @@ export const api = {
   regenerateRecovery: () => post<{ recoveryCodes: string[] }>("/auth/2fa/recovery/regenerate", {}),
   disable2fa: () => post<{ ok: boolean }>("/auth/2fa/disable", {}),
   // workspace
+  // Which of a channel's numbers/mailboxes replies go out from when a thread
+  // is answered on a channel it didn't start on. `false` clears it.
+  setDefaultInbox: (inboxId: string, isDefault: boolean) =>
+    post<Inbox>(`/inboxes/${inboxId}/default`, { isDefault }),
   me: () => get<MeResponse>("/me"),
   // The current user's own personal settings (availability + email signature).
   updateMyPreferences: (input: UpdateMyPreferencesInput) => patch<User>("/me/preferences", input),

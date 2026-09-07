@@ -250,6 +250,15 @@ model Inbox {
   handle          String
   routingStrategy RoutingStrategy @default(manual)
   channelConfig   Json?
+  // The number/address this channel sends from when a reply is switched onto it
+  // from a thread that started somewhere else. Without one the oldest inbox of
+  // the type wins, which is deterministic but arbitrary — this is how a
+  // workspace with two numbers says which one it wants to be known by.
+  //
+  // At most one per (org, channel type), enforced by a partial unique index in
+  // the migration rather than by the setter alone: it decides which number a
+  // customer sees, and two rows claiming it would be a coin toss again.
+  isDefault       Boolean         @default(false)
   createdAt       DateTime        @default(now())
 
   org           Organization   @relation(fields: [orgId], references: [id])

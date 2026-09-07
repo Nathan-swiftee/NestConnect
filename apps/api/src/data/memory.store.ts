@@ -216,6 +216,8 @@ export class MemoryStore extends Store {
       handle: params.handle,
       teamIds: params.teamIds,
       routingStrategy: params.routingStrategy,
+      // A new channel never steals the default from one already carrying it.
+      isDefault: false,
       unread: 0,
     };
     this.inboxes.push(inbox);
@@ -749,6 +751,14 @@ export class MemoryStore extends Store {
     const user = this.users.find((u) => u.id === userId);
     const teamIds = this.membership[userId] ?? [];
     return { user, teams: this.teams.filter((t) => teamIds.includes(t.id)) };
+  }
+
+  async setDefaultInbox(inboxId: string, on: boolean): Promise<Inbox | undefined> {
+    const target = this.inboxes.find((i) => i.id === inboxId);
+    if (!target) return undefined;
+    for (const i of this.inboxes) if (i.type === target.type) i.isDefault = false;
+    target.isDefault = on;
+    return target;
   }
 
   async listInboxes(): Promise<Inbox[]> {

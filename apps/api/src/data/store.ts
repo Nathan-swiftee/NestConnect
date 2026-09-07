@@ -267,6 +267,16 @@ export abstract class Store {
   abstract getPasswordHash(userId: string): Promise<string | undefined>;
   abstract teamsForUser(userId: string): Promise<string[]>;
   abstract me(userId: string): Promise<{ user?: User; teams: Team[] }>;
+  /**
+   * Make this inbox its channel's send-from default, or clear that flag.
+   *
+   * Clearing the channel's previous default is part of the same operation: the
+   * database refuses two defaults of one type (a partial unique index), and
+   * more to the point "the default" is singular by definition. Setting one
+   * never touches another channel's.
+   */
+  abstract setDefaultInbox(inboxId: string, on: boolean): Promise<Inbox | undefined>;
+
   /** Every inbox in the org, **oldest first**. The order is part of the
    *  contract: it is what makes "the channel's default inbox" the same answer
    *  twice running, which a cross-channel reply depends on to pick the number

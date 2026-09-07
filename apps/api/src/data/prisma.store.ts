@@ -816,6 +816,24 @@ export class PrismaStore extends Store {
     };
   }
 
+  async setDefaultInbox(inboxId: string, on: boolean): Promise<Inbox | undefined> {
+    const target = await this.prisma.inbox.findUnique({ where: { id: inboxId } });
+    if (!target) return undefined;
+    await this.prisma.$transaction([
+      // Clear first, always. The partial unique index refuses a second default
+      // of the same type, so setting before clearing would collide with the row
+      // being replaced — and clearing when turning off is the whole operation.
+      this.prisma.inbox.updateMany({
+        where: { orgId: target.orgId, type: target.type, isDefault: true },
+        data: { isDefault: false },
+      }),
+      ...(on
+        ? [this.prisma.inbox.update({ where: { id: inboxId }, data: { isDefault: true } })]
+        : []),
+    ]);
+    return this.getInbox(inboxId);
+  }
+
   async listInboxes(): Promise<Inbox[]> {
     const rows = await this.prisma.inbox.findMany({
       where: { orgId: ORG_ID },

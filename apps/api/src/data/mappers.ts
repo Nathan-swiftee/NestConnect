@@ -297,6 +297,7 @@ export function mapInbox(i: InboxWithTeams): Inbox {
     handle: i.handle,
     teamIds: i.teams.map((t) => t.teamId),
     routingStrategy: i.routingStrategy as RoutingStrategy,
+    isDefault: i.isDefault,
     unread: 0,
     connected: isInboxConnected(type, i.channelConfig as Record<string, string> | null),
     channelConfigPublic: publicChannelConfig(i.channelConfig as Record<string, string> | null),
