@@ -64,6 +64,16 @@ const PREFERENCE: Record<PushKind, keyof PushPreferences | null> = {
   test: null,
 };
 
+/**
+ * Which kinds also ring a desktop that is sitting open.
+ *
+ * Only the two that mean "a customer has written". A mention and a snooze
+ * coming due already reach the web through the bell (`Notification`), which
+ * plays its own sound — cueing those here would ring twice for one event. An
+ * assignment deliberately stays silent: it changes a list, not a conversation.
+ */
+const CUES_DESKTOP: ReadonlySet<PushKind> = new Set<PushKind>(["message", "team_message"]);
+
 /** Quiet hours hold back the routine; a direct mention still gets through. */
 const IGNORES_QUIET_HOURS: ReadonlySet<PushKind> = new Set<PushKind>(["mention", "test"]);
 
@@ -184,16 +194,37 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     return this.deliver(req);
   }
 
-  private async deliver(req: PushRequest): Promise<{ sent: number; failed: number }> {
+  /**
+   * Who, of the people this could go to, actually wants it.
+   *
+   * Split out from delivery because it is now asked twice — once for the phones
+   * and once for the desktops — and the point of the change was that those two
+   * answer to the same rules. Note where the device lookup happens: *after*
+   * this, in `deliver`. Somebody who has never installed the app has no device
+   * row, and reading the policy through the delivery path would have quietly
+   * decided they wanted nothing at all.
+   */
+  private async recipientsFor(req: PushRequest): Promise<string[]> {
     // Rule 1: never the actor.
     const candidates = req.userIds.filter((id) => id && id !== req.actorUserId);
-    if (!candidates.length) return { sent: 0, failed: 0 };
-
+    if (!candidates.length) return [];
     const recipients: string[] = [];
     for (const userId of new Set(candidates)) {
       if (await this.shouldNotify(userId, req)) recipients.push(userId);
     }
+    return recipients;
+  }
+
+  private async deliver(req: PushRequest): Promise<{ sent: number; failed: number }> {
+    const recipients = await this.recipientsFor(req);
     if (!recipients.length) return { sent: 0, failed: 0 };
+
+    // The desktop is told here rather than at the call site, so a caller cannot
+    // add a notification that reaches phones and forgets screens — or worse,
+    // one that applies a second, slightly different rule on the way.
+    if (req.conversationId && CUES_DESKTOP.has(req.kind)) {
+      this.realtime.emitMessageCue(recipients, req.conversationId, req.kind as "message" | "team_message");
+    }
 
     const devices = await this.store.devicesForUsers(recipients);
     if (!devices.length) return { sent: 0, failed: 0 };

@@ -1233,11 +1233,21 @@ export function useRealtime(openConversationId: string | null) {
     };
     // A brand-new message changes list previews/counts/order → patch thread + refresh lists.
     const onCreated = (p: { conversationId: string; message: Message }) => {
-      if (p.message.direction === "in" && !p.message.internal) playReceived();
-      else maybePlaySentCue(p.conversationId, p.message);
+      // Inbound no longer makes a noise here. This event is a broadcast — every
+      // open client in the workspace gets it, which is what keeps lists and
+      // threads current, and is exactly why sounding on it chimed for every
+      // arrival whoever it belonged to. The alert now arrives separately, on
+      // MessageCue, addressed to the people the server's notification policy
+      // picked. Outbound is different — your own send is yours to hear — and
+      // `maybePlaySentCue` already ignores everything that isn't one.
+      maybePlaySentCue(p.conversationId, p.message);
       patchThread(p.conversationId, p.message);
       invalidateLists();
     };
+    // "This one is for you." Sent only to the people the same rules that govern
+    // phone push selected — assigned to me, or a team inbox I asked to hear
+    // about — with mutes and quiet hours already applied server-side.
+    const onCue = () => playReceived();
     // A status tick (sent→delivered→read) only moves the ticks — patch the thread
     // in place and do NOT refetch the lists (this is the frequent, cheap path).
     const onUpdated = (p: { conversationId: string; message: Message }) => {
@@ -1255,12 +1265,14 @@ export function useRealtime(openConversationId: string | null) {
       playReceived();
     };
     socket.on(ServerEvent.MessageCreated, onCreated);
+    socket.on(ServerEvent.MessageCue, onCue);
     socket.on(ServerEvent.MessageUpdated, onUpdated);
     socket.on(ServerEvent.ConversationAssigned, onAssigned);
     socket.on(ServerEvent.ConversationUpdated, onConversation);
     socket.on(ServerEvent.Notification, onNotification);
     return () => {
       socket.off(ServerEvent.MessageCreated, onCreated);
+      socket.off(ServerEvent.MessageCue, onCue);
       socket.off(ServerEvent.MessageUpdated, onUpdated);
       socket.off(ServerEvent.ConversationAssigned, onAssigned);
       socket.off(ServerEvent.ConversationUpdated, onConversation);
