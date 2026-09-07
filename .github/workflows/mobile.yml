@@ -30,9 +30,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "build = a new installable app. update = push JS-only changes to apps already installed (seconds, no rebuild)."
+        description: "build = a new installable app. update = push JS-only changes to apps already installed (seconds, no rebuild). submit = send the last finished build to TestFlight / Play, without rebuilding."
         type: choice
-        options: [build, update]
+        options: [build, update, submit]
         default: build
       platform:
         description: "Which app to build. Ignored for update — an update reaches both."
@@ -44,6 +44,10 @@ on:
         type: choice
         options: [preview, production]
         default: preview
+      submit:
+        description: "After a production build, send it straight to TestFlight (iOS) / Play internal draft (Android). Ignored for preview — a store will not take one."
+        type: boolean
+        default: false
       message:
         description: "Note shown against the build/update on expo.dev. Defaults to the commit subject."
         type: string
@@ -60,6 +64,19 @@ concurrency:
 env:
   MOBILE_MODE: ${{ github.event_name == 'push' && 'update' || inputs.mode }}
   MOBILE_PROFILE: ${{ github.event_name == 'push' && 'preview' || inputs.profile }}
+  # `--auto-submit` only where a store would accept the result. A preview build
+  # is an internal-distribution artifact; handing one to App Store Connect fails
+  # after the build has already been paid for, which is a confusing place to
+  # learn it.
+  MOBILE_SUBMIT: ${{ github.event_name != 'push' && inputs.submit && inputs.profile == 'production' }}
+  # Read by eas.json's submit profile. Missing ones surface as a prompt, which
+  # in --non-interactive is a failure rather than a hang — see 3.5 in
+  # docs/10-release.md for which secret is which.
+  EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
+  EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
+  EXPO_APPLE_TEAM_ID: ${{ secrets.EXPO_APPLE_TEAM_ID }}
+  # What lets the upload authenticate without a human at an Apple prompt.
+  EXPO_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.EXPO_APPLE_APP_SPECIFIC_PASSWORD }}
 
 jobs:
   mobile:
@@ -119,10 +136,30 @@ jobs:
         # so it's available in the log long before the run finishes.
         timeout-minutes: 60
         run: |
+          # --auto-submit hands the finished binary to the store in the same run.
+          # Splitting them meant a 25-minute build followed by a trip to a
+          # terminal, and the trip is what did not happen.
+          SUBMIT=""
+          [ "${{ env.MOBILE_SUBMIT }}" = "true" ] && SUBMIT="--auto-submit"
           pnpm exec eas build \
             --platform ${{ inputs.platform }} \
             --profile ${{ env.MOBILE_PROFILE }} \
             --message "${{ steps.msg.outputs.text }}" \
+            $SUBMIT \
+            --non-interactive
+
+      # For the case the build survived and the upload didn't — a wrong secret,
+      # an App Store Connect hiccup. Re-submitting the binary that already exists
+      # beats spending another 25 minutes making an identical one.
+      - name: Submit
+        if: env.MOBILE_MODE == 'submit'
+        working-directory: apps/mobile
+        timeout-minutes: 30
+        run: |
+          pnpm exec eas submit \
+            --platform ${{ inputs.platform }} \
+            --profile ${{ env.MOBILE_PROFILE }} \
+            --latest \
             --non-interactive
 
       - name: Update
@@ -138,7 +175,11 @@ jobs:
 
       - name: Where to find it
         run: |
-          KIND="${{ env.MOBILE_MODE == 'build' && 'builds' || 'updates' }}"
+          case "${{ env.MOBILE_MODE }}" in
+            build) KIND=builds ;;
+            submit) KIND=submissions ;;
+            *) KIND=updates ;;
+          esac
           {
             echo "### Mobile ${{ env.MOBILE_MODE }} started"
             echo
@@ -146,6 +187,13 @@ jobs:
             echo
             echo "<https://expo.dev/accounts/swiftee/projects/nest-connect/$KIND>"
             echo
+            if [ "${{ env.MOBILE_SUBMIT }}" = "true" ] || [ "$KIND" = "submissions" ]; then
+              echo "It goes on to App Store Connect from there. TestFlight"
+              echo "processing takes a few more minutes after the upload"
+              echo "reports success, and the build appears for internal testers"
+              echo "once it finishes."
+              echo
+            fi
             if [ "$KIND" = "updates" ]; then
               echo "It reaches an installed app the next time that app is opened."
               echo "A native build only picks up updates published for its own"
