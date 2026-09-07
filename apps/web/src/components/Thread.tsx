@@ -6,7 +6,7 @@ import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
-import { ClientEvent, FORWARD_MAX_TARGETS, replyTargetsFor, templatesForWaba, typingPingMs } from "@ding/schemas";
+import { ClientEvent, FORWARD_MAX_TARGETS, inboxLabel, replyTargetsFor, sendingInbox, templatesForWaba, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -958,6 +958,7 @@ function MessageBubble({
   onImage,
   actions,
   convChannel,
+  sentFrom,
   onRetry,
   cont,
   midGroup,
@@ -969,6 +970,11 @@ function MessageBubble({
   /** The conversation's own channel — a message on a different one (cross-channel
    *  reply) carries a small badge so the mixed thread stays legible. */
   convChannel: ChannelType;
+  /** Which of our numbers/addresses this went out from — set ONLY when it isn't
+   *  the thread's usual one. A shared inbox with two numbers can send a reply
+   *  from the other one without anything on screen saying so; printing it on
+   *  every bubble instead would be noise on the 99% that went the usual way. */
+  sentFrom?: string;
   /** Re-attempt delivery of this message (shown only on a failed outbound send). */
   onRetry?: (messageId: string) => void;
   /** True when the message above is from the same sender — tightens the gap and
@@ -1183,6 +1189,11 @@ function MessageBubble({
             {crossMeta && CrossGlyph && (
               <span className="stamp__chan" style={{ color: crossMeta.color }} title={`Via ${crossMeta.label}`}>
                 <CrossGlyph />
+              </span>
+            )}
+            {sentFrom && (
+              <span className="stamp__from" title={`Sent from ${sentFrom}`}>
+                from {sentFrom}
               </span>
             )}
             {clockTime(m.createdAt)}
@@ -2064,6 +2075,15 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const defaultComposeChannel: ChannelType =
     !isGroup && lastUsedChannel && replyTargets.includes(lastUsedChannel) ? lastUsedChannel : conv.channel;
   const composeChannel: ChannelType = (!isGroup && composeChannelState) || defaultComposeChannel;
+  /* Which of our numbers/addresses this thread sends from.
+     `threadInbox` is what it uses when nobody switches channel — the baseline a
+     bubble is only worth labelling against. `composeInbox` is what the message
+     being typed right now would go from, which is the thing an agent cannot
+     otherwise see: switching the composer to WhatsApp on an email thread quietly
+     changes which number the customer hears from. Same function the server sends
+     with, so the label cannot promise one number and the send use another. */
+  const threadInbox = sendingInbox(inboxes ?? [], conv);
+  const composeInbox = sendingInbox(inboxes ?? [], conv, { channel: composeChannel });
   const isEmail = composeChannel === "email";
   const isClosed = conv.status === "closed";
   const owned = !!conv.assigneeUserId;
@@ -2881,9 +2901,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             {/* Presence/contact line: secondary to the name, so it sits a step
                 down the type scale (11px) and a step lighter (faint) — it's
                 context, not content. */}
-            {sub && (
+            {(sub || threadInbox) && (
               <div className="flex items-center gap-2 text-2xs leading-snug text-faint min-w-0">
-                <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{sub}</span>
+                {sub && <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{sub}</span>}
+                {/* Our side of it. Hidden on a narrow window, where the header has
+                    no room and the composer's own "From" is a step away anyway. */}
+                {threadInbox && (
+                  <span className="thread__from" title={`This thread sends from ${inboxLabel(threadInbox)}`}>
+                    via {inboxLabel(threadInbox)}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -3125,6 +3152,14 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   key={m.id}
                   m={m}
                   convChannel={conv.channel}
+                  sentFrom={(() => {
+                    if (m.direction !== "out" || m.internal) return undefined;
+                    const from = sendingInbox(inboxes ?? [], conv, {
+                      channel: m.channel,
+                      recordedInboxId: m.inboxId,
+                    });
+                    return from && from.id !== threadInbox?.id ? inboxLabel(from) : undefined;
+                  })()}
                   quoted={m.quotedMsgId ? msgById.get(m.quotedMsgId) : undefined}
                   onImage={setLightbox}
                   onRetry={retrySend}
@@ -3281,6 +3316,15 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <span className="modebtn__lbl">Note</span>
               </button>
             </div>
+            {!internal && composeInbox && (
+              /* The answer to "which of our numbers is this about to go from",
+                 at the moment it is being decided. It follows the mode switcher
+                 above, because switching channel is exactly what changes it. */
+              <span className="compfrom" title={`Sending from ${inboxLabel(composeInbox)}`}>
+                <span className="compfrom__lbl">From</span>
+                {inboxLabel(composeInbox)}
+              </span>
+            )}
             <span className="compctx">{ctxNode}</span>
           </div>
           {isEmail && !internal && (

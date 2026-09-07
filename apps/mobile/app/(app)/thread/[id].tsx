@@ -29,7 +29,7 @@ import {
   useTypingPresence,
   type TypingPresence,
 } from "@ding/client";
-import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
+import { inboxLabel, sendingInbox, type ChannelType, type ConversationWithMessages, type Message } from "@ding/schemas";
 import { ActionSheet, LEADING, type SheetAction } from "../../../src/components/ActionSheet";
 import { Attachments } from "../../../src/components/Attachments";
 import { Avatar } from "../../../src/components/Avatar";
@@ -389,6 +389,26 @@ export default function Thread() {
     [sections, toast],
   );
 
+  /*
+   * Which of our numbers/addresses a message went from — but only when it isn't
+   * the one this thread usually sends from. That is the case nothing else on
+   * screen shows, and the only one worth a line on a bubble; printing it on all
+   * of them would be noise on the overwhelming majority that went the usual way.
+   *
+   * Returns a string rather than the inbox, so <Bubble> keeps taking primitives
+   * and its memo keeps doing its job.
+   */
+  const sentFromFor = useCallback(
+    (m: Message): string | undefined => {
+      if (!data || m.direction !== "out" || m.internal) return undefined;
+      const list = inboxes.data ?? [];
+      const usual = sendingInbox(list, data);
+      const from = sendingInbox(list, data, { channel: m.channel, recordedInboxId: m.inboxId });
+      return from && from.id !== usual?.id ? inboxLabel(from) : undefined;
+    },
+    [data, inboxes.data],
+  );
+
   const renderMessage = useCallback(
     ({
       item: m,
@@ -430,10 +450,11 @@ export default function Thread() {
           onOpenReadLog={onOpenReadLog}
           onRemoveReaction={onRemoveReaction}
           onRetry={onRetry}
+          sentFrom={sentFromFor(m)}
         />
       );
     },
-    [data, byId, myId, showsSubject, highlightId, onJumpTo, onLongPress, onReply, onOpenReadLog, onRemoveReaction, onRetry],
+    [data, byId, myId, showsSubject, highlightId, sentFromFor, onJumpTo, onLongPress, onReply, onOpenReadLog, onRemoveReaction, onRetry],
   );
 
   // Send `forwarding` on to the picked customers. The server reports each target
@@ -1169,6 +1190,7 @@ const Bubble = memo(function Bubble({
   onReply,
   onRemoveReaction,
   onOpenReadLog,
+  sentFrom,
 }: {
   message: Message;
   channel: ChannelType;
@@ -1195,6 +1217,9 @@ const Bubble = memo(function Bubble({
   onReply: (m: Message) => void;
   onRemoveReaction: (m: Message) => void;
   onOpenReadLog: (m: Message) => void;
+  /** Which of our numbers/addresses this went from — set ONLY when it isn't the
+   *  thread's usual one. Resolved by the parent, which holds the inbox list. */
+  sentFrom?: string;
 }) {
   const { c } = useTheme();
   const mine = message.direction === "out";
@@ -1452,6 +1477,14 @@ const Bubble = memo(function Bubble({
           {sentBy ? (
             <Text numberOfLines={1} className="max-w-[140px] text-2xs text-faint">
               Sent by {sentBy} ·
+            </Text>
+          ) : null}
+          {/* Only when this went from somewhere other than the thread's usual
+              number — the rare case, and the one nothing else on screen would
+              show. On every bubble it would be noise. */}
+          {sentFrom ? (
+            <Text numberOfLines={1} className="max-w-[140px] text-2xs text-faint">
+              from {sentFrom} ·
             </Text>
           ) : null}
           <Text className="text-2xs text-faint">{clockTime(message.createdAt)}</Text>

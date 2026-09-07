@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
+import { sendingInbox, type ConversationWithMessages, type Message } from "@ding/schemas";
 import { Store, type EmailRecipientInput } from "../data/store";
 import { MediaService } from "../storage/media.service";
 import { redactSecrets } from "../crypto/redact";
@@ -66,12 +66,12 @@ export class ChannelDispatcher {
     // send from that inbox when it serves the channel, else the channel's primary
     // inbox. For a conversation that never went cross-channel this is unchanged.
     const channel = message.channel ?? conversation.channel;
-    const waNorm = (t: ChannelType): ChannelType => (t === "whatsapp_group" ? "whatsapp" : t);
-    const convInbox = await this.store.getInbox(conversation.inboxId);
+    // The same function the composer labels itself with, so what an agent was
+    // told they were sending from is what actually sends. Two copies of this
+    // rule would drift, and the drift would be invisible until a customer
+    // replied to the wrong number.
     const sendingInboxId =
-      convInbox && waNorm(convInbox.type) === waNorm(channel)
-        ? conversation.inboxId
-        : (await this.defaultInboxOfType(channel)) ?? conversation.inboxId;
+      sendingInbox(await this.store.listInboxes(), conversation, { channel })?.id ?? conversation.inboxId;
 
     // Email is served by more than one provider (Gmail vs generic), chosen by
     // the sending inbox's connected provider. Other channels ignore the context.
@@ -271,25 +271,6 @@ export class ChannelDispatcher {
       }
     }
     return primary;
-  }
-
-  /**
-   * The inbox a cross-channel reply goes out from — its credentials and its
-   * from-address are what the customer will see.
-   *
-   * This used to be whichever row of that type came back first from an unordered
-   * query. With one number per channel that is stable by accident; with two it
-   * is a coin toss that can land differently between two calls, so a customer
-   * could get one reply from each of your numbers and no way to tell why. The
-   * same shape of bug once merged two WhatsApp accounts' template lists.
-   *
-   * `listInboxes` is ordered oldest-first as part of its contract, so this takes
-   * the first of the type and gets the same answer every time — and the obvious
-   * one: the number a workspace has had longest is the number it is known by.
-   */
-  private async defaultInboxOfType(channel: ChannelType): Promise<string | undefined> {
-    const type = channel === "whatsapp_group" ? "whatsapp" : channel;
-    return (await this.store.listInboxes()).find((i) => i.type === type)?.id;
   }
 
   /** Send a read receipt for an inbound message on a channel that supports it. */
