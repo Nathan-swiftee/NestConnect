@@ -222,8 +222,13 @@ Set on the EAS project (`eas secret:create`), not in the repo:
 |---|---|
 | `EXPO_PUBLIC_SENTRY_DSN` | Turns crash reporting on. Absent → Sentry never initialises, which is the intended default. |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Let the Expo plugin upload source maps. Without them a native stack trace arrives minified and unreadable. |
-| `EXPO_APPLE_ID`, `EXPO_ASC_APP_ID`, `EXPO_APPLE_TEAM_ID` | Read by `eas.json`'s submit profile. |
-| `EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | Same, for Play. |
+| `EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | Read by `eas.json`'s submit profile, for Play. |
+
+The Apple submit credentials are **repository** secrets rather than EAS ones,
+because the workflow passes them into the runner's environment where eas-cli
+reads them. See 3.5 for the four of them. If a submission ever reports a
+missing credential, setting the same values with `eas secret:create` as well is
+the other place they are looked for — that path has not been exercised here.
 
 ### 3.4 Everyday builds — from GitHub, no terminal
 
@@ -306,19 +311,53 @@ That reasoning is about *builds* and was once applied to updates too, purely
 because they share a workflow. An update costs nothing and takes seconds, so it
 now runs on push; only the build still waits to be asked.
 
-### 3.5 Submitting to the stores — still a terminal job
+### 3.5 Submitting to the stores
 
-Building is 3.4. Submitting is deliberately not wired to a button — a store
-submission is the one action here you cannot take back, and it should cost a
-conscious trip to a terminal.
+Building is 3.4. Submitting can now happen in the same run: tick **submit** on a
+`production` dispatch and the finished binary goes straight on — iOS to
+TestFlight, Android to the Play `internal` track as a draft.
+
+This used to be terminal-only, on the argument that a store submission cannot be
+taken back. That argument holds for a public release and does not describe
+either of these. TestFlight is a build in front of invited testers, and the Play
+side has always landed as a **draft** for exactly that reason — neither is one
+command away from being live, which was the property the rule was protecting.
+What the rule cost was real: a 25-minute build followed by a trip to a laptop,
+and the trip is what did not happen.
+
+The ticked box is ignored on a `preview` profile. An internal-distribution
+artifact is not something a store will take, and finding that out after paying
+for the build is a poor place to learn it.
+
+Two other ways in:
+
+- **mode: submit** — sends the *last finished* build without making a new one.
+  For when the build survived and the upload didn't: a wrong secret, an App
+  Store Connect hiccup.
+- **A terminal**, unchanged, if you'd rather:
 
 ```sh
 pnpm exec eas submit --profile production --platform ios       # → TestFlight
 pnpm exec eas submit --profile production --platform android   # → Play internal, as a draft
 ```
 
-Android goes to the `internal` track as a **draft** on purpose: a submission is
-never one command away from being live.
+An iOS upload needs four secrets on the repository. The first three are read by
+`eas.json`'s submit profile; the fourth is what lets the upload authenticate
+with no human at an Apple prompt, and without it a `--non-interactive` submit
+fails rather than hangs:
+
+| Secret | What it is |
+| --- | --- |
+| `EXPO_APPLE_ID` | The Apple ID that owns the app. |
+| `EXPO_ASC_APP_ID` | App Store Connect's numeric app id. |
+| `EXPO_APPLE_TEAM_ID` | The ten-character team id. |
+| `EXPO_APPLE_APP_SPECIFIC_PASSWORD` | Generated at appleid.apple.com → Sign-In and Security → App-Specific Passwords. Not the account password. |
+
+`ITSAppUsesNonExemptEncryption` is declared `false` in `app.json`. Without it
+every upload lands in App Store Connect as *Missing Compliance* and no tester
+can install until somebody answers the export question by hand — on every build.
+The app uses HTTPS and the platform's own crypto, which is the exemption that
+declaration names.
 
 ### 3.6 Before you submit — the device checks
 
@@ -352,7 +391,7 @@ maestro test -e EMAIL=… -e PASSWORD=… apps/mobile/.maestro/smoke.yaml
    real breakage); webhooks are fine where they are until you retire the old host.
 4. `eas init` → credentials → secrets → the `EXPO_TOKEN` GitHub secret (3.1–3.4).
 5. `preview` build from the Actions tab → device checks → Maestro.
-6. `production` build from the Actions tab → `eas submit` from a terminal.
+6. `production` build from the Actions tab with **submit** ticked → TestFlight.
 
 Doing 4–6 before 2–3 means shipping a binary that names the wrong host, and that
 is the one mistake here you cannot fix without a new release.

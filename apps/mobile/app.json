@@ -22,6 +22,7 @@
       "bundleIdentifier": "co.uk.swiftee.nestconnect",
       "supportsTablet": true,
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
           "remote-notification"
         ]
