@@ -375,6 +375,13 @@ model Message {
   // conversation carry messages across channels (WhatsApp, email …). Null on
   // legacy rows → falls back to the conversation's channel.
   channel        ChannelType?
+  // Which inbox this actually went out from — the WhatsApp number or mailbox the
+  // customer saw it arrive from. Resolved at delivery, not at compose: a reply
+  // sent on a channel the conversation didn't start on goes from that channel's
+  // inbox, which needn't be the conversation's. Null on legacy rows and on
+  // inbound → falls back to the conversation's inbox, which is right for every
+  // message that never went cross-channel.
+  inboxId        String?
   // Sanitized HTML body for rich email (rendered in a sandboxed iframe); the
   // plain `body` above stays the fallback + preview text.
   bodyHtml       String?

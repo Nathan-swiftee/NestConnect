@@ -81,6 +81,14 @@ jobs:
       - name: Alert policy
         run: pnpm check:alert-policy
 
+      # Which number, or which address, an outbound message goes out from. A
+      # cross-channel reply sends from the channel's inbox, which used to be
+      # whichever row an unordered query returned first — with two numbers that
+      # is a coin toss the customer sees and nobody can explain afterwards,
+      # because the inbox was resolved at delivery and then thrown away.
+      - name: Outbound sending inbox
+        run: pnpm check:outbound-inbox
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those

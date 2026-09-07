@@ -368,6 +368,7 @@ export function mapMessage(m: MessageRow): Message {
     internal: m.internal,
     channelMsgId: m.channelMsgId ?? undefined,
     channel: (m.channel as ChannelType | null) ?? undefined,
+    inboxId: m.inboxId ?? undefined,
     messageType: (m.messageType as MessageType) ?? "text",
     attachments: (m.attachments ?? []).map(mapAttachment),
     reactions: parseReactions(m.reactions),

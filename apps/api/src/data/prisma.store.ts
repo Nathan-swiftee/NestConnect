@@ -817,7 +817,13 @@ export class PrismaStore extends Store {
   }
 
   async listInboxes(): Promise<Inbox[]> {
-    const rows = await this.prisma.inbox.findMany({ where: { orgId: ORG_ID }, include: { teams: true } });
+    const rows = await this.prisma.inbox.findMany({
+      where: { orgId: ORG_ID },
+      include: { teams: true },
+      // Oldest first, and never left to the database's own idea of row order —
+      // see the contract on Store.listInboxes. `id` breaks a same-millisecond tie.
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
     return rows.map(mapInbox);
   }
 
@@ -1471,6 +1477,12 @@ export class PrismaStore extends Store {
       internal: m.internal,
       deliveryMeta: (m.deliveryMeta as OutboundDeliveryMeta | null) ?? undefined,
     };
+  }
+
+  async setMessageInbox(messageId: string, inboxId: string): Promise<void> {
+    // Best-effort: a message that vanished between the attempt and this write
+    // is not worth failing a send that already went out.
+    await this.prisma.message.update({ where: { id: messageId }, data: { inboxId } }).catch(() => undefined);
   }
 
   async markMessageSending(messageId: string): Promise<MessageStatusChange | undefined> {

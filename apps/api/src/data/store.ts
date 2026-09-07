@@ -267,6 +267,10 @@ export abstract class Store {
   abstract getPasswordHash(userId: string): Promise<string | undefined>;
   abstract teamsForUser(userId: string): Promise<string[]>;
   abstract me(userId: string): Promise<{ user?: User; teams: Team[] }>;
+  /** Every inbox in the org, **oldest first**. The order is part of the
+   *  contract: it is what makes "the channel's default inbox" the same answer
+   *  twice running, which a cross-channel reply depends on to pick the number
+   *  it sends from. */
   abstract listInboxes(): Promise<Inbox[]>;
   abstract createInbox(params: {
     orgId: string;
@@ -633,6 +637,17 @@ export abstract class Store {
 
   /** Begin a send attempt: status→sending, attemptCount++, lastAttemptAt=now.
    *  Returns undefined if the message is gone or already past the sending stage. */
+  /**
+   * Record which inbox an outbound message actually went from.
+   *
+   * Written after the attempt rather than at compose, because that is when it
+   * is known: the sending inbox is resolved against the channel the message is
+   * going out on, which for a cross-channel reply is not the conversation's.
+   * Stamped whether the send succeeded or failed — "which number did this try
+   * to go from" is exactly the question a failure raises.
+   */
+  abstract setMessageInbox(messageId: string, inboxId: string): Promise<void>;
+
   abstract markMessageSending(messageId: string): Promise<MessageStatusChange | undefined>;
 
   /** Provider accepted the send: persist its channel id (if any) and advance to

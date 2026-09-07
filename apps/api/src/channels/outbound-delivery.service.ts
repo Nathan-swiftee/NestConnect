@@ -83,6 +83,11 @@ export class OutboundDeliveryService {
       forwardTo,
     });
 
+    // Which inbox it actually went from, recorded before anything is broadcast
+    // so the thread shows the right number the moment it updates. Stamped on a
+    // failure too — that is when somebody asks which number was used.
+    if (outcome.inboxId) await this.store.setMessageInbox(job.messageId, outcome.inboxId);
+
     if (outcome.ok) {
       const change = await this.store.markMessageSent(job.messageId, outcome.channelMsgId);
       if (change) this.realtime.emitMessageUpdated(change.conversationId, change.message, orgId);

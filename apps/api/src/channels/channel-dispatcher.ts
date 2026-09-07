@@ -22,9 +22,17 @@ import { forwardSubject } from "./email/email.provider";
  * delivery layer (queue/worker) turns this into status writes + retries; the
  * dispatcher itself performs no persistence and schedules no timers.
  */
+/**
+ * `inboxId` is which inbox the send was actually made from — reported rather
+ * than written here, because this class is deliberately side-effect free with
+ * respect to message state (see below). The caller persists it, so a message
+ * carries the number or address the customer saw it arrive from, including when
+ * the send failed: "which number did this try to go from" is exactly the
+ * question a failure raises.
+ */
 export type DeliveryOutcome =
-  | { ok: true; channelMsgId?: string; simulated: boolean }
-  | { ok: false; retryable: boolean; reason: string; error?: string; code?: string };
+  | { ok: true; inboxId: string; channelMsgId?: string; simulated: boolean }
+  | { ok: false; inboxId?: string; retryable: boolean; reason: string; error?: string; code?: string };
 
 /**
  * Sends an outbound message through the right channel provider and reports the
@@ -63,7 +71,7 @@ export class ChannelDispatcher {
     const sendingInboxId =
       convInbox && waNorm(convInbox.type) === waNorm(channel)
         ? conversation.inboxId
-        : (await this.firstInboxOfType(channel)) ?? conversation.inboxId;
+        : (await this.defaultInboxOfType(channel)) ?? conversation.inboxId;
 
     // Email is served by more than one provider (Gmail vs generic), chosen by
     // the sending inbox's connected provider. Other channels ignore the context.
@@ -74,7 +82,7 @@ export class ChannelDispatcher {
     const provider = this.providers.find((p) => p.supports(channel, ctx));
     if (!provider) {
       // Channel not wired for sending — a configuration error, not worth retrying.
-      return { ok: false, retryable: false, reason: `No provider configured for ${channel}` };
+      return { ok: false, inboxId: sendingInboxId, retryable: false, reason: `No provider configured for ${channel}` };
     }
 
     // A forward (email only) re-addresses this send to other people instead of
@@ -101,7 +109,7 @@ export class ChannelDispatcher {
             ? conversation.contact.visitorId
             : conversation.contact.phone;
     if (!to) {
-      return { ok: false, retryable: false, reason: `Conversation has no ${channel} address` };
+      return { ok: false, inboxId: sendingInboxId, retryable: false, reason: `Conversation has no ${channel} address` };
     }
     // Extra forward recipients (beyond the To) join any explicit Cc.
     const cc = isForward ? [...forwardTo!.slice(1), ...(opts?.cc ?? [])] : opts?.cc;
@@ -180,7 +188,7 @@ export class ChannelDispatcher {
         : await provider.sendText({ ...base, to, cc, bcc: opts?.bcc });
 
     if (result.ok) {
-      return { ok: true, channelMsgId: result.channelMsgId, simulated: Boolean(result.simulated) };
+      return { ok: true, inboxId: sendingInboxId, channelMsgId: result.channelMsgId, simulated: Boolean(result.simulated) };
     }
     const retryable = result.retryable ?? isRetryableStatus(result.httpStatus);
     this.logger.warn(
@@ -188,6 +196,7 @@ export class ChannelDispatcher {
     );
     return {
       ok: false,
+      inboxId: sendingInboxId,
       retryable,
       reason: shortReason(channel, result),
       error: result.error,
@@ -264,12 +273,23 @@ export class ChannelDispatcher {
     return primary;
   }
 
-  /** The org's first inbox of a given channel type — the send-from inbox for a
-   *  cross-channel reply (its provider creds / from-address are used). */
-  private async firstInboxOfType(channel: ChannelType): Promise<string | undefined> {
+  /**
+   * The inbox a cross-channel reply goes out from — its credentials and its
+   * from-address are what the customer will see.
+   *
+   * This used to be whichever row of that type came back first from an unordered
+   * query. With one number per channel that is stable by accident; with two it
+   * is a coin toss that can land differently between two calls, so a customer
+   * could get one reply from each of your numbers and no way to tell why. The
+   * same shape of bug once merged two WhatsApp accounts' template lists.
+   *
+   * `listInboxes` is ordered oldest-first as part of its contract, so this takes
+   * the first of the type and gets the same answer every time — and the obvious
+   * one: the number a workspace has had longest is the number it is known by.
+   */
+  private async defaultInboxOfType(channel: ChannelType): Promise<string | undefined> {
     const type = channel === "whatsapp_group" ? "whatsapp" : channel;
-    const inboxes = await this.store.listInboxes();
-    return inboxes.find((i) => i.type === type)?.id;
+    return (await this.store.listInboxes()).find((i) => i.type === type)?.id;
   }
 
   /** Send a read receipt for an inbound message on a channel that supports it. */

@@ -1325,6 +1325,11 @@ export class MemoryStore extends Store {
     };
   }
 
+  async setMessageInbox(messageId: string, inboxId: string): Promise<void> {
+    const hit = this.findMsg(messageId);
+    if (hit) hit.m.inboxId = inboxId;
+  }
+
   async markMessageSending(messageId: string): Promise<MessageStatusChange | undefined> {
     const hit = this.findMsg(messageId);
     if (!hit) return undefined;

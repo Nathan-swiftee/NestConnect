@@ -1,0 +1,13 @@
+-- Which inbox an outbound message actually went out from.
+--
+-- Resolved at delivery rather than at compose, because a reply sent on a
+-- channel the conversation did not start on goes from that channel's inbox,
+-- which needn't be the conversation's. Until now nothing recorded it, so for
+-- those sends nobody knew — including us — which number or address the customer
+-- saw it arrive from.
+--
+-- Nullable with no backfill on purpose. Every existing row falls back to the
+-- conversation's own inbox, which is the correct answer for any message that
+-- never crossed channels — that is nearly all of them, and guessing at the rest
+-- would put a number on screen that we cannot stand behind.
+ALTER TABLE "Message" ADD COLUMN "inboxId" TEXT;
