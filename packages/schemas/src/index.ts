@@ -98,6 +98,9 @@ export interface InboxIdentity {
   type: ChannelType;
   name: string;
   handle: string;
+  /** Marks the channel's chosen send-from inbox. Optional so callers holding a
+   *  bare identity (a test fixture, a trimmed row) still satisfy the type. */
+  isDefault?: boolean;
 }
 
 /** whatsapp_group and whatsapp are served by the same number. */
@@ -134,9 +137,13 @@ export function sendingInbox<T extends InboxIdentity>(
   const channel = opts?.channel ?? conv.channel;
   const convInbox = byId(conv.inboxId);
   if (convInbox && sameChannelFamily(convInbox.type) === sameChannelFamily(channel)) return convInbox;
-  // The channel's default. `inboxes` is oldest-first (see Store.listInboxes),
-  // and taking the first is what makes this the same answer every time.
-  return inboxes.find((i) => i.type === sameChannelFamily(channel)) ?? convInbox;
+
+  // Otherwise the channel's own default. The chosen one if somebody has said
+  // which — that is the whole point of the flag — and failing that the oldest,
+  // which is arbitrary but at least the same answer every time (`inboxes` is
+  // oldest-first; see Store.listInboxes).
+  const ofChannel = inboxes.filter((i) => i.type === sameChannelFamily(channel));
+  return ofChannel.find((i) => i.isDefault) ?? ofChannel[0] ?? convInbox;
 }
 
 /**
@@ -302,6 +309,10 @@ export const inboxSchema = z.object({
   handle: z.string(),
   teamIds: z.array(z.string()).default([]),
   routingStrategy: routingStrategySchema.default("manual"),
+  /** This channel's send-from default: which of several numbers or mailboxes a
+   *  reply switched onto this channel goes out from. At most one per channel
+   *  type; with none set the oldest wins. */
+  isDefault: z.boolean().default(false),
   unread: z.number().int().nonnegative().default(0),
   /** True once the integration credentials needed to send/receive live are set. */
   connected: z.boolean().optional(),
@@ -1189,6 +1200,10 @@ export const updateInboxInputSchema = z.object({
   channelConfig: z.record(z.string()).optional(),
 });
 export type UpdateInboxInput = z.infer<typeof updateInboxInputSchema>;
+
+/** Body for POST /inboxes/:id/default — `false` clears the channel's default. */
+export const setDefaultInboxInputSchema = z.object({ isDefault: z.boolean() });
+export type SetDefaultInboxInput = z.infer<typeof setDefaultInboxInputSchema>;
 
 /** A hex colour (#RGB or #RRGGBB) — a label swatch, a widget's brand colour. */
 const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Must be a hex colour like #0FA47A");

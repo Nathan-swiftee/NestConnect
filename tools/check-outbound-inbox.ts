@@ -165,6 +165,36 @@ async function main(): Promise<void> {
   const again = await send("whatsapp");
   ok("and the same one next time", again.sentFrom === first, `${first} then ${again.sentFrom}`);
 
+  console.log("\nWhen somebody has chosen which number the channel uses\n");
+  /*
+   * Oldest-first is deterministic but arbitrary. A workspace that has grown a
+   * second number usually wants to be known by one of them in particular, and
+   * until it can say so the rule is picking for it.
+   */
+  await store.setDefaultInbox(second.id, true);
+  const chosen = await send("whatsapp");
+  ok("the cross-channel reply follows the choice", chosen.sentFrom === second.id, chosen.sentFrom);
+  ok("which is not the oldest", second.id !== whatsapps[0].id);
+  ok("and it is recorded as such", chosen.outcome.ok && chosen.outcome.inboxId === second.id);
+
+  // A thread already running on a number must not start answering from another.
+  const onOwn = { ...conv, inboxId: whatsapps[0].id, channel: "whatsapp" as ChannelType };
+  const { provider: p2, seen: seen2 } = recordingProvider();
+  await new ChannelDispatcher([p2], store, {} as MediaService).attemptSend(onOwn, message(undefined));
+  ok("but a thread on its own number keeps it", seen2[0] === whatsapps[0].id, seen2[0]);
+
+  // Exactly one, and only within its own channel.
+  await store.setDefaultInbox(whatsapps[0].id, true);
+  const nowDefault = (await store.listInboxes()).filter((i) => i.type === "whatsapp" && i.isDefault);
+  ok("choosing another replaces it rather than adding one", nowDefault.length === 1, `${nowDefault.length}`);
+  ok("and it is the one just chosen", nowDefault[0]?.id === whatsapps[0].id);
+  const mailUntouched = (await store.listInboxes()).filter((i) => i.type === "email" && i.isDefault);
+  ok("email's own default is not disturbed", mailUntouched.length === 0);
+
+  await store.setDefaultInbox(whatsapps[0].id, false);
+  const cleared = await send("whatsapp");
+  ok("clearing hands it back to the oldest", cleared.sentFrom === whatsapps[0].id, cleared.sentFrom);
+
   console.log("\nWhat comes back, so it can be recorded\n");
   ok("a successful send reports the inbox it used", r.outcome.ok && r.outcome.inboxId === first);
   const bad = await send("whatsapp", true);

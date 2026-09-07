@@ -47,6 +47,31 @@ describe("a reply switched to another channel", () => {
   });
 });
 
+describe("when a channel has a chosen default", () => {
+  // Without one the oldest wins, which is deterministic but arbitrary. This is
+  // how a workspace says which number it wants to be known by.
+  const chosen = ALL.map((i) => (i.id === "in_wa2" ? { ...i, isDefault: true } : i));
+
+  it("a cross-channel reply goes from the chosen one, not the oldest", () => {
+    expect(sendingInbox(chosen, conv("in_m2", "email"), { channel: "whatsapp" })?.id).toBe("in_wa2");
+  });
+
+  it("but the thread's own inbox still wins on its own channel", () => {
+    // The default answers "which number does this channel use", not "which
+    // number does everything use" — a thread already running on one number
+    // must not start answering from another.
+    expect(sendingInbox(chosen, conv("in_wa1", "whatsapp"))?.id).toBe("in_wa1");
+  });
+
+  it("and a default on one channel doesn't touch another", () => {
+    expect(sendingInbox(chosen, conv("in_wa2", "whatsapp"), { channel: "email" })?.id).toBe("in_m1");
+  });
+
+  it("falls back to the oldest once it's cleared", () => {
+    expect(sendingInbox(ALL, conv("in_m2", "email"), { channel: "whatsapp" })?.id).toBe("in_wa1");
+  });
+});
+
 describe("a message that was already sent", () => {
   it("says where it actually went, whatever the rule would now say", () => {
     // A number can be added, removed or re-ordered after the fact. History must

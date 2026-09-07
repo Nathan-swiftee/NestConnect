@@ -339,6 +339,18 @@ export function useMarkNotificationsRead() {
   });
 }
 export const useInboxes = () => useQuery({ queryKey: ["inboxes"], queryFn: api.inboxes });
+
+/** Choose which of a channel's numbers/mailboxes replies go out from.
+ *
+ *  Invalidates the inbox list rather than seeding it: setting one default
+ *  clears another's, so the row that changed is not the only row that changed. */
+export function useSetDefaultInbox() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { inboxId: string; isDefault: boolean }) => api.setDefaultInbox(v.inboxId, v.isDefault),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inboxes"] }),
+  });
+}
 export const useTeams = () => useQuery({ queryKey: ["teams"], queryFn: api.teams });
 export const usePeople = () => useQuery({ queryKey: ["people"], queryFn: api.people });
 
