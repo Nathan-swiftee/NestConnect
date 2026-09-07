@@ -23,6 +23,7 @@ import {
   type LoginInput,
   type SetPasswordInput,
   type SessionGrant,
+  type TwoFactorChallenge,
   type TwoFactorCodeInput,
   type User,
 } from "@ding/schemas";
@@ -122,6 +123,30 @@ export class AuthController {
     return me.user;
   }
 
+  /**
+   * Stop at a half-authenticated state and ask for the second factor.
+   *
+   * Shared by the two ways into an account that start with something only the
+   * person should have — their password, or a link sent to their mailbox. Both
+   * have to end at the same place or the weaker one becomes the way in, which
+   * is exactly what a reset link was until this was pulled out of `login`.
+   *
+   * The pending token is not a session: `verify` refuses it, so it opens
+   * nothing on its own and expires in five minutes. `login/2fa` is what turns
+   * it into a real one, and it takes a recovery code as well as a live code —
+   * which is what keeps this from stranding somebody who has lost their phone
+   * and their password at the same time.
+   */
+  private async challenge(user: User, res: Response, tokenAuth?: boolean): Promise<TwoFactorChallenge> {
+    const pending = this.auth.signPending(user.id);
+    if (user.twoFactorMethod === "email") await this.twoFactor.sendEmailCode(user);
+    const challenge = { twoFactorRequired: true as const, method: user.twoFactorMethod ?? "totp" };
+    // Token clients carry the pending token themselves and post it back.
+    if (tokenAuth) return { ...challenge, pendingToken: pending };
+    res.cookie(PENDING_COOKIE, pending, { ...cookieOptions(), maxAge: 5 * 60 * 1000 });
+    return challenge;
+  }
+
   @Public()
   @Post("login")
   async login(
@@ -134,15 +159,7 @@ export class AuthController {
     if (!user) throw new UnauthorizedException("Invalid email or password");
 
     // 2FA on → stop at a half-authenticated state; the client posts the code next.
-    if (user.twoFactorEnabled) {
-      const pending = this.auth.signPending(user.id);
-      if (user.twoFactorMethod === "email") await this.twoFactor.sendEmailCode(user);
-      const challenge = { twoFactorRequired: true as const, method: user.twoFactorMethod ?? "totp" };
-      // Token clients carry the pending token themselves and post it back.
-      if (body.tokenAuth) return { ...challenge, pendingToken: pending };
-      res.cookie(PENDING_COOKIE, pending, { ...cookieOptions(), maxAge: 5 * 60 * 1000 });
-      return challenge;
-    }
+    if (user.twoFactorEnabled) return this.challenge(user, res, body.tokenAuth);
     // 2FA required but never set up: this is a real session, and the guard
     // holds it at the enrolment routes until they have one.
     return this.grantSession(user.id, req, res, body.tokenAuth);
@@ -176,7 +193,9 @@ export class AuthController {
     return { ok: true };
   }
 
-  /** Set an initial password from an emailed invite link, then sign in. */
+  /** Set a password from an emailed link — an invite or a reset, which share the
+   *  token. Signs in on the way out, or stops for the second factor when the
+   *  account has one, because a mailbox is not one. */
   @Public()
   @Post("set-password")
   async setPassword(
@@ -186,6 +205,19 @@ export class AuthController {
   ) {
     const user = await this.store.setPasswordByInviteToken(body.token, body.password);
     if (!user) throw new UnauthorizedException("This invite link is invalid or has expired.");
+
+    // Everything the old password could reach, the new one now can — so anyone
+    // still holding a session from before it changed is holding a key to a lock
+    // that was supposed to have been changed. On a reset that is the whole
+    // point of resetting; there is nothing to revoke on an invite.
+    await this.sessions.revokeOthers(user.id, "").catch(() => 0);
+
+    // And a link to a mailbox is not a second factor. Without this, someone who
+    // could read the person's email had a way past two-factor that signing in
+    // normally would have stopped — the weaker door, standing open beside the
+    // one we had just finished bolting.
+    if (user.twoFactorEnabled) return this.challenge(user, res);
+
     return this.grantSession(user.id, req, res);
   }
 
@@ -253,10 +285,18 @@ export class AuthController {
   async changePassword(
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(changePasswordInputSchema)) body: ChangePasswordInput,
+    @CurrentSessionId() sessionId?: string,
   ) {
     const ok = await this.auth.changePassword(userId, body.currentPassword, body.newPassword);
     if (!ok) throw new BadRequestException("Your current password is incorrect.");
-    return { ok: true };
+    // The same rule as a reset, from the other side. Somebody changing their
+    // password is often doing it because they think someone else has it, and
+    // leaving that someone signed in on their own device is the one outcome
+    // that makes the whole exercise pointless. This device keeps its session —
+    // signing yourself out of the screen you are standing at would read as the
+    // change having failed.
+    const signedOutOthers = await this.sessions.revokeOthers(userId, sessionId ?? "").catch(() => 0);
+    return { ok: true, signedOutOthers };
   }
 
   /* ---- signed-in sessions ("where you're logged in") ---- */

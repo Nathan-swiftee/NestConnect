@@ -287,10 +287,16 @@ export function useUpdateMyProfile() {
   });
 }
 
-/** Change the current user's own password (current is re-verified server-side). */
+/** Change the current user's own password (current is re-verified server-side).
+ *
+ *  Doing so signs out every other device, so the "where you're signed in" list
+ *  is stale the moment this returns — and it sits on the same settings screen
+ *  as the password fields, in plain view. */
 export function useChangePassword() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: ChangePasswordInput) => api.changePassword(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sessions"] }),
   });
 }
 

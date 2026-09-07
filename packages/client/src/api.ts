@@ -161,7 +161,11 @@ export const api = {
   // Native only: roll this device's token forward on the same session.
   refreshToken: () => post<SessionGrant>("/auth/refresh", {}),
   // Set an initial password from an emailed invite link, then sign in.
-  setPassword: (token: string, password: string) => post<MeResponse>("/auth/set-password", { token, password }),
+  // Answers with a session, or — when the account already has a second factor —
+  // the same challenge a password login would give. A link to a mailbox is not
+  // a second factor, so a reset can't be the way around one.
+  setPassword: (token: string, password: string) =>
+    post<MeResponse | TwoFactorChallenge>("/auth/set-password", { token, password }),
   // Request a password-reset link (always resolves; never reveals if the email exists).
   forgotPassword: (email: string) => post<{ ok: boolean }>("/auth/forgot-password", { email }),
   logout: () => post<{ ok: boolean }>("/auth/logout", {}),
@@ -180,7 +184,10 @@ export const api = {
   // The current user's own profile — name, login email, photo.
   updateMyProfile: (input: UpdateMyProfileInput) => patch<User>("/me/profile", input),
   // Change your own password (current one is re-verified server-side).
-  changePassword: (input: ChangePasswordInput) => post<{ ok: boolean }>("/auth/change-password", input),
+  // `signedOutOthers` counts the other devices this signed out — a password
+  // change ends every session the old one opened, keeping only the one asking.
+  changePassword: (input: ChangePasswordInput) =>
+    post<{ ok: boolean; signedOutOthers: number }>("/auth/change-password", input),
   // Signed-in sessions ("where you're logged in").
   sessions: () => get<SessionInfo[]>("/auth/sessions"),
   revokeSession: (id: string) => del<{ ok: boolean }>(`/auth/sessions/${id}`),

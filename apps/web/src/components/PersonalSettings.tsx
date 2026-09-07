@@ -308,11 +308,21 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
   const updatePassword = async () => {
     if (!pwValid) return;
     try {
-      await changePw.mutateAsync({ currentPassword: curPw, newPassword: newPw });
+      const { signedOutOthers } = await changePw.mutateAsync({
+        currentPassword: curPw,
+        newPassword: newPw,
+      });
       setCurPw("");
       setNewPw("");
       setConfPw("");
-      onToast("Password updated");
+      // Say it happened. Being signed out everywhere else is the point of
+      // changing a password you think someone else has, and it is also the kind
+      // of surprise that generates a support message if it goes unmentioned.
+      onToast(
+        signedOutOthers > 0
+          ? `Password updated — signed out of ${signedOutOthers} other ${signedOutOthers === 1 ? "device" : "devices"}`
+          : "Password updated",
+      );
     } catch (e) {
       const status = (e as { status?: number })?.status;
       onToast(status === 400 ? "Your current password is incorrect." : "Couldn’t update password.");

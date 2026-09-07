@@ -22,11 +22,16 @@
  * The allowlist is asserted as a *set*, not just checked for the entries it
  * ought to contain. A route that gains the decorator without a line here fails.
  *
+ * The password routes are here too, because they are the ways around the gate
+ * rather than through it: a reset link that hands back a session is a second
+ * factor nobody had to produce, and a password change that leaves the old
+ * sessions running is a credential nobody had to give up.
+ *
  *     pnpm check:2fa-gate
  */
 import { Reflector } from "@nestjs/core";
 import { ForbiddenException, UnauthorizedException, type ExecutionContext } from "@nestjs/common";
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { env } from "../apps/api/src/config/env";
 import { AuthService } from "../apps/api/src/auth/auth.service";
 import { TwoFactorService as RealTwoFactorService } from "../apps/api/src/auth/two-factor.service";
@@ -34,6 +39,8 @@ import type { SessionService } from "../apps/api/src/auth/session.service";
 import type { TwoFactorService } from "../apps/api/src/auth/two-factor.service";
 import { AuthGuard } from "../apps/api/src/auth/auth.guard";
 import { AuthController } from "../apps/api/src/auth/auth.controller";
+import type { Store } from "../apps/api/src/data/store";
+import type { Mailer } from "../apps/api/src/mail/mailer.service";
 import { IS_ENROLMENT_ALLOWED_KEY } from "../apps/api/src/auth/enrolment-allowed.decorator";
 import { IS_PUBLIC_KEY } from "../apps/api/src/auth/public.decorator";
 
@@ -208,6 +215,145 @@ async function main(): Promise<void> {
     ALLOWED.every((n) => typeof handler(n) === "function"),
     ALLOWED.filter((n) => typeof handler(n) !== "function").join(", ") || "all present",
   );
+
+  console.log("\nA reset link is not a way around it\n");
+  /*
+   * The other door into an account. `forgot-password` mails a link, and setting
+   * a password through it used to hand back a full session — so anyone who
+   * could read somebody's email had a way in that signing in with the password
+   * would have stopped at the code. The mailbox was quietly the only credential
+   * that mattered, on the one flow designed for people who have lost theirs.
+   *
+   * Driven through the real controller, because the thing worth pinning is what
+   * the endpoint answers with, and "answers with a session" is the bug.
+   */
+  let revokedFor: string[] = [];
+  const resetSessions = {
+    create: async () => "sess_new",
+    revokeOthers: async (userId: string) => {
+      revokedFor.push(userId);
+      return 1;
+    },
+  } as unknown as SessionService;
+
+  let emailed = 0;
+  const resetTwoFactor = {
+    sendEmailCode: async () => {
+      emailed++;
+    },
+  } as unknown as TwoFactorService;
+
+  let account: { id: string; twoFactorEnabled: boolean; twoFactorMethod?: string } | undefined;
+  const resetStore = {
+    setPasswordByInviteToken: async () => account,
+    me: async () => ({ user: account }),
+  } as unknown as Store;
+
+  const controller = new AuthController(auth, resetSessions, resetTwoFactor, resetStore, {} as Mailer);
+  const cookies: Record<string, string> = {};
+  const res = {
+    cookie: (name: string, value: string) => {
+      cookies[name] = value;
+    },
+  } as unknown as Response;
+  const resetReq = { headers: {}, socket: {} } as unknown as Request;
+  const setPassword = () =>
+    controller.setPassword({ token: "t".repeat(12), password: "hunter2hunter2" }, resetReq, res);
+
+  account = { id: "user_1", twoFactorEnabled: true, twoFactorMethod: "totp" };
+  revokedFor = [];
+  let answer = (await setPassword()) as Record<string, unknown>;
+  ok("an account with a second factor is asked for it", answer.twoFactorRequired === true);
+  ok("and told which kind", answer.method === "totp", String(answer.method));
+  ok(
+    "no session comes back",
+    !("user" in answer) && !("token" in answer),
+    Object.keys(answer).join(", "),
+  );
+  // The pending cookie is not a session — `verify` refuses it — so holding one
+  // opens nothing. Worth pinning: if it ever became a real token, this whole
+  // check would still pass on the shape alone.
+  const pending = cookies[`${env.auth.cookieName}_2fa`];
+  ok("the cookie it does set opens nothing", !!pending && auth.verify(pending) === undefined);
+
+  account = { id: "user_1", twoFactorEnabled: true, twoFactorMethod: "email" };
+  emailed = 0;
+  await setPassword();
+  ok("an email-method account is sent its code", emailed === 1, `${emailed} sent`);
+
+  account = { id: "user_2", twoFactorEnabled: false };
+  answer = (await setPassword()) as Record<string, unknown>;
+  ok("an invite with nothing set up still signs in", answer.twoFactorRequired === undefined);
+
+  revokedFor = [];
+  account = { id: "user_3", twoFactorEnabled: true, twoFactorMethod: "totp" };
+  await setPassword();
+  ok(
+    "and either way the old sessions go",
+    // Otherwise the reset is theatre: somebody already inside on a stolen
+    // session keeps everything the new password was meant to take back.
+    revokedFor.includes("user_3"),
+    revokedFor.join(", ") || "none revoked",
+  );
+
+  account = undefined;
+  let rejected = false;
+  try {
+    await setPassword();
+  } catch {
+    rejected = true;
+  }
+  ok("a dead link gets neither", rejected);
+
+  console.log("\nChanging a password ends what the old one opened\n");
+  /*
+   * The same rule as a reset, from the other side. Somebody changing their
+   * password is often doing it because they think someone else has it, and
+   * leaving that someone signed in on their own device is the one outcome that
+   * makes the whole exercise pointless.
+   */
+  let passwordAccepted = true;
+  let keptId: string | undefined;
+  const pwAuth = { changePassword: async () => passwordAccepted } as unknown as AuthService;
+  const pwSessions = {
+    revokeOthers: async (userId: string, keepId: string) => {
+      revokedFor.push(userId);
+      keptId = keepId;
+      return 2;
+    },
+  } as unknown as SessionService;
+  const pwCtl = new AuthController(pwAuth, pwSessions, resetTwoFactor, resetStore, {} as Mailer);
+
+  revokedFor = [];
+  const changed = await pwCtl.changePassword(
+    "user_9",
+    { currentPassword: "old-one-here", newPassword: "new-one-here" },
+    "sess_here",
+  );
+  ok("the other devices are signed out", revokedFor.includes("user_9"));
+  ok(
+    "and this one is not",
+    // Signing somebody out of the screen they are standing at reads as the
+    // change having failed, and they change it again.
+    keptId === "sess_here",
+    String(keptId),
+  );
+  ok("the count comes back so the app can say so", changed.signedOutOthers === 2);
+
+  passwordAccepted = false;
+  revokedFor = [];
+  let refused = false;
+  try {
+    await pwCtl.changePassword(
+      "user_9",
+      { currentPassword: "wrong", newPassword: "new-one-here" },
+      "sess_here",
+    );
+  } catch {
+    refused = true;
+  }
+  ok("a wrong current password changes nothing", refused && revokedFor.length === 0);
+  passwordAccepted = true;
 
   console.log("\nEnrolment still needs a session\n");
   // Every enrolment route acts on "whoever is calling". A public one would let
