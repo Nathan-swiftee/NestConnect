@@ -378,6 +378,11 @@ export const messageSchema = z.object({
   /** The channel this message was sent/received on (a thread can span channels).
    *  Absent → the conversation's own channel. */
   channel: channelTypeSchema.nullable().optional(),
+  /** Which inbox this outbound message actually went from — the number or
+   *  address the customer saw. Absent on inbound, and on anything sent before
+   *  this was recorded → fall back to the conversation's inbox, which is right
+   *  for every message that never crossed channels. */
+  inboxId: z.string().nullable().optional(),
   /** What the message carries; "text" unless it has media. */
   messageType: messageTypeSchema.default("text"),
   /** Media files attached to the message (images, files, voice notes, …). */

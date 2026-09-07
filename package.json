@@ -17,6 +17,7 @@
     "check:whatsapp-delivery": "tsx tools/check-whatsapp-delivery.ts",
     "check:template-scope": "tsx tools/check-template-scope.ts",
     "check:alert-policy": "tsx --tsconfig apps/api/tsconfig.json tools/check-alert-policy.ts",
+    "check:outbound-inbox": "tsx --tsconfig apps/api/tsconfig.json tools/check-outbound-inbox.ts",
     "check:2fa-gate": "tsx --tsconfig apps/api/tsconfig.json tools/check-2fa-gate.ts",
     "check:hooks": "node tools/check-hook-order.mjs",
     "lint": "turbo run lint",
