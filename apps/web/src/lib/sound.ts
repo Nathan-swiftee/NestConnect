@@ -34,7 +34,15 @@ function audio(): AudioContext | null {
   return ctx;
 }
 
-/** Resume the audio context after a user gesture (autoplay policy). */
+/**
+ * Resume the audio context (autoplay policy).
+ *
+ * Called on user gestures and when the tab comes back to the foreground, and
+ * safe to call at any time — resuming a running context is a no-op. It must not
+ * be a one-shot: a context is suspended before the first gesture, and browsers
+ * suspend it again after a tab has been in the background, so "unlocked once"
+ * is not the same as "unlocked".
+ */
 export function unlock(): void {
   const ac = audio();
   if (ac && ac.state === "suspended") void ac.resume();
@@ -145,14 +153,44 @@ export function playSent(channel?: string): void {
   tone(780, t + 0.05, 0.1, 0.045);
 }
 
-/** Incoming: a rising three-note chime — a touch longer and more attention-
- *  grabbing than a single ding, so a new chat is noticeable without being harsh. */
-export function playReceived(): void {
-  if (!enabled) return;
-  const ac = audio();
-  if (!ac) return;
+/** The chime itself, once the context is known to be running. */
+function chime(ac: AudioContext): void {
   const t = ac.currentTime;
   tone(660, t, 0.16, 0.06);
   tone(990, t + 0.11, 0.18, 0.06);
   tone(1320, t + 0.24, 0.26, 0.055);
+}
+
+/**
+ * Two arrivals in the same breath are one event to a person, and ten are not
+ * ten chimes' worth of information. Short enough that consecutive messages in a
+ * conversation each still sound.
+ */
+const COALESCE_MS = 900;
+let lastReceivedAt = 0;
+
+/** Incoming: a rising three-note chime — a touch longer and more attention-
+ *  grabbing than a single ding, so a new chat is noticeable without being harsh.
+ *
+ *  Resumes the context first if it has been suspended. A suspended context does
+ *  not throw and does not play: `start()` schedules against a clock that isn't
+ *  running, so the cue is silently dropped. That is most of what "sometimes
+ *  there's no sound" turns out to be — the tab was in the background, or nobody
+ *  had clicked anything yet. */
+export function playReceived(): void {
+  if (!enabled) return;
+  const ac = audio();
+  if (!ac) return;
+
+  const now = Date.now();
+  if (now - lastReceivedAt < COALESCE_MS) return;
+  lastReceivedAt = now;
+
+  if (ac.state === "suspended") {
+    // Resuming needs a gesture in some browsers and will reject without one;
+    // there is nothing to do about that here, and the next gesture unlocks it.
+    void ac.resume().then(() => chime(ac)).catch(() => {});
+    return;
+  }
+  chime(ac);
 }

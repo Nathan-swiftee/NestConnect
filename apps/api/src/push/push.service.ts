@@ -195,37 +195,53 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /**
-   * Who, of the people this could go to, actually wants it.
+   * Two different questions, answered in one pass over the candidates.
    *
-   * Split out from delivery because it is now asked twice — once for the phones
-   * and once for the desktops — and the point of the change was that those two
-   * answer to the same rules. Note where the device lookup happens: *after*
-   * this, in `deliver`. Somebody who has never installed the app has no device
-   * row, and reading the policy through the delivery path would have quietly
-   * decided they wanted nothing at all.
+   * `audience` is who this is *about* — their preferences say they want to know,
+   * and they haven't muted the thread. That is the whole test for a sound on a
+   * screen somebody is sitting at.
+   *
+   * `push` is the subset whose phone should light up as well, and it is
+   * narrower on purpose. A banner is suppressed for a thread already open in
+   * front of them (the banner would cover what they are reading), held during
+   * quiet hours, and rate-limited so a busy thread cannot fire twenty times a
+   * minute. Every one of those is a rule about *interrupting* someone.
+   *
+   * Applying them to the sound as well was the mistake this fixes: a message
+   * arriving in the thread you had open made no sound at all, and the sixth in
+   * a minute made none either — which is precisely "sometimes it dings and
+   * sometimes it doesn't". A cue is not an interruption; it is the only thing
+   * telling you a message arrived.
+   *
+   * One preferences read per candidate serves both answers.
    */
-  private async recipientsFor(req: PushRequest): Promise<string[]> {
+  private async recipientsFor(req: PushRequest): Promise<{ audience: string[]; push: string[] }> {
     // Rule 1: never the actor.
     const candidates = req.userIds.filter((id) => id && id !== req.actorUserId);
-    if (!candidates.length) return [];
-    const recipients: string[] = [];
+    if (!candidates.length) return { audience: [], push: [] };
+
+    const audience: string[] = [];
+    const push: string[] = [];
     for (const userId of new Set(candidates)) {
-      if (await this.shouldNotify(userId, req)) recipients.push(userId);
+      const prefs = await this.preferences(userId);
+      if (!this.wantsToKnow(prefs, req)) continue;
+      audience.push(userId);
+      if (await this.shouldInterrupt(userId, prefs, req)) push.push(userId);
     }
-    return recipients;
+    return { audience, push };
   }
 
   private async deliver(req: PushRequest): Promise<{ sent: number; failed: number }> {
-    const recipients = await this.recipientsFor(req);
-    if (!recipients.length) return { sent: 0, failed: 0 };
+    const { audience, push: recipients } = await this.recipientsFor(req);
 
     // The desktop is told here rather than at the call site, so a caller cannot
     // add a notification that reaches phones and forgets screens — or worse,
     // one that applies a second, slightly different rule on the way.
-    if (req.conversationId && CUES_DESKTOP.has(req.kind)) {
-      this.realtime.emitMessageCue(recipients, req.conversationId, req.kind as "message" | "team_message");
+    if (audience.length && req.conversationId && CUES_DESKTOP.has(req.kind)) {
+      this.realtime.emitMessageCue(audience, req.conversationId, req.kind as "message" | "team_message");
     }
 
+    if (!recipients.length) return { sent: 0, failed: 0 };
     const devices = await this.store.devicesForUsers(recipients);
     if (!devices.length) return { sent: 0, failed: 0 };
 
@@ -291,9 +307,15 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** Rules 2–5, for one person. */
-  private async shouldNotify(userId: string, req: PushRequest): Promise<boolean> {
-    const prefs = await this.preferences(userId);
-
+  /**
+   * Does this person want to know about this at all?
+   *
+   * Only the two things they have actually said: the category is switched on,
+   * and they have not muted this thread. Both are standing choices, so the
+   * answer is the same every time for the same message — which is what makes a
+   * sound something you can trust rather than something you learn to ignore.
+   */
+  private wantsToKnow(prefs: PushPreferences, req: PushRequest): boolean {
     const pref = PREFERENCE[req.kind];
     if (pref && !prefs[pref]) return false;
 
@@ -301,18 +323,30 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     // thing a person can say about one conversation, so it outranks "notify me
     // about mentions". A reminder still gets through: they asked for that one,
     // at a time they chose, about this specific thread.
-    if (
+    return !(
       req.conversationId &&
       req.kind !== "reminder" &&
       prefs.mutedConversationIds.includes(req.conversationId)
-    ) {
-      return false;
-    }
+    );
+  }
 
+  /**
+   * …and should we interrupt them on their phone as well?
+   *
+   * Everything here is about the cost of a banner rather than about what they
+   * want to know: don't cover the thread they already have open, don't buzz at
+   * 3am, don't fire twenty times for one busy conversation. None of it applies
+   * to a sound on a screen they are sitting at, which is why it is separate.
+   */
+  private async shouldInterrupt(
+    userId: string,
+    prefs: PushPreferences,
+    req: PushRequest,
+  ): Promise<boolean> {
     if (!IGNORES_QUIET_HOURS.has(req.kind) && this.inQuietHours(prefs)) return false;
 
-    // Rule 2 last of the cheap checks — it's the only one that hits the socket
-    // adapter, and there's no point paying for it if a preference already said no.
+    // The only check that hits the socket adapter, so it goes after the cheap
+    // ones — there is no point paying for it if quiet hours already said no.
     if (req.conversationId && (await this.realtime.isViewing(userId, req.conversationId))) return false;
 
     return this.withinRateLimit(userId, req.conversationId);
