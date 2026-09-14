@@ -33,7 +33,7 @@
   "submit": {
     "production": {
       "ios": {
-        "ascAppId": "$EXPO_ASC_APP_ID"
+        "ascAppId": "6812062945"
       },
       "android": {
         "serviceAccountKeyPath": "$EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH",
