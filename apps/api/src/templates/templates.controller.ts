@@ -11,11 +11,9 @@ import {
 } from "@nestjs/common";
 import {
   createTemplateInputSchema,
-  setChannelTemplateInputSchema,
   setDefaultTemplateInputSchema,
   updateTemplateInputSchema,
   type CreateTemplateInput,
-  type SetChannelTemplateInput,
   type SetDefaultTemplateInput,
   type Template,
   type UpdateTemplateInput,
@@ -68,7 +66,7 @@ export class TemplatesController {
     return { ok: true };
   }
 
-  /** Choose the workspace's default template (or clear it with null). Declared
+  /** Star a template as its WhatsApp account's default, or unstar it. Declared
    *  before the ":id" routes so "default" isn't swallowed as an id. */
   @Post("default")
   async setDefault(
@@ -76,24 +74,7 @@ export class TemplatesController {
     @Body(new ZodValidationPipe(setDefaultTemplateInputSchema)) body: SetDefaultTemplateInput,
   ): Promise<Template[]> {
     await this.requireManager(userId);
-    return this.templates.setDefault(body.templateId);
-  }
-
-  /**
-   * Point one WhatsApp number at its own closed-window template.
-   *
-   * Separate from "default" above because they answer different questions: that
-   * one sets the account-wide fallback, this one overrides it for a single
-   * number. Two numbers under one account are usually two different things to
-   * be, and before this the second one could only have the first one's answer.
-   */
-  @Post("channel-default")
-  async setChannelDefault(
-    @CurrentUserId() userId: string,
-    @Body(new ZodValidationPipe(setChannelTemplateInputSchema)) body: SetChannelTemplateInput,
-  ): Promise<Template[]> {
-    await this.requireManager(userId);
-    return this.templates.setChannelDefault(body.inboxId, body.templateId);
+    return this.templates.setDefault(body.templateId, body.isDefault);
   }
 
   @Post("sync")
