@@ -989,6 +989,19 @@ export function useSetDefaultTemplate() {
   });
 }
 
+/** Set (or clear) one WhatsApp number's closed-window default template. */
+export function useSetChannelTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { inboxId: string; templateId: string | null }) =>
+      api.setChannelTemplate(v.inboxId, v.templateId),
+    onSuccess: (data) => {
+      qc.setQueryData(["templates"], data);
+      qc.invalidateQueries({ queryKey: ["templates"] });
+    },
+  });
+}
+
 export function useSyncTemplates() {
   const qc = useQueryClient();
   return useMutation({

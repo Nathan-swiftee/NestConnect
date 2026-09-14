@@ -373,6 +373,10 @@ export const api = {
   deleteTemplate: (id: string) => del<{ ok: boolean }>(`/templates/${id}`),
   // Choose the workspace default template (null clears it).
   setDefaultTemplate: (templateId: string | null) => post<Template[]>("/templates/default", { templateId }),
+  // Point one number at its own closed-window template (null clears its choice,
+  // which is not the same as inheriting: the number then sends nothing).
+  setChannelTemplate: (inboxId: string, templateId: string | null) =>
+    post<Template[]>("/templates/channel-default", { inboxId, templateId }),
   syncTemplates: () => post<{ synced: number; pruned: number }>("/templates/sync", {}),
   // WhatsApp business profile — the public "about" card on a number
   whatsappProfile: (inboxId: string) =>

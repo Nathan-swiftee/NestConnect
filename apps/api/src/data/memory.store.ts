@@ -296,8 +296,9 @@ export class MemoryStore extends Store {
   async createTemplate(_orgId: string, input: CreateTemplateInput): Promise<Template> {
     const tpl: Template = {
       id: `tpl_${++this.idSeq}`,
-      // The workspace default is an org setting, applied by TemplatesService.
+      // Both defaults are org settings, applied by TemplatesService.
       isDefault: false,
+      defaultForInboxIds: [],
       name: input.name,
       category: input.category,
       language: input.language,
@@ -365,8 +366,9 @@ export class MemoryStore extends Store {
     }
     const tpl: Template = {
       id: `tpl_${++this.idSeq}`,
-      // The per-account default is an org setting, applied by TemplatesService.
+      // Both defaults are org settings, applied by TemplatesService.
       isDefault: false,
+      defaultForInboxIds: [],
       name: input.name,
       category: input.category,
       language: input.language,

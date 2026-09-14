@@ -656,13 +656,52 @@ export const templateSchema = z.object({
    * fixed: the boxes still open, and anything here can be changed before Send.
    */
   variableDefaults: z.array(z.string()).default([]),
-  /** The default template **for its own account** — the one the composer sends
-   *  behind the scenes once a 24-hour window has closed. One per WABA, because
-   *  a workspace-wide default would be a template the other account cannot
-   *  send, chosen automatically at the worst possible moment. */
+  /** The default template **for its own account** — the account-wide fallback
+   *  the composer sends behind the scenes once a 24-hour window has closed.
+   *  One per WABA, because a workspace-wide default would be a template the
+   *  other account cannot send, chosen automatically at the worst possible
+   *  moment. Numbers that name their own template (below) ignore it. */
   isDefault: z.boolean().default(false),
+  /**
+   * The numbers this is the closed-window default **for**.
+   *
+   * The account-wide `isDefault` above is the fallback, not the answer: two
+   * numbers commonly sit under one WABA, and they are usually two different
+   * things to be — a sales line and a support line share every template and
+   * should not share the sentence that re-opens a conversation. Keying the
+   * choice to the WABA made starring one number's template silently restyle
+   * the other's, which is indistinguishable from the setting not working.
+   *
+   * Resolved server-side per inbox: the number's own choice, else its
+   * account's, else the pre-accounts workspace one. So a workspace that never
+   * touches this keeps exactly the behaviour it has.
+   */
+  defaultForInboxIds: z.array(z.string()).default([]),
 });
 export type Template = z.infer<typeof templateSchema>;
+
+/**
+ * The template a closed 24-hour window falls back to on a given number.
+ *
+ * One variable exactly: what the composer sends is the agent's own typed text
+ * poured into `{{1}}`, so a template with none has nowhere to put it and one
+ * with several would leave the rest blank in front of a customer.
+ *
+ * Deliberately keyed on the inbox rather than filtered by account and then
+ * picked with `find`: with two numbers under one WABA, both of their defaults
+ * survive that filter and `find` returns whichever the list happened to order
+ * first — the other number's sentence, sent automatically.
+ */
+export function defaultTemplateFor<
+  T extends { variableCount: number; defaultForInboxIds?: string[] },
+>(templates: T[], inboxId: string | null | undefined): T | null {
+  if (!inboxId) return null;
+  return (
+    templates.find(
+      (t) => t.variableCount === 1 && (t.defaultForInboxIds ?? []).includes(inboxId),
+    ) ?? null
+  );
+}
 
 /* ---- Template variable pre-fill ---- */
 
@@ -803,6 +842,13 @@ export const setDefaultTemplateInputSchema = z.object({
   templateId: z.string().nullable(),
 });
 export type SetDefaultTemplateInput = z.infer<typeof setDefaultTemplateInputSchema>;
+
+/** Set (or clear, with null) one number's closed-window default template. */
+export const setChannelTemplateInputSchema = z.object({
+  inboxId: z.string(),
+  templateId: z.string().nullable(),
+});
+export type SetChannelTemplateInput = z.infer<typeof setChannelTemplateInputSchema>;
 
 export const createTemplateInputSchema = z.object({
   name: z
