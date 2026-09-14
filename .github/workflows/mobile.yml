@@ -69,14 +69,11 @@ env:
   # after the build has already been paid for, which is a confusing place to
   # learn it.
   MOBILE_SUBMIT: ${{ github.event_name != 'push' && inputs.submit && inputs.profile == 'production' }}
-  # Read by eas.json's submit profile. Missing ones surface as a prompt, which
-  # in --non-interactive is a failure rather than a hang — see 3.5 in
-  # docs/10-release.md for which secret is which.
-  EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
+  # Which app in App Store Connect the upload is for. Authentication itself is
+  # the App Store Connect API key held on the Expo account — no Apple ID and no
+  # app-specific password, which is why neither appears here.
   EXPO_ASC_APP_ID: ${{ secrets.EXPO_ASC_APP_ID }}
   EXPO_APPLE_TEAM_ID: ${{ secrets.EXPO_APPLE_TEAM_ID }}
-  # What lets the upload authenticate without a human at an Apple prompt.
-  EXPO_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.EXPO_APPLE_APP_SPECIFIC_PASSWORD }}
 
 jobs:
   mobile:
@@ -118,6 +115,37 @@ jobs:
           MSG="${{ inputs.message }}"
           [ -n "$MSG" ] || MSG="$(git log -1 --pretty=%s)"
           echo "text=$MSG" >> "$GITHUB_OUTPUT"
+
+      # A missing secret otherwise surfaces after the build — 25 minutes and a
+      # build credit spent before anything mentions it, and then as an Apple
+      # error rather than as "you didn't set this". Named here, in a second.
+      - name: Check the submit credentials exist
+        if: env.MOBILE_SUBMIT == 'true' || env.MOBILE_MODE == 'submit'
+        run: |
+          MISSING=""
+          if [ "${{ inputs.platform }}" != "android" ]; then
+            for V in EXPO_ASC_APP_ID EXPO_APPLE_TEAM_ID; do
+              [ -n "$(eval echo \$$V)" ] || MISSING="$MISSING $V"
+            done
+          fi
+          if [ -n "$MISSING" ]; then
+            {
+              echo "### Can't submit — repository secrets missing"
+              echo
+              echo "Set these under Settings → Secrets and variables → Actions:"
+              echo
+              for V in $MISSING; do echo "- \`$V\`"; done
+              echo
+              echo "Both come from App Store Connect: the app's Apple ID number"
+              echo "and the ten-character team id. Authentication itself is the"
+              echo "App Store Connect API key on the Expo account."
+              echo
+              echo "The build itself needs none of these — re-run with submit"
+              echo "unticked to get an installable binary while you sort them out."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Submit was requested but these secrets are empty:$MISSING"
+            exit 1
+          fi
 
       - name: Build
         if: env.MOBILE_MODE == 'build'

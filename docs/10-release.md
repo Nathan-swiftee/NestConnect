@@ -341,17 +341,43 @@ pnpm exec eas submit --profile production --platform ios       # → TestFlight
 pnpm exec eas submit --profile production --platform android   # → Play internal, as a draft
 ```
 
-An iOS upload needs four secrets on the repository. The first three are read by
-`eas.json`'s submit profile; the fourth is what lets the upload authenticate
-with no human at an Apple prompt, and without it a `--non-interactive` submit
-fails rather than hangs:
+Authentication for the upload is the **App Store Connect API key** held on the
+Expo account, not an Apple ID — so there is no app-specific password to create,
+rotate or leak, and only two secrets are needed on the repository:
 
 | Secret | What it is |
 | --- | --- |
-| `EXPO_APPLE_ID` | The Apple ID that owns the app. |
-| `EXPO_ASC_APP_ID` | App Store Connect's numeric app id. |
+| `EXPO_ASC_APP_ID` | App Store Connect's numeric app id (App Information → Apple ID). A key can reach several apps, so the upload still has to name one. |
 | `EXPO_APPLE_TEAM_ID` | The ten-character team id. |
-| `EXPO_APPLE_APP_SPECIFIC_PASSWORD` | Generated at appleid.apple.com → Sign-In and Security → App-Specific Passwords. Not the account password. |
+
+The key itself is uploaded once, through the Expo dashboard, under
+**Account settings → Android & iOS credentials → App Store Connect API Keys**.
+It needs the **Admin** role: a lesser role can upload builds but cannot create
+the signing certificate.
+
+**Before the first iOS build, once.** EAS needs an Apple distribution
+certificate and provisioning profile, and generating them means signing in to
+Apple — so it cannot happen in `--non-interactive`, which is what a workflow
+run is. Without them a production iOS build fails in about ten seconds with:
+
+```
+✔ Using remote iOS credentials (Expo server)
+Distribution Certificate is not validated for non-interactive builds.
+Credentials are not set up. Run this command again in interactive mode.
+```
+
+The cure is one interactive command on a machine where you can log in to Apple.
+It sets up credentials without spending a build:
+
+```sh
+pnpm dlx eas-cli@latest login
+cd apps/mobile && pnpm exec eas credentials --platform ios
+# → production → set up a Distribution Certificate, then a Provisioning Profile
+```
+
+The app also has to exist in App Store Connect before anything can be uploaded
+to it — that's where `EXPO_ASC_APP_ID` comes from. Bundle id
+`co.uk.swiftee.nestconnect`.
 
 `ITSAppUsesNonExemptEncryption` is declared `false` in `app.json`. Without it
 every upload lands in App Store Connect as *Missing Compliance* and no tester
