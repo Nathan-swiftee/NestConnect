@@ -6,7 +6,7 @@ import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
-import { ClientEvent, FORWARD_MAX_TARGETS, inboxLabel, replyTargetsFor, sendingInbox, templatesForWaba, typingPingMs } from "@ding/schemas";
+import { ClientEvent, defaultTemplateFor, FORWARD_MAX_TARGETS, inboxLabel, replyTargetsFor, sendingInbox, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -2177,10 +2177,6 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     : composeChannel === conv.channel
       ? laterWindow(conv.waWindow, computeWaWindow(conv.messages))
       : computeWaWindow(conv.messages);
-  /** The WhatsApp account behind this conversation's number, if it has one.
-   *  Declared here rather than beside `ourAddress` below because the default
-   *  template a few lines down needs it. */
-  const ourWabaId = inboxes?.find((i) => i.id === conv.inboxId)?.channelConfigPublic?.wabaId;
   const windowClosed = isWhatsApp && !!waWindow && !waWindow.open;
   const msLeft = waWindow?.expiresAt ? new Date(waWindow.expiresAt).getTime() - now : null;
   const showCountdown = isWhatsApp && waWindow?.open === true && msLeft != null;
@@ -2190,12 +2186,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // open and send the workspace's default template with what they typed as its
   // variable — the same keystrokes, the same Send. That only works when the
   // default takes exactly one {{1}}; anything else can't be filled from one box.
-  // From this number's own account. The default is what the composer sends by
-  // itself once the window closes, so another account's default here would be a
-  // template Meta rejects, chosen automatically, at the moment an agent is
-  // trying to get back to somebody.
-  const defaultTemplate =
-    templatesForWaba(templates ?? [], ourWabaId).find((t) => t.isDefault && t.variableCount === 1) ?? null;
+  // Keyed to this conversation's own number, not filtered by account and then
+  // picked: two numbers commonly share one WABA, so filtering leaves both of
+  // their defaults standing and `find` would send whichever the list ordered
+  // first — the other line's sentence, automatically, to somebody's customer.
+  const defaultTemplate = defaultTemplateFor(templates ?? [], conv.inboxId);
   const templateFallback = windowClosed && !internal && !!defaultTemplate;
   // Free-form replies are blocked when the window is closed — but internal notes
   // bypass the window, and the template fallback keeps the composer usable, so

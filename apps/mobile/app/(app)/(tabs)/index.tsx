@@ -542,7 +542,6 @@ export default function Inbox() {
                 haptics.select();
                 setFilter(f.key);
               }}
-              subtle
             />
           ))}
         </ScrollView>
@@ -650,13 +649,11 @@ function Chip({
   label,
   count,
   active,
-  subtle,
   onPress,
 }: {
   label: string;
   count?: number;
   active: boolean;
-  subtle?: boolean;
   onPress: () => void;
 }) {
   const { c } = useTheme();
@@ -678,21 +675,29 @@ function Chip({
         }}
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
-        // A chip is 26pt tall on purpose — it's a narrow row under the search
-        // field, and a 44pt pill would dominate it. The slop makes the *target*
-        // 44 without making the chip look like a button.
-        hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
+        // These were 12pt text in a 26pt pill, on the theory that a filter row
+        // under the search field should stay out of the way. It stayed so far
+        // out of the way it was hard to read and hard to hit — and this is the
+        // control that decides which conversations you are looking at, which is
+        // not a thing to squint at. Body-sized text now, in a pill tall enough
+        // to be aimed at.
+        //
+        // The slop still adds to the target rather than to the chip: it carries
+        // the height past 44pt without a row of buttons appearing under the
+        // search field, and widens the gaps so a thumb between two chips
+        // reaches the nearer one instead of neither.
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         style={{ backgroundColor: active ? c.brandTint : c.surface2 }}
-        className={`flex-row items-center gap-1.5 rounded-full px-3.5 ${subtle ? "py-1.5" : "py-2"}`}
+        className="flex-row items-center gap-1.5 rounded-full px-4 py-2"
       >
         <Text
           style={{ color: active ? c.brandStrong : c.textMuted }}
-          className={`${subtle ? "text-xs" : "text-sm"} ${active ? "font-semibold" : "font-medium"}`}
+          className={`text-md ${active ? "font-semibold" : "font-medium"}`}
         >
           {label}
         </Text>
         {count ? (
-          <Text style={{ color: active ? c.brandStrong : c.textFaint }} className="text-2xs font-semibold">
+          <Text style={{ color: active ? c.brandStrong : c.textFaint }} className="text-xs font-semibold">
             {count}
           </Text>
         ) : null}

@@ -5,6 +5,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-g
 import { fadeTo, spring, springTo, timing } from "../motion";
 import { useTheme, useThemeVars } from "../theme";
 import { useInsets } from "../insets";
+import { useModalSlot } from "../modal-slot";
 
 /** How far down you have to drag before letting go dismisses rather than snaps
  *  back, and the flick speed that dismisses regardless of distance. A flick
@@ -77,7 +78,13 @@ export function Sheet({
   // Kept mounted through the exit, then torn down. Without this the Modal
   // disappears on the same frame `visible` flips and there is nothing left on
   // screen to animate out.
-  const [mounted, setMounted] = useState(visible);
+  //
+  // Held by the slot rather than by local state, because that exit window is
+  // also when a sheet that opened another sheet has two modals mounted at once
+  // — and on iOS UIKit refuses the second one. `presenting` is this sheet's
+  // turn to be on screen, which on iOS may start a beat after `visible` does.
+  // See `modal-slot.ts`.
+  const { mounted, presenting } = useModalSlot(visible, timing.base.duration + 40);
   const open = useSharedValue(0);
   // Live finger offset, in points, on top of the open/closed transform.
   const drag = useSharedValue(0);
@@ -111,16 +118,13 @@ export function Sheet({
   }, [mounted]);
 
   useEffect(() => {
-    if (visible) {
-      setMounted(true);
+    if (presenting) {
       drag.value = 0;
       open.value = springTo(1, spring.settle);
       return;
     }
     open.value = fadeTo(0, timing.base);
-    const t = setTimeout(() => setMounted(false), timing.base.duration + 40);
-    return () => clearTimeout(t);
-  }, [visible, open, drag]);
+  }, [presenting, open, drag]);
 
   const pan = Gesture.Pan()
     // Let a list inside the sheet win. Requiring 12pt downward before this

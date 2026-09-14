@@ -11,9 +11,11 @@ import {
 } from "@nestjs/common";
 import {
   createTemplateInputSchema,
+  setChannelTemplateInputSchema,
   setDefaultTemplateInputSchema,
   updateTemplateInputSchema,
   type CreateTemplateInput,
+  type SetChannelTemplateInput,
   type SetDefaultTemplateInput,
   type Template,
   type UpdateTemplateInput,
@@ -75,6 +77,23 @@ export class TemplatesController {
   ): Promise<Template[]> {
     await this.requireManager(userId);
     return this.templates.setDefault(body.templateId);
+  }
+
+  /**
+   * Point one WhatsApp number at its own closed-window template.
+   *
+   * Separate from "default" above because they answer different questions: that
+   * one sets the account-wide fallback, this one overrides it for a single
+   * number. Two numbers under one account are usually two different things to
+   * be, and before this the second one could only have the first one's answer.
+   */
+  @Post("channel-default")
+  async setChannelDefault(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(setChannelTemplateInputSchema)) body: SetChannelTemplateInput,
+  ): Promise<Template[]> {
+    await this.requireManager(userId);
+    return this.templates.setChannelDefault(body.inboxId, body.templateId);
   }
 
   @Post("sync")

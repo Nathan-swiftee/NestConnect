@@ -89,6 +89,15 @@ jobs:
       - name: Outbound sending inbox
         run: pnpm check:outbound-inbox
 
+      # Which template re-opens a chat once its 24-hour window has closed. It is
+      # sent by nobody — the agent types normally and their text becomes its
+      # {{1}} — so a wrong pick is wrong silently, in front of a customer. The
+      # choice used to be keyed to the WhatsApp account, and several numbers
+      # routinely share one, so a sales line and a support line had a single
+      # setting between them: changing one changed the other.
+      - name: Per-number default template
+        run: pnpm check:default-template
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those

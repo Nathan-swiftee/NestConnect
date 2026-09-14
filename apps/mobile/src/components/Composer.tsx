@@ -3,7 +3,7 @@ import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-nati
 import Animated from "react-native-reanimated";
 import { enter, exit, reflow } from "../motion";
 import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { inboxLabel, replyTargetsFor, sendingInbox, typingPingMs } from "@ding/schemas";
+import { defaultTemplateFor, inboxLabel, replyTargetsFor, sendingInbox, typingPingMs } from "@ding/schemas";
 import {
   api,
   useIntegrations,
@@ -262,11 +262,12 @@ export function Composer({
   const msLeft = conv.waWindow?.expiresAt ? new Date(conv.waWindow.expiresAt).getTime() - Date.now() : null;
   const closingSoon = msLeft != null && msLeft < 60 * 60 * 1000;
 
-  // Closed window: fall back to this account's default single-variable template,
-  // so what the agent typed still goes out as the message body. Per account,
-  // because another account's default is one Meta would reject — chosen
-  // automatically, with nobody having picked it.
-  const defaultTemplate = templates?.find((t) => t.isDefault && t.variableCount === 1) ?? null;
+  // Closed window: fall back to this number's own single-variable template, so
+  // what the agent typed still goes out as the message body. Per number, not
+  // per account: two numbers commonly share a WABA and are usually two
+  // different things to be, and the wrong one would be chosen automatically,
+  // with nobody having picked it.
+  const defaultTemplate = defaultTemplateFor(templates ?? [], conv.inboxId);
   const templateFallback = windowClosed && !internal && !!defaultTemplate;
   const locked = windowClosed && !internal && !defaultTemplate;
 

@@ -136,8 +136,10 @@ export function mapTemplate(t: Prisma.TemplateGetPayload<object>): Template {
     // Null in the column means "no account has claimed this yet"; the domain
     // type says that with an absent field rather than a null.
     ...(t.wabaId ? { wabaId: t.wabaId } : {}),
-    // The per-account default is an org setting, applied by TemplatesService.
+    // Both defaults live in org settings, applied by TemplatesService — this
+    // mapper has no way to read them and must not guess.
     isDefault: false,
+    defaultForInboxIds: [],
   };
 }
 
