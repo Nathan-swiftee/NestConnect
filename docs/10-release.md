@@ -341,14 +341,18 @@ pnpm exec eas submit --profile production --platform ios       # → TestFlight
 pnpm exec eas submit --profile production --platform android   # → Play internal, as a draft
 ```
 
-Authentication for the upload is the **App Store Connect API key** held on the
-Expo account, not an Apple ID — so there is no app-specific password to create,
-rotate or leak, and only two secrets are needed on the repository:
+An iOS submit needs **no repository secrets at all**. Authentication is the
+**App Store Connect API key** held on the Expo account, not an Apple ID — so
+there is no app-specific password to create, rotate or leak — and the app id
+the upload targets is written into `eas.json`.
 
-| Secret | What it is |
-| --- | --- |
-| `EXPO_ASC_APP_ID` | App Store Connect's numeric app id (App Information → Apple ID). A key can reach several apps, so the upload still has to name one. |
-| `EXPO_APPLE_TEAM_ID` | The ten-character team id. |
+That id is deliberately not a secret. `ascAppId` is the number in every App
+Store URL; treating it as one cost an hour. `--auto-submit` resolves the submit
+config **on EAS's servers**, where a GitHub runner's environment does not
+exist, so `$EXPO_ASC_APP_ID` arrived as that literal string and failed
+validation for not being digits. Anything `eas.json` needs at submit time has
+to be a literal or an EAS-side environment variable; a repo secret reaches the
+runner and stops there.
 
 The key itself is uploaded once, through the Expo dashboard, under
 **Account settings → Android & iOS credentials → App Store Connect API Keys**.
