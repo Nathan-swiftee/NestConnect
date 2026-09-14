@@ -16,6 +16,7 @@ import { fadeTo, spring, springTo, stagger, timing } from "../motion";
 import { elevation, useTheme, useThemeVars } from "../theme";
 import { readSummary } from "./ReadLog";
 import { useInsets } from "../insets";
+import { useModalSlot } from "../modal-slot";
 import { Touchable } from "./Touchable";
 
 /**
@@ -111,19 +112,29 @@ export function MessageActions({
 
   // The message is held for the length of the exit so the sheet has something to
   // render on the way out; `message` itself goes null as soon as it's dismissed.
+  //
+  // How long that is, and when the Modal may go up in the first place, is the
+  // slot's to decide. Every row in here closes this sheet and opens another in
+  // the same breath — Forward especially — which leaves two modals mounted
+  // through this exit, and iOS presents only the first of those. See
+  // `modal-slot.ts`.
   const [shown, setShown] = useState<Message | null>(message);
+  const { mounted, presenting } = useModalSlot(!!message, timing.base.duration + 40);
   const open = useSharedValue(0);
 
   useEffect(() => {
-    if (message) {
-      setShown(message);
-      open.value = springTo(1, spring.settle);
-      return;
-    }
-    open.value = fadeTo(0, timing.base);
-    const t = setTimeout(() => setShown(null), timing.base.duration + 40);
-    return () => clearTimeout(t);
-  }, [message, open]);
+    if (message) setShown(message);
+  }, [message]);
+
+  useEffect(() => {
+    open.value = presenting ? springTo(1, spring.settle) : fadeTo(0, timing.base);
+  }, [presenting, open]);
+
+  // Let go of the message only once the sheet is off screen, so the rows don't
+  // blank out mid-fade.
+  useEffect(() => {
+    if (!mounted) setShown(null);
+  }, [mounted]);
 
   /**
    * Both of these carry their own geometry rather than leaving it to a
@@ -176,7 +187,7 @@ export function MessageActions({
     transform: [{ translateY: `${(1 - open.value) * 100}%` }, { translateY: drag.value }],
   }));
 
-  if (!shown) return null;
+  if (!shown || !mounted) return null;
 
   const isWhatsApp = conv.channel === "whatsapp" || conv.channel === "whatsapp_group";
   // Quoting threads on WhatsApp and nowhere else — an email "quote" is just

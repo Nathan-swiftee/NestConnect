@@ -34,7 +34,8 @@
  * ── 2 ─────────────────────────────────────────────────────────────────────
  *
  *   A scroll region inside a `<Sheet>` must be able to shrink — `flexShrink: 1`,
- *   an explicit `maxHeight`, or a fixed-height wrapper.
+ *   an explicit `maxHeight`, or a fixed-height wrapper — **and so must every
+ *   element between it and the sheet**.
  *
  * The exact opposite of rule 1, and for the exact same reason: Yoga's
  * `flexShrink` default is 0. The sheet panel is capped at 85% of the screen, so
@@ -43,6 +44,15 @@
  * nowhere to scroll to and every drag inside it does nothing. That is what "the
  * customer details pop-up scrolls sometimes and sometimes doesn't" was: short
  * contact fits, long contact silently frozen.
+ *
+ * The ancestors matter as much as the scroller, and that half shipped as a bug
+ * of its own: the inbox switcher had its `flexShrink: 1` and still would not
+ * scroll, because its header and scroller sat inside one plain wrapper `View`.
+ * The wrapper kept its full content height, overflowed the cap, and the
+ * scroller then shrank obediently inside a parent already taller than the
+ * screen — which shrinks nothing. A workspace with enough teams and channels
+ * lost the bottom of the list with no way to reach it. Checking only the
+ * scroller's own tag and its nearest wrapper called that file clean.
  *
  * Also invisible in a browser, because react-native-web's ScrollView shrinks
  * where Yoga's doesn't. Same blind spot, opposite symptom.
@@ -230,6 +240,82 @@ function openingTags(src) {
   return tags;
 }
 
+/**
+ * Every JSX tag in source order: opening, self-closing or closing.
+ *
+ * Shares `openingTags`' brace- and quote-aware walk to find where a tag ends,
+ * because attribute values are full of `>` — every arrow function has one — and
+ * a scan that stops at the first `>` mis-reads almost every tag in this app.
+ */
+function tagSequence(src) {
+  const out = [];
+  const start = /<(\/?)([A-Z][A-Za-z0-9.]*)/g;
+  let m;
+  while ((m = start.exec(src))) {
+    const [, closing, name] = m;
+    if (closing) {
+      out.push({ kind: "close", name });
+      continue;
+    }
+    let depth = 0;
+    let quote = "";
+    let i = m.index + m[0].length;
+    for (; i < src.length; i += 1) {
+      const ch = src[i];
+      if (quote) {
+        if (ch === "\\") i += 1;
+        else if (ch === quote) quote = "";
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") quote = ch;
+      else if (ch === "{") depth += 1;
+      else if (ch === "}") depth -= 1;
+      else if (ch === ">" && depth === 0) break;
+    }
+    if (i >= src.length) continue;
+    out.push({
+      kind: src[i - 1] === "/" ? "self" : "open",
+      name,
+      tag: src.slice(m.index, i + 1),
+      line: src.slice(0, m.index).split("\n").length,
+    });
+  }
+  return out;
+}
+
+/**
+ * Every scroller inside a `<Sheet>`, with the chain of elements standing
+ * between the two.
+ *
+ * A stack walk rather than "the tag just above", because the element that
+ * breaks a sheet's scrolling need not be the scroller's own parent — the inbox
+ * switcher's was two levels up, wrapping the header as well, and looking only
+ * at the nearest wrapper read that file as clean while the sheet was frozen on
+ * a phone.
+ *
+ * Fragments and lower-case tags are invisible here on purpose: neither lays
+ * anything out, so neither can be what stops a scroller shrinking.
+ */
+function sheetScrollers(src) {
+  const out = [];
+  const stack = [];
+  for (const t of tagSequence(src)) {
+    if (t.kind === "close") {
+      // Unwind to the matching open. A name that isn't on the stack leaves it
+      // alone rather than truncating everything above it.
+      const at = stack.map((e) => e.name).lastIndexOf(t.name);
+      if (at !== -1) stack.length = at;
+      continue;
+    }
+    const inSheet = stack.map((e) => e.name).lastIndexOf("Sheet");
+    if (SCROLLERS.includes(t.name) && inSheet !== -1) {
+      out.push({ ...t, between: stack.slice(inSheet + 1) });
+    }
+    if (t.kind === "open") stack.push(t);
+  }
+  return out;
+}
+
 /** The names bound to a `useAnimatedStyle(...)` in this file. */
 function animatedStyleNames(src) {
   const names = new Set();
@@ -312,9 +398,10 @@ for (const file of sources(ROOT)) {
     }
   }
 
-  // Rule 2 — a sheet holding a scroller that can't shrink. File-level rather
-  // than span-level: <Sheet> wraps everything below it in these components, and
-  // a scroller in the same file is in it in every case we have.
+  // Rule 2 — a sheet holding a scroller that can't shrink, or holding one
+  // behind an element that can't. The scroller's own tag is not enough: it
+  // shrinks relative to its parent, so a parent that has already outgrown the
+  // panel's cap leaves it nothing to shrink against.
   if (/<Sheet[\s>]/.test(src)) {
     sheetsSeen += 1;
     for (const s of scrollerTags(src)) {
@@ -323,6 +410,22 @@ for (const file of sources(ROOT)) {
         `${relative(ROOT, file)}:${s.line} — this <${s.name}> is inside a <Sheet> and cannot ` +
           `shrink, so it will overflow the panel's 85% cap and refuse to scroll. Give it ` +
           `style={{ flexShrink: 1 }}.`,
+      );
+    }
+    for (const s of sheetScrollers(src)) {
+      // Only the scrollers that are themselves fine — the loop above has
+      // already spoken for the others, and two messages about one element
+      // would send somebody to the wrong line.
+      if (!canShrink({ tag: s.tag, wrapper: "" })) continue;
+      const blocker = s.between.find((a) => !heightIsBounded(a.tag));
+      if (!blocker) continue;
+      problems.push(
+        `${relative(ROOT, file)}:${blocker.line} — this <${blocker.name}> stands between a <Sheet> ` +
+          `and the <${s.name}> on line ${s.line}, and cannot shrink. The scroller's own ` +
+          `flexShrink then has nothing to shrink against: this wrapper keeps its full content ` +
+          `height, overflows the panel's 85% cap, and the sheet is clipped rather than ` +
+          `scrollable. Give it flexShrink too, or drop it and let the scroller be a direct ` +
+          `child of the sheet.`,
       );
     }
   }
@@ -369,6 +472,40 @@ if (animatedSeen === 0) {
     console.error(
       "\nCannot run: the tag scanner lost a tag whose comment contains an apostrophe — " +
         "the exact failure `stripComments` exists to prevent. Fix that before trusting a pass.\n",
+    );
+    process.exit(2);
+  }
+}
+
+/**
+ * The ancestor walk, checked against the shape that defeated its predecessor.
+ *
+ * A scroller carrying `flexShrink: 1` inside one plain wrapper: correct in
+ * isolation, frozen on a phone. The check read it as clean for as long as it
+ * only looked at the scroller and the tag nearest above it.
+ */
+{
+  const frozen = stripComments(`
+    <Sheet visible={open} onClose={() => close()}>
+      <View>
+        <Text>Inboxes</Text>
+        <ScrollView style={{ flexShrink: 1 }}>{rows}</ScrollView>
+      </View>
+    </Sheet>
+  `);
+  const found = sheetScrollers(frozen);
+  const caught = found.length === 1 && found[0].between.some((a) => !heightIsBounded(a.tag));
+  const fixed = stripComments(`
+    <Sheet visible={open} onClose={() => close()}>
+      <Text>Inboxes</Text>
+      <ScrollView style={{ flexShrink: 1 }}>{rows}</ScrollView>
+    </Sheet>
+  `);
+  const clean = sheetScrollers(fixed);
+  if (!caught || clean.length !== 1 || clean[0].between.length !== 0) {
+    console.error(
+      "\nCannot run: the ancestor walk no longer separates a scroller behind a rigid wrapper " +
+        "from one that is a direct child of the sheet. Fix that before trusting a pass.\n",
     );
     process.exit(2);
   }

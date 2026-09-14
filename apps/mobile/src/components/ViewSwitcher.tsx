@@ -115,159 +115,169 @@ export function ViewSwitcher({
     // down to dismiss and carries a grab handle like every other sheet. It was
     // the one that didn't, which is exactly why it was the one that felt stuck.
     <Sheet visible={visible} onClose={onClose} closeLabel="Close inboxes">
-      <View>
-          <View className="flex-row items-center justify-between pb-1">
-            <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
-              Inboxes
-            </Text>
-            <Touchable feel="chip" borderless
-              onPress={onClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close"
-              hitSlop={10}
-              style={{ backgroundColor: c.surface2 }}
-              className="h-8 w-8 items-center justify-center rounded-full"
-            >
-              <XIcon size={16} color={c.textMuted} />
-            </Touchable>
-          </View>
+      {/* Header and scroller are direct children of the sheet, as in every
+          other sheet in the app. They were wrapped in a plain `View`, and that
+          wrapper is what stopped this one scrolling: the panel is capped at 85%
+          of the screen, but Yoga defaults `flexShrink` to 0, so the wrapper
+          kept its full content height and overflowed the cap. The scroller's
+          own `flexShrink: 1` then had nothing to shrink against — it was
+          shrinking inside a parent that had already grown past the screen.
 
-          {/* `flexShrink: 1` is what makes this scroll at all — see Sheet.tsx. */}
-          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
-            <SectionLabel>My space</SectionLabel>
-            {inbound ? (
+          Clipped is not scrolled. The ScrollView's frame ends up equal to its
+          content, so it believes there is nowhere to scroll to, and a workspace
+          with enough teams and channels to overflow simply loses the bottom of
+          the list with no way to reach it. */}
+      <View className="flex-row items-center justify-between pb-1">
+        <Text accessibilityRole="header" className="text-xl font-semibold text-fg">
+          Inboxes
+        </Text>
+        <Touchable feel="chip" borderless
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+          hitSlop={10}
+          style={{ backgroundColor: c.surface2 }}
+          className="h-8 w-8 items-center justify-center rounded-full"
+        >
+          <XIcon size={16} color={c.textMuted} />
+        </Touchable>
+      </View>
+
+      {/* `flexShrink: 1` is what makes this scroll at all — see Sheet.tsx. */}
+      <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: 12 }}>
+        <SectionLabel>My space</SectionLabel>
+        {inbound ? (
+          <Row
+            active={view === inbound.key}
+            label={inbound.title}
+            count={inbound.count}
+            onPress={() => pick(inbound.key)}
+            icon={<InboxIcon size={18} color={view === inbound.key ? c.brandStrong : c.textMuted} />}
+          />
+        ) : null}
+        {subs.map((s) => {
+          // "Later" carries a bell when something has already woken —
+          // a count alone doesn't say that any of it is due now.
+          const due = s.key === "snoozed" && (s.due ?? 0) > 0;
+          return (
+            <Row
+              key={s.key}
+              sub
+              active={view === s.key}
+              label={s.title}
+              count={due ? s.due : s.count}
+              warn={due}
+              onPress={() => pick(s.key)}
+              icon={
+                due ? (
+                  <SnoozeIcon size={15} color={c.amber} />
+                ) : (
+                  <View style={{ backgroundColor: c.borderStrong }} className="h-1 w-1 rounded-full" />
+                )
+              }
+            />
+          );
+        })}
+
+        {data?.shared.teams.length ? (
+          <>
+            <SectionLabel>Team inboxes</SectionLabel>
+            {data.shared.teams.map((t) => (
               <Row
-                active={view === inbound.key}
-                label={inbound.title}
-                count={inbound.count}
-                onPress={() => pick(inbound.key)}
-                icon={<InboxIcon size={18} color={view === inbound.key ? c.brandStrong : c.textMuted} />}
+                key={t.key}
+                active={view === t.key}
+                label={t.title}
+                count={t.count}
+                onPress={() => pick(t.key)}
+                icon={
+                  <TeamGlyph
+                    icon={teamIconFor(t.key)}
+                    size={18}
+                    color={view === t.key ? c.brandStrong : c.textMuted}
+                  />
+                }
               />
-            ) : null}
-            {subs.map((s) => {
-              // "Later" carries a bell when something has already woken —
-              // a count alone doesn't say that any of it is due now.
-              const due = s.key === "snoozed" && (s.due ?? 0) > 0;
+            ))}
+          </>
+        ) : null}
+
+        {data?.shared.inboxes.length ? (
+          <>
+            <SectionLabel>Channels</SectionLabel>
+            {data.shared.inboxes.map((i) => {
+              const groups = i.groups ?? [];
+              const open = groups.length > 0 && expanded[i.key];
+              const Glyph = i.channel ? channelMeta(i.channel).Glyph : null;
+              const GroupGlyph = channelMeta("whatsapp_group").Glyph;
               return (
-                <Row
-                  key={s.key}
-                  sub
-                  active={view === s.key}
-                  label={s.title}
-                  count={due ? s.due : s.count}
-                  warn={due}
-                  onPress={() => pick(s.key)}
-                  icon={
-                    due ? (
-                      <SnoozeIcon size={15} color={c.amber} />
-                    ) : (
-                      <View style={{ backgroundColor: c.borderStrong }} className="h-1 w-1 rounded-full" />
-                    )
-                  }
-                />
+                <View key={i.key}>
+                  <Row
+                    active={view === i.key}
+                    label={i.title}
+                    count={i.count}
+                    onPress={() => pick(i.key)}
+                    icon={
+                      Glyph ? (
+                        <Glyph size={16} color={i.channel ? channelColor(i.channel, c) : c.textFaint} />
+                      ) : null
+                    }
+                    trailing={
+                      groups.length > 0 ? (
+                        <Touchable feel="chip"
+                          onPress={() => setExpanded((e) => ({ ...e, [i.key]: !e[i.key] }))}
+                          accessibilityRole="button"
+                          accessibilityLabel={open ? "Hide groups" : "Show groups"}
+                          hitSlop={10}
+                          className="px-1"
+                          style={{ transform: [{ rotate: open ? "90deg" : "0deg" }] }}
+                        >
+                          <ChevronRight size={14} color={c.textFaint} />
+                        </Touchable>
+                      ) : null
+                    }
+                  />
+                  {open
+                    ? groups.map((g) => (
+                        <Row
+                          key={g.id}
+                          sub
+                          active={false}
+                          label={g.title}
+                          onPress={() => {
+                            onOpenConversation(g.id);
+                            onClose();
+                          }}
+                          icon={<GroupGlyph size={14} color={c.group} />}
+                        />
+                      ))
+                    : null}
+                </View>
               );
             })}
+          </>
+        ) : null}
 
-            {data?.shared.teams.length ? (
-              <>
-                <SectionLabel>Team inboxes</SectionLabel>
-                {data.shared.teams.map((t) => (
-                  <Row
-                    key={t.key}
-                    active={view === t.key}
-                    label={t.title}
-                    count={t.count}
-                    onPress={() => pick(t.key)}
-                    icon={
-                      <TeamGlyph
-                        icon={teamIconFor(t.key)}
-                        size={18}
-                        color={view === t.key ? c.brandStrong : c.textMuted}
-                      />
-                    }
+        {data?.shared.labels.length ? (
+          <>
+            <SectionLabel>Labels</SectionLabel>
+            {data.shared.labels.map((l) => (
+              <Row
+                key={l.key}
+                active={view === l.key}
+                label={l.title}
+                count={l.count}
+                onPress={() => pick(l.key)}
+                icon={
+                  <View
+                    style={{ backgroundColor: l.color ?? c.textFaint }}
+                    className="h-2.5 w-2.5 rounded-full"
                   />
-                ))}
-              </>
-            ) : null}
-
-            {data?.shared.inboxes.length ? (
-              <>
-                <SectionLabel>Channels</SectionLabel>
-                {data.shared.inboxes.map((i) => {
-                  const groups = i.groups ?? [];
-                  const open = groups.length > 0 && expanded[i.key];
-                  const Glyph = i.channel ? channelMeta(i.channel).Glyph : null;
-                  const GroupGlyph = channelMeta("whatsapp_group").Glyph;
-                  return (
-                    <View key={i.key}>
-                      <Row
-                        active={view === i.key}
-                        label={i.title}
-                        count={i.count}
-                        onPress={() => pick(i.key)}
-                        icon={
-                          Glyph ? (
-                            <Glyph size={16} color={i.channel ? channelColor(i.channel, c) : c.textFaint} />
-                          ) : null
-                        }
-                        trailing={
-                          groups.length > 0 ? (
-                            <Touchable feel="chip"
-                              onPress={() => setExpanded((e) => ({ ...e, [i.key]: !e[i.key] }))}
-                              accessibilityRole="button"
-                              accessibilityLabel={open ? "Hide groups" : "Show groups"}
-                              hitSlop={10}
-                              className="px-1"
-                              style={{ transform: [{ rotate: open ? "90deg" : "0deg" }] }}
-                            >
-                              <ChevronRight size={14} color={c.textFaint} />
-                            </Touchable>
-                          ) : null
-                        }
-                      />
-                      {open
-                        ? groups.map((g) => (
-                            <Row
-                              key={g.id}
-                              sub
-                              active={false}
-                              label={g.title}
-                              onPress={() => {
-                                onOpenConversation(g.id);
-                                onClose();
-                              }}
-                              icon={<GroupGlyph size={14} color={c.group} />}
-                            />
-                          ))
-                        : null}
-                    </View>
-                  );
-                })}
-              </>
-            ) : null}
-
-            {data?.shared.labels.length ? (
-              <>
-                <SectionLabel>Labels</SectionLabel>
-                {data.shared.labels.map((l) => (
-                  <Row
-                    key={l.key}
-                    active={view === l.key}
-                    label={l.title}
-                    count={l.count}
-                    onPress={() => pick(l.key)}
-                    icon={
-                      <View
-                        style={{ backgroundColor: l.color ?? c.textFaint }}
-                        className="h-2.5 w-2.5 rounded-full"
-                      />
-                    }
-                  />
-                ))}
-              </>
-            ) : null}
-          </ScrollView>
-      </View>
+                }
+              />
+            ))}
+          </>
+        ) : null}
+      </ScrollView>
     </Sheet>
   );
 }
