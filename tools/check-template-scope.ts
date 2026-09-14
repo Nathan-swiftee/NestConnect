@@ -154,7 +154,7 @@ async function main(): Promise<void> {
   const aTpl = listed.find((t) => t.wabaId === WABA_A)!;
   const bTpl = listed.find((t) => t.wabaId === WABA_B)!;
 
-  await svc.setDefault(aTpl.id);
+  await svc.setDefault(aTpl.id, true);
   let now = await svc.list();
   ok("setting one account's default flags it", now.find((t) => t.id === aTpl.id)?.isDefault === true);
   ok(
@@ -162,7 +162,7 @@ async function main(): Promise<void> {
     now.find((t) => t.id === bTpl.id)?.isDefault === false,
   );
 
-  await svc.setDefault(bTpl.id);
+  await svc.setDefault(bTpl.id, true);
   now = await svc.list();
   ok("each account keeps its own default", now.find((t) => t.id === aTpl.id)?.isDefault === true);
   ok("both at once", now.find((t) => t.id === bTpl.id)?.isDefault === true);
@@ -175,7 +175,7 @@ async function main(): Promise<void> {
   // Moving A's default to another of A's templates must not leave two.
   const aOther = now.find((t) => t.wabaId === WABA_A && t.id !== aTpl.id);
   if (aOther) {
-    await svc.setDefault(aOther.id);
+    await svc.setDefault(aOther.id, true);
     now = await svc.list();
     ok(
       "moving an account's default replaces it rather than adding one",
@@ -184,9 +184,17 @@ async function main(): Promise<void> {
     ok("and still doesn't disturb the other account", now.find((t) => t.id === bTpl.id)?.isDefault === true);
   }
 
-  await svc.setDefault(null);
+  // Unstarring names the template, so it clears that template's account and
+  // only that one. It used to take a bare null — "no default", whose account
+  // unstated — and the only thing the server could do with that was clear them
+  // all, so a workspace with two accounts lost both stars at once.
+  await svc.setDefault(aOther.id, false);
   now = await svc.list();
-  ok("clearing clears every account", now.every((t) => !t.isDefault));
+  ok("unstarring clears its own account", !now.find((t) => t.id === aOther.id)?.isDefault);
+  ok("and leaves the other account's alone", now.find((t) => t.id === bTpl.id)?.isDefault === true);
+  await svc.setDefault(bTpl.id, false);
+  now = await svc.list();
+  ok("unstarring the last one leaves nothing default", now.every((t) => !t.isDefault));
 
   console.log(failed === 0 ? "\nall good\n" : `\n${failed} check(s) failed\n`);
   process.exit(failed === 0 ? 0 : 1);

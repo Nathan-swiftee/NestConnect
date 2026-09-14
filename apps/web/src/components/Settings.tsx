@@ -64,7 +64,6 @@ import {
   useSetDefaultTemplate,
   useSyncTemplates,
   useTeams,
-  useSetChannelTemplate,
   useTemplates,
   useUpdateInbox,
   useUpdateIntegrations,
@@ -445,67 +444,6 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
   );
 }
 
-/**
- * One number's closed-window default template.
- *
- * Offers only this number's account's templates, and only single-variable ones:
- * what gets sent is the agent's own typed text poured into `{{1}}`, so a
- * template with none has nowhere to put it and one with several would go out
- * with the rest blank.
- */
-function ChannelDefaultTemplate({ inbox, onToast }: { inbox: Inbox; onToast: (m: string) => void }) {
-  const templates = useTemplates();
-  const setChannelTemplate = useSetChannelTemplate();
-  const wabaId = inbox.channelConfigPublic?.wabaId;
-  const usable = templatesForWaba(templates.data ?? [], wabaId).filter(
-    (t) => t.variableCount === 1 && t.approvalStatus === "approved",
-  );
-  const current = templates.data?.find((t) => t.defaultForInboxIds.includes(inbox.id)) ?? null;
-  // Inherited rather than chosen: this number has no setting of its own and is
-  // riding its account's star. Worth saying, because clearing the box below is
-  // the only way to stop it and that is not obvious from a filled-in select.
-  const inherited = !!current && !usable.some((t) => t.id === current.id) ? current : null;
-
-  return (
-    <label className="field">
-      <span>Template for closed windows</span>
-      <select
-        value={current?.id ?? ""}
-        disabled={setChannelTemplate.isPending}
-        onChange={(e) => {
-          const templateId = e.target.value || null;
-          setChannelTemplate.mutate(
-            { inboxId: inbox.id, templateId },
-            {
-              onSuccess: () =>
-                onToast(
-                  templateId
-                    ? `${inbox.name} will re-open closed chats with “${usable.find((t) => t.id === templateId)?.name ?? "that template"}”`
-                    : `${inbox.name} won’t send anything once a window has closed`,
-                ),
-              onError: (err) => onToast(err instanceof Error ? err.message : "Couldn’t save that"),
-            },
-          );
-        }}
-      >
-        <option value="">None — agents must pick a template by hand</option>
-        {inherited && <option value={inherited.id}>{inherited.name} (from this account)</option>}
-        {usable.map((t) => (
-          <option key={t.id} value={t.id}>{t.name}</option>
-        ))}
-      </select>
-      <em className="fieldhint">
-        After 24 hours of silence only a template can reach the customer. With one set here, agents
-        keep typing normally and what they write becomes its <code>{"{{1}}"}</code>. Each number can
-        have its own.
-        {usable.length === 0 && (
-          <> No approved one-variable templates on this account yet — sync or create one first.</>
-        )}
-      </em>
-    </label>
-  );
-}
-
 function ChannelEditor({
   inbox,
   onDone,
@@ -659,15 +597,6 @@ function ChannelEditor({
             </span>
           </label>
         </div>
-      )}
-      {/* Which template re-opens a conversation on *this* number once its
-          24-hour window has closed. On the number rather than on the template,
-          because two numbers routinely share one WhatsApp account and are two
-          different things to be — a sales line and a support line hold all the
-          same templates and should not share the sentence that restarts a
-          chat. */}
-      {(inbox.type === "whatsapp" || inbox.type === "whatsapp_group") && (
-        <ChannelDefaultTemplate inbox={inbox} onToast={onToast} />
       )}
       {/* What Meta actually says about the number, and the one action that fixes
           the state everybody gets stuck in. Only for WhatsApp: no other channel
@@ -2692,9 +2621,6 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
     const on = (inboxes.data ?? []).filter((i) => i.channelConfigPublic?.wabaId === wabaId);
     return on.length ? on.map((i) => i.name).join(", ") : "Another account";
   };
-  /** A number's display name, for the "used by" chip. */
-  const inboxName = (id: string) =>
-    (inboxes.data ?? []).find((i) => i.id === id)?.name ?? "a number";
   const del = useDeleteTemplate();
   const sync = useSyncTemplates();
   const setDefault = useSetDefaultTemplate();
@@ -2764,14 +2690,6 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
                 <span className="dcell dcell__t">
                   {t.name}
                   {t.isDefault && <span className="tpl-default">Default</span>}
-                  {/* Which numbers actually fall back to it. The star above is
-                      the account-wide setting; a number can name its own, and
-                      that override is invisible from here without this. */}
-                  {t.defaultForInboxIds.length > 0 && (
-                    <span className="tpl-default tpl-default--on">
-                      Used by {t.defaultForInboxIds.map(inboxName).join(", ")}
-                    </span>
-                  )}
                   {/* Which WhatsApp account holds it. Two accounts can each have
                       their own "order_update" and they are different templates,
                       so without this the list is two things wearing one name.
@@ -2797,7 +2715,7 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
                     }
                     aria-pressed={t.isDefault}
                     disabled={!t.isDefault && t.variableCount !== 1}
-                    onClick={() => setDefault.mutate(t.isDefault ? null : t.id)}
+                    onClick={() => setDefault.mutate({ templateId: t.id, isDefault: !t.isDefault })}
                   >
                     <StarIcon filled={t.isDefault} />
                   </button>

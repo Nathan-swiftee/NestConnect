@@ -981,20 +981,8 @@ export function useDeleteTemplate() {
 export function useSetDefaultTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (templateId: string | null) => api.setDefaultTemplate(templateId),
-    onSuccess: (data) => {
-      qc.setQueryData(["templates"], data);
-      qc.invalidateQueries({ queryKey: ["templates"] });
-    },
-  });
-}
-
-/** Set (or clear) one WhatsApp number's closed-window default template. */
-export function useSetChannelTemplate() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (v: { inboxId: string; templateId: string | null }) =>
-      api.setChannelTemplate(v.inboxId, v.templateId),
+    mutationFn: (v: { templateId: string; isDefault: boolean }) =>
+      api.setDefaultTemplate(v.templateId, v.isDefault),
     onSuccess: (data) => {
       qc.setQueryData(["templates"], data);
       qc.invalidateQueries({ queryKey: ["templates"] });

@@ -70,8 +70,19 @@ input,textarea{font:inherit}
 .btn-ghost:active{transform:scale(.97)}
 
 /* soft, carved input field — no outlined rectangles */
-.field input,.field select,.setadd input,.setform input,.addmember input,.memrow input,.connect__creds input,.routesel select,
-.ncwfield input[type="text"],.ncwfield__label,.ncwopt input,.ncwopt select{
+/* Text fields, and only text fields.
+   `input` on its own swept up every checkbox in these containers too, and a
+   checkbox given `width:100%`, padding and a filled background renders as a
+   grey slab the width of the dialog — with the label beside it squeezed to
+   nothing, because the row is a flex and the box claimed all of it. That is
+   what "Send replies from" looked like. The team pills escaped only because
+   `.check input` hides its own box outright, which is luck rather than
+   design. */
+.field input:not([type="checkbox"]):not([type="radio"]),.field select,
+.setadd input:not([type="checkbox"]),.setform input:not([type="checkbox"]):not([type="radio"]),
+.addmember input:not([type="checkbox"]),.memrow input:not([type="checkbox"]),
+.connect__creds input:not([type="checkbox"]),.routesel select,
+.ncwfield input[type="text"],.ncwfield__label,.ncwopt input:not([type="checkbox"]),.ncwopt select{
   width:100%;padding:var(--sp-2) var(--sp-3);border:1px solid transparent;border-radius:var(--r-12);
   background:var(--surface-2);color:var(--text);font-size:var(--fs-md);font-weight:500;outline:none;
   box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow var(--t-base),background var(--t-base),border-color var(--t-base)}
@@ -2413,11 +2424,6 @@ button.tpl-row:active{transform:scale(.97)}
 .tpl-default{margin-left:var(--sp-2);font-size:var(--fs-2xs);font-weight:600;letter-spacing:var(--ls-caps);
   text-transform:uppercase;color:var(--brand-strong);background:var(--brand-tint);
   padding:2px var(--sp-2);border-radius:var(--r-full);vertical-align:middle}
-/* Which numbers actually fall back to this template. Lower-case and in the
-   positive colour: it is a statement of what is happening, not a label, and it
-   sits next to the account chip where shouting twice would be noise. */
-.tpl-default--on{text-transform:none;letter-spacing:0;font-weight:500;
-  color:var(--text-muted);background:var(--surface-2)}
 /* Which WhatsApp account a template belongs to. Quiet — it is a qualifier on
    the name, not a status: two accounts can hold the same template name, and
    this is what tells them apart. */
