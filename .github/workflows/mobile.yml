@@ -116,6 +116,37 @@ jobs:
           [ -n "$MSG" ] || MSG="$(git log -1 --pretty=%s)"
           echo "text=$MSG" >> "$GITHUB_OUTPUT"
 
+      # A missing secret otherwise surfaces after the build — 25 minutes and a
+      # build credit spent before anything mentions it, and then as an Apple
+      # error rather than as "you didn't set this". Named here, in a second.
+      - name: Check the submit credentials exist
+        if: env.MOBILE_SUBMIT == 'true' || env.MOBILE_MODE == 'submit'
+        run: |
+          MISSING=""
+          if [ "${{ inputs.platform }}" != "android" ]; then
+            for V in EXPO_APPLE_ID EXPO_ASC_APP_ID EXPO_APPLE_TEAM_ID EXPO_APPLE_APP_SPECIFIC_PASSWORD; do
+              [ -n "$(eval echo \$$V)" ] || MISSING="$MISSING $V"
+            done
+          fi
+          if [ -n "$MISSING" ]; then
+            {
+              echo "### Can't submit — repository secrets missing"
+              echo
+              echo "Set these under Settings → Secrets and variables → Actions:"
+              echo
+              for V in $MISSING; do echo "- \`$V\`"; done
+              echo
+              echo "\`EXPO_APPLE_APP_SPECIFIC_PASSWORD\` comes from appleid.apple.com"
+              echo "→ Sign-In and Security → App-Specific Passwords. It is not the"
+              echo "account password."
+              echo
+              echo "The build itself needs none of these — re-run with submit"
+              echo "unticked to get an installable binary while you sort them out."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Submit was requested but these secrets are empty:$MISSING"
+            exit 1
+          fi
+
       - name: Build
         if: env.MOBILE_MODE == 'build'
         working-directory: apps/mobile
