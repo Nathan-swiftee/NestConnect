@@ -124,7 +124,7 @@ jobs:
         run: |
           MISSING=""
           if [ "${{ inputs.platform }}" != "android" ]; then
-            for V in EXPO_APPLE_ID EXPO_ASC_APP_ID EXPO_APPLE_TEAM_ID EXPO_APPLE_APP_SPECIFIC_PASSWORD; do
+            for V in EXPO_ASC_APP_ID EXPO_APPLE_TEAM_ID; do
               [ -n "$(eval echo \$$V)" ] || MISSING="$MISSING $V"
             done
           fi
@@ -136,9 +136,9 @@ jobs:
               echo
               for V in $MISSING; do echo "- \`$V\`"; done
               echo
-              echo "\`EXPO_APPLE_APP_SPECIFIC_PASSWORD\` comes from appleid.apple.com"
-              echo "→ Sign-In and Security → App-Specific Passwords. It is not the"
-              echo "account password."
+              echo "Both come from App Store Connect: the app's Apple ID number"
+              echo "and the ten-character team id. Authentication itself is the"
+              echo "App Store Connect API key on the Expo account."
               echo
               echo "The build itself needs none of these — re-run with submit"
               echo "unticked to get an installable binary while you sort them out."
