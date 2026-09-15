@@ -89,11 +89,24 @@ export class TemplatesService {
    * anybody unstarred either, which is indistinguishable from the setting not
    * holding.
    */
-  async setDefault(templateId: string, isDefault: boolean): Promise<Template[]> {
+  async setDefault(templateId: string | null, isDefault?: boolean): Promise<Template[]> {
+    // A pre-change client sent a bare `null` to unstar. It named no account, so
+    // clearing every account's key is the only thing recoverable from it — the
+    // old behaviour, kept because refusing the request instead would break a
+    // screen somebody still has open rather than fix anything.
+    if (templateId === null) {
+      const all = await this.store.listTemplates(ORG_ID);
+      const keys = new Set(all.map((t) => defaultTemplateKey(t.wabaId)));
+      keys.add(DEFAULT_TEMPLATE_KEY);
+      await Promise.all([...keys].map((k) => this.store.setAppSetting(ORG_ID, k, "")));
+      return this.list();
+    }
+    // And sending an id with nothing else always meant "make this the default".
+    const starred = isDefault ?? true;
     const template = (await this.store.listTemplates(ORG_ID)).find((t) => t.id === templateId);
     if (!template) throw new NotFoundException("Template not found");
     const key = defaultTemplateKey(template.wabaId);
-    if (!isDefault) {
+    if (!starred) {
       await this.store.setAppSetting(ORG_ID, key, "");
       // An unclaimed template answers to the bare key, which is also the
       // fallback every account reads when it has none of its own. Clearing it
