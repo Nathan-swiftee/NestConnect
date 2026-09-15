@@ -2621,6 +2621,75 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
     const on = (inboxes.data ?? []).filter((i) => i.channelConfigPublic?.wabaId === wabaId);
     return on.length ? on.map((i) => i.name).join(", ") : "Another account";
   };
+  /**
+   * The numbers a star on this template actually covers.
+   *
+   * The star is stored against the WhatsApp *account*, and several numbers
+   * routinely sit under one — so starring a template can change what two
+   * numbers send, and the row gave no sign of that. Somebody starring a second
+   * template for their other number, watching the first star go out, has been
+   * told nothing except that it "doesn't work".
+   *
+   * A template no sync has claimed has no account, so its star is the
+   * workspace-wide fallback and reaches every number without one of its own.
+   */
+  const numbersFor = (t: Template) =>
+    (inboxes.data ?? [])
+      .filter(
+        (i) =>
+          (i.type === "whatsapp" || i.type === "whatsapp_group") &&
+          (!t.wabaId || i.channelConfigPublic?.wabaId === t.wabaId),
+      )
+      .map((i) => i.name);
+  /** "Sales", "Sales and Support", "Sales, Support and Billing". */
+  const readableList = (names: string[]) =>
+    names.length <= 1
+      ? (names[0] ?? "")
+      : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  /** Whichever template this one would displace — same account, already starred. */
+  const displaced = (t: Template) =>
+    (templates.data ?? []).find(
+      (o) => o.id !== t.id && o.isDefault && (o.wabaId ?? "") === (t.wabaId ?? ""),
+    ) ?? null;
+
+  /**
+   * Star or unstar, and say what happened.
+   *
+   * Every other action on this screen toasts; this one did not, so a refusal
+   * (only admins and managers may), a failed request and a click on a star that
+   * cannot be set were indistinguishable from each other and from nothing at
+   * all. That silence is most of what "it doesn't work" was.
+   */
+  const toggleStar = (t: Template) => {
+    // Only a one-variable template can carry it: what gets sent is the agent's
+    // own typed text poured into {{1}}, so a template with none has nowhere to
+    // put it and one with several would go out with the rest blank.
+    if (!t.isDefault && t.variableCount !== 1) {
+      onToast(
+        t.variableCount === 0
+          ? `“${t.name}” has no {{1}} to put the agent's message in, so it can't be the default`
+          : `“${t.name}” has ${t.variableCount} variables — the default needs exactly one, for the agent's own message`,
+      );
+      return;
+    }
+    const numbers = readableList(numbersFor(t));
+    const losing = t.isDefault ? null : displaced(t);
+    setDefault.mutate(
+      { templateId: t.id, isDefault: !t.isDefault },
+      {
+        onSuccess: () =>
+          onToast(
+            t.isDefault
+              ? `${numbers || "These numbers"} will no longer send a template once a window closes`
+              : losing
+                ? `${numbers || "These numbers"} now re-open with “${t.name}” — it replaces “${losing.name}”, which they share an account with`
+                : `${numbers || "These numbers"} will re-open closed chats with “${t.name}”`,
+          ),
+        onError: (err) =>
+          onToast(err instanceof Error ? err.message : "Couldn’t change the default template"),
+      },
+    );
+  };
   const del = useDeleteTemplate();
   const sync = useSyncTemplates();
   const setDefault = useSetDefaultTemplate();
@@ -2689,7 +2758,14 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
               <div className="dtable__row dtable__row--static" key={t.id}>
                 <span className="dcell dcell__t">
                   {t.name}
-                  {t.isDefault && <span className="tpl-default">Default</span>}
+                  {t.isDefault && (
+                    <span className="tpl-default">
+                      {/* Named, not just "Default". Two numbers under one
+                          account share this star, and a bare label let people
+                          believe each number had its own. */}
+                      Default{numbersFor(t).length ? ` · ${readableList(numbersFor(t))}` : ""}
+                    </span>
+                  )}
                   {/* Which WhatsApp account holds it. Two accounts can each have
                       their own "order_update" and they are different templates,
                       so without this the list is two things wearing one name.
@@ -2704,8 +2780,17 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
                   {/* The default is what the composer sends once a 24-hour
                       window has closed, with the agent's typed text filling its
                       variable — so only a one-variable template can carry it. */}
+                  {/* Not `disabled`. A star that cannot be set is the one a
+                      person most needs an explanation for, and a disabled
+                      button explains itself only on hover — which is nothing at
+                      all on a phone, and easy to miss anywhere. It stays
+                      clickable and says why. */}
                   <button
-                    className={"iconbtn" + (t.isDefault ? " on" : "")}
+                    className={
+                      "iconbtn" +
+                      (t.isDefault ? " on" : "") +
+                      (!t.isDefault && t.variableCount !== 1 ? " iconbtn--inert" : "")
+                    }
                     title={
                       t.isDefault
                         ? "Default template — click to unset"
@@ -2714,8 +2799,8 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
                           : `Needs exactly one {{1}} variable to be the default (this has ${t.variableCount})`
                     }
                     aria-pressed={t.isDefault}
-                    disabled={!t.isDefault && t.variableCount !== 1}
-                    onClick={() => setDefault.mutate({ templateId: t.id, isDefault: !t.isDefault })}
+                    disabled={setDefault.isPending}
+                    onClick={() => toggleStar(t)}
                   >
                     <StarIcon filled={t.isDefault} />
                   </button>

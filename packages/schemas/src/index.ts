@@ -810,10 +810,22 @@ export function templatesForWaba<T extends { wabaId?: string }>(
  * server could do with that was clear every account's. So a workspace with two
  * accounts, each with its own starred template, lost both the moment anybody
  * unstarred either one.
+ *
+ * Both shapes are still accepted, and that is not tidiness — it is the fix for
+ * a bug this change caused. Tightening `templateId` to a bare string and
+ * requiring `isDefault` rejected the old payload outright, so every browser tab
+ * opened before the deploy had all of its stars fail validation. Combined with
+ * a button that had no error handler, the whole screen simply stopped
+ * responding, with nothing anywhere saying why.
+ *
+ * A deployed API is talked to by whatever code a person happens to have loaded,
+ * not only by the code sitting next to it in the repo.
  */
 export const setDefaultTemplateInputSchema = z.object({
-  templateId: z.string(),
-  isDefault: z.boolean(),
+  /** Null only from a pre-change client, which sent it to mean "unstar". */
+  templateId: z.string().nullable(),
+  /** Absent from a pre-change client, where sending an id always meant "star". */
+  isDefault: z.boolean().optional(),
 });
 export type SetDefaultTemplateInput = z.infer<typeof setDefaultTemplateInputSchema>;
 

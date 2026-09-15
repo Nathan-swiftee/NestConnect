@@ -30,6 +30,7 @@
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
 import { TemplatesService } from "../apps/api/src/templates/templates.service";
+import { setDefaultTemplateInputSchema } from "../packages/schemas/src/index";
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -103,6 +104,44 @@ async function main(): Promise<void> {
     forAccount(legacyList, WABA_A) === null,
     String(forAccount(legacyList, WABA_A)?.name),
   );
+
+  console.log("\nA screen somebody still has open\n");
+  // The request shape changed under a deployed app. A browser tab opened before
+  // the deploy keeps its old JavaScript and goes on sending the old payload —
+  // and rejecting that is not a validation success, it is every star on that
+  // tab silently failing. Both shapes have to work.
+  const old = new MemoryStore();
+  const oldSvc = new TemplatesService(old);
+  const t1 = await old.upsertTemplateByName(ORG_ID, {
+    name: "one", body: "Hi: {{1}}", language: "en", category: "utility",
+    approvalStatus: "approved", wabaId: WABA_A,
+  });
+  const t2 = await old.upsertTemplateByName(ORG_ID, {
+    name: "two", body: "Hello: {{1}}", language: "en", category: "utility",
+    approvalStatus: "approved", wabaId: WABA_B,
+  });
+  // The old client sent the id alone, and it always meant "star this".
+  await oldSvc.setDefault(t1.id);
+  let oldList = await oldSvc.list();
+  ok("an id with no flag still stars it", oldList.find((t) => t.id === t1.id)?.isDefault === true);
+  // The new client says which way it meant.
+  await oldSvc.setDefault(t2.id, true);
+  oldList = await oldSvc.list();
+  ok(
+    "and the new shape works alongside it",
+    oldList.find((t) => t.id === t2.id)?.isDefault === true &&
+      oldList.find((t) => t.id === t1.id)?.isDefault === true,
+  );
+  // The old client sent a bare null to unstar, naming no account. Clearing
+  // everything is all that can be made of it, and it is what it used to do.
+  await oldSvc.setDefault(null);
+  oldList = await oldSvc.list();
+  ok("a bare null still clears, rather than being refused", oldList.every((t) => !t.isDefault));
+
+  const validated = setDefaultTemplateInputSchema.safeParse({ templateId: t1.id });
+  ok("and the old payload passes validation", validated.success);
+  const validatedNull = setDefaultTemplateInputSchema.safeParse({ templateId: null });
+  ok("as does the old unstar payload", validatedNull.success);
 
   console.log(failed === 0 ? "\nall good\n" : `\n${failed} check(s) failed\n`);
   process.exit(failed === 0 ? 0 : 1);
