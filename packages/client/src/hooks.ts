@@ -20,7 +20,10 @@ import {
   type MergeContactsInput,
   type CreateGroupInput,
   type CreateInboxInput,
+  type CreateCustomFieldInput,
+  type CustomFieldEntity,
   type CreateLabelInput,
+  type UpdateCustomFieldInput,
   type CreateTeamInput,
   type CreateTemplateInput,
   type CreateUserInput,
@@ -444,6 +447,77 @@ export function useReorderTeams() {
 }
 
 /* ---- labels ---- */
+/* ---- custom fields ---- */
+
+/**
+ * The org's field definitions.
+ *
+ * Fetched once and shared: every thread panel and every contact card needs the
+ * same list to know what to draw, and it changes about as often as somebody
+ * adds an integration.
+ */
+export const useCustomFields = () =>
+  useQuery({ queryKey: ["custom-fields"], queryFn: api.customFields, staleTime: 5 * 60_000 });
+
+export function useCreateCustomField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateCustomFieldInput) => api.createCustomField(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["custom-fields"] }),
+  });
+}
+
+export function useUpdateCustomField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdateCustomFieldInput }) =>
+      api.updateCustomField(v.id, v.input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["custom-fields"] }),
+  });
+}
+
+export function useDeleteCustomField() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteCustomField(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["custom-fields"] });
+      // The values went with it, so anything showing them is now wrong.
+      qc.invalidateQueries({ queryKey: ["custom-field-values"] });
+    },
+  });
+}
+
+/** The values on one record. */
+export const useCustomFieldValues = (entity: CustomFieldEntity, entityId: string | null | undefined) =>
+  useQuery({
+    queryKey: ["custom-field-values", entity, entityId],
+    queryFn: () => api.customFieldValues(entity, entityId!),
+    enabled: Boolean(entityId),
+  });
+
+/**
+ * Write values on one record.
+ *
+ * Invalidates the search as well as the record: an order number is written so
+ * that somebody can find the thread by it, and a cached result list that
+ * pre-dates the value would not have it.
+ */
+export function useSetCustomFieldValues() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: {
+      entity: CustomFieldEntity;
+      entityId: string;
+      values: Record<string, string | null>;
+    }) => api.setCustomFieldValues(v.entity, v.entityId, v.values),
+    onSuccess: (data, v) => {
+      qc.setQueryData(["custom-field-values", v.entity, v.entityId], data.values);
+      qc.invalidateQueries({ queryKey: ["search"] });
+    },
+  });
+}
+
 export const useLabels = () => useQuery({ queryKey: ["labels"], queryFn: api.labels });
 
 export function useCreateLabel() {

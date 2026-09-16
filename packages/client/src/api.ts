@@ -4,6 +4,11 @@ import type {
   Contact,
   ContactDuplicateGroup,
   MergeContactsInput,
+  CreateCustomFieldInput,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldValue,
+  UpdateCustomFieldInput,
   CreateTemplateInput,
   Template,
   UpdateTemplateInput,
@@ -235,6 +240,26 @@ export const api = {
   deleteTeam: (id: string) => del<{ ok: boolean }>(`/settings/teams/${id}`),
   reorderTeams: (orderedIds: string[]) => post<Team[]>("/settings/teams/reorder", { orderedIds }),
 
+  // Custom fields: the org's definitions, and the values on one record.
+  customFields: () => get<CustomField[]>("/custom-fields"),
+  createCustomField: (input: CreateCustomFieldInput) =>
+    post<CustomField>("/custom-fields", input),
+  updateCustomField: (id: string, input: UpdateCustomFieldInput) =>
+    patch<CustomField>(`/custom-fields/${id}`, input),
+  deleteCustomField: (id: string) => del<{ ok: boolean }>(`/custom-fields/${id}`),
+  customFieldValues: (entity: CustomFieldEntity, entityId: string) =>
+    get<CustomFieldValue[]>(`/custom-fields/${entity}/${entityId}`),
+  // Null clears a field. `unknown` names any key the workspace hasn't defined,
+  // so a caller can say so rather than believe a write happened.
+  setCustomFieldValues: (
+    entity: CustomFieldEntity,
+    entityId: string,
+    values: Record<string, string | null>,
+  ) =>
+    post<{ values: CustomFieldValue[]; unknown: string[] }>(
+      `/custom-fields/${entity}/${entityId}`,
+      { values },
+    ),
   labels: () => get<Label[]>("/labels"),
   createLabel: (input: CreateLabelInput) => post<Label>("/labels", input),
   updateLabel: (id: string, input: UpdateLabelInput) => patch<Label>(`/labels/${id}`, input),
