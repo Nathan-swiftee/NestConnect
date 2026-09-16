@@ -291,6 +291,47 @@ void main() {
     expect(chat.messages, isEmpty);
   });
 
+  test('a push token registered before any chat is sent with the session', () async {
+    // The order the host app actually does it in: Firebase hands over a token
+    // at launch, long before anybody taps the chat button.
+    await chat.registerPushToken('fcm_abc', platform: 'android');
+    expect(server.requests.any((r) => r.endsWith('/device')), isFalse);
+
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    final sent = server.bodies['/api/nestchat/device']! as Map;
+    expect(sent['token'], 'fcm_abc');
+    expect(sent['platform'], 'android');
+  });
+
+  test('a token that rotates mid-session registers straight away', () async {
+    await chat.open();
+    await chat.registerPushToken('fcm_new', platform: 'ios');
+    expect((server.bodies['/api/nestchat/device']! as Map)['token'], 'fcm_new');
+  });
+
+  test('turning notifications off forgets the address, signing out does not', () async {
+    await chat.open();
+    await chat.registerPushToken('fcm_abc', platform: 'android');
+
+    // Signing out tells the server, because the registration is scoped to the
+    // account that made it — but keeps the address, which belongs to the
+    // handset. Otherwise the next person to sign in here never gets a banner.
+    await chat.logout();
+    expect(server.requests.where((r) => r.endsWith('/device/forget')).length, 1);
+    await chat.login(userId: 'u_2');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(server.requests.where((r) => r.endsWith('/device')).length, 2);
+
+    // Turning them off is the other wish: the address goes too, so nothing
+    // re-registers it behind their back.
+    await chat.unregisterPushToken();
+    await chat.logout();
+    await chat.login(userId: 'u_2');
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(server.requests.where((r) => r.endsWith('/device')).length, 2);
+  });
+
   test('sending without a session refuses rather than guessing', () async {
     await expectLater(chat.send('hello'), throwsA(isA<NestException>()));
   });

@@ -64,6 +64,7 @@ import {
   mapContact,
   mapCustomField,
   mapConversation,
+  mapCustomerDevice,
   mapDevice,
   mapInbox,
   mapMessage,
@@ -96,6 +97,7 @@ import {
   type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
+  type StoredCustomerDevice,
   type StoredDevice,
   type StoredSession,
   type TwoFactorState,
@@ -747,6 +749,51 @@ export class PrismaStore extends Store {
   async disableDevice(pushToken: string, reason: string): Promise<void> {
     await this.prisma.device.updateMany({
       where: { pushToken, disabledAt: null },
+      data: { disabledAt: new Date(), disabledReason: reason },
+    });
+  }
+
+  /* ---- customer devices (in-app SDK) ---- */
+
+  async registerCustomerDevice(params: {
+    orgId: string;
+    contactId: string;
+    inboxId: string;
+    token: string;
+    platform: string;
+  }): Promise<StoredCustomerDevice> {
+    // The token is the identity, so a handset that reinstalls or signs in as
+    // somebody else resolves to one row rather than two addresses for one
+    // phone. Presenting it also proves it is live, which lifts any disable.
+    const common = {
+      orgId: params.orgId,
+      contactId: params.contactId,
+      inboxId: params.inboxId,
+      platform: params.platform,
+    };
+    const row = await this.prisma.customerDevice.upsert({
+      where: { token: params.token },
+      create: { ...common, token: params.token },
+      update: { ...common, lastSeenAt: new Date(), disabledAt: null, disabledReason: null },
+    });
+    return mapCustomerDevice(row);
+  }
+
+  async customerDevicesFor(contactId: string, inboxId: string): Promise<StoredCustomerDevice[]> {
+    const rows = await this.prisma.customerDevice.findMany({
+      where: { contactId, inboxId, disabledAt: null },
+    });
+    return rows.map(mapCustomerDevice);
+  }
+
+  async deleteCustomerDevice(contactId: string, token: string): Promise<boolean> {
+    const res = await this.prisma.customerDevice.deleteMany({ where: { token, contactId } });
+    return res.count > 0;
+  }
+
+  async disableCustomerDevice(token: string, reason: string): Promise<void> {
+    await this.prisma.customerDevice.updateMany({
+      where: { token, disabledAt: null },
       data: { disabledAt: new Date(), disabledReason: reason },
     });
   }

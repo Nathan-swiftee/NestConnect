@@ -83,6 +83,28 @@ export interface StoredDevice {
   disabledReason: string | null;
 }
 
+/**
+ * A customer's phone, registered by the in-app SDK.
+ *
+ * `token` is the address and the row's identity — the same rule as
+ * {@link StoredDevice}'s push token, for the same reason: a handset that
+ * reinstalls or signs in as someone else presents the same token, and one
+ * address must never ring for two people.
+ */
+export interface StoredCustomerDevice {
+  id: string;
+  orgId: string;
+  contactId: string;
+  /** The channel that registered it. A reply on one app must not ring another. */
+  inboxId: string;
+  token: string;
+  platform: string;
+  createdAt: string;
+  lastSeenAt: string;
+  disabledAt: string | null;
+  disabledReason: string | null;
+}
+
 /** A user's two-factor state (the TOTP secret is encrypted at rest). */
 export interface TwoFactorState {
   enabled: boolean;
@@ -461,6 +483,28 @@ export abstract class Store {
   /** Stop pushing at a token the push service reported dead, or whose owner
    *  turned notifications off. Keyed by token because that's what receipts carry. */
   abstract disableDevice(pushToken: string, reason: string): Promise<void>;
+
+  /* ---- customer devices (in-app SDK) ---- */
+
+  /** Register, or re-register, a customer's phone. Keyed on the token, so a
+   *  handset that changes hands moves to its new contact instead of leaving a
+   *  row that would ring for the wrong person. Re-registering re-enables. */
+  abstract registerCustomerDevice(params: {
+    orgId: string;
+    contactId: string;
+    inboxId: string;
+    token: string;
+    platform: string;
+  }): Promise<StoredCustomerDevice>;
+  /** Every live address for this customer on this channel. */
+  abstract customerDevicesFor(contactId: string, inboxId: string): Promise<StoredCustomerDevice[]>;
+  /** Forget a token the app itself surrendered — a sign-out, or notifications
+   *  turned off. Scoped to the contact so a token can only be dropped by the
+   *  session that holds it. */
+  abstract deleteCustomerDevice(contactId: string, token: string): Promise<boolean>;
+  /** Stop pushing at an address FCM reported dead. Kept rather than deleted, so
+   *  the same token coming back reads as a return and not as a new phone. */
+  abstract disableCustomerDevice(token: string, reason: string): Promise<void>;
 
   /** A user's push preferences as stored (raw JSON, or undefined for defaults). */
   abstract getPushPrefs(userId: string): Promise<string | undefined>;

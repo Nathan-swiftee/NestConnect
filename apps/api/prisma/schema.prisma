@@ -338,9 +338,10 @@ model Inbox {
   isDefault       Boolean         @default(false)
   createdAt       DateTime        @default(now())
 
-  org           Organization   @relation(fields: [orgId], references: [id])
+  org           Organization     @relation(fields: [orgId], references: [id])
   teams         InboxTeam[]
   conversations Conversation[]
+  devices       CustomerDevice[]
 
   @@index([orgId])
 }
@@ -373,6 +374,7 @@ model Contact {
   identities    ContactIdentity[]
   conversations Conversation[]
   participations Participant[]
+  devices        CustomerDevice[]
 
   @@index([orgId])
 }
@@ -391,6 +393,42 @@ model ContactIdentity {
   @@unique([kind, value])
   @@index([contactId])
   @@index([orgId, kind, normalizedValue])
+}
+
+/// A customer's phone, for push.
+///
+/// Separate from `Device` on purpose. That one belongs to a *User* — an agent
+/// with a login, a session and a role — and is addressed through Expo because
+/// the agent app is an Expo app. This belongs to a Contact: somebody who has
+/// never signed in to anything of ours, reachable through whatever push service
+/// the business's own app already uses. Sharing a table would mean a nullable
+/// userId and a nullable contactId with a comment explaining that exactly one
+/// is set, which is two tables wearing one name.
+model CustomerDevice {
+  id        String @id @default(cuid())
+  orgId     String
+  contactId String
+  /// Which channel registered it. A customer with two of the business's apps
+  /// has two devices here, and a reply on one must not ring the other.
+  inboxId   String
+  /// The FCM registration token. Unique: one row per address, so a phone that
+  /// re-registers moves rather than accumulating.
+  token     String @unique
+  /// ios | android | web
+  platform  String
+
+  createdAt      DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  /// Set when the push service says the address is dead. Kept rather than
+  /// deleted so a token that comes back can be told apart from a new one.
+  disabledAt     DateTime?
+  disabledReason String?
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  inbox   Inbox   @relation(fields: [inboxId], references: [id], onDelete: Cascade)
+
+  @@index([contactId, inboxId])
+  @@index([orgId])
 }
 
 model Conversation {

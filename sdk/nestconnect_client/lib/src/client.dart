@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'models.dart';
 import 'store.dart';
@@ -50,6 +51,17 @@ class NestConnect {
   /// neither closing the messenger nor signing out may hang on that.
   int _generation = 0;
   bool _closed = false;
+
+  /// The push address the host app handed us, and what kind of phone it is.
+  ///
+  /// Kept because registration is tied to a session and a session is not: the
+  /// host gets its FCM token from Firebase whenever Firebase feels like giving
+  /// it, which is routinely before anybody has opened the chat and again months
+  /// later when the token rotates. Holding it means every session that opens
+  /// afterwards registers it, instead of the notification quietly depending on
+  /// which of the two happened first.
+  String? _pushToken;
+  String? _pushPlatform;
   bool _viewing = false;
   int _unread = 0;
 
@@ -106,6 +118,11 @@ class NestConnect {
   /// Forget this session. Called when somebody signs out of the host app: the
   /// next person to open the chat must not find the last one's conversation.
   Future<void> logout() async {
+    // Before the session goes: the endpoint that forgets a device is scoped to
+    // the token, so once `_endSession` has cleared it there is no way left to
+    // say who the phone was. Getting this order wrong leaves the last person's
+    // notifications arriving on a phone that has signed out of their account.
+    await _forgetPush(keepAddress: true);
     await _endSession();
     _setMessages(const []);
     _setUnread(0);
@@ -151,6 +168,7 @@ class NestConnect {
     }
 
     unawaited(_loadConfig());
+    unawaited(_registerPush());
     if (map['hasConversation'] == true) _listen();
 
     return map['identified'] == true ? NestIdentity.verified : NestIdentity.anonymous;
@@ -257,6 +275,79 @@ class NestConnect {
     if (!viewing) return;
     _setUnread(0);
     await _markRead('read');
+  }
+
+  /* ---- notifications ---- */
+
+  /// Where to reach this phone when an agent replies and the app is closed.
+  ///
+  /// The token comes from the host app rather than from here. This package has
+  /// no plugins by design — an app that already uses Firebase has the token in
+  /// hand, and one that does not should not acquire a Firebase dependency
+  /// because it added a chat.
+  ///
+  /// Safe to call before anybody has opened a chat: it is remembered and sent
+  /// with the next session. Safe to call again with the same token, which is
+  /// what an app does on every launch, and necessary when Firebase rotates it.
+  Future<void> registerPushToken(String token, {String? platform}) async {
+    _pushToken = token;
+    _pushPlatform = platform ?? _defaultPlatform();
+    await _registerPush();
+  }
+
+  /// Stop notifying this phone — notifications turned off in the host app's own
+  /// settings, or a sign-out.
+  ///
+  /// Signing out calls this for you. It is separate as well because the two are
+  /// different wishes: somebody who turns notifications off has not signed out,
+  /// and somebody who signs out may well want them back on the next account.
+  Future<void> unregisterPushToken() async {
+    await _forgetPush(keepAddress: false);
+  }
+
+  /// Drop the server-side registration.
+  ///
+  /// [keepAddress] is the difference between the two callers, and it matters. A
+  /// sign-out keeps it: the address belongs to the *phone*, the host app hands
+  /// it over once at launch and will not hand it over again, so forgetting it
+  /// here means the next person to sign in on this handset never gets a
+  /// notification. Somebody turning notifications off means the address too —
+  /// otherwise the next session would helpfully register it again.
+  Future<void> _forgetPush({required bool keepAddress}) async {
+    final push = _pushToken;
+    final session = _token;
+    if (!keepAddress) _pushToken = null;
+    if (push == null || session == null) return;
+    try {
+      await _transport.postJson('/device/forget', {
+        'token': push,
+        'platform': _pushPlatform ?? _defaultPlatform(),
+      }, token: session);
+    } on NestException {
+      // The server forgets it on its own once FCM reports the address dead.
+    }
+  }
+
+  Future<void> _registerPush() async {
+    final push = _pushToken;
+    final session = _token;
+    if (push == null || session == null) return;
+    try {
+      await _transport.postJson('/device', {
+        'token': push,
+        'platform': _pushPlatform ?? _defaultPlatform(),
+      }, token: session);
+    } on NestException {
+      // Not fatal and not worth a retry loop: the next session registers it
+      // again, and a chat that works without notifications beats one that
+      // refuses to open because a notification could not be arranged.
+    }
+  }
+
+  String _defaultPlatform() {
+    if (Platform.isIOS || Platform.isMacOS) return 'ios';
+    if (Platform.isAndroid) return 'android';
+    return 'web';
   }
 
   Future<void> _markRead(String status) async {

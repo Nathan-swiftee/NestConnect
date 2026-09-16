@@ -1939,6 +1939,10 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
    */
   const [mintedSecret, setMintedSecret] = useState<string | null>(null);
   const [rotating, setRotating] = useState(false);
+  /** The pasted service-account JSON. Held only while it is being saved — it is
+   *  write-only at the other end, so there is nothing to read back into it. */
+  const [serviceAccount, setServiceAccount] = useState("");
+  const [savingPush, setSavingPush] = useState(false);
 
   /** Upload a logo and point this channel at it. */
   const pickLogo = async (file: File | undefined) => {
@@ -2614,6 +2618,93 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                           one, and whoever holds this can claim to be any of your customers.
                         </>
                       )}
+                    </em>
+                  </div>
+                </>
+              )}
+
+              {draft.app.enabled && (
+                <>
+                  <h3>Notifications</h3>
+                  <p className="fieldhint">
+                    So a reply reaches someone who has closed the app. It goes out through your own
+                    Firebase project, under your app’s name and icon — we never push from ours.
+                  </p>
+
+                  <div className="field">
+                    <span>Firebase service account</span>
+                    <textarea
+                      rows={4}
+                      spellCheck={false}
+                      placeholder={
+                        settings.data?.hasPushCredential
+                          ? "A key is saved. Paste a new one to replace it."
+                          : '{ "type": "service_account", "project_id": … }'
+                      }
+                      value={serviceAccount}
+                      onChange={(e) => setServiceAccount(e.target.value)}
+                    />
+                    <div className="keyrow">
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={savingPush || !serviceAccount.trim()}
+                        onClick={() => {
+                          setSavingPush(true);
+                          api
+                            .setNestchatPushCredential(inboxId!, serviceAccount)
+                            .then(() => {
+                              setServiceAccount("");
+                              void settings.refetch();
+                              onToast("Notifications are set up");
+                            })
+                            .catch((err: unknown) =>
+                              onToast(
+                                (err instanceof Error && err.message) || "Couldn’t save that key",
+                              ),
+                            )
+                            .finally(() => setSavingPush(false));
+                        }}
+                      >
+                        {settings.data?.hasPushCredential ? "Replace key" : "Save key"}
+                      </button>
+                      {settings.data?.hasPushCredential && (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          disabled={savingPush}
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                "Turn off notifications for this channel?\n\nCustomers will still get replies when they open the app — they just won’t be told one arrived.",
+                              )
+                            ) {
+                              return;
+                            }
+                            setSavingPush(true);
+                            api
+                              .setNestchatPushCredential(inboxId!, "")
+                              .then(() => {
+                                setServiceAccount("");
+                                void settings.refetch();
+                                onToast("Notifications turned off");
+                              })
+                              .catch((err: unknown) =>
+                                onToast(
+                                  (err instanceof Error && err.message) || "Couldn’t clear that key",
+                                ),
+                              )
+                              .finally(() => setSavingPush(false));
+                          }}
+                        >
+                          Turn off
+                        </button>
+                      )}
+                    </div>
+                    <em className="fieldhint">
+                      Firebase console › Project settings › Service accounts › Generate new private
+                      key. Paste the whole file. Like the signing secret it is stored encrypted and
+                      never shown again — replace it here if it is ever rotated.
                     </em>
                   </div>
                 </>

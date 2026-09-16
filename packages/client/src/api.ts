@@ -230,6 +230,14 @@ export const api = {
   rerouteInbox: (id: string) => post<{ moved: number }>(`/inboxes/${id}/reroute`, {}),
   // NestChat: how one channel's widget looks, and the snippet that embeds it.
   nestchatSettings: (inboxId: string) => get<NestChatSettings>(`/settings/nestchat/${inboxId}`),
+  // Mint this channel's app-signing secret and return it once. A POST because
+  // it replaces any existing one — every old signature stops verifying.
+  rotateNestchatSecret: (inboxId: string) =>
+    post<{ secret: string }>(`/settings/nestchat/${inboxId}/identity-secret`, {}),
+  // Save (or clear, with an empty string) the Firebase service account this
+  // channel pushes through. Write-only — the settings only say whether one is set.
+  setNestchatPushCredential: (inboxId: string, serviceAccount: string) =>
+    post<NestChatSettings>(`/settings/nestchat/${inboxId}/push-credential`, { serviceAccount }),
   updateNestchat: (inboxId: string, input: UpdateNestchatInput) =>
     patch<NestChatSettings>(`/settings/nestchat/${inboxId}`, input),
   // settings
@@ -241,10 +249,6 @@ export const api = {
   reorderTeams: (orderedIds: string[]) => post<Team[]>("/settings/teams/reorder", { orderedIds }),
 
   // Custom fields: the org's definitions, and the values on one record.
-  // Mint this channel's app-signing secret and return it once. A POST because
-  // it replaces any existing one — every old signature stops verifying.
-  rotateNestchatSecret: (inboxId: string) =>
-    post<{ secret: string }>(`/settings/nestchat/${inboxId}/identity-secret`, {}),
   customFields: () => get<CustomField[]>("/custom-fields"),
   createCustomField: (input: CreateCustomFieldInput) =>
     post<CustomField>("/custom-fields", input),

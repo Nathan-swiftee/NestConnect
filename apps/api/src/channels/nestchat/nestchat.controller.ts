@@ -22,6 +22,7 @@ import {
   nestchatAcceptsUpload,
   NESTCHAT_MAX_UPLOAD_BYTES,
   nestchatAppSessionInputSchema,
+  nestchatDeviceInputSchema,
   nestchatIdentifyInputSchema,
   nestchatReadInputSchema,
   nestchatSendInputSchema,
@@ -32,6 +33,7 @@ import {
   type NestChatAppSession,
   type NestChatAppSessionInput,
   type NestChatConfig,
+  type NestChatDeviceInput,
   type NestChatIdentifyInput,
   type NestChatIdentifyResult,
   type NestChatReadInput,
@@ -621,6 +623,55 @@ export class NestChatController {
       body.preview,
     );
     return { ok: true };
+  }
+
+  /**
+   * Where to ring this customer when an agent replies.
+   *
+   * Scoped to the token, so a device can only ever be registered against the
+   * contact the token already names — the alternative, a contact id in the
+   * body, would let anyone with an app key point somebody else's phone at their
+   * own conversation and read every reply from the lock screen.
+   *
+   * The channel comes from the token too. A customer with two of the business's
+   * apps has a row per app, and a reply on one must not ring the other.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("device")
+  async registerDevice(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatDeviceInputSchema)) body: NestChatDeviceInput,
+  ) {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const inbox = await this.store.getInbox(claims.inboxId);
+    if (!inbox) throw new NotFoundException("Channel not found");
+    await this.store.registerCustomerDevice({
+      orgId: inbox.orgId,
+      contactId: claims.contactId,
+      inboxId: claims.inboxId,
+      token: body.token,
+      platform: body.platform,
+    });
+    return { ok: true };
+  }
+
+  /**
+   * Stop ringing this one — a sign-out, or notifications turned off in the app.
+   *
+   * Deleted rather than disabled: a disabled row means "the push service told
+   * us this address is dead", and a customer who signs out has said something
+   * quite different. Keeping the two apart is what makes the disabled ones
+   * worth reading when somebody asks why a phone stopped buzzing.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("device/forget")
+  async forgetDevice(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatDeviceInputSchema)) body: NestChatDeviceInput,
+  ) {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const removed = await this.store.deleteCustomerDevice(claims.contactId, body.token);
+    return { ok: true, removed };
   }
 
   /**

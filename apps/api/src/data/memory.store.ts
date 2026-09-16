@@ -66,6 +66,7 @@ import {
   type SidebarViews,
   type StoredAttachmentRef,
   type StoredDevice,
+  type StoredCustomerDevice,
   type StoredSession,
   type TwoFactorState,
   type ViewItem,
@@ -165,6 +166,7 @@ export class MemoryStore extends Store {
   private idSeq = 10_000;
   private sessions: StoredSession[] = [];
   private devices: StoredDevice[] = [];
+  private customerDevices: StoredCustomerDevice[] = [];
   private pushPrefs = new Map<string, string>();
   private twoFactor = new Map<string, TwoFactorState>();
   private recoveryCodes: Array<{ id: string; userId: string; codeHash: string; usedAt: string | null }> = [];
@@ -703,6 +705,67 @@ export class MemoryStore extends Store {
 
   async disableDevice(pushToken: string, reason: string): Promise<void> {
     const d = this.devices.find((x) => x.pushToken === pushToken);
+    if (!d || d.disabledAt) return;
+    d.disabledAt = new Date().toISOString();
+    d.disabledReason = reason;
+  }
+
+  /* ---- customer devices (in-app SDK) ---- */
+
+  async registerCustomerDevice(params: {
+    orgId: string;
+    contactId: string;
+    inboxId: string;
+    token: string;
+    platform: string;
+  }): Promise<StoredCustomerDevice> {
+    const now = new Date().toISOString();
+    const existing = this.customerDevices.find((d) => d.token === params.token);
+    if (existing) {
+      // Presenting the token proves the address is live and says who holds it
+      // now, so it moves and any earlier disable is lifted.
+      Object.assign(existing, {
+        orgId: params.orgId,
+        contactId: params.contactId,
+        inboxId: params.inboxId,
+        platform: params.platform,
+        lastSeenAt: now,
+        disabledAt: null,
+        disabledReason: null,
+      });
+      return existing;
+    }
+    const d: StoredCustomerDevice = {
+      id: `cdev_${++this.idSeq}`,
+      orgId: params.orgId,
+      contactId: params.contactId,
+      inboxId: params.inboxId,
+      token: params.token,
+      platform: params.platform,
+      createdAt: now,
+      lastSeenAt: now,
+      disabledAt: null,
+      disabledReason: null,
+    };
+    this.customerDevices.push(d);
+    return d;
+  }
+
+  async customerDevicesFor(contactId: string, inboxId: string): Promise<StoredCustomerDevice[]> {
+    return this.customerDevices.filter(
+      (d) => d.contactId === contactId && d.inboxId === inboxId && !d.disabledAt,
+    );
+  }
+
+  async deleteCustomerDevice(contactId: string, token: string): Promise<boolean> {
+    const i = this.customerDevices.findIndex((d) => d.token === token && d.contactId === contactId);
+    if (i === -1) return false;
+    this.customerDevices.splice(i, 1);
+    return true;
+  }
+
+  async disableCustomerDevice(token: string, reason: string): Promise<void> {
+    const d = this.customerDevices.find((x) => x.token === token);
     if (!d || d.disabledAt) return;
     d.disabledAt = new Date().toISOString();
     d.disabledReason = reason;

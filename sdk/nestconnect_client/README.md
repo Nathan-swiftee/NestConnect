@@ -38,6 +38,14 @@ ends and reconnects with a backoff capped at thirty seconds.
 **Closing never blocks.** `dispose()` tears the socket down before it awaits
 anything: a customer tapping the X wants the sheet gone, not a spinner.
 
+**Push tokens come from you.** `registerPushToken` takes an address this
+package never asks Firebase for — no plugin, no native configuration. Call it
+whenever you have one; it is remembered and registered with the next session, so
+the usual order (Firebase hands over a token at launch, somebody opens the chat
+an hour later) works without you sequencing it. `logout()` stops notifications
+for that account but keeps the address, because the address belongs to the
+handset rather than to whoever was signed in.
+
 **Tokens are kept where you say.** `NestTokenStore` is an interface; the default
 forgets on exit. A Flutter app plugs in secure storage without this package
 depending on a plugin.

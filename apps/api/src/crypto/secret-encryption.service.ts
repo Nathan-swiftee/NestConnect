@@ -29,6 +29,7 @@ const SECRET_CHANNEL_FIELDS = new Set([
   "providerToken",
   "refreshToken",
   "identitySecret",
+  "fcmServiceAccount",
 ]);
 
 /** AppSetting keys that hold secrets (see google/meta oauth + r2 config). */

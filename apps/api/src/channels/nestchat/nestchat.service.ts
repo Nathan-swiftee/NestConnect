@@ -30,6 +30,7 @@ import {
 import { Store, type AttachmentInput } from "../../data/store";
 import { ORG_ID } from "../../data/fixtures";
 import { env } from "../../config/env";
+import { FCM_SERVICE_ACCOUNT_FIELD, parseServiceAccount } from "./fcm";
 import { VisitorBus } from "./visitor-bus";
 
 /**
@@ -187,6 +188,37 @@ export class NestChatService {
   async hasIdentitySecret(inboxId: string): Promise<boolean> {
     const config = await this.store.getInboxConfig(inboxId);
     return Boolean(config?.identitySecret?.trim());
+  }
+
+  /**
+   * Save, replace, or clear the Firebase service account this channel pushes
+   * through.
+   *
+   * Parsed before it is stored. A service-account JSON that is missing a key,
+   * or is the *client* config by mistake — the two files look alike and sit
+   * next to each other in the Firebase console — would otherwise be accepted
+   * happily and show up weeks later as "notifications don't work on Ding".
+   *
+   * An empty string clears it, which is how a channel stops pushing.
+   */
+  async setPushCredential(inboxId: string, serviceAccount: string): Promise<void> {
+    await this.requireNestChatInbox(inboxId);
+    const trimmed = serviceAccount.trim();
+    if (trimmed && !parseServiceAccount(trimmed)) {
+      throw new BadRequestException(
+        "That doesn't look like a Firebase service-account key — it needs project_id, client_email and private_key",
+      );
+    }
+    await this.store.updateInbox(inboxId, {
+      channelConfig: { [FCM_SERVICE_ACCOUNT_FIELD]: trimmed },
+    });
+  }
+
+  /** Whether push is configured — the only thing a screen may know about a
+   *  credential it must never read back. */
+  async hasPushCredential(inboxId: string): Promise<boolean> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return Boolean(config?.[FCM_SERVICE_ACCOUNT_FIELD]?.trim());
   }
 
   /* ---- the app surface ---- */
@@ -581,6 +613,7 @@ export class NestChatService {
       // enabled is an invitation to paste it into an app that will be refused.
       appKey: app.enabled ? await this.ensureAppKey(inboxId) : undefined,
       hasIdentitySecret: await this.hasIdentitySecret(inboxId),
+      hasPushCredential: await this.hasPushCredential(inboxId),
       // Conversation fields only — see updateApp for why a contact field cannot
       // key a thread.
       threadFields: (await this.store.listCustomFields(ORG_ID))

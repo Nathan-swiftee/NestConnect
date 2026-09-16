@@ -137,6 +137,15 @@ jobs:
       - name: Customer uploads
         run: pnpm check:visitor-uploads
 
+      # Notifying a customer, which is mostly about when not to. The rule under
+      # everything else: never push a reply that is already on screen — a
+      # message arriving live in an open chat and again as a banner over the top
+      # of it is what makes people turn notifications off for good. Also that a
+      # dead address is disabled and a flaky one is not, since disabling on a
+      # blip at Google's end stops notifying somebody permanently and silently.
+      - name: Customer push
+        run: pnpm check:customer-push
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those

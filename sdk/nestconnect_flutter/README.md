@@ -39,6 +39,43 @@ NestLauncher(
 Leave `onPickFile` off and there is no attach button, which is better than a
 button that opens nothing.
 
+## Notifications
+
+Same principle: the token comes from you. An app that already uses Firebase has
+it in hand, and one that doesn't shouldn't acquire a Firebase dependency because
+it added a chat.
+
+```dart
+final token = await FirebaseMessaging.instance.getToken();
+if (token != null) await chat.registerPushToken(token);
+
+// Firebase rotates tokens. Pass the new one on.
+FirebaseMessaging.instance.onTokenRefresh.listen(chat.registerPushToken);
+```
+
+Call it whenever you have the token — before anyone has opened a chat is normal,
+and it is remembered and registered with the next session. `chat.logout()`
+already tells the server to stop pushing for that account; call
+`chat.unregisterPushToken()` separately when someone turns notifications off
+without signing out.
+
+A reply arriving while the chat is open on screen is **not** pushed — it is
+already there. Everything else is, addressed to your Firebase project so the
+banner carries your app's name and icon. Add the service-account key under
+Settings › NestChat widget › In-app SDK; without it nothing is pushed at all.
+
+Messages carry `data.source == 'nestconnect'` and a `conversationId`, so tapping
+one can open the messenger:
+
+```dart
+FirebaseMessaging.onMessageOpenedApp.listen((m) {
+  if (m.data['source'] == 'nestconnect') showNestMessenger(context, chat: chat);
+});
+```
+
+On Android, create a notification channel with id `nest_messages` — without it
+Android 8+ drops the notification silently.
+
 ## The look is the channel's
 
 Colours, the greeting, the away message and whether the team's faces show all

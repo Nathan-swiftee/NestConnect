@@ -1978,6 +1978,14 @@ export const nestchatSettingsSchema = z.object({
    * browser.
    */
   hasIdentitySecret: z.boolean().default(false),
+  /**
+   * Whether this channel can push to its customers' phones.
+   *
+   * The service account behind it is a credential — stored encrypted, never
+   * read back — so what a settings screen may know is the same thing it may
+   * know about the identity secret: that there is one.
+   */
+  hasPushCredential: z.boolean().default(false),
   /** Conversation-scoped custom fields, for choosing which one keys a thread. */
   threadFields: z
     .array(z.object({ key: z.string(), label: z.string() }))
@@ -2233,6 +2241,30 @@ export const nestchatTypingInputSchema = z.object({
   preview: z.string().max(TYPING_PREVIEW_MAX).optional(),
 });
 export type NestChatTypingInput = z.infer<typeof nestchatTypingInputSchema>;
+
+/** Where a customer's phone is reachable, registered by the in-app SDK. */
+export const nestchatDeviceInputSchema = z.object({
+  /** The FCM registration token. Long, opaque, and not ours to validate beyond
+   *  a sanity bound — Google changes its shape from time to time and a client
+   *  that cannot register is worse than a token that fails on first send. */
+  token: z.string().min(16).max(1024),
+  platform: z.enum(["ios", "android", "web"]),
+});
+export type NestChatDeviceInput = z.infer<typeof nestchatDeviceInputSchema>;
+
+/**
+ * The Firebase service account a channel pushes through.
+ *
+ * Pasted whole rather than field by field: it is downloaded from the Firebase
+ * console as one JSON file, and asking an admin to pick three keys out of it is
+ * three chances to paste the wrong one. Validated on arrival so a bad paste is
+ * a message on the screen rather than notifications that silently never come.
+ */
+export const nestchatPushCredentialInputSchema = z.object({
+  /** The service-account JSON, or empty to stop pushing on this channel. */
+  serviceAccount: z.string().max(8192),
+});
+export type NestChatPushCredentialInput = z.infer<typeof nestchatPushCredentialInputSchema>;
 
 export const nestchatIdentifyInputSchema = z.object({
   name: z.string().max(80).optional(),

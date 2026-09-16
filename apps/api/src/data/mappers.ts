@@ -24,7 +24,7 @@ import type {
   WaWindow,
 } from "@ding/schemas";
 import { isInboxConnected, publicChannelConfig } from "@ding/schemas";
-import type { StoredDevice, StoredSession } from "./store";
+import type { StoredCustomerDevice, StoredDevice, StoredSession } from "./store";
 
 /** A Prisma Session row → the store's StoredSession (dates as ISO strings). */
 export function mapSession(s: Prisma.SessionGetPayload<object>): StoredSession {
@@ -49,6 +49,21 @@ export function mapDevice(d: Prisma.DeviceGetPayload<object>): StoredDevice {
     appVersion: d.appVersion ?? null,
     osVersion: d.osVersion ?? null,
     deviceName: d.deviceName ?? null,
+    createdAt: d.createdAt.toISOString(),
+    lastSeenAt: d.lastSeenAt.toISOString(),
+    disabledAt: d.disabledAt ? d.disabledAt.toISOString() : null,
+    disabledReason: d.disabledReason ?? null,
+  };
+}
+
+export function mapCustomerDevice(d: Prisma.CustomerDeviceGetPayload<object>): StoredCustomerDevice {
+  return {
+    id: d.id,
+    orgId: d.orgId,
+    contactId: d.contactId,
+    inboxId: d.inboxId,
+    token: d.token,
+    platform: d.platform,
     createdAt: d.createdAt.toISOString(),
     lastSeenAt: d.lastSeenAt.toISOString(),
     disabledAt: d.disabledAt ? d.disabledAt.toISOString() : null,

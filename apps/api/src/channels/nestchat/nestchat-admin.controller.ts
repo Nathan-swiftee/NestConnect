@@ -1,5 +1,10 @@
 import { Body, Controller, ForbiddenException, Get, Param, Patch, Post } from "@nestjs/common";
-import { updateNestchatInputSchema, type UpdateNestchatInput } from "@ding/schemas";
+import {
+  nestchatPushCredentialInputSchema,
+  updateNestchatInputSchema,
+  type NestChatPushCredentialInput,
+  type UpdateNestchatInput,
+} from "@ding/schemas";
 import { Store } from "../../data/store";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
@@ -69,6 +74,27 @@ export class NestChatAdminController {
   ): Promise<{ secret: string }> {
     await this.requireManager(userId);
     return { secret: await this.nestchat.rotateIdentitySecret(inboxId) };
+  }
+
+  /**
+   * Point this channel at the business's Firebase project, so an agent's reply
+   * reaches a phone with the app closed.
+   *
+   * Write-only, like the identity secret and for the same reason: a
+   * service-account key grants send-as rights on somebody else's Firebase
+   * project, and a screen that reads it back is a screen that hands it to
+   * anyone who gets one look at a signed-in browser. What comes back is whether
+   * there is one.
+   */
+  @Post(":inboxId/push-credential")
+  async pushCredential(
+    @CurrentUserId() userId: string,
+    @Param("inboxId") inboxId: string,
+    @Body(new ZodValidationPipe(nestchatPushCredentialInputSchema)) body: NestChatPushCredentialInput,
+  ) {
+    await this.requireManager(userId);
+    await this.nestchat.setPushCredential(inboxId, body.serviceAccount);
+    return this.nestchat.settingsFor(inboxId);
   }
 
   /** How a channel looks to the public is a channel setting, so it takes the
