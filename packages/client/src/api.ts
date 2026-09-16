@@ -241,6 +241,10 @@ export const api = {
   reorderTeams: (orderedIds: string[]) => post<Team[]>("/settings/teams/reorder", { orderedIds }),
 
   // Custom fields: the org's definitions, and the values on one record.
+  // Mint this channel's app-signing secret and return it once. A POST because
+  // it replaces any existing one — every old signature stops verifying.
+  rotateNestchatSecret: (inboxId: string) =>
+    post<{ secret: string }>(`/settings/nestchat/${inboxId}/identity-secret`, {}),
   customFields: () => get<CustomField[]>("/custom-fields"),
   createCustomField: (input: CreateCustomFieldInput) =>
     post<CustomField>("/custom-fields", input),

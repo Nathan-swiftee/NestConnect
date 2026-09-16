@@ -19,8 +19,10 @@ import type {
   OpeningHours,
   OpeningDay,
   OpeningHoursDay,
+  NestChatApp,
   NestChatAppearance,
   NestChatCardIcon,
+  NestChatIdentityMode,
   NestChatHome,
   NestChatHomeCard,
   NestChatPreChat,
@@ -1832,7 +1834,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
  * menu that decides which team answers it.
  */
 /** The tabs the widget's settings are split across. */
-type SettingsSection = "brand" | "words" | "home" | "prechat" | "behaviour";
+type SettingsSection = "brand" | "words" | "home" | "prechat" | "behaviour" | "app";
 
 const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "brand", label: "Brand" },
@@ -1840,6 +1842,7 @@ const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "home", label: "Home" },
   { key: "prechat", label: "Before the chat" },
   { key: "behaviour", label: "Behaviour" },
+  { key: "app", label: "In-app SDK" },
 ];
 
 type WidgetDraft = {
@@ -1847,6 +1850,7 @@ type WidgetDraft = {
   preChat: NestChatPreChat;
   routing: NestChatRouting;
   home: NestChatHome;
+  app: NestChatApp;
 };
 
 /** The text fields, in the order the widget reads them out loud. */
@@ -1925,6 +1929,16 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   const [tab, setTab] = useState<SettingsSection>("brand");
   const logoRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  /**
+   * The signing secret, held only until this screen goes away.
+   *
+   * Deliberately component state and nothing else: it is returned once, by the
+   * call that mints it, and is never readable again. Putting it anywhere more
+   * durable — a query cache, storage — would be re-inventing the thing that
+   * showing it once is meant to avoid.
+   */
+  const [mintedSecret, setMintedSecret] = useState<string | null>(null);
+  const [rotating, setRotating] = useState(false);
 
   /** Upload a logo and point this channel at it. */
   const pickLogo = async (file: File | undefined) => {
@@ -1988,6 +2002,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
       preChat: data.preChat,
       routing: data.routing,
       home: data.home,
+      app: data.app,
     };
     setSaved((m) => ({ ...m, [data.inboxId]: next }));
     setDrafts((m) => (m[data.inboxId] ? m : { ...m, [data.inboxId]: next }));
@@ -2020,6 +2035,12 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
     if (!draft) return;
     const patch = { [key]: value } as Pick<NestChatHome, K>;
     setSection("home", { ...draft.home, ...patch });
+  };
+
+  const setApp = <K extends keyof NestChatApp>(key: K, value: NestChatApp[K]) => {
+    if (!draft) return;
+    const patch = { [key]: value } as Pick<NestChatApp, K>;
+    setSection("app", { ...draft.app, ...patch });
   };
 
   /** Replace one home card in place. */
@@ -2076,6 +2097,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
             preChat: res.preChat,
             routing: res.routing,
             home: res.home,
+            app: res.app,
           };
           setSaved((m) => ({ ...m, [res.inboxId]: next }));
           setDrafts((m) => ({ ...m, [res.inboxId]: next }));
@@ -2399,6 +2421,203 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                 />
                 Show “Powered by Nest Connect”
               </label>
+            </section>
+
+            {/* The app surface. Same channel as the website above it — same
+                teams, same routing, same words — reached from a phone instead
+                of a page. */}
+            <section className="ncw__group" hidden={tab !== "app"}>
+              <h3>In-app SDK</h3>
+              <p className="fieldhint">
+                Put this same chat inside your own app. It answers into this channel, with the
+                teams and routing you’ve already set — the only differences are the key the app
+                carries and how hard we check who somebody says they are.
+              </p>
+
+              <label className={"check" + (draft.app.enabled ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.app.enabled}
+                  onChange={(e) => setApp("enabled", e.target.checked)}
+                />
+                Let an app open chats on this channel
+              </label>
+
+              {draft.app.enabled && (
+                <>
+                  {/* Only once it's saved: the key is minted server-side when the
+                      surface is turned on, so showing a box before then would be
+                      showing an empty one. */}
+                  {settings.data?.appKey ? (
+                    <label className="field">
+                      <span>App key</span>
+                      <div className="keyrow">
+                        <input readOnly value={settings.data.appKey} onFocus={(e) => e.target.select()} />
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(settings.data!.appKey!);
+                            onToast("App key copied");
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <em className="fieldhint">
+                        Goes in the app. It names this channel and authorises nothing else, so it
+                        is safe in a binary — which is also why it is not proof of who is using it.
+                      </em>
+                    </label>
+                  ) : (
+                    <p className="fieldhint">Save to mint the key this app will carry.</p>
+                  )}
+
+                  <label className="field">
+                    <span>Tag every customer from here</span>
+                    <input
+                      value={draft.app.contactTag}
+                      onChange={(e) => setApp("contactTag", e.target.value)}
+                      placeholder="Ding app"
+                      maxLength={40}
+                    />
+                    <em className="fieldhint">
+                      Added to a customer the first time they chat from this app, so you can tell
+                      where somebody came from. Changing it later affects new customers only —
+                      the old tag is where they actually came from.
+                    </em>
+                  </label>
+
+                  <label className="field">
+                    <span>One conversation per</span>
+                    <select
+                      value={draft.app.threadFieldKey}
+                      onChange={(e) => setApp("threadFieldKey", e.target.value)}
+                    >
+                      <option value="">Customer — one ongoing thread each</option>
+                      {(settings.data?.threadFields ?? []).map((f) => (
+                        <option key={f.key} value={f.key}>{f.label}</option>
+                      ))}
+                    </select>
+                    <em className="fieldhint">
+                      {draft.app.threadFieldKey ? (
+                        <>
+                          Opening the chat for one starts or resumes that one’s thread, so an old
+                          complaint stays separate from tonight’s.
+                        </>
+                      ) : (
+                        <>
+                          Everything a customer sends continues the same conversation. Pick a field
+                          instead — an order number, a booking reference — to give each its own
+                          thread. Only conversation fields are offered; define them under
+                          Organisation › Custom fields.
+                        </>
+                      )}
+                    </em>
+                  </label>
+
+                  <label className="field">
+                    <span>Trusting who they say they are</span>
+                    <select
+                      value={draft.app.identity}
+                      onChange={(e) => setApp("identity", e.target.value as NestChatIdentityMode)}
+                    >
+                      <option value="off">Take it at face value</option>
+                      <option value="optional">Check a signature when there is one</option>
+                      <option value="required">Require a signature</option>
+                    </select>
+                    <em className="fieldhint">
+                      {draft.app.identity === "required" ? (
+                        <>
+                          Names, emails and phone numbers are only trusted when your backend has
+                          signed them. Anything unsigned chats anonymously.
+                        </>
+                      ) : draft.app.identity === "optional" ? (
+                        <>
+                          A step on the way, not a place to stay. Until your backend signs, anyone
+                          who pulls the key out of your app can claim to be any of your customers.
+                        </>
+                      ) : (
+                        <>
+                          Whatever the app sends is believed. Fine while nobody signs in; not once
+                          the app knows who its user is.
+                        </>
+                      )}
+                    </em>
+                  </label>
+
+                  <div className="field">
+                    <span>Signing secret</span>
+                    <div className="keyrow">
+                      <input
+                        readOnly
+                        value={
+                          mintedSecret ??
+                          (settings.data?.hasIdentitySecret ? "•".repeat(32) : "Not set up yet")
+                        }
+                        onFocus={(e) => e.target.select()}
+                      />
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={rotating}
+                        onClick={() => {
+                          if (
+                            settings.data?.hasIdentitySecret &&
+                            !window.confirm(
+                              "Replace the signing secret?\n\nEvery signature made with the old one stops working, so your backend has to be updated at the same moment.",
+                            )
+                          ) {
+                            return;
+                          }
+                          setRotating(true);
+                          api
+                            .rotateNestchatSecret(inboxId!)
+                            .then((r) => {
+                              setMintedSecret(r.secret);
+                              void settings.refetch();
+                              onToast("Copy it now — it isn't shown again");
+                            })
+                            .catch((err: unknown) =>
+                              onToast(
+                                (err instanceof Error && err.message) || "Couldn’t mint a secret",
+                              ),
+                            )
+                            .finally(() => setRotating(false));
+                        }}
+                      >
+                        {settings.data?.hasIdentitySecret ? "Replace" : "Create"}
+                      </button>
+                      {mintedSecret && (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(mintedSecret);
+                            onToast("Signing secret copied");
+                          }}
+                        >
+                          Copy
+                        </button>
+                      )}
+                    </div>
+                    <em className="fieldhint">
+                      {mintedSecret ? (
+                        <b>
+                          This is the only time it is shown. Put it in your backend’s environment
+                          now — it cannot be read back.
+                        </b>
+                      ) : (
+                        <>
+                          Your backend signs each user id with this, and we check the signature.
+                          Never ship it inside the app: anything in a binary can be pulled out of
+                          one, and whoever holds this can claim to be any of your customers.
+                        </>
+                      )}
+                    </em>
+                  </div>
+                </>
+              )}
             </section>
 
             <section className="ncw__group" hidden={tab !== "home"}>

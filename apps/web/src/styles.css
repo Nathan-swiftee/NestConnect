@@ -2104,6 +2104,14 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .invitebox p{margin:0;font-size:var(--fs-sm);color:var(--text-muted)}
 .reroutecheck{display:flex;gap:var(--sp-2);align-items:flex-start;font-size:var(--fs-xs);line-height:1.4;color:var(--text-muted);cursor:pointer;margin:-2px 0 2px}
 .reroutecheck input{margin-top:2px;flex:0 0 auto}
+/* A key or secret beside the buttons that copy or replace it. The value is a
+   read-only input rather than text so it can be selected with a keyboard and
+   picked up by a password manager; it is monospaced because these are read
+   character by character when something does not work. */
+.keyrow{display:flex;gap:var(--sp-2);align-items:center}
+.keyrow input{font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.01em}
+.keyrow .btn-ghost{flex:0 0 auto;white-space:nowrap}
+
 /* A titled sub-section inside a credential sheet (e.g. "Real-time delivery
    (optional)") — a hairline rule and a heading, not a nested card. */
 .setform__sub{display:flex;flex-direction:column;gap:3px;padding-top:var(--sp-3);margin-top:2px;border-top:1px solid var(--border)}
