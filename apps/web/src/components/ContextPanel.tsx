@@ -1,19 +1,26 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  fieldsForInbox,
   GROUP_MAX_MEMBERS,
   type ChannelType,
   type Contact,
   type Conversation,
+  type ConversationWithMessages,
+  type CustomField,
+  type CustomFieldValue,
   type Priority,
 } from "@ding/schemas";
 import {
   useContact,
   useContacts,
   useConversation,
+  useCustomFields,
+  useCustomFieldValues,
   usePeople,
   useRemoveParticipant,
   useResetGroupInvite,
   useSession,
+  useSetCustomFieldValues,
   useSetPriority,
   useTeams,
   useUpdateContact,
@@ -46,6 +53,149 @@ function Block({ title, count, children }: { title: string; count?: number; chil
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * One custom field, read and written in place.
+ *
+ * Editable from here rather than behind a form, because of when it gets typed:
+ * an agent has the customer on the phone reading out an order number, and every
+ * click between hearing it and recording it is a click that doesn't happen.
+ *
+ * Saves on blur as well as on Enter. Somebody who types a number and then
+ * clicks straight into the reply box has finished with the field — losing it
+ * there would be losing exactly the thing they were told to write down.
+ */
+function FieldRow({
+  field,
+  value,
+  onSave,
+}: {
+  field: CustomField;
+  value: string;
+  onSave: (next: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [editing, setEditing] = useState(false);
+  // Someone else's edit, or a value the SDK has just set, should land — but not
+  // over the top of what this agent is in the middle of typing.
+  useEffect(() => {
+    if (!editing) setDraft(value);
+  }, [value, editing]);
+
+  const commit = () => {
+    setEditing(false);
+    if (draft.trim() !== value) onSave(draft.trim());
+  };
+
+  if (field.type === "select") {
+    return (
+      <div className="cfrow">
+        <span className="cfrow__l">{field.label}</span>
+        <select
+          className="cfrow__v"
+          value={value}
+          onChange={(e) => onSave(e.target.value)}
+        >
+          <option value="">—</option>
+          {field.options.map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cfrow">
+      <span className="cfrow__l">{field.label}</span>
+      <input
+        className="cfrow__v"
+        value={draft}
+        type={field.type === "number" ? "text" : field.type === "date" ? "date" : "text"}
+        // Not `type="number"`: an order number is a reference, not a quantity,
+        // and a numeric input would strip a leading zero and offer a spinner
+        // for incrementing something nobody ever increments.
+        inputMode={field.type === "number" ? "numeric" : undefined}
+        placeholder="—"
+        onFocus={() => setEditing(true)}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") { setDraft(value); setEditing(false); e.currentTarget.blur(); }
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The workspace's own facts about this thread and this customer.
+ *
+ * Both kinds in one block, conversation first, because the distinction matters
+ * to whoever *defined* the field and not to the agent reading it — they want
+ * the order number, and which table it lives in is our problem.
+ *
+ * Shown only when the channel has fields to show. A panel section that is
+ * always there and always empty trains people to stop looking at it.
+ */
+function CustomFieldsBlock({
+  conv,
+  onToast,
+}: {
+  conv: ConversationWithMessages;
+  onToast: (m: string) => void;
+}) {
+  const fields = useCustomFields();
+  const convValues = useCustomFieldValues("conversation", conv.id);
+  const contactValues = useCustomFieldValues("contact", conv.contact.id);
+  const save = useSetCustomFieldValues();
+
+  const all = fields.data ?? [];
+  const forHere = fieldsForInbox(all, conv.inboxId);
+  const convFields = forHere.filter((f) => f.entity === "conversation");
+  const contactFields = forHere.filter((f) => f.entity === "contact");
+  if (!convFields.length && !contactFields.length) return null;
+
+  const valueOf = (list: CustomFieldValue[] | undefined, key: string) =>
+    list?.find((v) => v.key === key)?.value ?? "";
+
+  const write = (entity: "conversation" | "contact", entityId: string, key: string, next: string) =>
+    save.mutate(
+      { entity, entityId, values: { [key]: next || null } },
+      {
+        onError: (err) =>
+          onToast(err instanceof Error ? err.message : "Couldn’t save that"),
+      },
+    );
+
+  return (
+    <Block title="Details">
+      {convFields.map((f) => (
+        <FieldRow
+          key={f.id}
+          field={f}
+          value={valueOf(convValues.data, f.key)}
+          onSave={(next) => write("conversation", conv.id, f.key, next)}
+        />
+      ))}
+      {contactFields.map((f) => (
+        <FieldRow
+          key={f.id}
+          field={f}
+          value={valueOf(contactValues.data, f.key)}
+          onSave={(next) => write("contact", conv.contact.id, f.key, next)}
+        />
+      ))}
+      {contactFields.length > 0 && convFields.length > 0 && (
+        <p className="capnote">
+          The last {contactFields.length === 1 ? "one follows" : "few follow"} the customer, not this
+          chat.
+        </p>
+      )}
+    </Block>
   );
 }
 
@@ -621,6 +771,9 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
           <>
             <StatsBlock contactId={conv.contact.id} />
             <AssignmentBlock conv={conv} teamName={teamName} onToast={onToast} />
+            {/* High, because an agent on a call is reading an order number off
+                this panel and has no reason to scroll for it. */}
+            <CustomFieldsBlock conv={conv} onToast={onToast} />
             <CustomerTags contact={conv.contact} onToast={onToast} />
             <RecentConversations contactId={conv.contact.id} currentId={conv.id} onOpen={onOpenConversation} />
             <ChannelsBlock contact={conv.contact} activeChannel={conv.channel} onSwitch={switchChannel} />
