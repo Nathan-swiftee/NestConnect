@@ -760,6 +760,20 @@ export abstract class Store {
    * either the one being read out or it is not, and a partial match that
    * outranked the exact one would bury the answer.
    */
+  /**
+   * Records whose value for one named field is exactly this.
+   *
+   * Separate from the search below, and deliberately not built on it: that one
+   * falls back to partial matches, which is right for somebody typing into a
+   * search box and wrong for deciding which conversation an order belongs to.
+   * "DG-8841" must not resume the thread for "DG-88412".
+   */
+  abstract findByCustomFieldExact(
+    orgId: string,
+    entity: CustomFieldEntity,
+    fieldKey: string,
+    value: string,
+  ): Promise<string[]>;
   abstract findByCustomFieldValue(
     orgId: string,
     entity: CustomFieldEntity,

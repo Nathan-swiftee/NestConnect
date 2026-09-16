@@ -29,7 +29,25 @@ export type ChannelType = z.infer<typeof channelTypeSchema>;
  * keeps, not something they own or could prove. It identifies a *browser*, so it
  * unifies a returning visitor with their own history and nothing else.
  */
-export const contactIdentityKindSchema = z.enum(["phone", "email", "wa_id", "nestchat"]);
+export const contactIdentityKindSchema = z.enum([
+  "phone",
+  "email",
+  "wa_id",
+  "nestchat",
+  /**
+   * The id an app's own system knows this person by.
+   *
+   * Unlike `nestchat`, which is a random id a browser keeps and which anyone
+   * who opens a console can rewrite, this one comes from a system that has
+   * already authenticated them — so the same customer on a new phone, or after
+   * reinstalling, is still the same customer with the same history.
+   *
+   * The value is namespaced by channel (see `externalIdentity`): the identity
+   * table is unique on (kind, value) across every org, so two apps that both
+   * start numbering their users at 1 would otherwise be one person.
+   */
+  "external",
+]);
 export type ContactIdentityKind = z.infer<typeof contactIdentityKindSchema>;
 
 /**
@@ -485,6 +503,17 @@ export const setCustomFieldValuesInputSchema = z.object({
   values: z.record(z.string().max(500).nullable()),
 });
 export type SetCustomFieldValuesInput = z.infer<typeof setCustomFieldValuesInputSchema>;
+
+/**
+ * How an app's user id is stored as an identity.
+ *
+ * Namespaced by channel: the identity table is unique on (kind, value) across
+ * the whole table, so two apps that both start counting users at 1 would
+ * otherwise resolve to one person.
+ */
+export function externalIdentity(inboxId: string, externalId: string): string {
+  return `${inboxId}:${externalId.trim()}`;
+}
 
 /**
  * Fold a value for matching.
@@ -2036,6 +2065,55 @@ export const nestchatSessionInputSchema = z.object({
   name: z.string().max(80).optional(),
 });
 export type NestChatSessionInput = z.infer<typeof nestchatSessionInputSchema>;
+
+/**
+ * An app opening a session.
+ *
+ * `externalId` is the app's own id for the person, and is what makes history
+ * survive a reinstall. Everything else about them is a claim until a signature
+ * says otherwise — see `userHash`.
+ */
+export const nestchatAppSessionInputSchema = z.object({
+  /** The app's own user id. Absent for somebody who has not signed in. */
+  externalId: z.string().min(1).max(120).optional(),
+  /**
+   * HMAC-SHA256 of `externalId` under the channel's signing secret, hex.
+   *
+   * Made by the app's *backend*, never by the app: the secret cannot be in a
+   * binary, because anything in a binary can be taken out of one. Without it
+   * the name and contact details below are only what the caller typed.
+   */
+  userHash: z.string().max(200).optional(),
+  name: z.string().max(80).optional(),
+  email: z.string().email().max(200).optional(),
+  phone: z.string().max(40).optional(),
+  /**
+   * Custom field values, by key — `{ order_id: "DG-88412" }`.
+   *
+   * Validated against the fields this channel actually offers; anything else is
+   * reported back rather than stored, so a typo in an integration is visible
+   * the day it is written.
+   */
+  fields: z.record(z.string().max(500)).optional(),
+});
+export type NestChatAppSessionInput = z.infer<typeof nestchatAppSessionInputSchema>;
+
+export const nestchatAppSessionSchema = z.object({
+  token: z.string(),
+  hasConversation: z.boolean(),
+  messages: z.array(nestchatMessageSchema),
+  /**
+   * Whether the details sent were actually trusted.
+   *
+   * The app is told, because it is the difference between a chat that reaches
+   * the customer's own record and one that starts an anonymous thread — and an
+   * integrator debugging a signature needs to see which of the two happened.
+   */
+  identified: z.boolean(),
+  /** Field keys this channel has never heard of. */
+  unknownFields: z.array(z.string()).default([]),
+});
+export type NestChatAppSession = z.infer<typeof nestchatAppSessionSchema>;
 
 export const nestchatSessionSchema = z.object({
   visitorId: z.string(),

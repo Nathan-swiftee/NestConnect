@@ -21,6 +21,7 @@
     "check:default-template": "tsx --tsconfig apps/api/tsconfig.json tools/check-default-template.ts",
     "check:custom-fields": "tsx --tsconfig apps/api/tsconfig.json tools/check-custom-fields.ts",
     "check:app-surface": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-surface.ts",
+    "check:app-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-identity.ts",
     "check:2fa-gate": "tsx --tsconfig apps/api/tsconfig.json tools/check-2fa-gate.ts",
     "check:hooks": "node tools/check-hook-order.mjs",
     "lint": "turbo run lint",

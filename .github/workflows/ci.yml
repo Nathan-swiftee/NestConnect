@@ -118,6 +118,16 @@ jobs:
       - name: App surface keys and thread key
         run: pnpm check:app-surface
 
+      # Who an app says its user is. A widget on a public page has nobody to
+      # verify; an app knows exactly who is holding the phone, its key sits in a
+      # binary anybody can pull apart, and the email it sends is what merges a
+      # session onto a customer record we already hold. Believed without proof,
+      # that is an impersonation endpoint — so the signature is checked against
+      # the user id it claims, under this channel's own secret, in constant
+      # time. Accepting any well-formed hash fails four of these.
+      - name: App identity and thread resolution
+        run: pnpm check:app-identity
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those

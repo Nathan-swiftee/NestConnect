@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
   NotFoundException,
@@ -14,6 +15,8 @@ import { Throttle } from "@nestjs/throttler";
 import type { Response } from "express";
 import { randomBytes } from "node:crypto";
 import {
+  externalIdentity,
+  nestchatAppSessionInputSchema,
   nestchatIdentifyInputSchema,
   nestchatReadInputSchema,
   nestchatSendInputSchema,
@@ -21,6 +24,8 @@ import {
   nestchatStartInputSchema,
   nestchatTypingInputSchema,
   toPublicRouting,
+  type NestChatAppSession,
+  type NestChatAppSessionInput,
   type NestChatConfig,
   type NestChatIdentifyInput,
   type NestChatIdentifyResult,
@@ -227,6 +232,96 @@ export class NestChatController {
     };
   }
 
+  /**
+   * An app opens a session.
+   *
+   * The counterpart to `POST :widgetKey/session` for a client that is not a
+   * browser, and the differences are the whole point of it existing:
+   *
+   *  - the person is keyed by the app's own user id, so a reinstall or a new
+   *    phone keeps their history, where a browser id would not;
+   *  - the channel decides how hard to check that claim, because an app that
+   *    knows who its user is can prove it and a public web page cannot;
+   *  - custom field values arrive with the session, so the thread this opens is
+   *    the one for that order rather than whichever was last open.
+   *
+   * Everything past here is the visitor API the widget already uses. One
+   * conversation, one token, one stream — the surfaces differ at the door and
+   * nowhere after it.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("app/:appKey/session")
+  async appSession(
+    @Param("appKey") appKey: string,
+    @Body(new ZodValidationPipe(nestchatAppSessionInputSchema)) body: NestChatAppSessionInput,
+  ): Promise<NestChatAppSession> {
+    const { inbox, app } = await this.nestchat.inboxForAppKey(appKey);
+
+    // Whether we believe them. `required` refuses an unsigned claim outright;
+    // `optional` carries on anonymously, which is what lets an app ship before
+    // the backend that signs for it.
+    const externalId = body.externalId?.trim();
+    let identified = false;
+    if (externalId) {
+      if (app.identity === "off") identified = true;
+      else {
+        identified = await this.nestchat.verifyUserHash(inbox.id, externalId, body.userHash ?? "");
+        if (!identified && app.identity === "required") {
+          throw new ForbiddenException("This app must sign who its users are");
+        }
+      }
+    }
+
+    // An unverified session is anonymous rather than rejected — it gets a
+    // per-install id and none of the details sent with it, so a stranger
+    // holding the app key can open a chat but cannot become a customer.
+    const visitorId = identified && externalId
+      ? externalIdentity(inbox.id, externalId)
+      : randomBytes(16).toString("hex");
+
+    const contact = await this.store.upsertContactByIdentity({
+      orgId: inbox.orgId,
+      kind: identified ? "external" : "nestchat",
+      value: visitorId,
+      displayName:
+        (identified ? body.name?.trim() : undefined) || `Visitor ${visitorId.slice(-6)}`,
+    });
+
+    if (identified) {
+      // Only now: an unverified caller must not be able to write an email onto
+      // a record, because a matching one is what merges this session onto a
+      // customer we already know.
+      await this.nestchat.identifyVisitor(
+        { visitorId, inboxId: inbox.id, contactId: contact.id, conversationId: "" },
+        { name: body.name, email: body.email, phone: body.phone },
+      );
+      await this.nestchat.applyContactTag(contact.id, app.contactTag);
+    }
+
+    const { values, unknown } = await this.nestchat.validateFields(inbox.id, body.fields ?? {});
+    const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values);
+    // Written straight onto an existing thread; carried in the token otherwise,
+    // because there is nothing to write them on until the first message creates
+    // a conversation.
+    if (conversationId && Object.keys(values).length) {
+      await this.store.setCustomFieldValues(inbox.orgId, "conversation", conversationId, values);
+    }
+
+    return {
+      token: this.nestchat.signVisitorToken({
+        visitorId,
+        inboxId: inbox.id,
+        contactId: contact.id,
+        conversationId: conversationId ?? "",
+        ...(conversationId ? {} : { fields: values }),
+      }),
+      hasConversation: Boolean(conversationId),
+      messages: conversationId ? await this.nestchat.visitorHistory(conversationId) : [],
+      identified,
+      unknownFields: unknown,
+    };
+  }
+
   /** The visitor writes. Creates the conversation on the first message. */
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("message")
@@ -257,16 +352,36 @@ export class NestChatController {
     // teaches them to come back with a fresh visitor id.
     if (!result) return { ok: true };
 
+    // Field values an app sent when it opened the session, written now that
+    // there is a conversation to write them on. From the signed token rather
+    // than this request, so the order a thread is filed under is the one the
+    // app asked for and not one the client edited on the way.
+    if (claims.fields && Object.keys(claims.fields).length) {
+      await this.store.setCustomFieldValues(
+        inbox.orgId,
+        "conversation",
+        result.conversationId,
+        claims.fields,
+      );
+    }
+
     const message = result.message ? this.nestchat.toVisitorMessage(result.message) : undefined;
     return {
       ok: true,
       message,
       // The first message is what creates the conversation, so the token the
-      // widget holds doesn't name one yet. Hand back the one that does.
+      // widget holds doesn't name one yet. Hand back the one that does — with
+      // the pending fields dropped, now that they have somewhere to live. A
+      // stale copy would re-stamp the order onto a thread somebody had since
+      // corrected.
       token:
-        claims.conversationId === result.conversationId
+        claims.conversationId === result.conversationId && !claims.fields
           ? undefined
-          : this.nestchat.signVisitorToken({ ...claims, conversationId: result.conversationId }),
+          : this.nestchat.signVisitorToken({
+              ...claims,
+              conversationId: result.conversationId,
+              fields: undefined,
+            }),
     };
   }
 

@@ -2226,6 +2226,22 @@ export class PrismaStore extends Store {
     return { values: current.get(entityId) ?? [], unknown };
   }
 
+  async findByCustomFieldExact(
+    orgId: string,
+    entity: CustomFieldEntity,
+    fieldKey: string,
+    value: string,
+  ): Promise<string[]> {
+    const wanted = normalizeCustomFieldValue(value);
+    if (!wanted) return [];
+    const rows = await this.prisma.customFieldValue.findMany({
+      where: { orgId, entity, normalizedValue: wanted, field: { key: fieldKey } },
+      select: { entityId: true },
+      take: 20,
+    });
+    return rows.map((r) => r.entityId);
+  }
+
   async findByCustomFieldValue(
     orgId: string,
     entity: CustomFieldEntity,

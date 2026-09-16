@@ -1906,6 +1906,25 @@ export class MemoryStore extends Store {
     return { values: current.get(entityId) ?? [], unknown };
   }
 
+  async findByCustomFieldExact(
+    _orgId: string,
+    entity: CustomFieldEntity,
+    fieldKey: string,
+    value: string,
+  ): Promise<string[]> {
+    const field = this.customFields.find((f) => f.key === fieldKey && f.entity === entity);
+    const wanted = normalizeCustomFieldValue(value);
+    if (!field || !wanted) return [];
+    return [...this.fieldValues.values()]
+      .filter(
+        (v) =>
+          v.fieldId === field.id &&
+          v.entity === entity &&
+          normalizeCustomFieldValue(v.value) === wanted,
+      )
+      .map((v) => v.entityId);
+  }
+
   async findByCustomFieldValue(
     _orgId: string,
     entity: CustomFieldEntity,

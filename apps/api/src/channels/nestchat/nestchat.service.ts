@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import {
@@ -8,6 +8,7 @@ import {
   DEFAULT_NESTCHAT_HOME,
   DEFAULT_NESTCHAT_PRECHAT,
   DEFAULT_NESTCHAT_ROUTING,
+  fieldsForInbox,
   nestchatAppSchema,
   type NestChatApp,
   nestchatAppearanceSchema,
@@ -99,6 +100,18 @@ export interface VisitorClaims {
    * signed id is not a promise that the option still exists.
    */
   optionId?: string;
+  /**
+   * Field values an app sent that have nowhere to live yet.
+   *
+   * A conversation is created by the first message, not by opening a session —
+   * so the order number arrives before there is a thread to write it on. It
+   * rides in the signed token and is written the moment the conversation
+   * exists, which also means a visitor cannot edit it on the way.
+   *
+   * Cleared from the token once written: a stale copy would silently re-stamp
+   * the order onto a thread somebody had since corrected.
+   */
+  fields?: Record<string, string>;
 }
 
 /** A visitor session lasts a working week: long enough that someone who comes
@@ -213,6 +226,140 @@ export class NestChatService {
     }
     if (parsed.enabled) await this.ensureAppKey(inboxId);
     await this.store.updateInbox(inboxId, { channelConfig: { app: JSON.stringify(parsed) } });
+  }
+
+  /**
+   * Whether this signature really was made by the app's own backend.
+   *
+   * HMAC-SHA256 of the user id under the channel's secret, compared in constant
+   * time — a byte-by-byte comparison leaks, through how long it takes to fail,
+   * roughly where the first wrong byte was, which is enough to walk a signature
+   * out one byte at a time.
+   *
+   * A channel with no secret cannot verify anything, so it answers false rather
+   * than true. That is the whole point of the distinction: `required` refuses,
+   * `optional` treats the session as anonymous, and neither quietly accepts a
+   * claim nobody checked.
+   */
+  async verifyUserHash(inboxId: string, externalId: string, userHash: string): Promise<boolean> {
+    const config = await this.store.getInboxConfig(inboxId);
+    const secret = config?.identitySecret?.trim();
+    if (!secret || !userHash.trim()) return false;
+    const expected = createHmac("sha256", secret).update(externalId).digest();
+    let given: Buffer;
+    try {
+      given = Buffer.from(userHash.trim(), "hex");
+    } catch {
+      return false;
+    }
+    // timingSafeEqual throws on a length mismatch, which would itself be a
+    // signal — so the lengths are compared first and the result is the same
+    // "no" either way.
+    if (given.length !== expected.length) return false;
+    return timingSafeEqual(given, expected);
+  }
+
+  /**
+   * Resolve the channel an app key names, and refuse if its surface is off.
+   *
+   * Off means off: a key that was minted and then disabled must stop working,
+   * or turning the surface off would be a setting that changes nothing for
+   * every app already carrying the key.
+   */
+  async inboxForAppKey(appKey: string): Promise<{ inbox: Inbox; app: NestChatApp }> {
+    const key = appKey.trim();
+    const inbox = key ? await this.store.getInboxByAppKey(key) : undefined;
+    if (!inbox) throw new NotFoundException("Unknown app key");
+    const app = await this.appFor(inbox.id);
+    if (!app.enabled) throw new NotFoundException("Unknown app key");
+    return { inbox, app };
+  }
+
+  /**
+   * The conversation an app session should continue, given the field that keys
+   * a thread on this channel.
+   *
+   * Three cases, and the middle one is the reason this exists. With no thread
+   * key the customer has one ongoing conversation, which is what a general
+   * support line wants. With one, each value gets its own — so a dispute about
+   * last week's order stays separate from tonight's — and the match has to be
+   * exact: "DG-8841" must not resume "DG-88412".
+   *
+   * Closed threads are excluded. Somebody coming back about an order that was
+   * resolved a month ago is starting something new, and reopening the old
+   * thread would drop tonight's message under a month of history an agent has
+   * already worked through.
+   */
+  async threadFor(
+    inbox: Inbox,
+    contactId: string,
+    app: NestChatApp,
+    fields: Record<string, string>,
+  ): Promise<string | undefined> {
+    const withConvs = await this.store.getContactWithConversations(contactId);
+    const open = (withConvs?.conversations ?? []).filter(
+      (c) => c.inboxId === inbox.id && c.status !== "closed",
+    );
+    if (!open.length) return undefined;
+    if (!app.threadFieldKey) return open[0]?.id;
+
+    const value = fields[app.threadFieldKey]?.trim();
+    // The channel keys threads on a field the caller didn't name. Starting a
+    // fresh thread is the safe answer: joining whichever one happened to be
+    // open would put this message under an unrelated order.
+    if (!value) return undefined;
+    const matching = new Set(
+      await this.store.findByCustomFieldExact(inbox.orgId, "conversation", app.threadFieldKey, value),
+    );
+    return open.find((c) => matching.has(c.id))?.id;
+  }
+
+  /**
+   * Put this channel's tag on a contact, if it has one and they haven't.
+   *
+   * Added, never replaced: a customer who reached us through the app and later
+   * through the website has done both, and a tag that overwrote the first would
+   * be recording where they most recently came from rather than where they came
+   * from.
+   */
+  async applyContactTag(contactId: string, tag: string): Promise<void> {
+    const wanted = tag.trim();
+    if (!wanted) return;
+    const contact = await this.store.getContact(contactId);
+    if (!contact || contact.tags.includes(wanted)) return;
+    await this.store.updateContact(contactId, { tags: [...contact.tags, wanted] });
+  }
+
+  /**
+   * Keep the field values this channel actually offers, and name the rest.
+   *
+   * Unknown keys are reported rather than dropped in silence, because the
+   * caller is an integration somebody is in the middle of writing: a typo that
+   * quietly does nothing costs a day, and the same typo that answers "no such
+   * field" costs a minute.
+   *
+   * Conversation fields only. A contact field set from a chat session would let
+   * an app rewrite a person's record from a client — and the whole reason this
+   * endpoint exists is that a client is not trusted.
+   */
+  async validateFields(
+    inboxId: string,
+    fields: Record<string, string>,
+  ): Promise<{ values: Record<string, string>; unknown: string[] }> {
+    const keys = Object.keys(fields);
+    if (!keys.length) return { values: {}, unknown: [] };
+    const defined = fieldsForInbox(await this.store.listCustomFields(ORG_ID), inboxId).filter(
+      (f) => f.entity === "conversation",
+    );
+    const values: Record<string, string> = {};
+    const unknown: string[] = [];
+    for (const key of keys) {
+      const field = defined.find((f) => f.key === key);
+      const value = fields[key]?.trim();
+      if (!field) unknown.push(key);
+      else if (value) values[key] = value;
+    }
+    return { values, unknown };
   }
 
   private async requireNestChatInbox(inboxId: string): Promise<Inbox> {
@@ -464,6 +611,7 @@ export class NestChatService {
         // re-signed, and the visitor's routing choice would evaporate on their
         // first message, which is the one moment it is read.
         optionId: claims.optionId,
+        fields: claims.fields,
       };
     } catch {
       throw new ForbiddenException("Chat session expired");
