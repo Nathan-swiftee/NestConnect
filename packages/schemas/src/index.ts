@@ -761,6 +761,18 @@ export type MessagePage = z.infer<typeof messagePageSchema>;
 
 /** Default page sizes shared by the API and the client. */
 export const CONVERSATIONS_PAGE_SIZE = 30;
+
+/**
+ * How many records a custom-field filter will gather before it stops.
+ *
+ * The filter resolves matching records to a list of ids and matches them with
+ * `IN`, which is the right shape for a working set and the wrong one for a
+ * whole table. The cap means a filter over a very large set shows its most
+ * recent slice rather than timing out — a filter you can keep narrowing, not a
+ * spinner. Somewhere past this the answer is a join, which needs the values
+ * table to carry real relations rather than a polymorphic entity id.
+ */
+export const CUSTOM_FIELD_FILTER_MAX = 2000;
 export const MESSAGES_PAGE_SIZE = 40;
 
 /* ------------------------------------------------------------------ */

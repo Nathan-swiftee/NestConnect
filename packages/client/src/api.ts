@@ -311,9 +311,18 @@ export const api = {
       ...(inboxId ? { inboxId } : {}),
     }),
   // conversations (cursor-paginated — one page per call, never the whole inbox)
-  conversations: (view: string, cursor?: string) =>
+  // `field` narrows the view to threads carrying a custom field — any value, or
+  // one in particular. ANDed with the view, so it only ever shows less.
+  conversations: (
+    view: string,
+    cursor?: string,
+    field?: { key: string; value?: string },
+  ) =>
     get<ConversationPage>(
-      `/conversations?view=${encodeURIComponent(view)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      `/conversations?view=${encodeURIComponent(view)}` +
+        (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "") +
+        (field?.key ? `&fieldKey=${encodeURIComponent(field.key)}` : "") +
+        (field?.key && field.value ? `&fieldValue=${encodeURIComponent(field.value)}` : ""),
     ),
   // Search across conversations (contact, subject, preview, message body).
   // `view` scopes it to one inbox; without it the search spans everything.

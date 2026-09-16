@@ -252,6 +252,13 @@ input,textarea{font:inherit}
 .chipcount{min-width:17px;height:17px;padding:0 5px;border-radius:var(--r-full);background:var(--brand);color:#fff;
   font-size:var(--fs-2xs);font-weight:600;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums;line-height:1}
 .chip:hover:not(.active){background:var(--border);color:var(--text)}
+/* A field filter is a different kind of narrowing from the ones beside it: it
+   asks the server for a different set rather than hiding rows already loaded.
+   Outlined rather than filled so the two read as two groups, not one row of
+   eight equivalent chips. */
+.chip--field{background:transparent;box-shadow:inset 0 0 0 1px var(--border)}
+.chip--field:hover:not(.active){background:var(--surface-2)}
+.chip--field.active{background:var(--brand-tint);box-shadow:inset 0 0 0 1px var(--brand)}
 .convs{overflow-y:auto;flex:1;min-height:0;animation:listIn .28s var(--ease)}
 /* pull-to-refresh indicator (mobile) — grows with the pull, spins while loading */
 .ptr{overflow:hidden;display:flex;align-items:flex-end;justify-content:center;pointer-events:none}

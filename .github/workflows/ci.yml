@@ -146,6 +146,14 @@ jobs:
       - name: Customer push
         run: pnpm check:customer-push
 
+      # Filtering an inbox by a custom field — the working set rather than the
+      # lookup. Mostly guards one specific way of getting it wrong: an empty set
+      # of ids ORed into a query matches everything, so a filter that found
+      # nothing renders as the unfiltered inbox. Also that a filter can only
+      # ever narrow the view it is applied to, never reach outside it.
+      - name: Custom field filtering
+        run: pnpm check:field-filter
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those

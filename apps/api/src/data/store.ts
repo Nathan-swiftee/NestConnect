@@ -537,7 +537,13 @@ export abstract class Store {
   abstract listConversations(
     view: string,
     userId: string,
-    opts?: { cursor?: string; limit?: number },
+    opts?: {
+      cursor?: string;
+      limit?: number;
+      /** Narrow the view to threads carrying this field — any value, or one in
+       *  particular. ANDed with the view, so it can only ever show you less. */
+      field?: { key: string; value?: string };
+    },
   ): Promise<ConversationPage>;
   /** A cursor page of search results (contact, subject, preview, message body). */
   abstract searchConversations(
@@ -818,7 +824,33 @@ export abstract class Store {
     fieldKey: string,
     value: string,
   ): Promise<string[]>;
-  abstract findByCustomFieldValue(
+/**
+   * Everything carrying a value for one named field — any value, or one in
+   * particular.
+   *
+   * The difference from the two above is the question being asked. Those answer
+   * "which record is this order number", where the answer is one row and a
+   * partial match is a courtesy. This answers "show me the ones with an order
+   * number", where the answer is a working set: a filter, not a lookup.
+   *
+   * It returns both kinds because a field lives on a conversation or on a
+   * contact and the caller should not have to know which — "conversations about
+   * an order" and "conversations with customers who have an account number" are
+   * the same gesture to whoever is filtering.
+   *
+   * Bounded, deliberately. The ids come back as a list and are then matched with
+   * `IN`, which stops being the right shape somewhere in the low thousands; the
+   * cap means a filter over a very large set silently shows the most recent
+   * slice of it rather than timing out. When that ceiling starts being reached
+   * in earnest the fix is a join, which needs `CustomFieldValue` to carry real
+   * relations rather than a polymorphic `entityId`.
+   */
+  abstract findByCustomField(
+    orgId: string,
+    fieldKey: string,
+    value?: string,
+  ): Promise<{ conversationIds: string[]; contactIds: string[] }>;
+    abstract findByCustomFieldValue(
     orgId: string,
     entity: CustomFieldEntity,
     query: string,

@@ -690,10 +690,13 @@ export function useDeleteContact() {
 
 /** Cursor-paginated conversation list. `data` is the flattened rows so far;
  *  call fetchNextPage() to load the next page (never the whole inbox at once). */
-export const useConversations = (view: string) =>
+export const useConversations = (view: string, field?: { key: string; value?: string }) =>
   useInfiniteQuery({
-    queryKey: ["conversations", view],
-    queryFn: ({ pageParam }) => api.conversations(view, pageParam),
+    // The filter is part of the key: two filters over one view are two lists,
+    // and sharing a cache entry would show the first one's rows under the
+    // second one's chip until the refetch landed.
+    queryKey: ["conversations", view, field?.key ?? "", field?.value ?? ""],
+    queryFn: ({ pageParam }) => api.conversations(view, pageParam, field),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     select: (d) => d.pages.flatMap((p) => p.items),

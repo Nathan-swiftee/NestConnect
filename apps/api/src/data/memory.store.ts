@@ -942,11 +942,22 @@ export class MemoryStore extends Store {
   async listConversations(
     view: string,
     userId: string,
-    opts?: { cursor?: string; limit?: number },
+    opts?: { cursor?: string; limit?: number; field?: { key: string; value?: string } },
   ): Promise<ConversationPage> {
     const userTeams = this.membership[userId] ?? [];
+    let matchesField: (r: ConversationRecord) => boolean = () => true;
+    if (opts?.field) {
+      const { conversationIds, contactIds } = await this.findByCustomField(
+        "",
+        opts.field.key,
+        opts.field.value,
+      );
+      const convs = new Set(conversationIds);
+      const contacts = new Set(contactIds);
+      matchesField = (r) => convs.has(r.id) || contacts.has(r.contact.id);
+    }
     const sorted = this.conversations
-      .filter((r) => this.matchesView(r, view, userId, userTeams))
+      .filter((r) => this.matchesView(r, view, userId, userTeams) && matchesField(r))
       .sort(byRecencyDesc);
     return this.pageConversations(sorted, opts);
   }
@@ -1986,6 +1997,27 @@ export class MemoryStore extends Store {
           normalizeCustomFieldValue(v.value) === wanted,
       )
       .map((v) => v.entityId);
+  }
+
+  async findByCustomField(
+    _orgId: string,
+    fieldKey: string,
+    value?: string,
+  ): Promise<{ conversationIds: string[]; contactIds: string[] }> {
+    const wanted = value === undefined ? undefined : normalizeCustomFieldValue(value);
+    // "restaurant is ''" is not "restaurant is set" — a value that folds away
+    // filters for nothing rather than for everything.
+    if (value !== undefined && !wanted) return { conversationIds: [], contactIds: [] };
+    const field = this.customFields.find((f) => f.key === fieldKey && !f.archived);
+    if (!field) return { conversationIds: [], contactIds: [] };
+    const conversationIds: string[] = [];
+    const contactIds: string[] = [];
+    for (const v of this.fieldValues.values()) {
+      if (v.fieldId !== field.id) continue;
+      if (wanted && normalizeCustomFieldValue(v.value) !== wanted) continue;
+      (v.entity === "conversation" ? conversationIds : contactIds).push(v.entityId);
+    }
+    return { conversationIds, contactIds };
   }
 
   async findByCustomFieldValue(

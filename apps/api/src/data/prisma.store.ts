@@ -42,6 +42,7 @@ import type {
 } from "@ding/schemas";
 import {
   CONVERSATIONS_PAGE_SIZE,
+  CUSTOM_FIELD_FILTER_MAX,
   MESSAGES_PAGE_SIZE,
   normalizeCustomFieldValue,
   THREADABLE_STATUSES,
@@ -972,16 +973,36 @@ export class PrismaStore extends Store {
   async listConversations(
     view: string,
     userId: string,
-    opts?: { cursor?: string; limit?: number },
+    opts?: { cursor?: string; limit?: number; field?: { key: string; value?: string } },
   ): Promise<ConversationPage> {
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
     const limit = pageLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
     const cur = decodeConvCursor(opts?.cursor);
     const base = this.buildWhere(view, userId, userTeams, token);
-    const where: Prisma.ConversationWhereInput = cur
-      ? { AND: [base, keysetBefore(cur)] }
-      : base;
+    const parts: Prisma.ConversationWhereInput[] = [base];
+    if (opts?.field) {
+      const { conversationIds, contactIds } = await this.findByCustomField(
+        ORG_ID,
+        opts.field.key,
+        opts.field.value,
+      );
+      // ANDed with the view, and with no arm when nothing matched — an empty
+      // `OR: []` matches everything in Prisma, which would turn a filter that
+      // found nothing into the unfiltered list.
+      parts.push(
+        conversationIds.length || contactIds.length
+          ? {
+              OR: [
+                ...(conversationIds.length ? [{ id: { in: conversationIds } }] : []),
+                ...(contactIds.length ? [{ contactId: { in: contactIds } }] : []),
+              ],
+            }
+          : { id: { in: [] } },
+      );
+    }
+    if (cur) parts.push(keysetBefore(cur));
+    const where: Prisma.ConversationWhereInput = parts.length === 1 ? parts[0]! : { AND: parts };
     return this.pageConversations(where, limit);
   }
 
@@ -2287,6 +2308,34 @@ export class PrismaStore extends Store {
       take: 20,
     });
     return rows.map((r) => r.entityId);
+  }
+
+  async findByCustomField(
+    orgId: string,
+    fieldKey: string,
+    value?: string,
+  ): Promise<{ conversationIds: string[]; contactIds: string[] }> {
+    const wanted = value === undefined ? undefined : normalizeCustomFieldValue(value);
+    // A filter for a value that normalises to nothing is a filter for nothing,
+    // not a filter for everything — the difference between "restaurant is ''"
+    // and "restaurant is set".
+    if (value !== undefined && !wanted) return { conversationIds: [], contactIds: [] };
+    const rows = await this.prisma.customFieldValue.findMany({
+      where: {
+        orgId,
+        field: { key: fieldKey, archived: false },
+        ...(wanted ? { normalizedValue: wanted } : {}),
+      },
+      select: { entity: true, entityId: true },
+      // Newest first, so a set larger than the cap shows the recent slice
+      // rather than an arbitrary one.
+      orderBy: { id: "desc" },
+      take: CUSTOM_FIELD_FILTER_MAX,
+    });
+    return {
+      conversationIds: rows.filter((r) => r.entity === "conversation").map((r) => r.entityId),
+      contactIds: rows.filter((r) => r.entity === "contact").map((r) => r.entityId),
+    };
   }
 
   async findByCustomFieldValue(
