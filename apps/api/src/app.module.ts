@@ -20,6 +20,7 @@ import { PushModule } from "./push/push.module";
 import { WorkspaceModule } from "./workspace/workspace.module";
 import { ContactsModule } from "./contacts/contacts.module";
 import { StorageModule } from "./storage/storage.module";
+import { CustomFieldsModule } from "./custom-fields/custom-fields.module";
 import { TemplatesModule } from "./templates/templates.module";
 import { WhatsAppManagementModule } from "./whatsapp-management/whatsapp-management.module";
 import { AnalyticsModule } from "./analytics/analytics.module";
@@ -46,6 +47,7 @@ const imports: ModuleMetadata["imports"] = [
   WorkspaceModule,
   ContactsModule,
   TemplatesModule,
+  CustomFieldsModule,
   WhatsAppManagementModule,
   AnalyticsModule,
   TrackingModule,

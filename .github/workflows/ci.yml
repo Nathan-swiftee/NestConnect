@@ -98,6 +98,16 @@ jobs:
       - name: Per-number default template
         run: pnpm check:default-template
 
+      # Facts a workspace records that we did not think of — an order number, a
+      # booking reference — and, the part that actually matters, finding them
+      # again. The value is written once by an integration and then read out
+      # over the phone by a customer, so what is being protected is an agent
+      # typing what they hear and landing on the right thread. Every way that
+      # fails is quiet: the value is there, the search says nothing, and the
+      # agent concludes the order does not exist.
+      - name: Custom fields and reference search
+        run: pnpm check:custom-fields
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those
