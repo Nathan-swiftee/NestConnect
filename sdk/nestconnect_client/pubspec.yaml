@@ -1,0 +1,18 @@
+name: nestconnect_client
+description: Talk to a Nest Connect live-chat channel from Dart — sessions, messages, attachments and the live stream.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+# Deliberately nothing but the standard library.
+#
+# This is the half of the SDK that talks to the server, and it is used from a
+# Flutter app, from a test, and potentially from a script. A dependency here is
+# a dependency every one of those inherits, and `http` buys us very little over
+# `HttpClient` — while `dart:io` alone means the package has no version
+# constraints to conflict with whatever the host app already uses.
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^4.0.0

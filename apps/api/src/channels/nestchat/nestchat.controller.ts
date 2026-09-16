@@ -43,6 +43,7 @@ import {
   type NestChatStartResult,
   type NestChatTypingInput,
 } from "@ding/schemas";
+import type { Inbox } from "@ding/schemas";
 import { Public } from "../../auth/public.decorator";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
 import { Store } from "../../data/store";
@@ -99,6 +100,28 @@ export class NestChatController {
   @Get(":widgetKey/config")
   async config(@Param("widgetKey") widgetKey: string): Promise<NestChatConfig> {
     const inbox = await this.nestchat.inboxForWidgetKey(widgetKey);
+    return this.buildConfig(inbox, widgetKey);
+  }
+
+  /**
+   * The same thing for an app.
+   *
+   * An app fetches this before it draws its messenger, for the same reasons a
+   * widget does — the brand colour, the greeting, the home cards, whether
+   * anybody is on. Keyed by the app key rather than the widget's, so a channel
+   * with the app surface turned off answers nothing here even though its
+   * website is still live.
+   */
+  @Get("app/:appKey/config")
+  async appConfig(@Param("appKey") appKey: string): Promise<NestChatConfig> {
+    const { inbox } = await this.nestchat.inboxForAppKey(appKey);
+    // The logo route is the widget's, and it is keyed by the widget key — the
+    // file is the channel's either way, and minting a second route for the same
+    // bytes would be two ways to fetch one picture.
+    return this.buildConfig(inbox, await this.nestchat.ensureWidgetKey(inbox.id));
+  }
+
+  private async buildConfig(inbox: Inbox, widgetKey: string): Promise<NestChatConfig> {
     const appearance = await this.nestchat.appearanceFor(inbox.id);
     const preChat = await this.nestchat.preChatFor(inbox.id);
     const routing = await this.nestchat.routingFor(inbox.id);

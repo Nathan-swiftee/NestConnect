@@ -178,6 +178,23 @@ jobs:
       - name: Shared client runtime sniffing
         run: pnpm --filter @ding/client check:no-sniffing
 
+      # The Flutter SDK's transport half. Pure Dart with no Flutter dependency,
+      # so it needs only the Dart SDK — and its tests stand up a real HTTP
+      # server speaking the API's shapes rather than a fake client, because a
+      # fake would only prove this package calls methods we wrote.
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: SDK analyze
+        working-directory: sdk/nestconnect_client
+        run: dart pub get && dart analyze --fatal-infos
+
+      - name: SDK tests
+        working-directory: sdk/nestconnect_client
+        run: dart test
+
       # Typecheck can't see a native-only resolution break (a package Metro
       # resolves differently, a config plugin that won't load). Bundling for one
       # platform does, and takes about half a minute.
