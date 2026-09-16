@@ -388,6 +388,133 @@ export const labelSchema = z.object({
 });
 export type Label = z.infer<typeof labelSchema>;
 
+/* ---- custom fields ---- */
+
+/**
+ * What a custom field hangs off.
+ *
+ * The distinction is whether the fact follows the person or belongs to one
+ * thread. A loyalty tier is the customer's and should be on every conversation
+ * they ever open; the order a chat is about is that chat's, and putting it on
+ * the contact would mean last week's complaint silently relabelled itself when
+ * they ordered again tonight.
+ */
+export const customFieldEntitySchema = z.enum(["contact", "conversation"]);
+export type CustomFieldEntity = z.infer<typeof customFieldEntitySchema>;
+
+/**
+ * How a value is entered and read back.
+ *
+ * Deliberately few. Every type here is one an agent can be shown a sensible
+ * input for and a search can match on as text; a richer set (currency,
+ * relations, formulas) is a spreadsheet, and the moment a field can compute
+ * something it stops being a fact somebody recorded.
+ */
+export const customFieldTypeSchema = z.enum(["text", "number", "date", "url", "select"]);
+export type CustomFieldType = z.infer<typeof customFieldTypeSchema>;
+
+/** A field key: what an SDK sends, and what never changes once in use. */
+const customFieldKey = z
+  .string()
+  .min(1)
+  .max(40)
+  .regex(/^[a-z][a-z0-9_]*$/, "Use lower-case letters, numbers and underscores; start with a letter");
+
+export const customFieldSchema = z.object({
+  id: z.string(),
+  /** Stable machine name — the identity. The label is the part that may change. */
+  key: customFieldKey,
+  label: z.string().min(1).max(60),
+  type: customFieldTypeSchema.default("text"),
+  entity: customFieldEntitySchema,
+  /** The choices, for `select`. Empty for every other type. */
+  options: z.array(z.string().max(80)).max(50).default([]),
+  /** Which channels offer it. Empty means every channel. */
+  inboxIds: z.array(z.string()).default([]),
+  position: z.number().int().nonnegative().default(0),
+  /** Retired, not deleted: the values already recorded against it are history. */
+  archived: z.boolean().default(false),
+});
+export type CustomField = z.infer<typeof customFieldSchema>;
+
+export const createCustomFieldInputSchema = z.object({
+  key: customFieldKey,
+  label: z.string().min(1).max(60),
+  type: customFieldTypeSchema.default("text"),
+  entity: customFieldEntitySchema,
+  options: z.array(z.string().max(80)).max(50).default([]),
+  inboxIds: z.array(z.string()).default([]),
+});
+export type CreateCustomFieldInput = z.infer<typeof createCustomFieldInputSchema>;
+
+/**
+ * An edit.
+ *
+ * `key` and `entity` are absent on purpose. The key is what an integration
+ * sends and what every recorded value is filed under, so renaming it would
+ * silently orphan the lot; the entity decides which records a value can even
+ * hang off, so changing it would leave values attached to rows of the wrong
+ * kind. Either one is a new field and a deliberate migration of the old one.
+ */
+export const updateCustomFieldInputSchema = z.object({
+  label: z.string().min(1).max(60).optional(),
+  type: customFieldTypeSchema.optional(),
+  options: z.array(z.string().max(80)).max(50).optional(),
+  inboxIds: z.array(z.string()).optional(),
+  position: z.number().int().nonnegative().optional(),
+  archived: z.boolean().optional(),
+});
+export type UpdateCustomFieldInput = z.infer<typeof updateCustomFieldInputSchema>;
+
+/** One recorded value, as the panel and the API exchange it. */
+export const customFieldValueSchema = z.object({
+  fieldId: z.string(),
+  key: customFieldKey,
+  value: z.string(),
+});
+export type CustomFieldValue = z.infer<typeof customFieldValueSchema>;
+
+/**
+ * A write: field key → value, with null to clear.
+ *
+ * Keyed by the field's key rather than its id because the other caller is an
+ * SDK, and an integration should name a field the way its own code does —
+ * `{ order_id: "DG-88412" }` — not by an id it would have to look up first.
+ */
+export const setCustomFieldValuesInputSchema = z.object({
+  values: z.record(z.string().max(500).nullable()),
+});
+export type SetCustomFieldValuesInput = z.infer<typeof setCustomFieldValuesInputSchema>;
+
+/**
+ * Fold a value for matching.
+ *
+ * Reference numbers are read out over the phone and typed back in whatever
+ * shape the person writing them down prefers, so "dg 88412", "DG-88412" and
+ * "dg88412" have to be the same thing to a search. Only separators go: letters
+ * and digits are the value.
+ */
+export function normalizeCustomFieldValue(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s\-_/.]+/g, "");
+}
+
+/**
+ * The fields that apply to a given channel, in display order.
+ *
+ * An empty `inboxIds` means every channel — the common case, and the one that
+ * must not require an admin to tick every box they own each time they add a
+ * number.
+ */
+export function fieldsForInbox<T extends { inboxIds: string[]; archived: boolean; position: number }>(
+  fields: T[],
+  inboxId: string | null | undefined,
+): T[] {
+  return fields
+    .filter((f) => !f.archived && (!f.inboxIds.length || (inboxId ? f.inboxIds.includes(inboxId) : true)))
+    .slice()
+    .sort((a, b) => a.position - b.position);
+}
+
 /** What a message carries. "text" is the default; the rest imply attachments. */
 export const messageTypeSchema = z.enum([
   "text",

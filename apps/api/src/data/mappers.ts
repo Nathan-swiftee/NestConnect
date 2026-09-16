@@ -3,6 +3,9 @@ import type {
   Attachment,
   ChannelType,
   Contact,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldType,
   Conversation,
   Inbox,
   Message,
@@ -120,6 +123,23 @@ export function sameTemplateLang(a: string, b: string): boolean {
   if (ca !== canonicalLang(lb)) return false;
   // Same primary subtag: reconcile only when at least one side is the bare code.
   return la === ca || lb === ca;
+}
+
+/** Prisma CustomField row → domain CustomField. The string columns are widened
+ *  enums; they are written through Zod-validated inputs, so the cast is the
+ *  same trade every other mapper here makes. */
+export function mapCustomField(f: Prisma.CustomFieldGetPayload<object>): CustomField {
+  return {
+    id: f.id,
+    key: f.key,
+    label: f.label,
+    type: f.type as CustomFieldType,
+    entity: f.entity as CustomFieldEntity,
+    options: f.options ?? [],
+    inboxIds: f.inboxIds ?? [],
+    position: f.position,
+    archived: f.archived,
+  };
 }
 
 /** Prisma Template row → domain Template (variable count derived from the body). */

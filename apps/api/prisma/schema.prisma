@@ -79,6 +79,83 @@ model Organization {
   labels        Label[]
   templates     Template[]
   auditLogs     AuditLog[]
+  customFields  CustomField[]
+}
+
+/// A fact a workspace wants to record that we did not think of.
+///
+/// Defined once and used anywhere, rather than a column per idea: "order id" is
+/// a food-delivery business's word for the thing a booking agency calls a
+/// booking reference and an insurer calls a policy number. Adding a column for
+/// each would mean shipping a migration every time somebody integrates
+/// something, and a schema that reads as a list of our customers.
+///
+/// Org-level rather than channel-level, with an optional restriction to
+/// particular channels: an order id belongs on the app's chats *and* on the
+/// WhatsApp number the same customers message, and defining it twice would make
+/// them two unrelated things to search.
+model CustomField {
+  id       String @id @default(cuid())
+  orgId    String
+  /// Stable machine name — what an SDK sends. Never changes once in use.
+  key      String
+  /// What an agent reads. Free to change; the key is the identity.
+  label    String
+  /// text | number | date | url | select
+  type     String @default("text")
+  /// contact | conversation. A contact's facts follow the person; a
+  /// conversation's belong to one thread — which is which is the difference
+  /// between "this customer's loyalty tier" and "the order this chat is about".
+  entity   String
+  /// The choices, for `select`. Empty for every other type.
+  options  String[] @default([])
+  /// Which channels offer it. Empty means all of them.
+  inboxIds String[] @default([])
+  /// Display order in the panel, low first.
+  position Int     @default(0)
+  /// Retired rather than deleted: the values already recorded against it are
+  /// history, and deleting the definition would silently destroy them.
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  org    Organization       @relation(fields: [orgId], references: [id])
+  values CustomFieldValue[]
+
+  @@unique([orgId, key])
+  @@index([orgId, entity, archived])
+}
+
+/// One field's value on one contact or one conversation.
+///
+/// A table rather than a JSON column on each row, and the reason is search. An
+/// order number is looked up far more often than it is written — an agent has a
+/// customer on the phone reading it out — and that has to be an index hit, not
+/// a scan of every conversation's JSON.
+model CustomFieldValue {
+  id       String @id @default(cuid())
+  /// Denormalised from the field, so a search can be scoped without a join.
+  orgId    String
+  fieldId  String
+  entity   String
+  entityId String
+  /// As entered, for display.
+  value    String
+  /// Folded for matching: trimmed, lower-cased, and for the shapes people write
+  /// reference numbers in, stripped of spaces and dashes. "dg 88412" finds
+  /// "DG-88412", because the customer reading it out loud does not know which
+  /// way it was typed.
+  normalizedValue String
+
+  field CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  /// One value per field per record.
+  @@unique([fieldId, entity, entityId])
+  /// The panel's read: every field on the record being opened.
+  @@index([orgId, entity, entityId])
+  /// The search: every record carrying this value.
+  @@index([orgId, fieldId, normalizedValue])
+  /// The same, when the field isn't known — a bare id typed into the search box.
+  @@index([orgId, normalizedValue])
 }
 
 model User {

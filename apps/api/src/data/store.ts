@@ -1,4 +1,9 @@
 import type {
+  CreateCustomFieldInput,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldValue,
+  UpdateCustomFieldInput,
   Attachment,
   AttachmentKind,
   ChannelType,
@@ -709,6 +714,57 @@ export abstract class Store {
   /** Flag a conversation unread with no count — an agent's manual "mark unread"
    *  (WhatsApp-style empty dot); distinct from unreadCount>0 from new messages. */
   abstract markUnread(conversationId: string): Promise<Conversation | undefined>;
+
+  /* ---- custom fields (org catalog + per-record values) ---- */
+  /** Every field the org has defined, archived ones included — the settings
+   *  pane has to show what is retired in order to bring it back. */
+  abstract listCustomFields(orgId: string): Promise<CustomField[]>;
+  abstract createCustomField(orgId: string, input: CreateCustomFieldInput): Promise<CustomField>;
+  abstract updateCustomField(
+    id: string,
+    input: UpdateCustomFieldInput,
+  ): Promise<CustomField | undefined>;
+  /** Delete a field *and every value recorded against it*. Archiving is the
+   *  reversible option; this one is not, which is why the pane asks. */
+  abstract deleteCustomField(id: string): Promise<void>;
+  /**
+   * The values on a set of records, keyed by record id.
+   *
+   * Takes a list rather than one id because the caller is usually a page of
+   * conversations, and one query for fifty rows is the difference between a
+   * list that opens and a list that crawls.
+   */
+  abstract customFieldValues(
+    orgId: string,
+    entity: CustomFieldEntity,
+    entityIds: string[],
+  ): Promise<Map<string, CustomFieldValue[]>>;
+  /**
+   * Write values on one record. A null clears that field.
+   *
+   * Keyed by the field's key rather than its id: the other caller is an SDK,
+   * which knows `order_id` and should not have to look up an id to send it.
+   * Keys the org has not defined are ignored — returned in `unknown` so a
+   * caller can complain, rather than silently stored under a typo.
+   */
+  abstract setCustomFieldValues(
+    orgId: string,
+    entity: CustomFieldEntity,
+    entityId: string,
+    values: Record<string, string | null>,
+  ): Promise<{ values: CustomFieldValue[]; unknown: string[] }>;
+  /**
+   * Which records carry a value matching this text.
+   *
+   * Exact match on the folded value first, then prefix — an order number is
+   * either the one being read out or it is not, and a partial match that
+   * outranked the exact one would bury the answer.
+   */
+  abstract findByCustomFieldValue(
+    orgId: string,
+    entity: CustomFieldEntity,
+    query: string,
+  ): Promise<string[]>;
 
   /* ---- labels (org catalog + per-conversation) ---- */
   /** The org's label catalog (name + colour), for the picker + sidebar filter. */

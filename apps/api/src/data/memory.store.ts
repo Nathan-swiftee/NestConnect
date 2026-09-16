@@ -6,6 +6,11 @@ import { normalizeIdentity, type IdentityKind } from "../contacts/identity";
 import { groupDuplicateContacts } from "../contacts/duplicates";
 import type {
   Attachment,
+  CreateCustomFieldInput,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldValue,
+  UpdateCustomFieldInput,
   ChannelType,
   Contact,
   ContactDuplicateGroup,
@@ -37,6 +42,7 @@ import {
   CONVERSATIONS_PAGE_SIZE,
   isInboxConnected,
   MESSAGES_PAGE_SIZE,
+  normalizeCustomFieldValue,
   publicChannelConfig,
   THREADABLE_STATUSES,
 } from "@ding/schemas";
@@ -132,6 +138,9 @@ export class MemoryStore extends Store {
   private inboxConfig = new Map<string, Record<string, string>>();
   /** Org-scoped app settings, keyed by `${orgId}::${key}` (e.g. Google OAuth creds). */
   private appSettings = new Map<string, string>();
+  private customFields: CustomField[] = [];
+  /** Values keyed `entity:entityId:fieldId`, so a write is a single lookup. */
+  private fieldValues = new Map<string, { fieldId: string; entityId: string; entity: string; value: string }>();
   /** Backend-only attachment storage refs, keyed by attachment id (for serving). */
   private mediaRefs = new Map<string, StoredAttachmentRef>();
   /** Uploaded-but-not-yet-sent attachments (composer staging), keyed by id. */
@@ -892,6 +901,12 @@ export class MemoryStore extends Store {
     const teams = opts?.userId ? (this.membership[opts.userId] ?? []) : [];
     const inView = (r: ConversationRecord) =>
       !opts?.view || !opts.userId || this.matchesView(r, opts.view, opts.userId, teams);
+    // Custom fields, both kinds: one recorded on the thread (the order this chat
+    // is about) and one on the person (their account number). Resolved to ids
+    // first, the same way the Prisma store does, so the two agree on what a
+    // reference number matches.
+    const convHits = new Set(await this.findByCustomFieldValue("", "conversation", query));
+    const contactHits = new Set(await this.findByCustomFieldValue("", "contact", query));
     const sorted = this.conversations
       .filter(
         (r) =>
@@ -901,6 +916,8 @@ export class MemoryStore extends Store {
           (r.contact.company ?? "").toLowerCase().includes(q) ||
           (r.subject ?? "").toLowerCase().includes(q) ||
           (r.preview ?? "").toLowerCase().includes(q) ||
+          convHits.has(r.id) ||
+          contactHits.has(r.contact.id) ||
             r.messages.some((m) => (m.body ?? "").toLowerCase().includes(q))),
       )
       .sort(byRecencyDesc);
@@ -1794,6 +1811,111 @@ export class MemoryStore extends Store {
     rec.unread = true;
     rec.unreadCount = 0; // manual mark → empty dot, not a message count
     return this.summary(rec);
+  }
+
+  /* ---- custom fields ---- */
+  async listCustomFields(_orgId: string): Promise<CustomField[]> {
+    return [...this.customFields].sort(
+      (a, b) => a.position - b.position || a.label.localeCompare(b.label),
+    );
+  }
+
+  async createCustomField(_orgId: string, input: CreateCustomFieldInput): Promise<CustomField> {
+    const existing = this.customFields.find((f) => f.key === input.key);
+    // The key is the identity — a second field claiming it would make an SDK
+    // payload naming that key mean two different things.
+    if (existing) throw new Error(`A field with the key "${input.key}" already exists`);
+    const field: CustomField = {
+      id: `cf_${++this.idSeq}`,
+      key: input.key,
+      label: input.label,
+      type: input.type,
+      entity: input.entity,
+      options: input.options,
+      inboxIds: input.inboxIds,
+      position: this.customFields.length,
+      archived: false,
+    };
+    this.customFields.push(field);
+    return field;
+  }
+
+  async updateCustomField(
+    id: string,
+    input: UpdateCustomFieldInput,
+  ): Promise<CustomField | undefined> {
+    const field = this.customFields.find((f) => f.id === id);
+    if (!field) return undefined;
+    Object.assign(field, input);
+    return field;
+  }
+
+  async deleteCustomField(id: string): Promise<void> {
+    this.customFields = this.customFields.filter((f) => f.id !== id);
+    for (const [k, v] of this.fieldValues) if (v.fieldId === id) this.fieldValues.delete(k);
+  }
+
+  async customFieldValues(
+    _orgId: string,
+    entity: CustomFieldEntity,
+    entityIds: string[],
+  ): Promise<Map<string, CustomFieldValue[]>> {
+    const wanted = new Set(entityIds);
+    const out = new Map<string, CustomFieldValue[]>();
+    for (const v of this.fieldValues.values()) {
+      if (v.entity !== entity || !wanted.has(v.entityId)) continue;
+      const field = this.customFields.find((f) => f.id === v.fieldId);
+      if (!field) continue;
+      const list = out.get(v.entityId) ?? [];
+      list.push({ fieldId: field.id, key: field.key, value: v.value });
+      out.set(v.entityId, list);
+    }
+    return out;
+  }
+
+  async setCustomFieldValues(
+    orgId: string,
+    entity: CustomFieldEntity,
+    entityId: string,
+    values: Record<string, string | null>,
+  ): Promise<{ values: CustomFieldValue[]; unknown: string[] }> {
+    const unknown: string[] = [];
+    for (const [key, raw] of Object.entries(values)) {
+      const field = this.customFields.find((f) => f.key === key && f.entity === entity);
+      // A key nobody defined is reported rather than stored: a typo in an
+      // integration should fail where somebody can see it, not accumulate
+      // values under a name no screen will ever read.
+      if (!field || field.archived) {
+        unknown.push(key);
+        continue;
+      }
+      const slot = `${entity}:${entityId}:${field.id}`;
+      const value = raw?.trim();
+      if (!value) this.fieldValues.delete(slot);
+      else this.fieldValues.set(slot, { fieldId: field.id, entity, entityId, value });
+    }
+    const current = await this.customFieldValues(orgId, entity, [entityId]);
+    return { values: current.get(entityId) ?? [], unknown };
+  }
+
+  async findByCustomFieldValue(
+    _orgId: string,
+    entity: CustomFieldEntity,
+    query: string,
+  ): Promise<string[]> {
+    const q = normalizeCustomFieldValue(query);
+    if (!q) return [];
+    const exact: string[] = [];
+    const partial: string[] = [];
+    for (const v of this.fieldValues.values()) {
+      if (v.entity !== entity) continue;
+      const folded = normalizeCustomFieldValue(v.value);
+      if (folded === q) exact.push(v.entityId);
+      else if (folded.includes(q)) partial.push(v.entityId);
+    }
+    // Exact first: a reference number is either the one being read out or it
+    // isn't, and a partial match that outranked it would bury the answer.
+    return [...new Set([...exact, ...partial])];
   }
 
   /* ---- labels ---- */
