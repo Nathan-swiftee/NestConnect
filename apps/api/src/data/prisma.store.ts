@@ -1710,6 +1710,22 @@ export class PrismaStore extends Store {
     return match ? mapInbox(match) : undefined;
   }
 
+  async getInboxByAppKey(appKey: string): Promise<Inbox | undefined> {
+    const key = appKey.trim();
+    if (!key) return undefined;
+    // Same shape as the widget key above, and matched in code for the same
+    // reason: a handful of channels per org, and the key lives inside the
+    // channelConfig JSON.
+    const rows = await this.prisma.inbox.findMany({
+      where: { orgId: ORG_ID, type: "nestchat" },
+      include: { teams: true },
+    });
+    const match = rows.find(
+      (i) => (i.channelConfig as Record<string, string> | null)?.appKey === key,
+    );
+    return match ? mapInbox(match) : undefined;
+  }
+
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const rows = await this.prisma.inbox.findMany({
       where: { orgId: ORG_ID, type: "email" },

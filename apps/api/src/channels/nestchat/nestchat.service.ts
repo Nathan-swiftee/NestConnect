@@ -3,10 +3,13 @@ import { createHmac, randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import {
+  DEFAULT_NESTCHAT_APP,
   DEFAULT_NESTCHAT_APPEARANCE,
   DEFAULT_NESTCHAT_HOME,
   DEFAULT_NESTCHAT_PRECHAT,
   DEFAULT_NESTCHAT_ROUTING,
+  nestchatAppSchema,
+  type NestChatApp,
   nestchatAppearanceSchema,
   nestchatHomeSchema,
   nestchatPreChatSchema,
@@ -24,6 +27,7 @@ import {
   type User,
 } from "@ding/schemas";
 import { Store } from "../../data/store";
+import { ORG_ID } from "../../data/fixtures";
 import { env } from "../../config/env";
 import { VisitorBus } from "./visitor-bus";
 
@@ -127,6 +131,88 @@ export class NestChatService {
     const key = `nc_${randomBytes(16).toString("hex")}`;
     await this.store.updateInbox(inboxId, { channelConfig: { widgetKey: key } });
     return key;
+  }
+
+  /**
+   * The key that goes in an app binary, minted on demand.
+   *
+   * Its own key rather than the widget's, so rolling it after a leak — or
+   * turning the app surface off — does not take the website down with it, and
+   * so app traffic can be told from web traffic without asking the client.
+   */
+  async ensureAppKey(inboxId: string): Promise<string> {
+    const config = await this.store.getInboxConfig(inboxId);
+    const existing = config?.appKey?.trim();
+    if (existing) return existing;
+    const key = `na_${randomBytes(16).toString("hex")}`;
+    await this.store.updateInbox(inboxId, { channelConfig: { appKey: key } });
+    return key;
+  }
+
+  /**
+   * Mint the secret an app's own backend signs user ids with, returning it
+   * once.
+   *
+   * Once is the whole point: it is stored as a credential — encrypted at rest
+   * alongside the access tokens, never in the public config, never read back by
+   * a settings screen. A screen that hands it out on every load hands it to
+   * anyone who gets one look at a signed-in browser, which defeats the reason
+   * for having it.
+   *
+   * Minting again replaces it, and every signature made with the old one stops
+   * verifying — which is what rolling a leaked secret has to mean.
+   */
+  async rotateIdentitySecret(inboxId: string): Promise<string> {
+    await this.requireNestChatInbox(inboxId);
+    const secret = randomBytes(32).toString("hex");
+    await this.store.updateInbox(inboxId, { channelConfig: { identitySecret: secret } });
+    return secret;
+  }
+
+  /** Whether this channel has a secret at all — the only thing a screen may
+   *  know about it. */
+  async hasIdentitySecret(inboxId: string): Promise<boolean> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return Boolean(config?.identitySecret?.trim());
+  }
+
+  /* ---- the app surface ---- */
+
+  async appFor(inboxId: string): Promise<NestChatApp> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return parseBlob(config?.app, nestchatAppSchema, DEFAULT_NESTCHAT_APP);
+  }
+
+  /**
+   * Replace the app surface's settings.
+   *
+   * Turning it on mints the key, because a surface that is enabled and has no
+   * key is one an integrator will spend an afternoon on before discovering
+   * there was nothing to paste.
+   *
+   * A thread key naming a field that does not exist is refused rather than
+   * stored. It decides whether a customer gets one conversation or one per
+   * order, and a silently ignored one would look exactly like the setting
+   * working until somebody noticed every order in a single thread.
+   */
+  async updateApp(inboxId: string, app: NestChatApp): Promise<void> {
+    await this.requireNestChatInbox(inboxId);
+    const parsed = nestchatAppSchema.parse(app);
+    if (parsed.threadFieldKey) {
+      const fields = await this.store.listCustomFields(ORG_ID);
+      const field = fields.find((f) => f.key === parsed.threadFieldKey && !f.archived);
+      if (!field) {
+        throw new BadRequestException("That field no longer exists — pick another, or none");
+      }
+      if (field.entity !== "conversation") {
+        // A field on the *contact* identifies a person, not a thread. Keying
+        // threads on one would give every conversation the same key and merge
+        // a year of unrelated chats into one.
+        throw new BadRequestException("Only a conversation field can identify a thread");
+      }
+    }
+    if (parsed.enabled) await this.ensureAppKey(inboxId);
+    await this.store.updateInbox(inboxId, { channelConfig: { app: JSON.stringify(parsed) } });
   }
 
   private async requireNestChatInbox(inboxId: string): Promise<Inbox> {
@@ -292,6 +378,7 @@ export class NestChatService {
   async settingsFor(inboxId: string): Promise<NestChatSettings> {
     const inbox = await this.requireNestChatInbox(inboxId);
     const widgetKey = await this.ensureWidgetKey(inboxId);
+    const app = await this.appFor(inboxId);
     const base = env.appUrl.replace(/\/+$/, "");
     return {
       inboxId,
@@ -303,6 +390,16 @@ export class NestChatService {
       teams: await this.teamsFor(inbox),
       embedUrl: `${base}/widget.html?key=${widgetKey}`,
       scriptUrl: `${base}/nestchat.js`,
+      app,
+      // Only once the surface is on: a key on screen for a surface nobody has
+      // enabled is an invitation to paste it into an app that will be refused.
+      appKey: app.enabled ? await this.ensureAppKey(inboxId) : undefined,
+      hasIdentitySecret: await this.hasIdentitySecret(inboxId),
+      // Conversation fields only — see updateApp for why a contact field cannot
+      // key a thread.
+      threadFields: (await this.store.listCustomFields(ORG_ID))
+        .filter((f) => f.entity === "conversation" && !f.archived)
+        .map((f) => ({ key: f.key, label: f.label })),
       // The same faces the visitor's header would carry, so the preview beside
       // the switch shows what the switch does.
       team: await this.teamFacesFor(inbox),

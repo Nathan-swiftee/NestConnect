@@ -784,6 +784,10 @@ export abstract class Store {
    *  the embed snippet on the business's website), so an unknown one is simply
    *  not found — it is an identifier, not a credential. */
   abstract getInboxByWidgetKey(widgetKey: string): Promise<Inbox | undefined>;
+  /** Resolve an app key to its channel. Its own key rather than the widget's,
+   *  so one can be rolled without the other and so app traffic is
+   *  distinguishable from web traffic. */
+  abstract getInboxByAppKey(appKey: string): Promise<Inbox | undefined>;
 
   /* ---- webhook diagnostics (unmapped/unverified inbound) ---- */
   abstract recordWebhookDiagnostic(input: {

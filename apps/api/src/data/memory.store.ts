@@ -1495,6 +1495,14 @@ export class MemoryStore extends Store {
     );
   }
 
+  async getInboxByAppKey(appKey: string): Promise<Inbox | undefined> {
+    const key = appKey.trim();
+    if (!key) return undefined;
+    return this.inboxes.find(
+      (i) => i.type === "nestchat" && this.inboxConfig.get(i.id)?.appKey === key,
+    );
+  }
+
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const a = address.trim().toLowerCase();
     // Deterministic match on the inbox address only — no arbitrary fallback.

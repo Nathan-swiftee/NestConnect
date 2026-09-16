@@ -108,6 +108,16 @@ jobs:
       - name: Custom fields and reference search
         run: pnpm check:custom-fields
 
+      # The app surface on a live-chat channel. Two things here are worth a
+      # build failing over: the identity secret must never reach a browser (it
+      # is what signs "this really is that customer", so anyone holding it can
+      # claim to be anyone), and only a conversation field may key a thread — a
+      # contact field identifies a person, so keying on one would give every
+      # chat that customer opens the same key and merge a year of unrelated
+      # conversations into a single thread.
+      - name: App surface keys and thread key
+        run: pnpm check:app-surface
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those

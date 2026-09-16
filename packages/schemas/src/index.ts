@@ -1861,6 +1861,52 @@ export const nestchatTeamSchema = z.object({
 export type NestChatTeam = z.infer<typeof nestchatTeamSchema>;
 
 /** What the agent-facing settings pane reads for one NestChat channel. */
+/* ---- the app surface ---- */
+
+/**
+ * How hard this channel checks who somebody says they are.
+ *
+ * `off` takes a name at face value, which is right for a widget on a public
+ * page: nobody has signed in to anything, and the alternative is a chat that
+ * refuses to start. `required` only trusts details carried by a signature this
+ * channel's own secret produced, which is right the moment the client is an app
+ * a customer signs into — the key is in the binary, and without a signature
+ * anyone who extracts it can claim to be any customer on the workspace.
+ *
+ * `optional` is the migration step, and it is deliberately not a permanent
+ * setting: it verifies a signature when one arrives and lets an unsigned
+ * session through, so the app can ship before the backend that signs. A channel
+ * left here indefinitely has all the exposure of `off` and the appearance of
+ * having done something about it, which is why the pane says so.
+ */
+export const nestchatIdentityModeSchema = z.enum(["off", "optional", "required"]);
+export type NestChatIdentityMode = z.infer<typeof nestchatIdentityModeSchema>;
+
+export const nestchatAppSchema = z.object({
+  /** Whether an SDK may open chats on this channel at all. */
+  enabled: z.boolean().default(false),
+  /**
+   * A tag put on every contact this channel creates.
+   *
+   * Editable, and applied at the point a contact is first seen rather than
+   * retroactively: it says where this customer came from, and rewriting it
+   * later would rewrite history rather than record it.
+   */
+  contactTag: z.string().max(40).default(""),
+  /**
+   * The custom field that identifies a thread, by key.
+   *
+   * Set it to an order reference and each order gets its own conversation —
+   * opening the messenger for one finds that order's thread or starts it.
+   * Leave it empty and the customer gets a single ongoing conversation, which
+   * is what a general support channel wants.
+   */
+  threadFieldKey: z.string().max(40).default(""),
+  identity: nestchatIdentityModeSchema.default("optional"),
+});
+export type NestChatApp = z.infer<typeof nestchatAppSchema>;
+export const DEFAULT_NESTCHAT_APP: NestChatApp = nestchatAppSchema.parse({});
+
 export const nestchatSettingsSchema = z.object({
   inboxId: z.string(),
   /** Public id in the embed snippet. Identifies the inbox; authorises nothing. */
@@ -1884,6 +1930,29 @@ export const nestchatSettingsSchema = z.object({
    *  the snippet is correct without the admin knowing where we're hosted. */
   embedUrl: z.string(),
   scriptUrl: z.string(),
+  /** The app surface: whether an SDK may open chats here, and on what terms. */
+  app: nestchatAppSchema,
+  /**
+   * The key that goes in the app binary. Only once the surface is on.
+   *
+   * Separate from `widgetKey` rather than shared, so turning the app off — or
+   * rolling its key after a leak — does not take the website down with it, and
+   * so app traffic can be told from web traffic without asking the client.
+   */
+  appKey: z.string().optional(),
+  /**
+   * Whether an identity secret exists. Never the secret itself.
+   *
+   * It is shown once, at the moment it is minted, and is not readable
+   * afterwards — a settings screen that hands it back on every load is a
+   * settings screen that leaks it to anyone who gets one look at a logged-in
+   * browser.
+   */
+  hasIdentitySecret: z.boolean().default(false),
+  /** Conversation-scoped custom fields, for choosing which one keys a thread. */
+  threadFields: z
+    .array(z.object({ key: z.string(), label: z.string() }))
+    .default([]),
   /** The same faces the widget would show, so the preview shows them too — a
    *  toggle that changes nothing on screen reads as a toggle that didn't work. */
   team: nestchatTeamSchema.optional(),
@@ -1907,6 +1976,10 @@ export const updateNestchatInputSchema = z.object({
   preChat: nestchatPreChatSchema.optional(),
   routing: nestchatRoutingSchema.optional(),
   home: nestchatHomeSchema.optional(),
+  /** Replaced whole, like the others: it is a handful of interdependent
+   *  settings, and a patch that could set `enabled` without saying what
+   *  identity mode it meant would be a surface turned on by accident. */
+  app: nestchatAppSchema.optional(),
 });
 export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
 

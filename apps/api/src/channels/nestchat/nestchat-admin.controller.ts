@@ -1,4 +1,4 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post } from "@nestjs/common";
 import { updateNestchatInputSchema, type UpdateNestchatInput } from "@ding/schemas";
 import { Store } from "../../data/store";
 import { CurrentUserId } from "../../auth/current-user.decorator";
@@ -47,8 +47,28 @@ export class NestChatAdminController {
     if (body.routing) await this.nestchat.updateRouting(inboxId, body.routing);
     if (body.home) await this.nestchat.updateHome(inboxId, body.home);
     if (body.preChat) await this.nestchat.updatePreChat(inboxId, body.preChat);
+    if (body.app) await this.nestchat.updateApp(inboxId, body.app);
     if (body.appearance) return this.nestchat.updateAppearance(inboxId, body.appearance);
     return this.nestchat.settingsFor(inboxId);
+  }
+
+  /**
+   * Mint the secret this channel's app backend signs user ids with, and show it
+   * once.
+   *
+   * A POST rather than a GET because it *changes* something: calling it again
+   * replaces the secret and stops every signature made with the old one
+   * verifying, which is what rolling a leaked credential has to mean. It comes
+   * back in this response and never again — a settings screen that hands it out
+   * on every load hands it to anyone who gets one look at a signed-in browser.
+   */
+  @Post(":inboxId/identity-secret")
+  async identitySecret(
+    @CurrentUserId() userId: string,
+    @Param("inboxId") inboxId: string,
+  ): Promise<{ secret: string }> {
+    await this.requireManager(userId);
+    return { secret: await this.nestchat.rotateIdentitySecret(inboxId) };
   }
 
   /** How a channel looks to the public is a channel setting, so it takes the
