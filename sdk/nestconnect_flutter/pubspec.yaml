@@ -1,0 +1,25 @@
+name: nestconnect_flutter
+description: Nest Connect live chat inside your Flutter app — a launcher, a messenger, and the channel's own branding.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+  flutter: ">=3.16.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  nestconnect_client:
+    path: ../nestconnect_client
+
+# No plugins, deliberately.
+#
+# A plugin means native build configuration, a permissions prompt, and a
+# platform channel — for every app that takes this, whether or not it uses the
+# feature. Picking a photo is the one thing that would need one, and the host
+# app already has a picker and already has the permission: it hands us bytes.
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0

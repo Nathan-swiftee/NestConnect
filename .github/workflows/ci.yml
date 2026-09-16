@@ -195,6 +195,23 @@ jobs:
         working-directory: sdk/nestconnect_client
         run: dart test
 
+      # The widgets. Flutter rather than Dart, and its own step because the
+      # toolchain is a different (much larger) install — worth it: these render
+      # the messenger against a real server on loopback, so what is exercised is
+      # the path a customer touches rather than a mock agreeing with itself.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter SDK analyze
+        working-directory: sdk/nestconnect_flutter
+        run: flutter pub get && flutter analyze
+
+      - name: Flutter SDK tests
+        working-directory: sdk/nestconnect_flutter
+        run: flutter test
+
       # Typecheck can't see a native-only resolution break (a package Metro
       # resolves differently, a config plugin that won't load). Bundling for one
       # platform does, and takes about half a minute.
