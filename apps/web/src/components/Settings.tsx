@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { embedSnippet, type EmbedKind } from "../lib/nestchat-embed";
+import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
 import type {
   ChannelType,
@@ -1896,6 +1897,74 @@ const PRECHAT_FIELDS: Array<{
 ];
 
 /**
+ * Where the SDK should point.
+ *
+ * The web app's own API base, made absolute — it is usually "" (same origin),
+ * which is fine in a browser and useless in a phone. Resolved here rather than
+ * sent by the server because the server only learns its public origin from the
+ * request, and would have to be told it by configuration we do not otherwise
+ * need.
+ */
+function apiOrigin(): string {
+  const configured = import.meta.env.VITE_API_URL ?? "";
+  try {
+    return new URL(configured || "/", window.location.origin).origin;
+  } catch {
+    return window.location.origin;
+  }
+}
+
+/**
+ * The steps an app developer follows, with what is missing called out.
+ *
+ * Numbered rather than prose because it is a checklist somebody works through
+ * once, copying as they go — and the blocked lines are the point: they are the
+ * only items on the page that the person reading it, rather than the developer,
+ * can do anything about.
+ */
+function AppSetupGuide({
+  steps,
+  onToast,
+}: {
+  steps: AppSetupStep[];
+  onToast: (msg: string) => void;
+}) {
+  return (
+    <div className="ncsetup">
+      {steps.map((step, i) => (
+        <div className="ncsetup__step" key={step.title}>
+          <span className="ncsetup__n">{i + 1}</span>
+          <div className="ncsetup__body">
+            <span className="ncsetup__title">{step.title}</span>
+            <p className="ncsetup__text">{step.body}</p>
+            {step.blocked && <p className="ncsetup__todo">{step.blocked}</p>}
+            {step.code && (
+              <>
+                <pre className="ncw__snippet">{step.code}</pre>
+                <div>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(step.code!).then(
+                        () => onToast("Copied"),
+                        () => onToast("Couldn’t copy — select it and copy by hand"),
+                      );
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Settings › NestChat widget.
  *
  * A pane rather than another section of the Edit-channel modal: this is a dozen
@@ -1909,6 +1978,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   const channels = (inboxes.data ?? []).filter((i) => i.type === "nestchat");
   const [selected, setSelected] = useState<string>();
   const inboxId = selected ?? channels[0]?.id;
+  const apiUrl = apiOrigin();
   const settings = useNestchatSettings(inboxId);
   const update = useUpdateNestchat();
 
@@ -2707,6 +2777,28 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                       never shown again — replace it here if it is ever rotated.
                     </em>
                   </div>
+                </>
+              )}
+
+              {draft.app.enabled && settings.data && (
+                <>
+                  <h3>Give this to whoever builds the app</h3>
+                  <p className="fieldhint">
+                    Written from this channel’s own settings — the key, the fields it accepts and
+                    what is still missing are the real ones, so it stays right as you change things
+                    above.
+                  </p>
+                  <AppSetupGuide
+                    steps={appSetupGuide({
+                      apiUrl,
+                      appKey: settings.data.appKey,
+                      app: draft.app,
+                      hasIdentitySecret: settings.data.hasIdentitySecret,
+                      hasPushCredential: settings.data.hasPushCredential,
+                      fieldKeys: settings.data.threadFields.map((f) => f.key),
+                    })}
+                    onToast={onToast}
+                  />
                 </>
               )}
             </section>

@@ -615,9 +615,12 @@ export class NestChatService {
       hasIdentitySecret: await this.hasIdentitySecret(inboxId),
       hasPushCredential: await this.hasPushCredential(inboxId),
       // Conversation fields only — see updateApp for why a contact field cannot
-      // key a thread.
-      threadFields: (await this.store.listCustomFields(ORG_ID))
-        .filter((f) => f.entity === "conversation" && !f.archived)
+      // key a thread — and only the ones this channel actually has. A field
+      // scoped to other inboxes would be offered here and then refused by
+      // `validateFields` on every session, which looks exactly like the thread
+      // key working until somebody notices every order in one conversation.
+      threadFields: fieldsForInbox(await this.store.listCustomFields(ORG_ID), inboxId)
+        .filter((f) => f.entity === "conversation")
         .map((f) => ({ key: f.key, label: f.label })),
       // The same faces the visitor's header would carry, so the preview beside
       // the switch shows what the switch does.
