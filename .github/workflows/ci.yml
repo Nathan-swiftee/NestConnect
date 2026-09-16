@@ -98,6 +98,62 @@ jobs:
       - name: Per-number default template
         run: pnpm check:default-template
 
+      # Facts a workspace records that we did not think of — an order number, a
+      # booking reference — and, the part that actually matters, finding them
+      # again. The value is written once by an integration and then read out
+      # over the phone by a customer, so what is being protected is an agent
+      # typing what they hear and landing on the right thread. Every way that
+      # fails is quiet: the value is there, the search says nothing, and the
+      # agent concludes the order does not exist.
+      - name: Custom fields and reference search
+        run: pnpm check:custom-fields
+
+      # The app surface on a live-chat channel. Two things here are worth a
+      # build failing over: the identity secret must never reach a browser (it
+      # is what signs "this really is that customer", so anyone holding it can
+      # claim to be anyone), and only a conversation field may key a thread — a
+      # contact field identifies a person, so keying on one would give every
+      # chat that customer opens the same key and merge a year of unrelated
+      # conversations into a single thread.
+      - name: App surface keys and thread key
+        run: pnpm check:app-surface
+
+      # Who an app says its user is. A widget on a public page has nobody to
+      # verify; an app knows exactly who is holding the phone, its key sits in a
+      # binary anybody can pull apart, and the email it sends is what merges a
+      # session onto a customer record we already hold. Believed without proof,
+      # that is an impersonation endpoint — so the signature is checked against
+      # the user id it claims, under this channel's own secret, in constant
+      # time. Accepting any well-formed hash fails four of these.
+      - name: App identity and thread resolution
+        run: pnpm check:app-identity
+
+      # Files from people who have not signed in to anything, stored by us and
+      # served back from our own domain. The allowlist is the point: the
+      # question for a type is not whether it is dangerous but whether there is
+      # any reason to accept it. SVG is the trap — it passes every "is it an
+      # image" test, renders as a picture, and can carry a script, so an agent
+      # opening one inline from our origin is stored XSS aimed at them.
+      - name: Customer uploads
+        run: pnpm check:visitor-uploads
+
+      # Notifying a customer, which is mostly about when not to. The rule under
+      # everything else: never push a reply that is already on screen — a
+      # message arriving live in an open chat and again as a banner over the top
+      # of it is what makes people turn notifications off for good. Also that a
+      # dead address is disabled and a flaky one is not, since disabling on a
+      # blip at Google's end stops notifying somebody permanently and silently.
+      - name: Customer push
+        run: pnpm check:customer-push
+
+      # Filtering an inbox by a custom field — the working set rather than the
+      # lookup. Mostly guards one specific way of getting it wrong: an empty set
+      # of ids ORed into a query matches everything, so a filter that found
+      # nothing renders as the unfiltered inbox. Also that a filter can only
+      # ever narrow the view it is applied to, never reach outside it.
+      - name: Custom field filtering
+        run: pnpm check:field-filter
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those
@@ -138,6 +194,40 @@ jobs:
       # passing every check, because the checks all run in a browser.
       - name: Shared client runtime sniffing
         run: pnpm --filter @ding/client check:no-sniffing
+
+      # The Flutter SDK's transport half. Pure Dart with no Flutter dependency,
+      # so it needs only the Dart SDK — and its tests stand up a real HTTP
+      # server speaking the API's shapes rather than a fake client, because a
+      # fake would only prove this package calls methods we wrote.
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: SDK analyze
+        working-directory: sdk/nestconnect_client
+        run: dart pub get && dart analyze --fatal-infos
+
+      - name: SDK tests
+        working-directory: sdk/nestconnect_client
+        run: dart test
+
+      # The widgets. Flutter rather than Dart, and its own step because the
+      # toolchain is a different (much larger) install — worth it: these render
+      # the messenger against a real server on loopback, so what is exercised is
+      # the path a customer touches rather than a mock agreeing with itself.
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter SDK analyze
+        working-directory: sdk/nestconnect_flutter
+        run: flutter pub get && flutter analyze
+
+      - name: Flutter SDK tests
+        working-directory: sdk/nestconnect_flutter
+        run: flutter test
 
       # Typecheck can't see a native-only resolution break (a package Metro
       # resolves differently, a config plugin that won't load). Bundling for one

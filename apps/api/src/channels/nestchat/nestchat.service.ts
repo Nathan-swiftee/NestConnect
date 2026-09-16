@@ -1,12 +1,16 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import {
+  DEFAULT_NESTCHAT_APP,
   DEFAULT_NESTCHAT_APPEARANCE,
   DEFAULT_NESTCHAT_HOME,
   DEFAULT_NESTCHAT_PRECHAT,
   DEFAULT_NESTCHAT_ROUTING,
+  fieldsForInbox,
+  nestchatAppSchema,
+  type NestChatApp,
   nestchatAppearanceSchema,
   nestchatHomeSchema,
   nestchatPreChatSchema,
@@ -23,8 +27,10 @@ import {
   type NestChatSettings,
   type User,
 } from "@ding/schemas";
-import { Store } from "../../data/store";
+import { Store, type AttachmentInput } from "../../data/store";
+import { ORG_ID } from "../../data/fixtures";
 import { env } from "../../config/env";
+import { FCM_SERVICE_ACCOUNT_FIELD, parseServiceAccount } from "./fcm";
 import { VisitorBus } from "./visitor-bus";
 
 /**
@@ -95,6 +101,18 @@ export interface VisitorClaims {
    * signed id is not a promise that the option still exists.
    */
   optionId?: string;
+  /**
+   * Field values an app sent that have nowhere to live yet.
+   *
+   * A conversation is created by the first message, not by opening a session —
+   * so the order number arrives before there is a thread to write it on. It
+   * rides in the signed token and is written the moment the conversation
+   * exists, which also means a visitor cannot edit it on the way.
+   *
+   * Cleared from the token once written: a stale copy would silently re-stamp
+   * the order onto a thread somebody had since corrected.
+   */
+  fields?: Record<string, string>;
 }
 
 /** A visitor session lasts a working week: long enough that someone who comes
@@ -127,6 +145,292 @@ export class NestChatService {
     const key = `nc_${randomBytes(16).toString("hex")}`;
     await this.store.updateInbox(inboxId, { channelConfig: { widgetKey: key } });
     return key;
+  }
+
+  /**
+   * The key that goes in an app binary, minted on demand.
+   *
+   * Its own key rather than the widget's, so rolling it after a leak — or
+   * turning the app surface off — does not take the website down with it, and
+   * so app traffic can be told from web traffic without asking the client.
+   */
+  async ensureAppKey(inboxId: string): Promise<string> {
+    const config = await this.store.getInboxConfig(inboxId);
+    const existing = config?.appKey?.trim();
+    if (existing) return existing;
+    const key = `na_${randomBytes(16).toString("hex")}`;
+    await this.store.updateInbox(inboxId, { channelConfig: { appKey: key } });
+    return key;
+  }
+
+  /**
+   * Mint the secret an app's own backend signs user ids with, returning it
+   * once.
+   *
+   * Once is the whole point: it is stored as a credential — encrypted at rest
+   * alongside the access tokens, never in the public config, never read back by
+   * a settings screen. A screen that hands it out on every load hands it to
+   * anyone who gets one look at a signed-in browser, which defeats the reason
+   * for having it.
+   *
+   * Minting again replaces it, and every signature made with the old one stops
+   * verifying — which is what rolling a leaked secret has to mean.
+   */
+  async rotateIdentitySecret(inboxId: string): Promise<string> {
+    await this.requireNestChatInbox(inboxId);
+    const secret = randomBytes(32).toString("hex");
+    await this.store.updateInbox(inboxId, { channelConfig: { identitySecret: secret } });
+    return secret;
+  }
+
+  /** Whether this channel has a secret at all — the only thing a screen may
+   *  know about it. */
+  async hasIdentitySecret(inboxId: string): Promise<boolean> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return Boolean(config?.identitySecret?.trim());
+  }
+
+  /**
+   * Save, replace, or clear the Firebase service account this channel pushes
+   * through.
+   *
+   * Parsed before it is stored. A service-account JSON that is missing a key,
+   * or is the *client* config by mistake — the two files look alike and sit
+   * next to each other in the Firebase console — would otherwise be accepted
+   * happily and show up weeks later as "notifications don't work on Ding".
+   *
+   * An empty string clears it, which is how a channel stops pushing.
+   */
+  async setPushCredential(inboxId: string, serviceAccount: string): Promise<void> {
+    await this.requireNestChatInbox(inboxId);
+    const trimmed = serviceAccount.trim();
+    if (trimmed && !parseServiceAccount(trimmed)) {
+      throw new BadRequestException(
+        "That doesn't look like a Firebase service-account key — it needs project_id, client_email and private_key",
+      );
+    }
+    await this.store.updateInbox(inboxId, {
+      channelConfig: { [FCM_SERVICE_ACCOUNT_FIELD]: trimmed },
+    });
+  }
+
+  /** Whether push is configured — the only thing a screen may know about a
+   *  credential it must never read back. */
+  async hasPushCredential(inboxId: string): Promise<boolean> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return Boolean(config?.[FCM_SERVICE_ACCOUNT_FIELD]?.trim());
+  }
+
+  /* ---- the app surface ---- */
+
+  async appFor(inboxId: string): Promise<NestChatApp> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return parseBlob(config?.app, nestchatAppSchema, DEFAULT_NESTCHAT_APP);
+  }
+
+  /**
+   * Replace the app surface's settings.
+   *
+   * Turning it on mints the key, because a surface that is enabled and has no
+   * key is one an integrator will spend an afternoon on before discovering
+   * there was nothing to paste.
+   *
+   * A thread key naming a field that does not exist is refused rather than
+   * stored. It decides whether a customer gets one conversation or one per
+   * order, and a silently ignored one would look exactly like the setting
+   * working until somebody noticed every order in a single thread.
+   */
+  async updateApp(inboxId: string, app: NestChatApp): Promise<void> {
+    await this.requireNestChatInbox(inboxId);
+    const parsed = nestchatAppSchema.parse(app);
+    if (parsed.threadFieldKey) {
+      const fields = await this.store.listCustomFields(ORG_ID);
+      const field = fields.find((f) => f.key === parsed.threadFieldKey && !f.archived);
+      if (!field) {
+        throw new BadRequestException("That field no longer exists — pick another, or none");
+      }
+      if (field.entity !== "conversation") {
+        // A field on the *contact* identifies a person, not a thread. Keying
+        // threads on one would give every conversation the same key and merge
+        // a year of unrelated chats into one.
+        throw new BadRequestException("Only a conversation field can identify a thread");
+      }
+    }
+    if (parsed.enabled) await this.ensureAppKey(inboxId);
+    await this.store.updateInbox(inboxId, { channelConfig: { app: JSON.stringify(parsed) } });
+  }
+
+  /**
+   * Whether this signature really was made by the app's own backend.
+   *
+   * HMAC-SHA256 of the user id under the channel's secret, compared in constant
+   * time — a byte-by-byte comparison leaks, through how long it takes to fail,
+   * roughly where the first wrong byte was, which is enough to walk a signature
+   * out one byte at a time.
+   *
+   * A channel with no secret cannot verify anything, so it answers false rather
+   * than true. That is the whole point of the distinction: `required` refuses,
+   * `optional` treats the session as anonymous, and neither quietly accepts a
+   * claim nobody checked.
+   */
+  async verifyUserHash(inboxId: string, externalId: string, userHash: string): Promise<boolean> {
+    const config = await this.store.getInboxConfig(inboxId);
+    const secret = config?.identitySecret?.trim();
+    if (!secret || !userHash.trim()) return false;
+    const expected = createHmac("sha256", secret).update(externalId).digest();
+    let given: Buffer;
+    try {
+      given = Buffer.from(userHash.trim(), "hex");
+    } catch {
+      return false;
+    }
+    // timingSafeEqual throws on a length mismatch, which would itself be a
+    // signal — so the lengths are compared first and the result is the same
+    // "no" either way.
+    if (given.length !== expected.length) return false;
+    return timingSafeEqual(given, expected);
+  }
+
+  /**
+   * Resolve the channel an app key names, and refuse if its surface is off.
+   *
+   * Off means off: a key that was minted and then disabled must stop working,
+   * or turning the surface off would be a setting that changes nothing for
+   * every app already carrying the key.
+   */
+  async inboxForAppKey(appKey: string): Promise<{ inbox: Inbox; app: NestChatApp }> {
+    const key = appKey.trim();
+    const inbox = key ? await this.store.getInboxByAppKey(key) : undefined;
+    if (!inbox) throw new NotFoundException("Unknown app key");
+    const app = await this.appFor(inbox.id);
+    if (!app.enabled) throw new NotFoundException("Unknown app key");
+    return { inbox, app };
+  }
+
+  /**
+   * The conversation an app session should continue, given the field that keys
+   * a thread on this channel.
+   *
+   * Three cases, and the middle one is the reason this exists. With no thread
+   * key the customer has one ongoing conversation, which is what a general
+   * support line wants. With one, each value gets its own — so a dispute about
+   * last week's order stays separate from tonight's — and the match has to be
+   * exact: "DG-8841" must not resume "DG-88412".
+   *
+   * Closed threads are excluded. Somebody coming back about an order that was
+   * resolved a month ago is starting something new, and reopening the old
+   * thread would drop tonight's message under a month of history an agent has
+   * already worked through.
+   */
+  async threadFor(
+    inbox: Inbox,
+    contactId: string,
+    app: NestChatApp,
+    fields: Record<string, string>,
+  ): Promise<string | undefined> {
+    const withConvs = await this.store.getContactWithConversations(contactId);
+    const open = (withConvs?.conversations ?? []).filter(
+      (c) => c.inboxId === inbox.id && c.status !== "closed",
+    );
+    if (!open.length) return undefined;
+    if (!app.threadFieldKey) return open[0]?.id;
+
+    const value = fields[app.threadFieldKey]?.trim();
+    // The channel keys threads on a field the caller didn't name. Starting a
+    // fresh thread is the safe answer: joining whichever one happened to be
+    // open would put this message under an unrelated order.
+    if (!value) return undefined;
+    const matching = new Set(
+      await this.store.findByCustomFieldExact(inbox.orgId, "conversation", app.threadFieldKey, value),
+    );
+    return open.find((c) => matching.has(c.id))?.id;
+  }
+
+  /* ---- attachment tickets ---- */
+
+  /**
+   * A signed claim on a file a customer has just uploaded.
+   *
+   * The file's own details travel inside the ticket rather than in a staged
+   * database row, and that buys two things. An upload nobody goes on to send
+   * leaves no orphan record to reap. And the client cannot rename, resize or
+   * re-type the file between uploading it and attaching it — none of which is
+   * theirs to say, and all of which a raw id would have let them say.
+   *
+   * Scoped to the contact who uploaded it, so a ticket is not something to pass
+   * around, and short-lived because it is redeemed within seconds of being
+   * issued.
+   */
+  signAttachmentTicket(contactId: string, file: AttachmentInput): string {
+    return jwt.sign({ contactId, file }, this.tokenSecret, { expiresIn: "1h" });
+  }
+
+  /** Redeem tickets into attachments, dropping any that aren't this contact's.
+   *  A bad ticket is silently ignored rather than failing the message: the words
+   *  somebody typed are worth more than the photo that went with them. */
+  redeemAttachmentTickets(contactId: string, tickets: string[]): AttachmentInput[] {
+    const out: AttachmentInput[] = [];
+    for (const ticket of tickets) {
+      try {
+        const claims = jwt.verify(ticket, this.tokenSecret) as {
+          contactId?: string;
+          file?: AttachmentInput;
+        };
+        if (claims.contactId !== contactId || !claims.file?.storageKey) continue;
+        out.push(claims.file);
+      } catch {
+        // Expired, forged, or for somebody else. All the same answer.
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Put this channel's tag on a contact, if it has one and they haven't.
+   *
+   * Added, never replaced: a customer who reached us through the app and later
+   * through the website has done both, and a tag that overwrote the first would
+   * be recording where they most recently came from rather than where they came
+   * from.
+   */
+  async applyContactTag(contactId: string, tag: string): Promise<void> {
+    const wanted = tag.trim();
+    if (!wanted) return;
+    const contact = await this.store.getContact(contactId);
+    if (!contact || contact.tags.includes(wanted)) return;
+    await this.store.updateContact(contactId, { tags: [...contact.tags, wanted] });
+  }
+
+  /**
+   * Keep the field values this channel actually offers, and name the rest.
+   *
+   * Unknown keys are reported rather than dropped in silence, because the
+   * caller is an integration somebody is in the middle of writing: a typo that
+   * quietly does nothing costs a day, and the same typo that answers "no such
+   * field" costs a minute.
+   *
+   * Conversation fields only. A contact field set from a chat session would let
+   * an app rewrite a person's record from a client — and the whole reason this
+   * endpoint exists is that a client is not trusted.
+   */
+  async validateFields(
+    inboxId: string,
+    fields: Record<string, string>,
+  ): Promise<{ values: Record<string, string>; unknown: string[] }> {
+    const keys = Object.keys(fields);
+    if (!keys.length) return { values: {}, unknown: [] };
+    const defined = fieldsForInbox(await this.store.listCustomFields(ORG_ID), inboxId).filter(
+      (f) => f.entity === "conversation",
+    );
+    const values: Record<string, string> = {};
+    const unknown: string[] = [];
+    for (const key of keys) {
+      const field = defined.find((f) => f.key === key);
+      const value = fields[key]?.trim();
+      if (!field) unknown.push(key);
+      else if (value) values[key] = value;
+    }
+    return { values, unknown };
   }
 
   private async requireNestChatInbox(inboxId: string): Promise<Inbox> {
@@ -292,6 +596,7 @@ export class NestChatService {
   async settingsFor(inboxId: string): Promise<NestChatSettings> {
     const inbox = await this.requireNestChatInbox(inboxId);
     const widgetKey = await this.ensureWidgetKey(inboxId);
+    const app = await this.appFor(inboxId);
     const base = env.appUrl.replace(/\/+$/, "");
     return {
       inboxId,
@@ -303,6 +608,20 @@ export class NestChatService {
       teams: await this.teamsFor(inbox),
       embedUrl: `${base}/widget.html?key=${widgetKey}`,
       scriptUrl: `${base}/nestchat.js`,
+      app,
+      // Only once the surface is on: a key on screen for a surface nobody has
+      // enabled is an invitation to paste it into an app that will be refused.
+      appKey: app.enabled ? await this.ensureAppKey(inboxId) : undefined,
+      hasIdentitySecret: await this.hasIdentitySecret(inboxId),
+      hasPushCredential: await this.hasPushCredential(inboxId),
+      // Conversation fields only — see updateApp for why a contact field cannot
+      // key a thread — and only the ones this channel actually has. A field
+      // scoped to other inboxes would be offered here and then refused by
+      // `validateFields` on every session, which looks exactly like the thread
+      // key working until somebody notices every order in one conversation.
+      threadFields: fieldsForInbox(await this.store.listCustomFields(ORG_ID), inboxId)
+        .filter((f) => f.entity === "conversation")
+        .map((f) => ({ key: f.key, label: f.label })),
       // The same faces the visitor's header would carry, so the preview beside
       // the switch shows what the switch does.
       team: await this.teamFacesFor(inbox),
@@ -367,6 +686,7 @@ export class NestChatService {
         // re-signed, and the visitor's routing choice would evaporate on their
         // first message, which is the one moment it is read.
         optionId: claims.optionId,
+        fields: claims.fields,
       };
     } catch {
       throw new ForbiddenException("Chat session expired");

@@ -1,7 +1,7 @@
 import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 
 /** The kinds of identity a contact can be matched on. */
-export type IdentityKind = "phone" | "email" | "wa_id" | "nestchat";
+export type IdentityKind = "phone" | "email" | "wa_id" | "nestchat" | "external";
 
 /** Default region for parsing numbers typed without a country code. WhatsApp
  *  always delivers a full country code, so this only affects hand-typed local
@@ -68,6 +68,14 @@ export function normalizeIdentity(kind: IdentityKind, raw: string): NormalizedId
   // and try to read the rest as a number.
   if (kind === "nestchat") {
     return /^[0-9a-zA-Z_-]{8,64}$/.test(value) ? { value, normalized: value } : null;
+  }
+
+  // An external id is `inboxId:theirId`, and both halves belong to somebody
+  // else's system — so it is taken exactly as given. Folding case would merge
+  // two users of an app that treats "A1" and "a1" as different people, and
+  // that is their call to have made, not ours to undo.
+  if (kind === "external") {
+    return /^[^\s:]+:.{1,120}$/.test(value) ? { value, normalized: value } : null;
   }
 
   // phone | wa_id — keep only digits and a leading +, then parse to E.164.

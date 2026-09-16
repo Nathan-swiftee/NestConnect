@@ -25,16 +25,30 @@ import { ConversationsService } from "./conversations.service";
 export class ConversationsController {
   constructor(private readonly conversations: ConversationsService) {}
 
+  /**
+   * One page of a view.
+   *
+   * `fieldKey` narrows it to threads carrying that custom field — with
+   * `fieldValue` to one value, without it to any. It is ANDed with the view, so
+   * it can only ever show less than the view already would: "my inbox, orders
+   * only" rather than a search that reaches outside it.
+   */
   @Get()
   list(
     @CurrentUserId() userId: string,
     @Query("view") view?: string,
     @Query("cursor") cursor?: string,
     @Query("limit") limit?: string,
+    @Query("fieldKey") fieldKey?: string,
+    @Query("fieldValue") fieldValue?: string,
   ) {
+    const key = fieldKey?.trim();
     return this.conversations.list(view ?? "inbound", userId, {
       cursor,
       limit: limit ? Number(limit) : undefined,
+      // An empty value is not a filter for the empty string — it is the
+      // querystring's way of saying the box was left blank, which means "any".
+      ...(key ? { field: { key, value: fieldValue?.trim() || undefined } } : {}),
     });
   }
 

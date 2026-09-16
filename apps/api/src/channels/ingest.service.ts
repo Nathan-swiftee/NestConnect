@@ -290,6 +290,8 @@ export class IngestService {
      * there is no longer anywhere particular to send it.
      */
     option?: { label: string; teamId: string | null };
+    /** Files the customer attached, already redeemed from their tickets. */
+    attachments?: AttachmentInput[];
   }): Promise<{ conversationId: string; created: boolean; message?: Message } | undefined> {
     if (input.contact.blocked) {
       this.logger.log(`Dropped inbound NestChat from blocked contact ${input.contact.id}`);
@@ -325,10 +327,18 @@ export class IngestService {
       authorName: input.contact.displayName,
       body: input.text,
       channel: "nestchat",
+      attachments: input.attachments,
     });
     if (message) {
       this.realtime.emitMessageCreated(conversationId, message, input.inbox.orgId);
-      void this.pushInbound(conversationId, input.contact.displayName, input.text);
+      // A photo on its own is a message. The alert has to say something, and
+      // "" would arrive on a phone as a notification with no content at all.
+      const preview =
+        input.text.trim() ||
+        (input.attachments?.length === 1
+          ? `Sent ${input.attachments[0]!.kind === "image" ? "a photo" : "a file"}`
+          : `Sent ${input.attachments?.length ?? 0} files`);
+      void this.pushInbound(conversationId, input.contact.displayName, preview);
     }
 
     return { conversationId, created: res.created, message };

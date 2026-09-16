@@ -1,5 +1,10 @@
-import { Body, Controller, ForbiddenException, Get, Param, Patch } from "@nestjs/common";
-import { updateNestchatInputSchema, type UpdateNestchatInput } from "@ding/schemas";
+import { Body, Controller, ForbiddenException, Get, Param, Patch, Post } from "@nestjs/common";
+import {
+  nestchatPushCredentialInputSchema,
+  updateNestchatInputSchema,
+  type NestChatPushCredentialInput,
+  type UpdateNestchatInput,
+} from "@ding/schemas";
 import { Store } from "../../data/store";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
@@ -47,7 +52,48 @@ export class NestChatAdminController {
     if (body.routing) await this.nestchat.updateRouting(inboxId, body.routing);
     if (body.home) await this.nestchat.updateHome(inboxId, body.home);
     if (body.preChat) await this.nestchat.updatePreChat(inboxId, body.preChat);
+    if (body.app) await this.nestchat.updateApp(inboxId, body.app);
     if (body.appearance) return this.nestchat.updateAppearance(inboxId, body.appearance);
+    return this.nestchat.settingsFor(inboxId);
+  }
+
+  /**
+   * Mint the secret this channel's app backend signs user ids with, and show it
+   * once.
+   *
+   * A POST rather than a GET because it *changes* something: calling it again
+   * replaces the secret and stops every signature made with the old one
+   * verifying, which is what rolling a leaked credential has to mean. It comes
+   * back in this response and never again — a settings screen that hands it out
+   * on every load hands it to anyone who gets one look at a signed-in browser.
+   */
+  @Post(":inboxId/identity-secret")
+  async identitySecret(
+    @CurrentUserId() userId: string,
+    @Param("inboxId") inboxId: string,
+  ): Promise<{ secret: string }> {
+    await this.requireManager(userId);
+    return { secret: await this.nestchat.rotateIdentitySecret(inboxId) };
+  }
+
+  /**
+   * Point this channel at the business's Firebase project, so an agent's reply
+   * reaches a phone with the app closed.
+   *
+   * Write-only, like the identity secret and for the same reason: a
+   * service-account key grants send-as rights on somebody else's Firebase
+   * project, and a screen that reads it back is a screen that hands it to
+   * anyone who gets one look at a signed-in browser. What comes back is whether
+   * there is one.
+   */
+  @Post(":inboxId/push-credential")
+  async pushCredential(
+    @CurrentUserId() userId: string,
+    @Param("inboxId") inboxId: string,
+    @Body(new ZodValidationPipe(nestchatPushCredentialInputSchema)) body: NestChatPushCredentialInput,
+  ) {
+    await this.requireManager(userId);
+    await this.nestchat.setPushCredential(inboxId, body.serviceAccount);
     return this.nestchat.settingsFor(inboxId);
   }
 

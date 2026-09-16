@@ -2,8 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Headers,
+  UploadedFile,
+  UseInterceptors,
   NotFoundException,
   Param,
   Post,
@@ -11,9 +14,15 @@ import {
   Res,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { randomBytes } from "node:crypto";
 import {
+  externalIdentity,
+  nestchatAcceptsUpload,
+  NESTCHAT_MAX_UPLOAD_BYTES,
+  nestchatAppSessionInputSchema,
+  nestchatDeviceInputSchema,
   nestchatIdentifyInputSchema,
   nestchatReadInputSchema,
   nestchatSendInputSchema,
@@ -21,17 +30,22 @@ import {
   nestchatStartInputSchema,
   nestchatTypingInputSchema,
   toPublicRouting,
+  type NestChatAppSession,
+  type NestChatAppSessionInput,
   type NestChatConfig,
+  type NestChatDeviceInput,
   type NestChatIdentifyInput,
   type NestChatIdentifyResult,
   type NestChatReadInput,
   type NestChatSendInput,
   type NestChatSession,
+  type NestChatUploadResult,
   type NestChatSessionInput,
   type NestChatStartInput,
   type NestChatStartResult,
   type NestChatTypingInput,
 } from "@ding/schemas";
+import type { Inbox } from "@ding/schemas";
 import { Public } from "../../auth/public.decorator";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
 import { Store } from "../../data/store";
@@ -40,6 +54,14 @@ import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { IngestService } from "../ingest.service";
 import { NestChatService } from "./nestchat.service";
 import { VisitorBus } from "./visitor-bus";
+
+/** The subset of a multer file we rely on (avoids an Express.Multer.File dep). */
+interface UploadedFileLike {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+}
 
 /** Pull the visitor's bearer token off the request. */
 function bearer(header: string | undefined): string | undefined {
@@ -80,6 +102,28 @@ export class NestChatController {
   @Get(":widgetKey/config")
   async config(@Param("widgetKey") widgetKey: string): Promise<NestChatConfig> {
     const inbox = await this.nestchat.inboxForWidgetKey(widgetKey);
+    return this.buildConfig(inbox, widgetKey);
+  }
+
+  /**
+   * The same thing for an app.
+   *
+   * An app fetches this before it draws its messenger, for the same reasons a
+   * widget does — the brand colour, the greeting, the home cards, whether
+   * anybody is on. Keyed by the app key rather than the widget's, so a channel
+   * with the app surface turned off answers nothing here even though its
+   * website is still live.
+   */
+  @Get("app/:appKey/config")
+  async appConfig(@Param("appKey") appKey: string): Promise<NestChatConfig> {
+    const { inbox } = await this.nestchat.inboxForAppKey(appKey);
+    // The logo route is the widget's, and it is keyed by the widget key — the
+    // file is the channel's either way, and minting a second route for the same
+    // bytes would be two ways to fetch one picture.
+    return this.buildConfig(inbox, await this.nestchat.ensureWidgetKey(inbox.id));
+  }
+
+  private async buildConfig(inbox: Inbox, widgetKey: string): Promise<NestChatConfig> {
     const appearance = await this.nestchat.appearanceFor(inbox.id);
     const preChat = await this.nestchat.preChatFor(inbox.id);
     const routing = await this.nestchat.routingFor(inbox.id);
@@ -227,6 +271,144 @@ export class NestChatController {
     };
   }
 
+  /**
+   * An app opens a session.
+   *
+   * The counterpart to `POST :widgetKey/session` for a client that is not a
+   * browser, and the differences are the whole point of it existing:
+   *
+   *  - the person is keyed by the app's own user id, so a reinstall or a new
+   *    phone keeps their history, where a browser id would not;
+   *  - the channel decides how hard to check that claim, because an app that
+   *    knows who its user is can prove it and a public web page cannot;
+   *  - custom field values arrive with the session, so the thread this opens is
+   *    the one for that order rather than whichever was last open.
+   *
+   * Everything past here is the visitor API the widget already uses. One
+   * conversation, one token, one stream — the surfaces differ at the door and
+   * nowhere after it.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("app/:appKey/session")
+  async appSession(
+    @Param("appKey") appKey: string,
+    @Body(new ZodValidationPipe(nestchatAppSessionInputSchema)) body: NestChatAppSessionInput,
+  ): Promise<NestChatAppSession> {
+    const { inbox, app } = await this.nestchat.inboxForAppKey(appKey);
+
+    // Whether we believe them. `required` refuses an unsigned claim outright;
+    // `optional` carries on anonymously, which is what lets an app ship before
+    // the backend that signs for it.
+    const externalId = body.externalId?.trim();
+    let identified = false;
+    if (externalId) {
+      if (app.identity === "off") identified = true;
+      else {
+        identified = await this.nestchat.verifyUserHash(inbox.id, externalId, body.userHash ?? "");
+        if (!identified && app.identity === "required") {
+          throw new ForbiddenException("This app must sign who its users are");
+        }
+      }
+    }
+
+    // An unverified session is anonymous rather than rejected — it gets a
+    // per-install id and none of the details sent with it, so a stranger
+    // holding the app key can open a chat but cannot become a customer.
+    const visitorId = identified && externalId
+      ? externalIdentity(inbox.id, externalId)
+      : randomBytes(16).toString("hex");
+
+    const contact = await this.store.upsertContactByIdentity({
+      orgId: inbox.orgId,
+      kind: identified ? "external" : "nestchat",
+      value: visitorId,
+      displayName:
+        (identified ? body.name?.trim() : undefined) || `Visitor ${visitorId.slice(-6)}`,
+    });
+
+    if (identified) {
+      // Only now: an unverified caller must not be able to write an email onto
+      // a record, because a matching one is what merges this session onto a
+      // customer we already know.
+      await this.nestchat.identifyVisitor(
+        { visitorId, inboxId: inbox.id, contactId: contact.id, conversationId: "" },
+        { name: body.name, email: body.email, phone: body.phone },
+      );
+      await this.nestchat.applyContactTag(contact.id, app.contactTag);
+    }
+
+    const { values, unknown } = await this.nestchat.validateFields(inbox.id, body.fields ?? {});
+    const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values);
+    // Written straight onto an existing thread; carried in the token otherwise,
+    // because there is nothing to write them on until the first message creates
+    // a conversation.
+    if (conversationId && Object.keys(values).length) {
+      await this.store.setCustomFieldValues(inbox.orgId, "conversation", conversationId, values);
+    }
+
+    return {
+      token: this.nestchat.signVisitorToken({
+        visitorId,
+        inboxId: inbox.id,
+        contactId: contact.id,
+        conversationId: conversationId ?? "",
+        ...(conversationId ? {} : { fields: values }),
+      }),
+      hasConversation: Boolean(conversationId),
+      messages: conversationId ? await this.nestchat.visitorHistory(conversationId) : [],
+      identified,
+      unknownFields: unknown,
+    };
+  }
+
+  /**
+   * A customer attaches a file.
+   *
+   * Its own route rather than the agents' upload, which is session-guarded and
+   * has no session to check here. Three things make that safe to expose:
+   *
+   *  - the visitor token scopes it, so only somebody already in a conversation
+   *    can upload at all;
+   *  - the type is checked against an allowlist. This takes files from
+   *    strangers and serves them back from our own domain, so the question is
+   *    not whether a type is dangerous but whether there is any reason to
+   *    accept it — a photo of a wrong order, yes; an installer, no;
+   *  - nothing is written to the database. The file goes to storage and the
+   *    caller gets a signed ticket describing it, redeemed when the message is
+   *    actually sent — so an upload nobody sends leaves no row behind, and the
+   *    client cannot rename or re-type the file on the way.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("upload")
+  @UseInterceptors(FileInterceptor("file"))
+  async upload(
+    @Headers("authorization") auth: string | undefined,
+    @UploadedFile() file: UploadedFileLike | undefined,
+  ): Promise<NestChatUploadResult> {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    if (!file?.buffer?.length) throw new BadRequestException("No file uploaded");
+    if (file.size > NESTCHAT_MAX_UPLOAD_BYTES) {
+      throw new BadRequestException("That file is too large — 25 MB is the limit");
+    }
+    if (!nestchatAcceptsUpload(file.mimetype)) {
+      throw new BadRequestException("That kind of file can't be attached here");
+    }
+
+    const stored = await this.media.store(file.buffer, {
+      mime: file.mimetype,
+      // The name is taken from the part and then only ever used as a label. It
+      // is never a path, so the one thing it must not carry is a separator.
+      filename: (file.originalname || "file").replace(/[/\\\r\n"]/g, "_").slice(0, 120),
+    });
+    return {
+      ticket: this.nestchat.signAttachmentTicket(claims.contactId, stored),
+      filename: stored.filename,
+      mime: stored.mime,
+      size: stored.size,
+      kind: stored.kind,
+    };
+  }
+
   /** The visitor writes. Creates the conversation on the first message. */
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("message")
@@ -246,27 +428,57 @@ export class NestChatController {
     // channel while they were typing.
     const chosen = await this.nestchat.resolveOption(inbox, claims.optionId);
 
+    // Redeemed against the token's own contact, so a ticket is useless to
+    // anybody it was not issued to. A bad one is dropped rather than failing
+    // the send: the words somebody typed are worth more than the photo that
+    // was meant to go with them.
+    const attachments = this.nestchat.redeemAttachmentTickets(claims.contactId, body.attachments);
+    if (!body.body.trim() && !attachments.length) {
+      throw new BadRequestException("Nothing to send");
+    }
+
     const result = await this.ingest.ingestNestChat({
       inbox,
       contact,
       text: body.body,
       pageUrl: body.pageUrl,
       option: chosen ? { label: chosen.option.label, teamId: chosen.teamId } : undefined,
+      attachments,
     });
     // Blocked contact: accepted and dropped. Telling them they're blocked only
     // teaches them to come back with a fresh visitor id.
     if (!result) return { ok: true };
+
+    // Field values an app sent when it opened the session, written now that
+    // there is a conversation to write them on. From the signed token rather
+    // than this request, so the order a thread is filed under is the one the
+    // app asked for and not one the client edited on the way.
+    if (claims.fields && Object.keys(claims.fields).length) {
+      await this.store.setCustomFieldValues(
+        inbox.orgId,
+        "conversation",
+        result.conversationId,
+        claims.fields,
+      );
+    }
 
     const message = result.message ? this.nestchat.toVisitorMessage(result.message) : undefined;
     return {
       ok: true,
       message,
       // The first message is what creates the conversation, so the token the
-      // widget holds doesn't name one yet. Hand back the one that does.
+      // widget holds doesn't name one yet. Hand back the one that does — with
+      // the pending fields dropped, now that they have somewhere to live. A
+      // stale copy would re-stamp the order onto a thread somebody had since
+      // corrected.
       token:
-        claims.conversationId === result.conversationId
+        claims.conversationId === result.conversationId && !claims.fields
           ? undefined
-          : this.nestchat.signVisitorToken({ ...claims, conversationId: result.conversationId }),
+          : this.nestchat.signVisitorToken({
+              ...claims,
+              conversationId: result.conversationId,
+              fields: undefined,
+            }),
     };
   }
 
@@ -411,6 +623,55 @@ export class NestChatController {
       body.preview,
     );
     return { ok: true };
+  }
+
+  /**
+   * Where to ring this customer when an agent replies.
+   *
+   * Scoped to the token, so a device can only ever be registered against the
+   * contact the token already names — the alternative, a contact id in the
+   * body, would let anyone with an app key point somebody else's phone at their
+   * own conversation and read every reply from the lock screen.
+   *
+   * The channel comes from the token too. A customer with two of the business's
+   * apps has a row per app, and a reply on one must not ring the other.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("device")
+  async registerDevice(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatDeviceInputSchema)) body: NestChatDeviceInput,
+  ) {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const inbox = await this.store.getInbox(claims.inboxId);
+    if (!inbox) throw new NotFoundException("Channel not found");
+    await this.store.registerCustomerDevice({
+      orgId: inbox.orgId,
+      contactId: claims.contactId,
+      inboxId: claims.inboxId,
+      token: body.token,
+      platform: body.platform,
+    });
+    return { ok: true };
+  }
+
+  /**
+   * Stop ringing this one — a sign-out, or notifications turned off in the app.
+   *
+   * Deleted rather than disabled: a disabled row means "the push service told
+   * us this address is dead", and a customer who signs out has said something
+   * quite different. Keeping the two apart is what makes the disabled ones
+   * worth reading when somebody asks why a phone stopped buzzing.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("device/forget")
+  async forgetDevice(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatDeviceInputSchema)) body: NestChatDeviceInput,
+  ) {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const removed = await this.store.deleteCustomerDevice(claims.contactId, body.token);
+    return { ok: true, removed };
   }
 
   /**

@@ -6,6 +6,11 @@ import { normalizeIdentity, type IdentityKind } from "../contacts/identity";
 import { groupDuplicateContacts } from "../contacts/duplicates";
 import type {
   Attachment,
+  CreateCustomFieldInput,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldValue,
+  UpdateCustomFieldInput,
   ChannelType,
   Contact,
   ContactDuplicateGroup,
@@ -37,6 +42,7 @@ import {
   CONVERSATIONS_PAGE_SIZE,
   isInboxConnected,
   MESSAGES_PAGE_SIZE,
+  normalizeCustomFieldValue,
   publicChannelConfig,
   THREADABLE_STATUSES,
 } from "@ding/schemas";
@@ -60,6 +66,7 @@ import {
   type SidebarViews,
   type StoredAttachmentRef,
   type StoredDevice,
+  type StoredCustomerDevice,
   type StoredSession,
   type TwoFactorState,
   type ViewItem,
@@ -132,6 +139,9 @@ export class MemoryStore extends Store {
   private inboxConfig = new Map<string, Record<string, string>>();
   /** Org-scoped app settings, keyed by `${orgId}::${key}` (e.g. Google OAuth creds). */
   private appSettings = new Map<string, string>();
+  private customFields: CustomField[] = [];
+  /** Values keyed `entity:entityId:fieldId`, so a write is a single lookup. */
+  private fieldValues = new Map<string, { fieldId: string; entityId: string; entity: string; value: string }>();
   /** Backend-only attachment storage refs, keyed by attachment id (for serving). */
   private mediaRefs = new Map<string, StoredAttachmentRef>();
   /** Uploaded-but-not-yet-sent attachments (composer staging), keyed by id. */
@@ -156,6 +166,7 @@ export class MemoryStore extends Store {
   private idSeq = 10_000;
   private sessions: StoredSession[] = [];
   private devices: StoredDevice[] = [];
+  private customerDevices: StoredCustomerDevice[] = [];
   private pushPrefs = new Map<string, string>();
   private twoFactor = new Map<string, TwoFactorState>();
   private recoveryCodes: Array<{ id: string; userId: string; codeHash: string; usedAt: string | null }> = [];
@@ -699,6 +710,67 @@ export class MemoryStore extends Store {
     d.disabledReason = reason;
   }
 
+  /* ---- customer devices (in-app SDK) ---- */
+
+  async registerCustomerDevice(params: {
+    orgId: string;
+    contactId: string;
+    inboxId: string;
+    token: string;
+    platform: string;
+  }): Promise<StoredCustomerDevice> {
+    const now = new Date().toISOString();
+    const existing = this.customerDevices.find((d) => d.token === params.token);
+    if (existing) {
+      // Presenting the token proves the address is live and says who holds it
+      // now, so it moves and any earlier disable is lifted.
+      Object.assign(existing, {
+        orgId: params.orgId,
+        contactId: params.contactId,
+        inboxId: params.inboxId,
+        platform: params.platform,
+        lastSeenAt: now,
+        disabledAt: null,
+        disabledReason: null,
+      });
+      return existing;
+    }
+    const d: StoredCustomerDevice = {
+      id: `cdev_${++this.idSeq}`,
+      orgId: params.orgId,
+      contactId: params.contactId,
+      inboxId: params.inboxId,
+      token: params.token,
+      platform: params.platform,
+      createdAt: now,
+      lastSeenAt: now,
+      disabledAt: null,
+      disabledReason: null,
+    };
+    this.customerDevices.push(d);
+    return d;
+  }
+
+  async customerDevicesFor(contactId: string, inboxId: string): Promise<StoredCustomerDevice[]> {
+    return this.customerDevices.filter(
+      (d) => d.contactId === contactId && d.inboxId === inboxId && !d.disabledAt,
+    );
+  }
+
+  async deleteCustomerDevice(contactId: string, token: string): Promise<boolean> {
+    const i = this.customerDevices.findIndex((d) => d.token === token && d.contactId === contactId);
+    if (i === -1) return false;
+    this.customerDevices.splice(i, 1);
+    return true;
+  }
+
+  async disableCustomerDevice(token: string, reason: string): Promise<void> {
+    const d = this.customerDevices.find((x) => x.token === token);
+    if (!d || d.disabledAt) return;
+    d.disabledAt = new Date().toISOString();
+    d.disabledReason = reason;
+  }
+
   async getPushPrefs(userId: string): Promise<string | undefined> {
     return this.pushPrefs.get(userId);
   }
@@ -870,11 +942,22 @@ export class MemoryStore extends Store {
   async listConversations(
     view: string,
     userId: string,
-    opts?: { cursor?: string; limit?: number },
+    opts?: { cursor?: string; limit?: number; field?: { key: string; value?: string } },
   ): Promise<ConversationPage> {
     const userTeams = this.membership[userId] ?? [];
+    let matchesField: (r: ConversationRecord) => boolean = () => true;
+    if (opts?.field) {
+      const { conversationIds, contactIds } = await this.findByCustomField(
+        "",
+        opts.field.key,
+        opts.field.value,
+      );
+      const convs = new Set(conversationIds);
+      const contacts = new Set(contactIds);
+      matchesField = (r) => convs.has(r.id) || contacts.has(r.contact.id);
+    }
     const sorted = this.conversations
-      .filter((r) => this.matchesView(r, view, userId, userTeams))
+      .filter((r) => this.matchesView(r, view, userId, userTeams) && matchesField(r))
       .sort(byRecencyDesc);
     return this.pageConversations(sorted, opts);
   }
@@ -892,6 +975,12 @@ export class MemoryStore extends Store {
     const teams = opts?.userId ? (this.membership[opts.userId] ?? []) : [];
     const inView = (r: ConversationRecord) =>
       !opts?.view || !opts.userId || this.matchesView(r, opts.view, opts.userId, teams);
+    // Custom fields, both kinds: one recorded on the thread (the order this chat
+    // is about) and one on the person (their account number). Resolved to ids
+    // first, the same way the Prisma store does, so the two agree on what a
+    // reference number matches.
+    const convHits = new Set(await this.findByCustomFieldValue("", "conversation", query));
+    const contactHits = new Set(await this.findByCustomFieldValue("", "contact", query));
     const sorted = this.conversations
       .filter(
         (r) =>
@@ -901,6 +990,8 @@ export class MemoryStore extends Store {
           (r.contact.company ?? "").toLowerCase().includes(q) ||
           (r.subject ?? "").toLowerCase().includes(q) ||
           (r.preview ?? "").toLowerCase().includes(q) ||
+          convHits.has(r.id) ||
+          contactHits.has(r.contact.id) ||
             r.messages.some((m) => (m.body ?? "").toLowerCase().includes(q))),
       )
       .sort(byRecencyDesc);
@@ -1478,6 +1569,14 @@ export class MemoryStore extends Store {
     );
   }
 
+  async getInboxByAppKey(appKey: string): Promise<Inbox | undefined> {
+    const key = appKey.trim();
+    if (!key) return undefined;
+    return this.inboxes.find(
+      (i) => i.type === "nestchat" && this.inboxConfig.get(i.id)?.appKey === key,
+    );
+  }
+
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const a = address.trim().toLowerCase();
     // Deterministic match on the inbox address only — no arbitrary fallback.
@@ -1794,6 +1893,151 @@ export class MemoryStore extends Store {
     rec.unread = true;
     rec.unreadCount = 0; // manual mark → empty dot, not a message count
     return this.summary(rec);
+  }
+
+  /* ---- custom fields ---- */
+  async listCustomFields(_orgId: string): Promise<CustomField[]> {
+    return [...this.customFields].sort(
+      (a, b) => a.position - b.position || a.label.localeCompare(b.label),
+    );
+  }
+
+  async createCustomField(_orgId: string, input: CreateCustomFieldInput): Promise<CustomField> {
+    const existing = this.customFields.find((f) => f.key === input.key);
+    // The key is the identity — a second field claiming it would make an SDK
+    // payload naming that key mean two different things.
+    if (existing) throw new Error(`A field with the key "${input.key}" already exists`);
+    const field: CustomField = {
+      id: `cf_${++this.idSeq}`,
+      key: input.key,
+      label: input.label,
+      type: input.type,
+      entity: input.entity,
+      options: input.options,
+      inboxIds: input.inboxIds,
+      position: this.customFields.length,
+      archived: false,
+    };
+    this.customFields.push(field);
+    return field;
+  }
+
+  async updateCustomField(
+    id: string,
+    input: UpdateCustomFieldInput,
+  ): Promise<CustomField | undefined> {
+    const field = this.customFields.find((f) => f.id === id);
+    if (!field) return undefined;
+    Object.assign(field, input);
+    return field;
+  }
+
+  async deleteCustomField(id: string): Promise<void> {
+    this.customFields = this.customFields.filter((f) => f.id !== id);
+    for (const [k, v] of this.fieldValues) if (v.fieldId === id) this.fieldValues.delete(k);
+  }
+
+  async customFieldValues(
+    _orgId: string,
+    entity: CustomFieldEntity,
+    entityIds: string[],
+  ): Promise<Map<string, CustomFieldValue[]>> {
+    const wanted = new Set(entityIds);
+    const out = new Map<string, CustomFieldValue[]>();
+    for (const v of this.fieldValues.values()) {
+      if (v.entity !== entity || !wanted.has(v.entityId)) continue;
+      const field = this.customFields.find((f) => f.id === v.fieldId);
+      if (!field) continue;
+      const list = out.get(v.entityId) ?? [];
+      list.push({ fieldId: field.id, key: field.key, value: v.value });
+      out.set(v.entityId, list);
+    }
+    return out;
+  }
+
+  async setCustomFieldValues(
+    orgId: string,
+    entity: CustomFieldEntity,
+    entityId: string,
+    values: Record<string, string | null>,
+  ): Promise<{ values: CustomFieldValue[]; unknown: string[] }> {
+    const unknown: string[] = [];
+    for (const [key, raw] of Object.entries(values)) {
+      const field = this.customFields.find((f) => f.key === key && f.entity === entity);
+      // A key nobody defined is reported rather than stored: a typo in an
+      // integration should fail where somebody can see it, not accumulate
+      // values under a name no screen will ever read.
+      if (!field || field.archived) {
+        unknown.push(key);
+        continue;
+      }
+      const slot = `${entity}:${entityId}:${field.id}`;
+      const value = raw?.trim();
+      if (!value) this.fieldValues.delete(slot);
+      else this.fieldValues.set(slot, { fieldId: field.id, entity, entityId, value });
+    }
+    const current = await this.customFieldValues(orgId, entity, [entityId]);
+    return { values: current.get(entityId) ?? [], unknown };
+  }
+
+  async findByCustomFieldExact(
+    _orgId: string,
+    entity: CustomFieldEntity,
+    fieldKey: string,
+    value: string,
+  ): Promise<string[]> {
+    const field = this.customFields.find((f) => f.key === fieldKey && f.entity === entity);
+    const wanted = normalizeCustomFieldValue(value);
+    if (!field || !wanted) return [];
+    return [...this.fieldValues.values()]
+      .filter(
+        (v) =>
+          v.fieldId === field.id &&
+          v.entity === entity &&
+          normalizeCustomFieldValue(v.value) === wanted,
+      )
+      .map((v) => v.entityId);
+  }
+
+  async findByCustomField(
+    _orgId: string,
+    fieldKey: string,
+    value?: string,
+  ): Promise<{ conversationIds: string[]; contactIds: string[] }> {
+    const wanted = value === undefined ? undefined : normalizeCustomFieldValue(value);
+    // "restaurant is ''" is not "restaurant is set" — a value that folds away
+    // filters for nothing rather than for everything.
+    if (value !== undefined && !wanted) return { conversationIds: [], contactIds: [] };
+    const field = this.customFields.find((f) => f.key === fieldKey && !f.archived);
+    if (!field) return { conversationIds: [], contactIds: [] };
+    const conversationIds: string[] = [];
+    const contactIds: string[] = [];
+    for (const v of this.fieldValues.values()) {
+      if (v.fieldId !== field.id) continue;
+      if (wanted && normalizeCustomFieldValue(v.value) !== wanted) continue;
+      (v.entity === "conversation" ? conversationIds : contactIds).push(v.entityId);
+    }
+    return { conversationIds, contactIds };
+  }
+
+  async findByCustomFieldValue(
+    _orgId: string,
+    entity: CustomFieldEntity,
+    query: string,
+  ): Promise<string[]> {
+    const q = normalizeCustomFieldValue(query);
+    if (!q) return [];
+    const exact: string[] = [];
+    const partial: string[] = [];
+    for (const v of this.fieldValues.values()) {
+      if (v.entity !== entity) continue;
+      const folded = normalizeCustomFieldValue(v.value);
+      if (folded === q) exact.push(v.entityId);
+      else if (folded.includes(q)) partial.push(v.entityId);
+    }
+    // Exact first: a reference number is either the one being read out or it
+    // isn't, and a partial match that outranked it would bury the answer.
+    return [...new Set([...exact, ...partial])];
   }
 
   /* ---- labels ---- */

@@ -7,6 +7,11 @@ import { groupDuplicateContacts } from "../contacts/duplicates";
 import { threadsTogether } from "./email-threading";
 import type { Prisma } from "@prisma/client";
 import type {
+  CreateCustomFieldInput,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldValue,
+  UpdateCustomFieldInput,
   Attachment,
   ChannelType,
   Contact,
@@ -35,7 +40,13 @@ import type {
   UpdateTemplateInput,
   User,
 } from "@ding/schemas";
-import { CONVERSATIONS_PAGE_SIZE, MESSAGES_PAGE_SIZE, THREADABLE_STATUSES } from "@ding/schemas";
+import {
+  CONVERSATIONS_PAGE_SIZE,
+  CUSTOM_FIELD_FILTER_MAX,
+  MESSAGES_PAGE_SIZE,
+  normalizeCustomFieldValue,
+  THREADABLE_STATUSES,
+} from "@ding/schemas";
 import { env } from "../config/env";
 import { DEMO_USER_ID, ORG_ID } from "./fixtures";
 
@@ -52,7 +63,9 @@ import {
   isWaChannel,
   mapAttachment,
   mapContact,
+  mapCustomField,
   mapConversation,
+  mapCustomerDevice,
   mapDevice,
   mapInbox,
   mapMessage,
@@ -85,6 +98,7 @@ import {
   type OutboundMessageRef,
   type SidebarViews,
   type StoredAttachmentRef,
+  type StoredCustomerDevice,
   type StoredDevice,
   type StoredSession,
   type TwoFactorState,
@@ -740,6 +754,51 @@ export class PrismaStore extends Store {
     });
   }
 
+  /* ---- customer devices (in-app SDK) ---- */
+
+  async registerCustomerDevice(params: {
+    orgId: string;
+    contactId: string;
+    inboxId: string;
+    token: string;
+    platform: string;
+  }): Promise<StoredCustomerDevice> {
+    // The token is the identity, so a handset that reinstalls or signs in as
+    // somebody else resolves to one row rather than two addresses for one
+    // phone. Presenting it also proves it is live, which lifts any disable.
+    const common = {
+      orgId: params.orgId,
+      contactId: params.contactId,
+      inboxId: params.inboxId,
+      platform: params.platform,
+    };
+    const row = await this.prisma.customerDevice.upsert({
+      where: { token: params.token },
+      create: { ...common, token: params.token },
+      update: { ...common, lastSeenAt: new Date(), disabledAt: null, disabledReason: null },
+    });
+    return mapCustomerDevice(row);
+  }
+
+  async customerDevicesFor(contactId: string, inboxId: string): Promise<StoredCustomerDevice[]> {
+    const rows = await this.prisma.customerDevice.findMany({
+      where: { contactId, inboxId, disabledAt: null },
+    });
+    return rows.map(mapCustomerDevice);
+  }
+
+  async deleteCustomerDevice(contactId: string, token: string): Promise<boolean> {
+    const res = await this.prisma.customerDevice.deleteMany({ where: { token, contactId } });
+    return res.count > 0;
+  }
+
+  async disableCustomerDevice(token: string, reason: string): Promise<void> {
+    await this.prisma.customerDevice.updateMany({
+      where: { token, disabledAt: null },
+      data: { disabledAt: new Date(), disabledReason: reason },
+    });
+  }
+
   async getPushPrefs(userId: string): Promise<string | undefined> {
     const row = await this.prisma.user.findUnique({ where: { id: userId }, select: { pushPrefs: true } });
     return row?.pushPrefs ?? undefined;
@@ -914,16 +973,36 @@ export class PrismaStore extends Store {
   async listConversations(
     view: string,
     userId: string,
-    opts?: { cursor?: string; limit?: number },
+    opts?: { cursor?: string; limit?: number; field?: { key: string; value?: string } },
   ): Promise<ConversationPage> {
     const userTeams = await this.teamsForUser(userId);
     const token = await this.mentionToken(userId);
     const limit = pageLimit(opts?.limit, CONVERSATIONS_PAGE_SIZE);
     const cur = decodeConvCursor(opts?.cursor);
     const base = this.buildWhere(view, userId, userTeams, token);
-    const where: Prisma.ConversationWhereInput = cur
-      ? { AND: [base, keysetBefore(cur)] }
-      : base;
+    const parts: Prisma.ConversationWhereInput[] = [base];
+    if (opts?.field) {
+      const { conversationIds, contactIds } = await this.findByCustomField(
+        ORG_ID,
+        opts.field.key,
+        opts.field.value,
+      );
+      // ANDed with the view, and with no arm when nothing matched — an empty
+      // `OR: []` matches everything in Prisma, which would turn a filter that
+      // found nothing into the unfiltered list.
+      parts.push(
+        conversationIds.length || contactIds.length
+          ? {
+              OR: [
+                ...(conversationIds.length ? [{ id: { in: conversationIds } }] : []),
+                ...(contactIds.length ? [{ contactId: { in: contactIds } }] : []),
+              ],
+            }
+          : { id: { in: [] } },
+      );
+    }
+    if (cur) parts.push(keysetBefore(cur));
+    const where: Prisma.ConversationWhereInput = parts.length === 1 ? parts[0]! : { AND: parts };
     return this.pageConversations(where, limit);
   }
 
@@ -947,6 +1026,15 @@ export class PrismaStore extends Store {
             await this.mentionToken(opts.userId),
           )
         : null;
+    // Custom fields, both kinds: one recorded on the thread (the order this
+    // chat is about) and one recorded on the person (their account number).
+    // Resolved to ids first because they live in their own table — which is
+    // what makes an order number an index hit rather than a scan, and the
+    // reason this is a separate query instead of a join through JSON.
+    const [convIds, contactIds] = await Promise.all([
+      this.findByCustomFieldValue(ORG_ID, "conversation", q),
+      this.findByCustomFieldValue(ORG_ID, "contact", q),
+    ]);
     const match: Prisma.ConversationWhereInput = {
       orgId: ORG_ID,
       ...(scope ? { AND: [scope] } : {}),
@@ -956,6 +1044,8 @@ export class PrismaStore extends Store {
         { contact: { displayName: { contains: q, mode: "insensitive" } } },
         { contact: { company: { contains: q, mode: "insensitive" } } },
         { messages: { some: { body: { contains: q, mode: "insensitive" } } } },
+        ...(convIds.length ? [{ id: { in: convIds } }] : []),
+        ...(contactIds.length ? [{ contactId: { in: contactIds } }] : []),
       ],
     };
     const where: Prisma.ConversationWhereInput = cur ? { AND: [match, keysetBefore(cur)] } : match;
@@ -1688,6 +1778,22 @@ export class PrismaStore extends Store {
     return match ? mapInbox(match) : undefined;
   }
 
+  async getInboxByAppKey(appKey: string): Promise<Inbox | undefined> {
+    const key = appKey.trim();
+    if (!key) return undefined;
+    // Same shape as the widget key above, and matched in code for the same
+    // reason: a handful of channels per org, and the key lives inside the
+    // channelConfig JSON.
+    const rows = await this.prisma.inbox.findMany({
+      where: { orgId: ORG_ID, type: "nestchat" },
+      include: { teams: true },
+    });
+    const match = rows.find(
+      (i) => (i.channelConfig as Record<string, string> | null)?.appKey === key,
+    );
+    return match ? mapInbox(match) : undefined;
+  }
+
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const rows = await this.prisma.inbox.findMany({
       where: { orgId: ORG_ID, type: "email" },
@@ -2082,6 +2188,177 @@ export class PrismaStore extends Store {
     } catch {
       return undefined;
     }
+  }
+
+  /* ---- custom fields ---- */
+  async listCustomFields(orgId: string): Promise<CustomField[]> {
+    const rows = await this.prisma.customField.findMany({
+      where: { orgId },
+      orderBy: [{ position: "asc" }, { label: "asc" }],
+    });
+    return rows.map(mapCustomField);
+  }
+
+  async createCustomField(orgId: string, input: CreateCustomFieldInput): Promise<CustomField> {
+    // New fields go to the end of the panel rather than the top: an existing
+    // order is one somebody arranged, and inserting above it rearranges a
+    // screen they are used to reading.
+    const count = await this.prisma.customField.count({ where: { orgId } });
+    const row = await this.prisma.customField.create({
+      data: {
+        orgId,
+        key: input.key,
+        label: input.label,
+        type: input.type,
+        entity: input.entity,
+        options: input.options,
+        inboxIds: input.inboxIds,
+        position: count,
+      },
+    });
+    return mapCustomField(row);
+  }
+
+  async updateCustomField(
+    id: string,
+    input: UpdateCustomFieldInput,
+  ): Promise<CustomField | undefined> {
+    const row = await this.prisma.customField
+      .update({ where: { id }, data: input })
+      .catch(() => null);
+    return row ? mapCustomField(row) : undefined;
+  }
+
+  async deleteCustomField(id: string): Promise<void> {
+    // The values go with it, by the cascade on the foreign key. That is the
+    // point of the confirmation on the screen that calls this.
+    await this.prisma.customField.delete({ where: { id } }).catch(() => undefined);
+  }
+
+  async customFieldValues(
+    orgId: string,
+    entity: CustomFieldEntity,
+    entityIds: string[],
+  ): Promise<Map<string, CustomFieldValue[]>> {
+    if (!entityIds.length) return new Map();
+    const rows = await this.prisma.customFieldValue.findMany({
+      where: { orgId, entity, entityId: { in: entityIds } },
+      include: { field: true },
+      orderBy: { field: { position: "asc" } },
+    });
+    const out = new Map<string, CustomFieldValue[]>();
+    for (const r of rows) {
+      const list = out.get(r.entityId) ?? [];
+      list.push({ fieldId: r.fieldId, key: r.field.key, value: r.value });
+      out.set(r.entityId, list);
+    }
+    return out;
+  }
+
+  async setCustomFieldValues(
+    orgId: string,
+    entity: CustomFieldEntity,
+    entityId: string,
+    values: Record<string, string | null>,
+  ): Promise<{ values: CustomFieldValue[]; unknown: string[] }> {
+    const keys = Object.keys(values);
+    if (!keys.length) return { values: [], unknown: [] };
+    const fields = await this.prisma.customField.findMany({
+      where: { orgId, entity, key: { in: keys }, archived: false },
+    });
+    const byKey = new Map(fields.map((f) => [f.key, f]));
+    // A key nobody defined is reported rather than stored. A typo in an
+    // integration should fail where somebody can see it, instead of quietly
+    // filling a table with values no screen will ever read.
+    const unknown = keys.filter((k) => !byKey.has(k));
+
+    for (const [key, raw] of Object.entries(values)) {
+      const field = byKey.get(key);
+      if (!field) continue;
+      const value = raw?.trim();
+      const where = {
+        fieldId_entity_entityId: { fieldId: field.id, entity, entityId },
+      };
+      if (!value) {
+        await this.prisma.customFieldValue.delete({ where }).catch(() => undefined);
+        continue;
+      }
+      const data = { value, normalizedValue: normalizeCustomFieldValue(value) };
+      await this.prisma.customFieldValue.upsert({
+        where,
+        update: data,
+        create: { orgId, fieldId: field.id, entity, entityId, ...data },
+      });
+    }
+    const current = await this.customFieldValues(orgId, entity, [entityId]);
+    return { values: current.get(entityId) ?? [], unknown };
+  }
+
+  async findByCustomFieldExact(
+    orgId: string,
+    entity: CustomFieldEntity,
+    fieldKey: string,
+    value: string,
+  ): Promise<string[]> {
+    const wanted = normalizeCustomFieldValue(value);
+    if (!wanted) return [];
+    const rows = await this.prisma.customFieldValue.findMany({
+      where: { orgId, entity, normalizedValue: wanted, field: { key: fieldKey } },
+      select: { entityId: true },
+      take: 20,
+    });
+    return rows.map((r) => r.entityId);
+  }
+
+  async findByCustomField(
+    orgId: string,
+    fieldKey: string,
+    value?: string,
+  ): Promise<{ conversationIds: string[]; contactIds: string[] }> {
+    const wanted = value === undefined ? undefined : normalizeCustomFieldValue(value);
+    // A filter for a value that normalises to nothing is a filter for nothing,
+    // not a filter for everything — the difference between "restaurant is ''"
+    // and "restaurant is set".
+    if (value !== undefined && !wanted) return { conversationIds: [], contactIds: [] };
+    const rows = await this.prisma.customFieldValue.findMany({
+      where: {
+        orgId,
+        field: { key: fieldKey, archived: false },
+        ...(wanted ? { normalizedValue: wanted } : {}),
+      },
+      select: { entity: true, entityId: true },
+      // Newest first, so a set larger than the cap shows the recent slice
+      // rather than an arbitrary one.
+      orderBy: { id: "desc" },
+      take: CUSTOM_FIELD_FILTER_MAX,
+    });
+    return {
+      conversationIds: rows.filter((r) => r.entity === "conversation").map((r) => r.entityId),
+      contactIds: rows.filter((r) => r.entity === "contact").map((r) => r.entityId),
+    };
+  }
+
+  async findByCustomFieldValue(
+    orgId: string,
+    entity: CustomFieldEntity,
+    query: string,
+  ): Promise<string[]> {
+    const q = normalizeCustomFieldValue(query);
+    if (!q) return [];
+    // Two queries rather than one ordered by a CASE: the exact one is an index
+    // equality and answers instantly, and when it hits there is usually nothing
+    // more worth saying. The contains scan only matters when it misses.
+    const exact = await this.prisma.customFieldValue.findMany({
+      where: { orgId, entity, normalizedValue: q },
+      select: { entityId: true },
+      take: 50,
+    });
+    const partial = await this.prisma.customFieldValue.findMany({
+      where: { orgId, entity, normalizedValue: { contains: q }, NOT: { normalizedValue: q } },
+      select: { entityId: true },
+      take: 50,
+    });
+    return [...new Set([...exact, ...partial].map((r) => r.entityId))];
   }
 
   /* ---- labels ---- */

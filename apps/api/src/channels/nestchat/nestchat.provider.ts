@@ -5,6 +5,7 @@ import {
   type SendParams,
   type SendResult,
 } from "../channel-provider";
+import { CustomerPushService } from "./customer-push.service";
 import { VisitorBus } from "./visitor-bus";
 
 /**
@@ -23,7 +24,10 @@ import { VisitorBus } from "./visitor-bus";
  */
 @Injectable()
 export class NestChatProvider extends ChannelProvider {
-  constructor(private readonly bus: VisitorBus) {
+  constructor(
+    private readonly bus: VisitorBus,
+    private readonly push: CustomerPushService,
+  ) {
     super();
   }
 
@@ -50,6 +54,17 @@ export class NestChatProvider extends ChannelProvider {
           : undefined,
       },
     });
+    // …and ring their phone, unless they are already looking at it. Here
+    // rather than in the dispatcher because this is the one channel whose
+    // recipient is a customer of somebody else's app: every other channel's
+    // notification is the phone network's or Google's problem, not ours.
+    this.push.notify({
+      conversation: params.conversation,
+      authorName: params.authorName,
+      body: params.body,
+      attachmentCount: params.media?.length ?? 0,
+    });
+
     // A NestChat message has no provider id — there is no provider. Returning
     // none leaves the stored message's channelMsgId null, which is correct and
     // keeps it out of the email/WhatsApp threading lookups that match on one.

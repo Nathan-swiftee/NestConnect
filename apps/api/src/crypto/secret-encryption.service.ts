@@ -16,7 +16,21 @@ const IV_BYTES = 12; // 96-bit nonce, the standard for GCM
  * Everything else in channelConfig (phoneNumberId, provider, email, historyId …)
  * is non-secret and stays plaintext so it remains queryable.
  */
-const SECRET_CHANNEL_FIELDS = new Set(["accessToken", "providerToken", "refreshToken"]);
+/*
+ * channelConfig fields encrypted at rest.
+ *
+ * `identitySecret` is one of these and not a key: it is the thing an app's own
+ * backend signs user ids with, so anybody holding it can mint a signature
+ * claiming to be any customer on that channel — which is the entire attack the
+ * signing exists to prevent.
+ */
+const SECRET_CHANNEL_FIELDS = new Set([
+  "accessToken",
+  "providerToken",
+  "refreshToken",
+  "identitySecret",
+  "fcmServiceAccount",
+]);
 
 /** AppSetting keys that hold secrets (see google/meta oauth + r2 config). */
 const SECRET_APP_KEYS = new Set([

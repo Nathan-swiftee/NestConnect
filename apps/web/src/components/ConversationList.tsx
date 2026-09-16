@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useConversations, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
+import { useConversations, useCustomFields, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
 import { listTime, slaCountdown, timeUntil } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon, PanelLeftIcon, MicIcon } from "../lib/icons";
@@ -26,7 +26,17 @@ interface Props {
 }
 
 export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onCompose, onOpenDrawer, sidebarCollapsed, onExpandSidebar }: Props) {
-  const listQuery = useConversations(view);
+  /**
+   * Narrow the list to threads carrying one custom field.
+   *
+   * Server-side rather than a filter over the loaded rows, unlike the chips
+   * beside it: those narrow a page you already have, and an order number is
+   * precisely the thing that is three hundred rows down. Held here rather than
+   * in the URL because it is a way of looking at an inbox, not a place — going
+   * back should return you to the inbox, not to the filter you had on.
+   */
+  const [fieldKey, setFieldKey] = useState<string | null>(null);
+  const listQuery = useConversations(view, fieldKey ? { key: fieldKey } : undefined);
   const { data, isLoading } = listQuery;
   const teams = useTeams();
   const myId = useSession().data?.user.id;
@@ -80,6 +90,10 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             : key === "groups"
               ? active.filter((c) => c.channel === "whatsapp_group").length
               : (data ?? []).filter((c) => c.status === "closed").length;
+  // Fields worth offering: the ones an agent could plausibly be looking for a
+  // thread by. An archived one is history, not a filter.
+  const fieldChips = (useCustomFields().data ?? []).filter((f) => !f.archived);
+
   const filters: { key: Filter; label: string; count: number }[] = [
     { key: "all" as Filter, label: "All" },
     { key: "unread" as Filter, label: "Unread" },
@@ -99,6 +113,11 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
       setFilter("all");
     }
   }, [filter, showUnassigned, showMine, hasGroups]);
+
+  // A field filter belongs to the inbox it was set in. Carried across, it shows
+  // a near-empty list under a different inbox's name — which reads as an empty
+  // inbox rather than as a filter still being on.
+  useEffect(() => setFieldKey(null), [view]);
 
   // Virtualize the row list so only the visible rows mount, however long the
   // (paginated) list grows. Rows self-measure, so variable heights are fine.
@@ -219,6 +238,20 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
               >
                 {f.label}
                 {f.count > 0 && <span className="chipcount">{f.count}</span>}
+              </button>
+            ))}
+            {fieldChips.map((f) => (
+              <button
+                key={f.id}
+                className={"chip chip--field" + (fieldKey === f.key ? " active" : "")}
+                onClick={() => setFieldKey(fieldKey === f.key ? null : f.key)}
+                title={
+                  fieldKey === f.key
+                    ? `Showing only threads with a ${f.label.toLowerCase()}`
+                    : `Only threads with a ${f.label.toLowerCase()}`
+                }
+              >
+                {f.label}
               </button>
             ))}
           </div>

@@ -73,7 +73,11 @@ export class ConversationsService {
     private readonly nestchat: NestChatService,
   ) {}
 
-  list(view: string, userId: string, opts?: { cursor?: string; limit?: number }): Promise<ConversationPage> {
+  list(
+    view: string,
+    userId: string,
+    opts?: { cursor?: string; limit?: number; field?: { key: string; value?: string } },
+  ): Promise<ConversationPage> {
     return this.store.listConversations(view, userId, opts);
   }
 

@@ -3,6 +3,9 @@ import type {
   Attachment,
   ChannelType,
   Contact,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldType,
   Conversation,
   Inbox,
   Message,
@@ -21,7 +24,7 @@ import type {
   WaWindow,
 } from "@ding/schemas";
 import { isInboxConnected, publicChannelConfig } from "@ding/schemas";
-import type { StoredDevice, StoredSession } from "./store";
+import type { StoredCustomerDevice, StoredDevice, StoredSession } from "./store";
 
 /** A Prisma Session row → the store's StoredSession (dates as ISO strings). */
 export function mapSession(s: Prisma.SessionGetPayload<object>): StoredSession {
@@ -46,6 +49,21 @@ export function mapDevice(d: Prisma.DeviceGetPayload<object>): StoredDevice {
     appVersion: d.appVersion ?? null,
     osVersion: d.osVersion ?? null,
     deviceName: d.deviceName ?? null,
+    createdAt: d.createdAt.toISOString(),
+    lastSeenAt: d.lastSeenAt.toISOString(),
+    disabledAt: d.disabledAt ? d.disabledAt.toISOString() : null,
+    disabledReason: d.disabledReason ?? null,
+  };
+}
+
+export function mapCustomerDevice(d: Prisma.CustomerDeviceGetPayload<object>): StoredCustomerDevice {
+  return {
+    id: d.id,
+    orgId: d.orgId,
+    contactId: d.contactId,
+    inboxId: d.inboxId,
+    token: d.token,
+    platform: d.platform,
     createdAt: d.createdAt.toISOString(),
     lastSeenAt: d.lastSeenAt.toISOString(),
     disabledAt: d.disabledAt ? d.disabledAt.toISOString() : null,
@@ -120,6 +138,23 @@ export function sameTemplateLang(a: string, b: string): boolean {
   if (ca !== canonicalLang(lb)) return false;
   // Same primary subtag: reconcile only when at least one side is the bare code.
   return la === ca || lb === ca;
+}
+
+/** Prisma CustomField row → domain CustomField. The string columns are widened
+ *  enums; they are written through Zod-validated inputs, so the cast is the
+ *  same trade every other mapper here makes. */
+export function mapCustomField(f: Prisma.CustomFieldGetPayload<object>): CustomField {
+  return {
+    id: f.id,
+    key: f.key,
+    label: f.label,
+    type: f.type as CustomFieldType,
+    entity: f.entity as CustomFieldEntity,
+    options: f.options ?? [],
+    inboxIds: f.inboxIds ?? [],
+    position: f.position,
+    archived: f.archived,
+  };
 }
 
 /** Prisma Template row → domain Template (variable count derived from the body). */

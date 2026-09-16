@@ -22,6 +22,7 @@ import { GmailProvider } from "./google/gmail.provider";
 import { GmailSyncService } from "./google/gmail-sync.service";
 import { MetaOAuthService } from "./meta/meta-oauth.service";
 import { MetaController } from "./meta/meta.controller";
+import { CustomerPushService } from "./nestchat/customer-push.service";
 import { NestChatProvider } from "./nestchat/nestchat.provider";
 import { NestChatController } from "./nestchat/nestchat.controller";
 import { NestChatAdminController } from "./nestchat/nestchat-admin.controller";
@@ -70,6 +71,7 @@ import { IntegrationsController } from "../settings/integrations.controller";
     ChannelDispatcher,
     OutboundDeliveryService,
     VisitorBus,
+    CustomerPushService,
     NestChatService,
   ],
   exports: [ChannelDispatcher, OutboundDeliveryService, GmailSyncService, MetaOAuthService, NestChatService],

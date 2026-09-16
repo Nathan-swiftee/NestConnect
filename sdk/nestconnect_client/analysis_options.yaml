@@ -1,0 +1,11 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+  errors:
+    # An unawaited future in a client that fires network calls is almost always
+    # a bug we want to hear about at compile time rather than in a log.
+    unawaited_futures: error

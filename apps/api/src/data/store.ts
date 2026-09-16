@@ -1,4 +1,9 @@
 import type {
+  CreateCustomFieldInput,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldValue,
+  UpdateCustomFieldInput,
   Attachment,
   AttachmentKind,
   ChannelType,
@@ -72,6 +77,28 @@ export interface StoredDevice {
   appVersion: string | null;
   osVersion: string | null;
   deviceName: string | null;
+  createdAt: string;
+  lastSeenAt: string;
+  disabledAt: string | null;
+  disabledReason: string | null;
+}
+
+/**
+ * A customer's phone, registered by the in-app SDK.
+ *
+ * `token` is the address and the row's identity — the same rule as
+ * {@link StoredDevice}'s push token, for the same reason: a handset that
+ * reinstalls or signs in as someone else presents the same token, and one
+ * address must never ring for two people.
+ */
+export interface StoredCustomerDevice {
+  id: string;
+  orgId: string;
+  contactId: string;
+  /** The channel that registered it. A reply on one app must not ring another. */
+  inboxId: string;
+  token: string;
+  platform: string;
   createdAt: string;
   lastSeenAt: string;
   disabledAt: string | null;
@@ -457,6 +484,28 @@ export abstract class Store {
    *  turned notifications off. Keyed by token because that's what receipts carry. */
   abstract disableDevice(pushToken: string, reason: string): Promise<void>;
 
+  /* ---- customer devices (in-app SDK) ---- */
+
+  /** Register, or re-register, a customer's phone. Keyed on the token, so a
+   *  handset that changes hands moves to its new contact instead of leaving a
+   *  row that would ring for the wrong person. Re-registering re-enables. */
+  abstract registerCustomerDevice(params: {
+    orgId: string;
+    contactId: string;
+    inboxId: string;
+    token: string;
+    platform: string;
+  }): Promise<StoredCustomerDevice>;
+  /** Every live address for this customer on this channel. */
+  abstract customerDevicesFor(contactId: string, inboxId: string): Promise<StoredCustomerDevice[]>;
+  /** Forget a token the app itself surrendered — a sign-out, or notifications
+   *  turned off. Scoped to the contact so a token can only be dropped by the
+   *  session that holds it. */
+  abstract deleteCustomerDevice(contactId: string, token: string): Promise<boolean>;
+  /** Stop pushing at an address FCM reported dead. Kept rather than deleted, so
+   *  the same token coming back reads as a return and not as a new phone. */
+  abstract disableCustomerDevice(token: string, reason: string): Promise<void>;
+
   /** A user's push preferences as stored (raw JSON, or undefined for defaults). */
   abstract getPushPrefs(userId: string): Promise<string | undefined>;
   /** Replace a user's push preferences with this JSON blob. */
@@ -488,7 +537,13 @@ export abstract class Store {
   abstract listConversations(
     view: string,
     userId: string,
-    opts?: { cursor?: string; limit?: number },
+    opts?: {
+      cursor?: string;
+      limit?: number;
+      /** Narrow the view to threads carrying this field — any value, or one in
+       *  particular. ANDed with the view, so it can only ever show you less. */
+      field?: { key: string; value?: string };
+    },
   ): Promise<ConversationPage>;
   /** A cursor page of search results (contact, subject, preview, message body). */
   abstract searchConversations(
@@ -710,6 +765,97 @@ export abstract class Store {
    *  (WhatsApp-style empty dot); distinct from unreadCount>0 from new messages. */
   abstract markUnread(conversationId: string): Promise<Conversation | undefined>;
 
+  /* ---- custom fields (org catalog + per-record values) ---- */
+  /** Every field the org has defined, archived ones included — the settings
+   *  pane has to show what is retired in order to bring it back. */
+  abstract listCustomFields(orgId: string): Promise<CustomField[]>;
+  abstract createCustomField(orgId: string, input: CreateCustomFieldInput): Promise<CustomField>;
+  abstract updateCustomField(
+    id: string,
+    input: UpdateCustomFieldInput,
+  ): Promise<CustomField | undefined>;
+  /** Delete a field *and every value recorded against it*. Archiving is the
+   *  reversible option; this one is not, which is why the pane asks. */
+  abstract deleteCustomField(id: string): Promise<void>;
+  /**
+   * The values on a set of records, keyed by record id.
+   *
+   * Takes a list rather than one id because the caller is usually a page of
+   * conversations, and one query for fifty rows is the difference between a
+   * list that opens and a list that crawls.
+   */
+  abstract customFieldValues(
+    orgId: string,
+    entity: CustomFieldEntity,
+    entityIds: string[],
+  ): Promise<Map<string, CustomFieldValue[]>>;
+  /**
+   * Write values on one record. A null clears that field.
+   *
+   * Keyed by the field's key rather than its id: the other caller is an SDK,
+   * which knows `order_id` and should not have to look up an id to send it.
+   * Keys the org has not defined are ignored — returned in `unknown` so a
+   * caller can complain, rather than silently stored under a typo.
+   */
+  abstract setCustomFieldValues(
+    orgId: string,
+    entity: CustomFieldEntity,
+    entityId: string,
+    values: Record<string, string | null>,
+  ): Promise<{ values: CustomFieldValue[]; unknown: string[] }>;
+  /**
+   * Which records carry a value matching this text.
+   *
+   * Exact match on the folded value first, then prefix — an order number is
+   * either the one being read out or it is not, and a partial match that
+   * outranked the exact one would bury the answer.
+   */
+  /**
+   * Records whose value for one named field is exactly this.
+   *
+   * Separate from the search below, and deliberately not built on it: that one
+   * falls back to partial matches, which is right for somebody typing into a
+   * search box and wrong for deciding which conversation an order belongs to.
+   * "DG-8841" must not resume the thread for "DG-88412".
+   */
+  abstract findByCustomFieldExact(
+    orgId: string,
+    entity: CustomFieldEntity,
+    fieldKey: string,
+    value: string,
+  ): Promise<string[]>;
+/**
+   * Everything carrying a value for one named field — any value, or one in
+   * particular.
+   *
+   * The difference from the two above is the question being asked. Those answer
+   * "which record is this order number", where the answer is one row and a
+   * partial match is a courtesy. This answers "show me the ones with an order
+   * number", where the answer is a working set: a filter, not a lookup.
+   *
+   * It returns both kinds because a field lives on a conversation or on a
+   * contact and the caller should not have to know which — "conversations about
+   * an order" and "conversations with customers who have an account number" are
+   * the same gesture to whoever is filtering.
+   *
+   * Bounded, deliberately. The ids come back as a list and are then matched with
+   * `IN`, which stops being the right shape somewhere in the low thousands; the
+   * cap means a filter over a very large set silently shows the most recent
+   * slice of it rather than timing out. When that ceiling starts being reached
+   * in earnest the fix is a join, which needs `CustomFieldValue` to carry real
+   * relations rather than a polymorphic `entityId`.
+   */
+  abstract findByCustomField(
+    orgId: string,
+    fieldKey: string,
+    value?: string,
+  ): Promise<{ conversationIds: string[]; contactIds: string[] }>;
+    abstract findByCustomFieldValue(
+    orgId: string,
+    entity: CustomFieldEntity,
+    query: string,
+  ): Promise<string[]>;
+
   /* ---- labels (org catalog + per-conversation) ---- */
   /** The org's label catalog (name + colour), for the picker + sidebar filter. */
   abstract listLabels(orgId: string): Promise<Label[]>;
@@ -728,6 +874,10 @@ export abstract class Store {
    *  the embed snippet on the business's website), so an unknown one is simply
    *  not found — it is an identifier, not a credential. */
   abstract getInboxByWidgetKey(widgetKey: string): Promise<Inbox | undefined>;
+  /** Resolve an app key to its channel. Its own key rather than the widget's,
+   *  so one can be rolled without the other and so app traffic is
+   *  distinguishable from web traffic. */
+  abstract getInboxByAppKey(appKey: string): Promise<Inbox | undefined>;
 
   /* ---- webhook diagnostics (unmapped/unverified inbound) ---- */
   abstract recordWebhookDiagnostic(input: {

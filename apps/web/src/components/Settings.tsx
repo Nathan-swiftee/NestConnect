@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { embedSnippet, type EmbedKind } from "../lib/nestchat-embed";
+import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
 import type {
   ChannelType,
   Inbox,
   Label,
   Role,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldType,
   RoutingStrategy,
   Team,
   Template,
@@ -16,8 +20,10 @@ import type {
   OpeningHours,
   OpeningDay,
   OpeningHoursDay,
+  NestChatApp,
   NestChatAppearance,
   NestChatCardIcon,
+  NestChatIdentityMode,
   NestChatHome,
   NestChatHomeCard,
   NestChatPreChat,
@@ -39,6 +45,7 @@ import {
 } from "@ding/schemas";
 import {
   useContacts,
+  useCreateCustomField,
   useCreateInbox,
   useCreateLabel,
   useCreateTeam,
@@ -50,7 +57,10 @@ import {
   useDeleteTemplate,
   useDeleteUser,
   useInboxes,
+  useCustomFields,
+  useDeleteCustomField,
   useLabels,
+  useUpdateCustomField,
   useNestchatSettings,
   useUpdateNestchat,
   useUpdateLabel,
@@ -90,7 +100,9 @@ import {
   MailIcon,
   PlusIcon,
   RefreshIcon,
+  ReopenIcon,
   SearchIcon,
+  SnoozeIcon,
   SparkleIcon,
   StarIcon,
   StorageIcon,
@@ -112,6 +124,7 @@ type Leaf =
   | "teams"
   | "people"
   | "labels"
+  | "fields"
   | "connections"
   | "storage"
   | "email"
@@ -156,6 +169,7 @@ const NAV: NavSection[] = [
       { key: "teams", label: "Teams" },
       { key: "people", label: "People" },
       { key: "labels", label: "Labels" },
+      { key: "fields", label: "Custom fields" },
     ],
   },
   {
@@ -278,6 +292,7 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "teams" && <TeamsPane onToast={onToast} />}
             {active === "people" && <PeoplePane onToast={onToast} />}
             {active === "labels" && <LabelsPane onToast={onToast} />}
+            {active === "fields" && <CustomFieldsPane onToast={onToast} />}
             {(active === "connections" ||
               active === "storage" ||
               active === "email" ||
@@ -943,6 +958,326 @@ export function slaLabel(minutes?: number | null): string | null {
 
 const LABEL_COLORS = ["#0FA47A", "#E68A00", "#5B8DEF", "#A06CF2", "#EF5B8D", "#E5484D", "#0EA5E9", "#8A968F"];
 
+/** The types a field can be, in the order they're offered. */
+const FIELD_TYPES: Array<{ value: CustomFieldType; label: string; hint: string }> = [
+  { value: "text", label: "Text", hint: "An order number, a reference, a note" },
+  { value: "number", label: "Number", hint: "A count or an amount" },
+  { value: "date", label: "Date", hint: "A delivery date, a renewal" },
+  { value: "url", label: "Link", hint: "Somewhere to click through to" },
+  { value: "select", label: "Choice", hint: "One of a fixed set" },
+];
+
+/**
+ * Where a workspace defines the facts we did not think of.
+ *
+ * The distinction the form asks for first is which record a field hangs off,
+ * because it is the one that cannot be changed afterwards and the one people
+ * get wrong. A fact about the *person* should be on the contact — their account
+ * number belongs to them and should surface every chat they have ever had. A
+ * fact about *this conversation* belongs on the thread: the order a chat is
+ * about is that chat's, and putting it on the contact would mean last week's
+ * complaint silently relabelled itself when they ordered again tonight.
+ */
+function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
+  const fields = useCustomFields();
+  const inboxes = useInboxes();
+  const create = useCreateCustomField();
+  const update = useUpdateCustomField();
+  const del = useDeleteCustomField();
+
+  const [label, setLabel] = useState("");
+  const [entity, setEntity] = useState<CustomFieldEntity>("conversation");
+  const [type, setType] = useState<CustomFieldType>("text");
+  const [options, setOptions] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftLabel, setDraftLabel] = useState("");
+  const [draftInboxIds, setDraftInboxIds] = useState<string[]>([]);
+
+  const list = fields.data ?? [];
+  const live = list.filter((f) => !f.archived);
+  const archived = list.filter((f) => f.archived);
+
+  /**
+   * The key an integration will send, derived from the label.
+   *
+   * Derived rather than typed, because two things have to be true at once: it
+   * has to be a valid identifier, and whoever adds the field is thinking about
+   * the words on the screen, not about what an SDK payload looks like. It is
+   * shown live so the derivation is never a surprise — this is the string that
+   * goes into somebody's app and can never change afterwards.
+   */
+  const keyFor = (text: string) =>
+    text
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .replace(/^([0-9])/, "f_$1")
+      .slice(0, 40);
+  const key = keyFor(label);
+  const clash = live.some((f) => f.key === key) || archived.some((f) => f.key === key);
+  const optionList = options.split("\n").map((o) => o.trim()).filter(Boolean);
+  const canAdd = Boolean(key) && !clash && (type !== "select" || optionList.length > 0);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!canAdd) return;
+    create.mutate(
+      { key, label: label.trim(), type, entity, options: optionList, inboxIds: [] },
+      {
+        onSuccess: () => {
+          setLabel("");
+          setOptions("");
+          onToast(`“${label.trim()}” added — integrations send it as ${key}`);
+        },
+        onError: (err) =>
+          onToast(err instanceof Error ? err.message : "Only admins & managers can add fields"),
+      },
+    );
+  };
+
+  const startEdit = (f: CustomField) => {
+    setEditingId(f.id);
+    setDraftLabel(f.label);
+    setDraftInboxIds(f.inboxIds);
+  };
+  const saveEdit = (f: CustomField) => {
+    const next = draftLabel.trim();
+    if (!next) return;
+    update.mutate(
+      { id: f.id, input: { label: next, inboxIds: draftInboxIds } },
+      {
+        onSuccess: () => { setEditingId(null); onToast("Field updated"); },
+        onError: (err) => onToast(err instanceof Error ? err.message : "Couldn’t update the field"),
+      },
+    );
+  };
+  const setArchived = (f: CustomField, archivedNow: boolean) =>
+    update.mutate(
+      { id: f.id, input: { archived: archivedNow } },
+      {
+        onSuccess: () =>
+          onToast(
+            archivedNow
+              ? `“${f.label}” retired — what was recorded is kept`
+              : `“${f.label}” is back in use`,
+          ),
+        onError: (err) => onToast(err instanceof Error ? err.message : "Couldn’t change the field"),
+      },
+    );
+  const remove = (f: CustomField) => {
+    // Spelled out rather than a bare "are you sure": this destroys recorded
+    // history, and archiving — the reversible thing most people actually want —
+    // is one button to the left.
+    if (
+      !window.confirm(
+        `Delete “${f.label}” and every value recorded against it?\n\n` +
+          `This cannot be undone. To stop it being used while keeping what's already there, retire it instead.`,
+      )
+    ) {
+      return;
+    }
+    del.mutate(f.id, {
+      onSuccess: () => { setEditingId(null); onToast(`“${f.label}” deleted`); },
+      onError: (err) => onToast(err instanceof Error ? err.message : "Couldn’t delete the field"),
+    });
+  };
+
+  const waInboxes = (inboxes.data ?? []).filter((i) => i.type !== "nestchat" || true);
+
+  const Row = ({ f }: { f: CustomField }) => {
+    const editing = editingId === f.id;
+    return (
+      <div className="dtable__row dtable__row--static" key={f.id}>
+        <span className="dcell dcell__t">
+          {editing ? (
+            <input
+              value={draftLabel}
+              onChange={(e) => setDraftLabel(e.target.value)}
+              maxLength={60}
+              autoFocus
+            />
+          ) : (
+            f.label
+          )}
+          {/* The key never changes, so it is shown rather than hidden: it is
+              what goes into somebody's app, and the person who needs to paste
+              it into an SDK call is looking at this row. */}
+          <code className="cfkey">{f.key}</code>
+        </span>
+        <span className="dcell">
+          <span className="tpl-cat">{f.entity === "conversation" ? "Conversation" : "Customer"}</span>
+        </span>
+        <span className="dcell dcell--muted">
+          {FIELD_TYPES.find((t) => t.value === f.type)?.label ?? f.type}
+        </span>
+        <span className="dcell dcell--muted">
+          {editing ? (
+            <div className="checks">
+              {waInboxes.map((i) => (
+                <label key={i.id} className={"check" + (draftInboxIds.includes(i.id) ? " on" : "")}>
+                  <input
+                    type="checkbox"
+                    checked={draftInboxIds.includes(i.id)}
+                    onChange={() =>
+                      setDraftInboxIds((ids) =>
+                        ids.includes(i.id) ? ids.filter((x) => x !== i.id) : [...ids, i.id],
+                      )
+                    }
+                  />
+                  {i.name}
+                </label>
+              ))}
+            </div>
+          ) : f.inboxIds.length ? (
+            waInboxes.filter((i) => f.inboxIds.includes(i.id)).map((i) => i.name).join(", ") ||
+            `${f.inboxIds.length} channel(s)`
+          ) : (
+            "Every channel"
+          )}
+        </span>
+        <span className="dcell dacts">
+          {editing ? (
+            <>
+              <button className="btn-primary" onClick={() => saveEdit(f)}>Save</button>
+              <button className="btn-ghost" onClick={() => setEditingId(null)}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <button className="iconbtn" title="Edit field" onClick={() => startEdit(f)}><EditIcon /></button>
+              <button
+                className="iconbtn"
+                title={f.archived ? "Put back in use" : "Retire — keeps what's recorded"}
+                onClick={() => setArchived(f, !f.archived)}
+              >
+                {f.archived ? <ReopenIcon /> : <SnoozeIcon />}
+              </button>
+              <button className="iconbtn danger" title="Delete field and its values" onClick={() => remove(f)}>
+                <TrashIcon />
+              </button>
+            </>
+          )}
+        </span>
+      </div>
+    );
+  };
+
+  return (
+    <div className="setpane setpane--wide">
+      <div className="setpane__head">
+        <div>
+          <h2>Custom fields <span className="setcount">{live.length}</span></h2>
+          <p>
+            Facts worth recording that aren’t built in — an order number, a booking reference, an
+            account number. They show on the thread or the customer, they’re searchable, and an
+            integration can set them by name.
+          </p>
+        </div>
+      </div>
+
+      <form className="setform" onSubmit={submit}>
+        <div className="setform__grid two">
+          <label className="field">
+            <span>Name</span>
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Order ID"
+              maxLength={60}
+            />
+            <em className="fieldhint">
+              {key ? (
+                <>
+                  Integrations will send it as <code>{key}</code>
+                  {clash ? " — but that name is already taken" : ", and that never changes"}
+                </>
+              ) : (
+                "The name agents read. The key an integration sends is derived from it."
+              )}
+            </em>
+          </label>
+          <label className="field">
+            <span>Belongs to</span>
+            <select value={entity} onChange={(e) => setEntity(e.target.value as CustomFieldEntity)}>
+              <option value="conversation">This conversation</option>
+              <option value="contact">The customer</option>
+            </select>
+            <em className="fieldhint">
+              {entity === "conversation"
+                ? "One value per thread — the order this particular chat is about."
+                : "Follows the person, and shows on every conversation they open."}
+            </em>
+          </label>
+        </div>
+        <div className="setform__grid two">
+          <label className="field">
+            <span>Type</span>
+            <select value={type} onChange={(e) => setType(e.target.value as CustomFieldType)}>
+              {FIELD_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+            <em className="fieldhint">{FIELD_TYPES.find((t) => t.value === type)?.hint}</em>
+          </label>
+          {type === "select" && (
+            <label className="field">
+              <span>Choices</span>
+              <textarea
+                value={options}
+                onChange={(e) => setOptions(e.target.value)}
+                placeholder={"One per line\nRefund\nRedeliver"}
+                rows={3}
+              />
+            </label>
+          )}
+        </div>
+        <div className="setform__foot">
+          <button className="btn-primary" disabled={!canAdd || create.isPending}>
+            <PlusIcon /> Add field
+          </button>
+        </div>
+      </form>
+
+      <div className="dwrap">
+        <div className="dtable dtable--cf">
+          <div className="dtable__head">
+            <span>Name</span>
+            <span>Belongs to</span>
+            <span>Type</span>
+            <span>Channels</span>
+            <span />
+          </div>
+          {live.map((f) => <Row key={f.id} f={f} />)}
+        </div>
+      </div>
+      {live.length === 0 && (
+        <div className="setzero">
+          <p>No custom fields yet. Add one above — an order number is the usual first.</p>
+        </div>
+      )}
+
+      {archived.length > 0 && (
+        <>
+          <div className="setpane__head setpane__head--sub">
+            <div>
+              <h2>Retired <span className="setcount">{archived.length}</span></h2>
+              <p>
+                Not offered on new records, and nothing new can be written to them — but everything
+                already recorded is still there and still searchable.
+              </p>
+            </div>
+          </div>
+          <div className="dwrap">
+            <div className="dtable dtable--cf">
+              {archived.map((f) => <Row key={f.id} f={f} />)}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function LabelsPane({ onToast }: { onToast: (msg: string) => void }) {
   const labels = useLabels();
   const create = useCreateLabel();
@@ -1500,7 +1835,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
  * menu that decides which team answers it.
  */
 /** The tabs the widget's settings are split across. */
-type SettingsSection = "brand" | "words" | "home" | "prechat" | "behaviour";
+type SettingsSection = "brand" | "words" | "home" | "prechat" | "behaviour" | "app";
 
 const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "brand", label: "Brand" },
@@ -1508,6 +1843,7 @@ const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "home", label: "Home" },
   { key: "prechat", label: "Before the chat" },
   { key: "behaviour", label: "Behaviour" },
+  { key: "app", label: "In-app SDK" },
 ];
 
 type WidgetDraft = {
@@ -1515,6 +1851,7 @@ type WidgetDraft = {
   preChat: NestChatPreChat;
   routing: NestChatRouting;
   home: NestChatHome;
+  app: NestChatApp;
 };
 
 /** The text fields, in the order the widget reads them out loud. */
@@ -1560,6 +1897,74 @@ const PRECHAT_FIELDS: Array<{
 ];
 
 /**
+ * Where the SDK should point.
+ *
+ * The web app's own API base, made absolute — it is usually "" (same origin),
+ * which is fine in a browser and useless in a phone. Resolved here rather than
+ * sent by the server because the server only learns its public origin from the
+ * request, and would have to be told it by configuration we do not otherwise
+ * need.
+ */
+function apiOrigin(): string {
+  const configured = import.meta.env.VITE_API_URL ?? "";
+  try {
+    return new URL(configured || "/", window.location.origin).origin;
+  } catch {
+    return window.location.origin;
+  }
+}
+
+/**
+ * The steps an app developer follows, with what is missing called out.
+ *
+ * Numbered rather than prose because it is a checklist somebody works through
+ * once, copying as they go — and the blocked lines are the point: they are the
+ * only items on the page that the person reading it, rather than the developer,
+ * can do anything about.
+ */
+function AppSetupGuide({
+  steps,
+  onToast,
+}: {
+  steps: AppSetupStep[];
+  onToast: (msg: string) => void;
+}) {
+  return (
+    <div className="ncsetup">
+      {steps.map((step, i) => (
+        <div className="ncsetup__step" key={step.title}>
+          <span className="ncsetup__n">{i + 1}</span>
+          <div className="ncsetup__body">
+            <span className="ncsetup__title">{step.title}</span>
+            <p className="ncsetup__text">{step.body}</p>
+            {step.blocked && <p className="ncsetup__todo">{step.blocked}</p>}
+            {step.code && (
+              <>
+                <pre className="ncw__snippet">{step.code}</pre>
+                <div>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(step.code!).then(
+                        () => onToast("Copied"),
+                        () => onToast("Couldn’t copy — select it and copy by hand"),
+                      );
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
  * Settings › NestChat widget.
  *
  * A pane rather than another section of the Edit-channel modal: this is a dozen
@@ -1573,6 +1978,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   const channels = (inboxes.data ?? []).filter((i) => i.type === "nestchat");
   const [selected, setSelected] = useState<string>();
   const inboxId = selected ?? channels[0]?.id;
+  const apiUrl = apiOrigin();
   const settings = useNestchatSettings(inboxId);
   const update = useUpdateNestchat();
 
@@ -1593,6 +1999,20 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   const [tab, setTab] = useState<SettingsSection>("brand");
   const logoRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  /**
+   * The signing secret, held only until this screen goes away.
+   *
+   * Deliberately component state and nothing else: it is returned once, by the
+   * call that mints it, and is never readable again. Putting it anywhere more
+   * durable — a query cache, storage — would be re-inventing the thing that
+   * showing it once is meant to avoid.
+   */
+  const [mintedSecret, setMintedSecret] = useState<string | null>(null);
+  const [rotating, setRotating] = useState(false);
+  /** The pasted service-account JSON. Held only while it is being saved — it is
+   *  write-only at the other end, so there is nothing to read back into it. */
+  const [serviceAccount, setServiceAccount] = useState("");
+  const [savingPush, setSavingPush] = useState(false);
 
   /** Upload a logo and point this channel at it. */
   const pickLogo = async (file: File | undefined) => {
@@ -1656,6 +2076,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
       preChat: data.preChat,
       routing: data.routing,
       home: data.home,
+      app: data.app,
     };
     setSaved((m) => ({ ...m, [data.inboxId]: next }));
     setDrafts((m) => (m[data.inboxId] ? m : { ...m, [data.inboxId]: next }));
@@ -1688,6 +2109,12 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
     if (!draft) return;
     const patch = { [key]: value } as Pick<NestChatHome, K>;
     setSection("home", { ...draft.home, ...patch });
+  };
+
+  const setApp = <K extends keyof NestChatApp>(key: K, value: NestChatApp[K]) => {
+    if (!draft) return;
+    const patch = { [key]: value } as Pick<NestChatApp, K>;
+    setSection("app", { ...draft.app, ...patch });
   };
 
   /** Replace one home card in place. */
@@ -1744,6 +2171,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
             preChat: res.preChat,
             routing: res.routing,
             home: res.home,
+            app: res.app,
           };
           setSaved((m) => ({ ...m, [res.inboxId]: next }));
           setDrafts((m) => ({ ...m, [res.inboxId]: next }));
@@ -2067,6 +2495,312 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                 />
                 Show “Powered by Nest Connect”
               </label>
+            </section>
+
+            {/* The app surface. Same channel as the website above it — same
+                teams, same routing, same words — reached from a phone instead
+                of a page. */}
+            <section className="ncw__group" hidden={tab !== "app"}>
+              <h3>In-app SDK</h3>
+              <p className="fieldhint">
+                Put this same chat inside your own app. It answers into this channel, with the
+                teams and routing you’ve already set — the only differences are the key the app
+                carries and how hard we check who somebody says they are.
+              </p>
+
+              <label className={"check" + (draft.app.enabled ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.app.enabled}
+                  onChange={(e) => setApp("enabled", e.target.checked)}
+                />
+                Let an app open chats on this channel
+              </label>
+
+              {draft.app.enabled && (
+                <>
+                  {/* Only once it's saved: the key is minted server-side when the
+                      surface is turned on, so showing a box before then would be
+                      showing an empty one. */}
+                  {settings.data?.appKey ? (
+                    <label className="field">
+                      <span>App key</span>
+                      <div className="keyrow">
+                        <input readOnly value={settings.data.appKey} onFocus={(e) => e.target.select()} />
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(settings.data!.appKey!);
+                            onToast("App key copied");
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <em className="fieldhint">
+                        Goes in the app. It names this channel and authorises nothing else, so it
+                        is safe in a binary — which is also why it is not proof of who is using it.
+                      </em>
+                    </label>
+                  ) : (
+                    <p className="fieldhint">Save to mint the key this app will carry.</p>
+                  )}
+
+                  <label className="field">
+                    <span>Tag every customer from here</span>
+                    <input
+                      value={draft.app.contactTag}
+                      onChange={(e) => setApp("contactTag", e.target.value)}
+                      placeholder="Ding app"
+                      maxLength={40}
+                    />
+                    <em className="fieldhint">
+                      Added to a customer the first time they chat from this app, so you can tell
+                      where somebody came from. Changing it later affects new customers only —
+                      the old tag is where they actually came from.
+                    </em>
+                  </label>
+
+                  <label className="field">
+                    <span>One conversation per</span>
+                    <select
+                      value={draft.app.threadFieldKey}
+                      onChange={(e) => setApp("threadFieldKey", e.target.value)}
+                    >
+                      <option value="">Customer — one ongoing thread each</option>
+                      {(settings.data?.threadFields ?? []).map((f) => (
+                        <option key={f.key} value={f.key}>{f.label}</option>
+                      ))}
+                    </select>
+                    <em className="fieldhint">
+                      {draft.app.threadFieldKey ? (
+                        <>
+                          Opening the chat for one starts or resumes that one’s thread, so an old
+                          complaint stays separate from tonight’s.
+                        </>
+                      ) : (
+                        <>
+                          Everything a customer sends continues the same conversation. Pick a field
+                          instead — an order number, a booking reference — to give each its own
+                          thread. Only conversation fields are offered; define them under
+                          Organisation › Custom fields.
+                        </>
+                      )}
+                    </em>
+                  </label>
+
+                  <label className="field">
+                    <span>Trusting who they say they are</span>
+                    <select
+                      value={draft.app.identity}
+                      onChange={(e) => setApp("identity", e.target.value as NestChatIdentityMode)}
+                    >
+                      <option value="off">Take it at face value</option>
+                      <option value="optional">Check a signature when there is one</option>
+                      <option value="required">Require a signature</option>
+                    </select>
+                    <em className="fieldhint">
+                      {draft.app.identity === "required" ? (
+                        <>
+                          Names, emails and phone numbers are only trusted when your backend has
+                          signed them. Anything unsigned chats anonymously.
+                        </>
+                      ) : draft.app.identity === "optional" ? (
+                        <>
+                          A step on the way, not a place to stay. Until your backend signs, anyone
+                          who pulls the key out of your app can claim to be any of your customers.
+                        </>
+                      ) : (
+                        <>
+                          Whatever the app sends is believed. Fine while nobody signs in; not once
+                          the app knows who its user is.
+                        </>
+                      )}
+                    </em>
+                  </label>
+
+                  <div className="field">
+                    <span>Signing secret</span>
+                    <div className="keyrow">
+                      <input
+                        readOnly
+                        value={
+                          mintedSecret ??
+                          (settings.data?.hasIdentitySecret ? "•".repeat(32) : "Not set up yet")
+                        }
+                        onFocus={(e) => e.target.select()}
+                      />
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={rotating}
+                        onClick={() => {
+                          if (
+                            settings.data?.hasIdentitySecret &&
+                            !window.confirm(
+                              "Replace the signing secret?\n\nEvery signature made with the old one stops working, so your backend has to be updated at the same moment.",
+                            )
+                          ) {
+                            return;
+                          }
+                          setRotating(true);
+                          api
+                            .rotateNestchatSecret(inboxId!)
+                            .then((r) => {
+                              setMintedSecret(r.secret);
+                              void settings.refetch();
+                              onToast("Copy it now — it isn't shown again");
+                            })
+                            .catch((err: unknown) =>
+                              onToast(
+                                (err instanceof Error && err.message) || "Couldn’t mint a secret",
+                              ),
+                            )
+                            .finally(() => setRotating(false));
+                        }}
+                      >
+                        {settings.data?.hasIdentitySecret ? "Replace" : "Create"}
+                      </button>
+                      {mintedSecret && (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => {
+                            void navigator.clipboard?.writeText(mintedSecret);
+                            onToast("Signing secret copied");
+                          }}
+                        >
+                          Copy
+                        </button>
+                      )}
+                    </div>
+                    <em className="fieldhint">
+                      {mintedSecret ? (
+                        <b>
+                          This is the only time it is shown. Put it in your backend’s environment
+                          now — it cannot be read back.
+                        </b>
+                      ) : (
+                        <>
+                          Your backend signs each user id with this, and we check the signature.
+                          Never ship it inside the app: anything in a binary can be pulled out of
+                          one, and whoever holds this can claim to be any of your customers.
+                        </>
+                      )}
+                    </em>
+                  </div>
+                </>
+              )}
+
+              {draft.app.enabled && (
+                <>
+                  <h3>Notifications</h3>
+                  <p className="fieldhint">
+                    So a reply reaches someone who has closed the app. It goes out through your own
+                    Firebase project, under your app’s name and icon — we never push from ours.
+                  </p>
+
+                  <div className="field">
+                    <span>Firebase service account</span>
+                    <textarea
+                      rows={4}
+                      spellCheck={false}
+                      placeholder={
+                        settings.data?.hasPushCredential
+                          ? "A key is saved. Paste a new one to replace it."
+                          : '{ "type": "service_account", "project_id": … }'
+                      }
+                      value={serviceAccount}
+                      onChange={(e) => setServiceAccount(e.target.value)}
+                    />
+                    <div className="keyrow">
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={savingPush || !serviceAccount.trim()}
+                        onClick={() => {
+                          setSavingPush(true);
+                          api
+                            .setNestchatPushCredential(inboxId!, serviceAccount)
+                            .then(() => {
+                              setServiceAccount("");
+                              void settings.refetch();
+                              onToast("Notifications are set up");
+                            })
+                            .catch((err: unknown) =>
+                              onToast(
+                                (err instanceof Error && err.message) || "Couldn’t save that key",
+                              ),
+                            )
+                            .finally(() => setSavingPush(false));
+                        }}
+                      >
+                        {settings.data?.hasPushCredential ? "Replace key" : "Save key"}
+                      </button>
+                      {settings.data?.hasPushCredential && (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          disabled={savingPush}
+                          onClick={() => {
+                            if (
+                              !window.confirm(
+                                "Turn off notifications for this channel?\n\nCustomers will still get replies when they open the app — they just won’t be told one arrived.",
+                              )
+                            ) {
+                              return;
+                            }
+                            setSavingPush(true);
+                            api
+                              .setNestchatPushCredential(inboxId!, "")
+                              .then(() => {
+                                setServiceAccount("");
+                                void settings.refetch();
+                                onToast("Notifications turned off");
+                              })
+                              .catch((err: unknown) =>
+                                onToast(
+                                  (err instanceof Error && err.message) || "Couldn’t clear that key",
+                                ),
+                              )
+                              .finally(() => setSavingPush(false));
+                          }}
+                        >
+                          Turn off
+                        </button>
+                      )}
+                    </div>
+                    <em className="fieldhint">
+                      Firebase console › Project settings › Service accounts › Generate new private
+                      key. Paste the whole file. Like the signing secret it is stored encrypted and
+                      never shown again — replace it here if it is ever rotated.
+                    </em>
+                  </div>
+                </>
+              )}
+
+              {draft.app.enabled && settings.data && (
+                <>
+                  <h3>Give this to whoever builds the app</h3>
+                  <p className="fieldhint">
+                    Written from this channel’s own settings — the key, the fields it accepts and
+                    what is still missing are the real ones, so it stays right as you change things
+                    above.
+                  </p>
+                  <AppSetupGuide
+                    steps={appSetupGuide({
+                      apiUrl,
+                      appKey: settings.data.appKey,
+                      app: draft.app,
+                      hasIdentitySecret: settings.data.hasIdentitySecret,
+                      hasPushCredential: settings.data.hasPushCredential,
+                      fieldKeys: settings.data.threadFields.map((f) => f.key),
+                    })}
+                    onToast={onToast}
+                  />
+                </>
+              )}
             </section>
 
             <section className="ncw__group" hidden={tab !== "home"}>

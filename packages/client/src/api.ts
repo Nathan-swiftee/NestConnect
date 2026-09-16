@@ -4,6 +4,11 @@ import type {
   Contact,
   ContactDuplicateGroup,
   MergeContactsInput,
+  CreateCustomFieldInput,
+  CustomField,
+  CustomFieldEntity,
+  CustomFieldValue,
+  UpdateCustomFieldInput,
   CreateTemplateInput,
   Template,
   UpdateTemplateInput,
@@ -225,6 +230,14 @@ export const api = {
   rerouteInbox: (id: string) => post<{ moved: number }>(`/inboxes/${id}/reroute`, {}),
   // NestChat: how one channel's widget looks, and the snippet that embeds it.
   nestchatSettings: (inboxId: string) => get<NestChatSettings>(`/settings/nestchat/${inboxId}`),
+  // Mint this channel's app-signing secret and return it once. A POST because
+  // it replaces any existing one — every old signature stops verifying.
+  rotateNestchatSecret: (inboxId: string) =>
+    post<{ secret: string }>(`/settings/nestchat/${inboxId}/identity-secret`, {}),
+  // Save (or clear, with an empty string) the Firebase service account this
+  // channel pushes through. Write-only — the settings only say whether one is set.
+  setNestchatPushCredential: (inboxId: string, serviceAccount: string) =>
+    post<NestChatSettings>(`/settings/nestchat/${inboxId}/push-credential`, { serviceAccount }),
   updateNestchat: (inboxId: string, input: UpdateNestchatInput) =>
     patch<NestChatSettings>(`/settings/nestchat/${inboxId}`, input),
   // settings
@@ -235,6 +248,26 @@ export const api = {
   deleteTeam: (id: string) => del<{ ok: boolean }>(`/settings/teams/${id}`),
   reorderTeams: (orderedIds: string[]) => post<Team[]>("/settings/teams/reorder", { orderedIds }),
 
+  // Custom fields: the org's definitions, and the values on one record.
+  customFields: () => get<CustomField[]>("/custom-fields"),
+  createCustomField: (input: CreateCustomFieldInput) =>
+    post<CustomField>("/custom-fields", input),
+  updateCustomField: (id: string, input: UpdateCustomFieldInput) =>
+    patch<CustomField>(`/custom-fields/${id}`, input),
+  deleteCustomField: (id: string) => del<{ ok: boolean }>(`/custom-fields/${id}`),
+  customFieldValues: (entity: CustomFieldEntity, entityId: string) =>
+    get<CustomFieldValue[]>(`/custom-fields/${entity}/${entityId}`),
+  // Null clears a field. `unknown` names any key the workspace hasn't defined,
+  // so a caller can say so rather than believe a write happened.
+  setCustomFieldValues: (
+    entity: CustomFieldEntity,
+    entityId: string,
+    values: Record<string, string | null>,
+  ) =>
+    post<{ values: CustomFieldValue[]; unknown: string[] }>(
+      `/custom-fields/${entity}/${entityId}`,
+      { values },
+    ),
   labels: () => get<Label[]>("/labels"),
   createLabel: (input: CreateLabelInput) => post<Label>("/labels", input),
   updateLabel: (id: string, input: UpdateLabelInput) => patch<Label>(`/labels/${id}`, input),
@@ -278,9 +311,18 @@ export const api = {
       ...(inboxId ? { inboxId } : {}),
     }),
   // conversations (cursor-paginated — one page per call, never the whole inbox)
-  conversations: (view: string, cursor?: string) =>
+  // `field` narrows the view to threads carrying a custom field — any value, or
+  // one in particular. ANDed with the view, so it only ever shows less.
+  conversations: (
+    view: string,
+    cursor?: string,
+    field?: { key: string; value?: string },
+  ) =>
     get<ConversationPage>(
-      `/conversations?view=${encodeURIComponent(view)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+      `/conversations?view=${encodeURIComponent(view)}` +
+        (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "") +
+        (field?.key ? `&fieldKey=${encodeURIComponent(field.key)}` : "") +
+        (field?.key && field.value ? `&fieldValue=${encodeURIComponent(field.value)}` : ""),
     ),
   // Search across conversations (contact, subject, preview, message body).
   // `view` scopes it to one inbox; without it the search spans everything.

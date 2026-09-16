@@ -29,7 +29,25 @@ export type ChannelType = z.infer<typeof channelTypeSchema>;
  * keeps, not something they own or could prove. It identifies a *browser*, so it
  * unifies a returning visitor with their own history and nothing else.
  */
-export const contactIdentityKindSchema = z.enum(["phone", "email", "wa_id", "nestchat"]);
+export const contactIdentityKindSchema = z.enum([
+  "phone",
+  "email",
+  "wa_id",
+  "nestchat",
+  /**
+   * The id an app's own system knows this person by.
+   *
+   * Unlike `nestchat`, which is a random id a browser keeps and which anyone
+   * who opens a console can rewrite, this one comes from a system that has
+   * already authenticated them — so the same customer on a new phone, or after
+   * reinstalling, is still the same customer with the same history.
+   *
+   * The value is namespaced by channel (see `externalIdentity`): the identity
+   * table is unique on (kind, value) across every org, so two apps that both
+   * start numbering their users at 1 would otherwise be one person.
+   */
+  "external",
+]);
 export type ContactIdentityKind = z.infer<typeof contactIdentityKindSchema>;
 
 /**
@@ -388,6 +406,144 @@ export const labelSchema = z.object({
 });
 export type Label = z.infer<typeof labelSchema>;
 
+/* ---- custom fields ---- */
+
+/**
+ * What a custom field hangs off.
+ *
+ * The distinction is whether the fact follows the person or belongs to one
+ * thread. A loyalty tier is the customer's and should be on every conversation
+ * they ever open; the order a chat is about is that chat's, and putting it on
+ * the contact would mean last week's complaint silently relabelled itself when
+ * they ordered again tonight.
+ */
+export const customFieldEntitySchema = z.enum(["contact", "conversation"]);
+export type CustomFieldEntity = z.infer<typeof customFieldEntitySchema>;
+
+/**
+ * How a value is entered and read back.
+ *
+ * Deliberately few. Every type here is one an agent can be shown a sensible
+ * input for and a search can match on as text; a richer set (currency,
+ * relations, formulas) is a spreadsheet, and the moment a field can compute
+ * something it stops being a fact somebody recorded.
+ */
+export const customFieldTypeSchema = z.enum(["text", "number", "date", "url", "select"]);
+export type CustomFieldType = z.infer<typeof customFieldTypeSchema>;
+
+/** A field key: what an SDK sends, and what never changes once in use. */
+const customFieldKey = z
+  .string()
+  .min(1)
+  .max(40)
+  .regex(/^[a-z][a-z0-9_]*$/, "Use lower-case letters, numbers and underscores; start with a letter");
+
+export const customFieldSchema = z.object({
+  id: z.string(),
+  /** Stable machine name — the identity. The label is the part that may change. */
+  key: customFieldKey,
+  label: z.string().min(1).max(60),
+  type: customFieldTypeSchema.default("text"),
+  entity: customFieldEntitySchema,
+  /** The choices, for `select`. Empty for every other type. */
+  options: z.array(z.string().max(80)).max(50).default([]),
+  /** Which channels offer it. Empty means every channel. */
+  inboxIds: z.array(z.string()).default([]),
+  position: z.number().int().nonnegative().default(0),
+  /** Retired, not deleted: the values already recorded against it are history. */
+  archived: z.boolean().default(false),
+});
+export type CustomField = z.infer<typeof customFieldSchema>;
+
+export const createCustomFieldInputSchema = z.object({
+  key: customFieldKey,
+  label: z.string().min(1).max(60),
+  type: customFieldTypeSchema.default("text"),
+  entity: customFieldEntitySchema,
+  options: z.array(z.string().max(80)).max(50).default([]),
+  inboxIds: z.array(z.string()).default([]),
+});
+export type CreateCustomFieldInput = z.infer<typeof createCustomFieldInputSchema>;
+
+/**
+ * An edit.
+ *
+ * `key` and `entity` are absent on purpose. The key is what an integration
+ * sends and what every recorded value is filed under, so renaming it would
+ * silently orphan the lot; the entity decides which records a value can even
+ * hang off, so changing it would leave values attached to rows of the wrong
+ * kind. Either one is a new field and a deliberate migration of the old one.
+ */
+export const updateCustomFieldInputSchema = z.object({
+  label: z.string().min(1).max(60).optional(),
+  type: customFieldTypeSchema.optional(),
+  options: z.array(z.string().max(80)).max(50).optional(),
+  inboxIds: z.array(z.string()).optional(),
+  position: z.number().int().nonnegative().optional(),
+  archived: z.boolean().optional(),
+});
+export type UpdateCustomFieldInput = z.infer<typeof updateCustomFieldInputSchema>;
+
+/** One recorded value, as the panel and the API exchange it. */
+export const customFieldValueSchema = z.object({
+  fieldId: z.string(),
+  key: customFieldKey,
+  value: z.string(),
+});
+export type CustomFieldValue = z.infer<typeof customFieldValueSchema>;
+
+/**
+ * A write: field key → value, with null to clear.
+ *
+ * Keyed by the field's key rather than its id because the other caller is an
+ * SDK, and an integration should name a field the way its own code does —
+ * `{ order_id: "DG-88412" }` — not by an id it would have to look up first.
+ */
+export const setCustomFieldValuesInputSchema = z.object({
+  values: z.record(z.string().max(500).nullable()),
+});
+export type SetCustomFieldValuesInput = z.infer<typeof setCustomFieldValuesInputSchema>;
+
+/**
+ * How an app's user id is stored as an identity.
+ *
+ * Namespaced by channel: the identity table is unique on (kind, value) across
+ * the whole table, so two apps that both start counting users at 1 would
+ * otherwise resolve to one person.
+ */
+export function externalIdentity(inboxId: string, externalId: string): string {
+  return `${inboxId}:${externalId.trim()}`;
+}
+
+/**
+ * Fold a value for matching.
+ *
+ * Reference numbers are read out over the phone and typed back in whatever
+ * shape the person writing them down prefers, so "dg 88412", "DG-88412" and
+ * "dg88412" have to be the same thing to a search. Only separators go: letters
+ * and digits are the value.
+ */
+export function normalizeCustomFieldValue(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s\-_/.]+/g, "");
+}
+
+/**
+ * The fields that apply to a given channel, in display order.
+ *
+ * An empty `inboxIds` means every channel — the common case, and the one that
+ * must not require an admin to tick every box they own each time they add a
+ * number.
+ */
+export function fieldsForInbox<T extends { inboxIds: string[]; archived: boolean; position: number }>(
+  fields: T[],
+  inboxId: string | null | undefined,
+): T[] {
+  return fields
+    .filter((f) => !f.archived && (!f.inboxIds.length || (inboxId ? f.inboxIds.includes(inboxId) : true)))
+    .slice()
+    .sort((a, b) => a.position - b.position);
+}
+
 /** What a message carries. "text" is the default; the rest imply attachments. */
 export const messageTypeSchema = z.enum([
   "text",
@@ -605,6 +761,18 @@ export type MessagePage = z.infer<typeof messagePageSchema>;
 
 /** Default page sizes shared by the API and the client. */
 export const CONVERSATIONS_PAGE_SIZE = 30;
+
+/**
+ * How many records a custom-field filter will gather before it stops.
+ *
+ * The filter resolves matching records to a list of ids and matches them with
+ * `IN`, which is the right shape for a working set and the wrong one for a
+ * whole table. The cap means a filter over a very large set shows its most
+ * recent slice rather than timing out — a filter you can keep narrowing, not a
+ * spinner. Somewhere past this the answer is a join, which needs the values
+ * table to carry real relations rather than a polymorphic entity id.
+ */
+export const CUSTOM_FIELD_FILTER_MAX = 2000;
 export const MESSAGES_PAGE_SIZE = 40;
 
 /* ------------------------------------------------------------------ */
@@ -1734,6 +1902,52 @@ export const nestchatTeamSchema = z.object({
 export type NestChatTeam = z.infer<typeof nestchatTeamSchema>;
 
 /** What the agent-facing settings pane reads for one NestChat channel. */
+/* ---- the app surface ---- */
+
+/**
+ * How hard this channel checks who somebody says they are.
+ *
+ * `off` takes a name at face value, which is right for a widget on a public
+ * page: nobody has signed in to anything, and the alternative is a chat that
+ * refuses to start. `required` only trusts details carried by a signature this
+ * channel's own secret produced, which is right the moment the client is an app
+ * a customer signs into — the key is in the binary, and without a signature
+ * anyone who extracts it can claim to be any customer on the workspace.
+ *
+ * `optional` is the migration step, and it is deliberately not a permanent
+ * setting: it verifies a signature when one arrives and lets an unsigned
+ * session through, so the app can ship before the backend that signs. A channel
+ * left here indefinitely has all the exposure of `off` and the appearance of
+ * having done something about it, which is why the pane says so.
+ */
+export const nestchatIdentityModeSchema = z.enum(["off", "optional", "required"]);
+export type NestChatIdentityMode = z.infer<typeof nestchatIdentityModeSchema>;
+
+export const nestchatAppSchema = z.object({
+  /** Whether an SDK may open chats on this channel at all. */
+  enabled: z.boolean().default(false),
+  /**
+   * A tag put on every contact this channel creates.
+   *
+   * Editable, and applied at the point a contact is first seen rather than
+   * retroactively: it says where this customer came from, and rewriting it
+   * later would rewrite history rather than record it.
+   */
+  contactTag: z.string().max(40).default(""),
+  /**
+   * The custom field that identifies a thread, by key.
+   *
+   * Set it to an order reference and each order gets its own conversation —
+   * opening the messenger for one finds that order's thread or starts it.
+   * Leave it empty and the customer gets a single ongoing conversation, which
+   * is what a general support channel wants.
+   */
+  threadFieldKey: z.string().max(40).default(""),
+  identity: nestchatIdentityModeSchema.default("optional"),
+});
+export type NestChatApp = z.infer<typeof nestchatAppSchema>;
+export const DEFAULT_NESTCHAT_APP: NestChatApp = nestchatAppSchema.parse({});
+
 export const nestchatSettingsSchema = z.object({
   inboxId: z.string(),
   /** Public id in the embed snippet. Identifies the inbox; authorises nothing. */
@@ -1757,6 +1971,37 @@ export const nestchatSettingsSchema = z.object({
    *  the snippet is correct without the admin knowing where we're hosted. */
   embedUrl: z.string(),
   scriptUrl: z.string(),
+  /** The app surface: whether an SDK may open chats here, and on what terms. */
+  app: nestchatAppSchema,
+  /**
+   * The key that goes in the app binary. Only once the surface is on.
+   *
+   * Separate from `widgetKey` rather than shared, so turning the app off — or
+   * rolling its key after a leak — does not take the website down with it, and
+   * so app traffic can be told from web traffic without asking the client.
+   */
+  appKey: z.string().optional(),
+  /**
+   * Whether an identity secret exists. Never the secret itself.
+   *
+   * It is shown once, at the moment it is minted, and is not readable
+   * afterwards — a settings screen that hands it back on every load is a
+   * settings screen that leaks it to anyone who gets one look at a logged-in
+   * browser.
+   */
+  hasIdentitySecret: z.boolean().default(false),
+  /**
+   * Whether this channel can push to its customers' phones.
+   *
+   * The service account behind it is a credential — stored encrypted, never
+   * read back — so what a settings screen may know is the same thing it may
+   * know about the identity secret: that there is one.
+   */
+  hasPushCredential: z.boolean().default(false),
+  /** Conversation-scoped custom fields, for choosing which one keys a thread. */
+  threadFields: z
+    .array(z.object({ key: z.string(), label: z.string() }))
+    .default([]),
   /** The same faces the widget would show, so the preview shows them too — a
    *  toggle that changes nothing on screen reads as a toggle that didn't work. */
   team: nestchatTeamSchema.optional(),
@@ -1780,6 +2025,10 @@ export const updateNestchatInputSchema = z.object({
   preChat: nestchatPreChatSchema.optional(),
   routing: nestchatRoutingSchema.optional(),
   home: nestchatHomeSchema.optional(),
+  /** Replaced whole, like the others: it is a handful of interdependent
+   *  settings, and a patch that could set `enabled` without saying what
+   *  identity mode it meant would be a surface turned on by accident. */
+  app: nestchatAppSchema.optional(),
 });
 export type UpdateNestchatInput = z.infer<typeof updateNestchatInputSchema>;
 
@@ -1837,6 +2086,55 @@ export const nestchatSessionInputSchema = z.object({
 });
 export type NestChatSessionInput = z.infer<typeof nestchatSessionInputSchema>;
 
+/**
+ * An app opening a session.
+ *
+ * `externalId` is the app's own id for the person, and is what makes history
+ * survive a reinstall. Everything else about them is a claim until a signature
+ * says otherwise — see `userHash`.
+ */
+export const nestchatAppSessionInputSchema = z.object({
+  /** The app's own user id. Absent for somebody who has not signed in. */
+  externalId: z.string().min(1).max(120).optional(),
+  /**
+   * HMAC-SHA256 of `externalId` under the channel's signing secret, hex.
+   *
+   * Made by the app's *backend*, never by the app: the secret cannot be in a
+   * binary, because anything in a binary can be taken out of one. Without it
+   * the name and contact details below are only what the caller typed.
+   */
+  userHash: z.string().max(200).optional(),
+  name: z.string().max(80).optional(),
+  email: z.string().email().max(200).optional(),
+  phone: z.string().max(40).optional(),
+  /**
+   * Custom field values, by key — `{ order_id: "DG-88412" }`.
+   *
+   * Validated against the fields this channel actually offers; anything else is
+   * reported back rather than stored, so a typo in an integration is visible
+   * the day it is written.
+   */
+  fields: z.record(z.string().max(500)).optional(),
+});
+export type NestChatAppSessionInput = z.infer<typeof nestchatAppSessionInputSchema>;
+
+export const nestchatAppSessionSchema = z.object({
+  token: z.string(),
+  hasConversation: z.boolean(),
+  messages: z.array(nestchatMessageSchema),
+  /**
+   * Whether the details sent were actually trusted.
+   *
+   * The app is told, because it is the difference between a chat that reaches
+   * the customer's own record and one that starts an anonymous thread — and an
+   * integrator debugging a signature needs to see which of the two happened.
+   */
+  identified: z.boolean(),
+  /** Field keys this channel has never heard of. */
+  unknownFields: z.array(z.string()).default([]),
+});
+export type NestChatAppSession = z.infer<typeof nestchatAppSessionSchema>;
+
 export const nestchatSessionSchema = z.object({
   visitorId: z.string(),
   /** Bearer for every later visitor call. Scoped to one conversation. */
@@ -1849,8 +2147,75 @@ export const nestchatSessionSchema = z.object({
 });
 export type NestChatSession = z.infer<typeof nestchatSessionSchema>;
 
+/**
+ * What a customer is allowed to attach.
+ *
+ * An allowlist, not a blocklist. This endpoint takes files from strangers and
+ * serves them back from our own domain, so the question is not "is this
+ * dangerous" — it is "do we have a reason to accept it". Photographs of a wrong
+ * order, a screenshot, a receipt, a short clip: yes. An installer, an archive,
+ * a script: no reason, and every reason not to become the place somebody hosts
+ * one.
+ */
+export const NESTCHAT_UPLOAD_TYPES = [
+  "image/",
+  "video/",
+  "audio/",
+  "application/pdf",
+  "text/plain",
+] as const;
+
+/**
+ * Types that look like they belong but are documents a browser runs script
+ * from.
+ *
+ * SVG is the one that matters. It passes any "is it an image" test, renders as
+ * a picture everywhere you would expect a picture, and can carry a `<script>`
+ * — so an SVG uploaded by a stranger and opened inline from our own origin is
+ * stored XSS against whoever opened it. The visitor's own download route forces
+ * an attachment disposition, but an agent's does not, and the agent is the
+ * person this would be aimed at.
+ */
+const NESTCHAT_UPLOAD_DENIED = ["image/svg+xml", "image/svg", "text/xml", "application/xml"];
+
+/** Whether a customer may upload this type. */
+export function nestchatAcceptsUpload(mime: string): boolean {
+  const m = mime.trim().toLowerCase();
+  if (NESTCHAT_UPLOAD_DENIED.includes(m)) return false;
+  return NESTCHAT_UPLOAD_TYPES.some((t) => (t.endsWith("/") ? m.startsWith(t) : m === t));
+}
+
+/** How much a customer may attach at once, and how big one file may be. Lower
+ *  than an agent's: this is an unauthenticated endpoint, and a photo of a cold
+ *  curry does not need 100 MB. */
+export const NESTCHAT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const NESTCHAT_MAX_ATTACHMENTS = 5;
+
+/** What an upload hands back: enough to show a preview, plus the ticket that
+ *  redeems it on send. */
+export const nestchatUploadResultSchema = z.object({
+  /**
+   * The signed claim on a stored file.
+   *
+   * The file's details ride inside it rather than in a database row, so an
+   * upload nobody sends leaves no orphan record — and a client cannot rename,
+   * resize or re-type a file between uploading it and attaching it, because
+   * none of that is theirs to say.
+   */
+  ticket: z.string(),
+  filename: z.string(),
+  mime: z.string(),
+  size: z.number().int().nonnegative(),
+  kind: attachmentKindSchema,
+});
+export type NestChatUploadResult = z.infer<typeof nestchatUploadResultSchema>;
+
 export const nestchatSendInputSchema = z.object({
-  body: z.string().min(1).max(4000),
+  /** Tickets from `POST /nestchat/upload`, in the order they should appear. */
+  attachments: z.array(z.string()).max(NESTCHAT_MAX_ATTACHMENTS).default([]),
+  /** Empty is allowed when something is attached: a photo of what turned up is
+   *  a complete message, and demanding a caption for it is a form. */
+  body: z.string().max(4000).default(""),
   /** The page the widget is embedded on. Recorded as the subject of the thread
    *  this message opens, so the agent can see where the visitor was standing. */
   pageUrl: z.string().max(500).optional(),
@@ -1888,6 +2253,30 @@ export const nestchatTypingInputSchema = z.object({
   preview: z.string().max(TYPING_PREVIEW_MAX).optional(),
 });
 export type NestChatTypingInput = z.infer<typeof nestchatTypingInputSchema>;
+
+/** Where a customer's phone is reachable, registered by the in-app SDK. */
+export const nestchatDeviceInputSchema = z.object({
+  /** The FCM registration token. Long, opaque, and not ours to validate beyond
+   *  a sanity bound — Google changes its shape from time to time and a client
+   *  that cannot register is worse than a token that fails on first send. */
+  token: z.string().min(16).max(1024),
+  platform: z.enum(["ios", "android", "web"]),
+});
+export type NestChatDeviceInput = z.infer<typeof nestchatDeviceInputSchema>;
+
+/**
+ * The Firebase service account a channel pushes through.
+ *
+ * Pasted whole rather than field by field: it is downloaded from the Firebase
+ * console as one JSON file, and asking an admin to pick three keys out of it is
+ * three chances to paste the wrong one. Validated on arrival so a bad paste is
+ * a message on the screen rather than notifications that silently never come.
+ */
+export const nestchatPushCredentialInputSchema = z.object({
+  /** The service-account JSON, or empty to stop pushing on this channel. */
+  serviceAccount: z.string().max(8192),
+});
+export type NestChatPushCredentialInput = z.infer<typeof nestchatPushCredentialInputSchema>;
 
 export const nestchatIdentifyInputSchema = z.object({
   name: z.string().max(80).optional(),
