@@ -5,6 +5,8 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  UploadedFile,
+  UseInterceptors,
   NotFoundException,
   Param,
   Post,
@@ -12,10 +14,13 @@ import {
   Res,
 } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
 import { randomBytes } from "node:crypto";
 import {
   externalIdentity,
+  nestchatAcceptsUpload,
+  NESTCHAT_MAX_UPLOAD_BYTES,
   nestchatAppSessionInputSchema,
   nestchatIdentifyInputSchema,
   nestchatReadInputSchema,
@@ -32,6 +37,7 @@ import {
   type NestChatReadInput,
   type NestChatSendInput,
   type NestChatSession,
+  type NestChatUploadResult,
   type NestChatSessionInput,
   type NestChatStartInput,
   type NestChatStartResult,
@@ -45,6 +51,14 @@ import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { IngestService } from "../ingest.service";
 import { NestChatService } from "./nestchat.service";
 import { VisitorBus } from "./visitor-bus";
+
+/** The subset of a multer file we rely on (avoids an Express.Multer.File dep). */
+interface UploadedFileLike {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+  size: number;
+}
 
 /** Pull the visitor's bearer token off the request. */
 function bearer(header: string | undefined): string | undefined {
@@ -322,6 +336,54 @@ export class NestChatController {
     };
   }
 
+  /**
+   * A customer attaches a file.
+   *
+   * Its own route rather than the agents' upload, which is session-guarded and
+   * has no session to check here. Three things make that safe to expose:
+   *
+   *  - the visitor token scopes it, so only somebody already in a conversation
+   *    can upload at all;
+   *  - the type is checked against an allowlist. This takes files from
+   *    strangers and serves them back from our own domain, so the question is
+   *    not whether a type is dangerous but whether there is any reason to
+   *    accept it — a photo of a wrong order, yes; an installer, no;
+   *  - nothing is written to the database. The file goes to storage and the
+   *    caller gets a signed ticket describing it, redeemed when the message is
+   *    actually sent — so an upload nobody sends leaves no row behind, and the
+   *    client cannot rename or re-type the file on the way.
+   */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post("upload")
+  @UseInterceptors(FileInterceptor("file"))
+  async upload(
+    @Headers("authorization") auth: string | undefined,
+    @UploadedFile() file: UploadedFileLike | undefined,
+  ): Promise<NestChatUploadResult> {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    if (!file?.buffer?.length) throw new BadRequestException("No file uploaded");
+    if (file.size > NESTCHAT_MAX_UPLOAD_BYTES) {
+      throw new BadRequestException("That file is too large — 25 MB is the limit");
+    }
+    if (!nestchatAcceptsUpload(file.mimetype)) {
+      throw new BadRequestException("That kind of file can't be attached here");
+    }
+
+    const stored = await this.media.store(file.buffer, {
+      mime: file.mimetype,
+      // The name is taken from the part and then only ever used as a label. It
+      // is never a path, so the one thing it must not carry is a separator.
+      filename: (file.originalname || "file").replace(/[/\\\r\n"]/g, "_").slice(0, 120),
+    });
+    return {
+      ticket: this.nestchat.signAttachmentTicket(claims.contactId, stored),
+      filename: stored.filename,
+      mime: stored.mime,
+      size: stored.size,
+      kind: stored.kind,
+    };
+  }
+
   /** The visitor writes. Creates the conversation on the first message. */
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post("message")
@@ -341,12 +403,22 @@ export class NestChatController {
     // channel while they were typing.
     const chosen = await this.nestchat.resolveOption(inbox, claims.optionId);
 
+    // Redeemed against the token's own contact, so a ticket is useless to
+    // anybody it was not issued to. A bad one is dropped rather than failing
+    // the send: the words somebody typed are worth more than the photo that
+    // was meant to go with them.
+    const attachments = this.nestchat.redeemAttachmentTickets(claims.contactId, body.attachments);
+    if (!body.body.trim() && !attachments.length) {
+      throw new BadRequestException("Nothing to send");
+    }
+
     const result = await this.ingest.ingestNestChat({
       inbox,
       contact,
       text: body.body,
       pageUrl: body.pageUrl,
       option: chosen ? { label: chosen.option.label, teamId: chosen.teamId } : undefined,
+      attachments,
     });
     // Blocked contact: accepted and dropped. Telling them they're blocked only
     // teaches them to come back with a fresh visitor id.

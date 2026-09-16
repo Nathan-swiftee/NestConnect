@@ -128,6 +128,15 @@ jobs:
       - name: App identity and thread resolution
         run: pnpm check:app-identity
 
+      # Files from people who have not signed in to anything, stored by us and
+      # served back from our own domain. The allowlist is the point: the
+      # question for a type is not whether it is dangerous but whether there is
+      # any reason to accept it. SVG is the trap — it passes every "is it an
+      # image" test, renders as a picture, and can carry a script, so an agent
+      # opening one inline from our origin is stored XSS aimed at them.
+      - name: Customer uploads
+        run: pnpm check:visitor-uploads
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those

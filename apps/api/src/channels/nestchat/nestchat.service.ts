@@ -27,7 +27,7 @@ import {
   type NestChatSettings,
   type User,
 } from "@ding/schemas";
-import { Store } from "../../data/store";
+import { Store, type AttachmentInput } from "../../data/store";
 import { ORG_ID } from "../../data/fixtures";
 import { env } from "../../config/env";
 import { VisitorBus } from "./visitor-bus";
@@ -312,6 +312,45 @@ export class NestChatService {
       await this.store.findByCustomFieldExact(inbox.orgId, "conversation", app.threadFieldKey, value),
     );
     return open.find((c) => matching.has(c.id))?.id;
+  }
+
+  /* ---- attachment tickets ---- */
+
+  /**
+   * A signed claim on a file a customer has just uploaded.
+   *
+   * The file's own details travel inside the ticket rather than in a staged
+   * database row, and that buys two things. An upload nobody goes on to send
+   * leaves no orphan record to reap. And the client cannot rename, resize or
+   * re-type the file between uploading it and attaching it — none of which is
+   * theirs to say, and all of which a raw id would have let them say.
+   *
+   * Scoped to the contact who uploaded it, so a ticket is not something to pass
+   * around, and short-lived because it is redeemed within seconds of being
+   * issued.
+   */
+  signAttachmentTicket(contactId: string, file: AttachmentInput): string {
+    return jwt.sign({ contactId, file }, this.tokenSecret, { expiresIn: "1h" });
+  }
+
+  /** Redeem tickets into attachments, dropping any that aren't this contact's.
+   *  A bad ticket is silently ignored rather than failing the message: the words
+   *  somebody typed are worth more than the photo that went with them. */
+  redeemAttachmentTickets(contactId: string, tickets: string[]): AttachmentInput[] {
+    const out: AttachmentInput[] = [];
+    for (const ticket of tickets) {
+      try {
+        const claims = jwt.verify(ticket, this.tokenSecret) as {
+          contactId?: string;
+          file?: AttachmentInput;
+        };
+        if (claims.contactId !== contactId || !claims.file?.storageKey) continue;
+        out.push(claims.file);
+      } catch {
+        // Expired, forged, or for somebody else. All the same answer.
+      }
+    }
+    return out;
   }
 
   /**

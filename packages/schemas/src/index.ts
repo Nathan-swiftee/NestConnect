@@ -2127,8 +2127,75 @@ export const nestchatSessionSchema = z.object({
 });
 export type NestChatSession = z.infer<typeof nestchatSessionSchema>;
 
+/**
+ * What a customer is allowed to attach.
+ *
+ * An allowlist, not a blocklist. This endpoint takes files from strangers and
+ * serves them back from our own domain, so the question is not "is this
+ * dangerous" — it is "do we have a reason to accept it". Photographs of a wrong
+ * order, a screenshot, a receipt, a short clip: yes. An installer, an archive,
+ * a script: no reason, and every reason not to become the place somebody hosts
+ * one.
+ */
+export const NESTCHAT_UPLOAD_TYPES = [
+  "image/",
+  "video/",
+  "audio/",
+  "application/pdf",
+  "text/plain",
+] as const;
+
+/**
+ * Types that look like they belong but are documents a browser runs script
+ * from.
+ *
+ * SVG is the one that matters. It passes any "is it an image" test, renders as
+ * a picture everywhere you would expect a picture, and can carry a `<script>`
+ * — so an SVG uploaded by a stranger and opened inline from our own origin is
+ * stored XSS against whoever opened it. The visitor's own download route forces
+ * an attachment disposition, but an agent's does not, and the agent is the
+ * person this would be aimed at.
+ */
+const NESTCHAT_UPLOAD_DENIED = ["image/svg+xml", "image/svg", "text/xml", "application/xml"];
+
+/** Whether a customer may upload this type. */
+export function nestchatAcceptsUpload(mime: string): boolean {
+  const m = mime.trim().toLowerCase();
+  if (NESTCHAT_UPLOAD_DENIED.includes(m)) return false;
+  return NESTCHAT_UPLOAD_TYPES.some((t) => (t.endsWith("/") ? m.startsWith(t) : m === t));
+}
+
+/** How much a customer may attach at once, and how big one file may be. Lower
+ *  than an agent's: this is an unauthenticated endpoint, and a photo of a cold
+ *  curry does not need 100 MB. */
+export const NESTCHAT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const NESTCHAT_MAX_ATTACHMENTS = 5;
+
+/** What an upload hands back: enough to show a preview, plus the ticket that
+ *  redeems it on send. */
+export const nestchatUploadResultSchema = z.object({
+  /**
+   * The signed claim on a stored file.
+   *
+   * The file's details ride inside it rather than in a database row, so an
+   * upload nobody sends leaves no orphan record — and a client cannot rename,
+   * resize or re-type a file between uploading it and attaching it, because
+   * none of that is theirs to say.
+   */
+  ticket: z.string(),
+  filename: z.string(),
+  mime: z.string(),
+  size: z.number().int().nonnegative(),
+  kind: attachmentKindSchema,
+});
+export type NestChatUploadResult = z.infer<typeof nestchatUploadResultSchema>;
+
 export const nestchatSendInputSchema = z.object({
-  body: z.string().min(1).max(4000),
+  /** Tickets from `POST /nestchat/upload`, in the order they should appear. */
+  attachments: z.array(z.string()).max(NESTCHAT_MAX_ATTACHMENTS).default([]),
+  /** Empty is allowed when something is attached: a photo of what turned up is
+   *  a complete message, and demanding a caption for it is a form. */
+  body: z.string().max(4000).default(""),
   /** The page the widget is embedded on. Recorded as the subject of the thread
    *  this message opens, so the agent can see where the visitor was standing. */
   pageUrl: z.string().max(500).optional(),
