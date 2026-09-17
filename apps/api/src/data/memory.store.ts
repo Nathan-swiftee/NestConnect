@@ -1916,6 +1916,7 @@ export class MemoryStore extends Store {
       options: input.options,
       inboxIds: input.inboxIds,
       position: this.customFields.length,
+      filterable: input.filterable ?? false,
       archived: false,
     };
     this.customFields.push(field);

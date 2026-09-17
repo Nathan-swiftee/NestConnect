@@ -18,6 +18,10 @@
  *   4. "Has a value" and "has this value" are different questions, and a value
  *      that folds away to nothing is the second one, not the first.
  *   5. However it was typed. `dg 88412` filters to `DG-88412`, like search.
+ *   6. A chip is opt-in. Defining a field and offering a permanent filter for
+ *      it are different decisions, and a row that grows a chip every time
+ *      somebody adds a field is a row nobody reads. Turning the chip off must
+ *      not stop the field being searchable or recordable — only unlisted.
  *
  *     pnpm check:field-filter
  */
@@ -125,6 +129,36 @@ async function main(): Promise<void> {
       `${narrowed.length} of ${plain.size}`,
     );
   }
+
+  console.log("\nWhich fields offer a chip\n");
+  const defined = await store.listCustomFields(ORG_ID);
+  const orderField = defined.find((f) => f.key === "order_id")!;
+  ok(
+    "a field created without asking gets no chip",
+    // The store's own default. The settings form opts new fields in, which is a
+    // choice made there and on purpose; anything created by an integration or a
+    // migration stays out of the row until somebody says otherwise.
+    orderField.filterable === false,
+  );
+
+  await store.updateCustomField(orderField.id, { filterable: true });
+  ok(
+    "turning it on is what puts it there",
+    (await store.listCustomFields(ORG_ID)).find((f) => f.key === "order_id")?.filterable === true,
+  );
+
+  await store.updateCustomField(orderField.id, { filterable: false });
+  ok(
+    "turning it off still filters when asked directly",
+    // The chip is a listing, not a permission. The API must keep answering —
+    // otherwise hiding a chip would quietly break a saved link or an
+    // integration that filters by that key.
+    (await ids({ key: "order_id" })).length === 2,
+  );
+  ok(
+    "and the values are still recorded and still found",
+    (await store.customFieldValues(ORG_ID, "conversation", [north.id])).get(north.id)?.length === 1,
+  );
 
   console.log("\nArchiving a field\n");
   const fields = await store.listCustomFields(ORG_ID);

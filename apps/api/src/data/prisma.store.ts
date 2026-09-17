@@ -2214,6 +2214,7 @@ export class PrismaStore extends Store {
         options: input.options,
         inboxIds: input.inboxIds,
         position: count,
+        filterable: input.filterable ?? false,
       },
     });
     return mapCustomField(row);

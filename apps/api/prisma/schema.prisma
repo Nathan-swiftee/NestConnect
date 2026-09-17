@@ -113,6 +113,13 @@ model CustomField {
   inboxIds String[] @default([])
   /// Display order in the panel, low first.
   position Int     @default(0)
+  /// Whether this field gets a chip in the inbox's filter row.
+  ///
+  /// Opt-in, and off by default, because the two are different questions. A
+  /// field is defined because it is worth recording; a chip is worth its place
+  /// only if people filter by it — and a row that grows a chip every time
+  /// somebody adds a field is a row nobody reads.
+  filterable Boolean @default(false)
   /// Retired rather than deleted: the values already recorded against it are
   /// history, and deleting the definition would silently destroy them.
   archived  Boolean  @default(false)

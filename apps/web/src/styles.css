@@ -1782,8 +1782,8 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .dtable--ppl .dtable__head,.dtable--ppl .dtable__row{grid-template-columns:minmax(180px,2fr) minmax(150px,1.7fr) 110px minmax(120px,1.4fr) 28px}
 .dtable--tpl{--dtable-min:720px}
 .dtable--tpl .dtable__head,.dtable--tpl .dtable__row{grid-template-columns:minmax(150px,1.4fr) 110px 70px 120px minmax(160px,1.8fr) 74px}
-.dtable--cf{--dtable-min:680px}
-.dtable--cf .dtable__head,.dtable--cf .dtable__row{grid-template-columns:minmax(180px,1.6fr) 130px 90px minmax(140px,1.4fr) 112px}
+.dtable--cf{--dtable-min:760px}
+.dtable--cf .dtable__head,.dtable--cf .dtable__row{grid-template-columns:minmax(180px,1.6fr) 130px 90px minmax(140px,1.4fr) 72px 112px}
 /* The key an integration sends. Shown rather than hidden because it is the
    string somebody pastes into an SDK call, and it can never change — the row
    is where they will come looking for it. */
