@@ -14,6 +14,7 @@ import { router } from "expo-router";
 import {
   listTime,
   useConversations,
+  useCustomFields,
   useMarkRead,
   useMarkUnread,
   usePrefetchConversation,
@@ -24,6 +25,7 @@ import {
   useTeams,
   useViews,
 } from "@ding/client";
+import { filterChipFields } from "@ding/schemas";
 import type { Conversation } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
@@ -270,6 +272,15 @@ export default function Inbox() {
   const [view, setView] = useState<string>("inbound");
   const [switcher, setSwitcher] = useState(false);
   const [filter, setFilter] = useState<FilterKey>("all");
+  /**
+   * Narrow the list to threads carrying one custom field.
+   *
+   * Unlike the chips beside it, this is asked of the server rather than applied
+   * to the rows already loaded — an order number is precisely the thing three
+   * hundred rows down, which on a phone is a lot of scrolling to reach a filter
+   * that would have been instant.
+   */
+  const [fieldKey, setFieldKey] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   // Keep typing responsive: the request follows the keystrokes rather than
   // blocking on them.
@@ -284,9 +295,10 @@ export default function Inbox() {
   const session = useSession();
   const views = useViews();
   const teams = useTeams();
-  const list = useConversations(view);
+  const list = useConversations(view, fieldKey ? { key: fieldKey } : undefined);
   // Scoped to the inbox the field is sitting in, as on the web.
   const found = useSearchConversations(search, searching, view);
+  const fields = useCustomFields();
   const { refresh, refreshing } = useRefresh();
 
   // Push: register on every start, and ask once the inbox has something on it.
@@ -409,6 +421,33 @@ export default function Inbox() {
   useEffect(() => {
     if (!filters.some((f) => f.key === filter)) setFilter("all");
   }, [filters, filter]);
+
+  /**
+   * The fields somebody chose to filter by, in Settings › Custom fields.
+   *
+   * Only those: a row that grows a chip every time anybody defines a field is a
+   * row nobody reads, and that goes double on a phone where it also has to
+   * scroll. An archived field is history rather than a filter, whatever its
+   * switch says.
+   *
+   * No counts, deliberately. The chips beside these count the rows already
+   * loaded, which is honest because that is what tapping them filters. This one
+   * asks the server, so its number is unknown until it has been tapped — and a
+   * count that is a guess is worse than no count at all.
+   */
+  const fieldChips = useMemo(() => filterChipFields(fields.data ?? []), [fields.data]);
+
+  // The same rule as the status chips above, and the same reason: a field
+  // switched off in Settings, or retired, must not leave the list narrowed by a
+  // chip that is no longer on screen to turn off.
+  useEffect(() => {
+    if (fieldKey && !fieldChips.some((f) => f.key === fieldKey)) setFieldKey(null);
+  }, [fieldKey, fieldChips]);
+
+  // A field filter belongs to the inbox it was set in. Carried across it shows
+  // a near-empty list under a different inbox's name, which reads as an empty
+  // inbox rather than as a filter still being on.
+  useEffect(() => setFieldKey(null), [view]);
 
   /**
    * Which team each conversation was routed to.
@@ -544,6 +583,18 @@ export default function Inbox() {
               }}
             />
           ))}
+          {fieldChips.map((f) => (
+            <Chip
+              key={f.id}
+              label={f.label}
+              outlined
+              active={f.key === fieldKey}
+              onPress={() => {
+                haptics.select();
+                setFieldKey((k) => (k === f.key ? null : f.key));
+              }}
+            />
+          ))}
         </ScrollView>
       )}
 
@@ -649,11 +700,17 @@ function Chip({
   label,
   count,
   active,
+  outlined,
   onPress,
 }: {
   label: string;
   count?: number;
   active: boolean;
+  /** A custom-field filter rather than one of the status ones beside it.
+   *  Outlined instead of filled, so the two read as two groups rather than one
+   *  row of eight equivalent chips — they answer different questions and one of
+   *  them costs a request. */
+  outlined?: boolean;
   onPress: () => void;
 }) {
   const { c } = useTheme();
@@ -687,7 +744,12 @@ function Chip({
         // search field, and widens the gaps so a thumb between two chips
         // reaches the nearer one instead of neither.
         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        style={{ backgroundColor: active ? c.brandTint : c.surface2 }}
+        style={{
+          backgroundColor: active ? c.brandTint : outlined ? "transparent" : c.surface2,
+          ...(outlined
+            ? { borderWidth: 1, borderColor: active ? c.brandStrong : c.border }
+            : null),
+        }}
         className="flex-row items-center gap-1.5 rounded-full px-4 py-2"
       >
         <Text
