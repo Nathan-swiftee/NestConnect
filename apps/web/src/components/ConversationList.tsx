@@ -90,9 +90,11 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
             : key === "groups"
               ? active.filter((c) => c.channel === "whatsapp_group").length
               : (data ?? []).filter((c) => c.status === "closed").length;
-  // Fields worth offering: the ones an agent could plausibly be looking for a
-  // thread by. An archived one is history, not a filter.
-  const fieldChips = (useCustomFields().data ?? []).filter((f) => !f.archived);
+  // Only the fields somebody chose to filter by, in Settings › Custom fields.
+  // Offering every field was the earlier mistake: a row that grows a chip each
+  // time anybody defines a field stops being a row people read. An archived
+  // field is history rather than a filter, whatever its switch says.
+  const fieldChips = (useCustomFields().data ?? []).filter((f) => f.filterable && !f.archived);
 
   const filters: { key: Filter; label: string; count: number }[] = [
     { key: "all" as Filter, label: "All" },
@@ -118,6 +120,13 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   // a near-empty list under a different inbox's name — which reads as an empty
   // inbox rather than as a filter still being on.
   useEffect(() => setFieldKey(null), [view]);
+
+  // …and the same if the chip itself goes away while it is on — somebody
+  // turning the field off in Settings, or retiring it. Without this the list
+  // stays filtered by a chip that is no longer on screen to turn off.
+  useEffect(() => {
+    if (fieldKey && !fieldChips.some((f) => f.key === fieldKey)) setFieldKey(null);
+  }, [fieldKey, fieldChips]);
 
   // Virtualize the row list so only the visible rows mount, however long the
   // (paginated) list grows. Rows self-measure, so variable heights are fine.

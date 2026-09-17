@@ -1023,7 +1023,11 @@ function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
     e.preventDefault();
     if (!canAdd) return;
     create.mutate(
-      { key, label: label.trim(), type, entity, options: optionList, inboxIds: [] },
+      // Filterable from the start. Somebody defining a field right now has a
+      // reason to look for it, and a toggle they must find afterwards to make
+      // the thing they just made useful is a step with no decision in it. The
+      // switch on its row is how it comes back off.
+      { key, label: label.trim(), type, entity, options: optionList, inboxIds: [], filterable: true },
       {
         onSuccess: () => {
           setLabel("");
@@ -1052,6 +1056,19 @@ function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
       },
     );
   };
+  const setFilterable = (f: CustomField, on: boolean) =>
+    update.mutate(
+      { id: f.id, input: { filterable: on } },
+      {
+        onSuccess: () =>
+          onToast(
+            on
+              ? `“${f.label}” added to the inbox filters`
+              : `“${f.label}” removed from the inbox filters`,
+          ),
+        onError: (err) => onToast(err instanceof Error ? err.message : "Couldn’t change the field"),
+      },
+    );
   const setArchived = (f: CustomField, archivedNow: boolean) =>
     update.mutate(
       { id: f.id, input: { archived: archivedNow } },
@@ -1135,6 +1152,28 @@ function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
           ) : (
             "Every channel"
           )}
+        </span>
+        <span className="dcell">
+          {/* Its own toggle rather than part of the edit form: it is the one
+              setting here somebody changes on a whim — a chip is worth its
+              place this week and clutter the next — and making that a
+              three-click edit is how a filter row stays wrong. */}
+          <button
+            type="button"
+            className={"switch sm" + (f.filterable ? " on" : "")}
+            role="switch"
+            aria-checked={f.filterable}
+            aria-label={`Show “${f.label}” in the inbox filters`}
+            disabled={update.isPending}
+            title={
+              f.filterable
+                ? `“${f.label}” has a chip in the inbox filter row`
+                : `Show “${f.label}” as a chip in the inbox filter row`
+            }
+            onClick={() => setFilterable(f, !f.filterable)}
+          >
+            <span className="switch__dot" />
+          </button>
         </span>
         <span className="dcell dacts">
           {editing ? (
@@ -1245,6 +1284,7 @@ function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
             <span>Belongs to</span>
             <span>Type</span>
             <span>Channels</span>
+            <span title="Show a chip for this field in the inbox's filter row">Filter</span>
             <span />
           </div>
           {live.map((f) => <Row key={f.id} f={f} />)}

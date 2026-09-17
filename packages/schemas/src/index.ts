@@ -450,6 +450,14 @@ export const customFieldSchema = z.object({
   /** Which channels offer it. Empty means every channel. */
   inboxIds: z.array(z.string()).default([]),
   position: z.number().int().nonnegative().default(0),
+  /**
+   * Whether it gets a chip in the inbox's filter row.
+   *
+   * Opt-in, because "worth recording" and "worth a permanent chip" are
+   * different questions — and a row that grows a chip for every field somebody
+   * defines is a row people stop reading.
+   */
+  filterable: z.boolean().default(false),
   /** Retired, not deleted: the values already recorded against it are history. */
   archived: z.boolean().default(false),
 });
@@ -462,6 +470,7 @@ export const createCustomFieldInputSchema = z.object({
   entity: customFieldEntitySchema,
   options: z.array(z.string().max(80)).max(50).default([]),
   inboxIds: z.array(z.string()).default([]),
+  filterable: z.boolean().default(false),
 });
 export type CreateCustomFieldInput = z.infer<typeof createCustomFieldInputSchema>;
 
@@ -480,6 +489,7 @@ export const updateCustomFieldInputSchema = z.object({
   options: z.array(z.string().max(80)).max(50).optional(),
   inboxIds: z.array(z.string()).optional(),
   position: z.number().int().nonnegative().optional(),
+  filterable: z.boolean().optional(),
   archived: z.boolean().optional(),
 });
 export type UpdateCustomFieldInput = z.infer<typeof updateCustomFieldInputSchema>;

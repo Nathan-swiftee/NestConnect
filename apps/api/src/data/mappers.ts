@@ -153,6 +153,7 @@ export function mapCustomField(f: Prisma.CustomFieldGetPayload<object>): CustomF
     options: f.options ?? [],
     inboxIds: f.inboxIds ?? [],
     position: f.position,
+    filterable: f.filterable,
     archived: f.archived,
   };
 }
