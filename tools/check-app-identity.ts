@@ -25,6 +25,7 @@
 import { createHmac } from "node:crypto";
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { mapContact } from "../apps/api/src/data/mappers";
 import { NestChatController } from "../apps/api/src/channels/nestchat/nestchat.controller";
 import { NestChatService } from "../apps/api/src/channels/nestchat/nestchat.service";
 import { VisitorBus } from "../apps/api/src/channels/nestchat/visitor-bus";
@@ -249,6 +250,75 @@ async function main(): Promise<void> {
     // phone, or simply opening the chat tomorrow is the same person.
     priya.length === 1,
     `${priya.length} contact(s)`,
+  );
+
+  console.log("\nReplying to them\n");
+  // The third place `external` had to be taught about, found the same way as
+  // the first two: in production, by somebody trying to use the feature. A
+  // verified app customer is stored under the `external` kind, and a contact's
+  // chat address was read only from `nestchat` — so an agent pressing send was
+  // told the conversation had no address, which was true and no help at all.
+  const signedInContact = (await store.listContacts()).find((c) => c.displayName === "Sam Patel");
+  ok(
+    "a signed-in customer has a chat address",
+    // What the dispatcher addresses a NestChat reply to. Without it the send is
+    // refused before it reaches the channel.
+    Boolean(signedInContact?.visitorId),
+    signedInContact?.visitorId ?? "none",
+  );
+  ok(
+    "and it is the identity they were verified under",
+    signedInContact?.visitorId === externalIdentity(inbox.id, "u_7002"),
+  );
+
+  const anonForReply = (await store.listContacts()).find((c) => c.displayName.startsWith("Visitor"));
+  ok(
+    "an anonymous one still has theirs",
+    // The case that always worked, asserted so widening the lookup cannot
+    // quietly take it away.
+    Boolean(anonForReply?.visitorId),
+  );
+
+  console.log("\nThe same, on the row shape Postgres returns\n");
+  // The assertions above run against the in-memory store, which keeps a
+  // contact's chat address in a field of its own. Production does not: it
+  // derives it from the identity rows, in `mapContact`, and that is the code
+  // that was broken. A check that only exercised the memory store would have
+  // gone on passing while an agent could not reply to a single app customer —
+  // which is exactly what happened.
+  const row = (identities: { kind: string; value: string }[]) =>
+    mapContact({
+      id: "ct_x", orgId: ORG_ID, displayName: "Sam Patel", company: null, avatarColor: null,
+      tags: [], ownerUserId: null, ownerTeamId: null, blocked: false, createdAt: new Date(),
+      identities: identities.map((i, n) => ({
+        id: `ci_${n}`, contactId: "ct_x", orgId: ORG_ID, verified: false,
+        normalizedValue: i.value, ...i,
+      })),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+  ok(
+    "a verified app identity is a chat address",
+    row([{ kind: "external", value: "inbox_1:u_9" }]).visitorId === "inbox_1:u_9",
+  );
+  ok(
+    "an anonymous one still is",
+    row([{ kind: "nestchat", value: "abc123" }]).visitorId === "abc123",
+  );
+  ok(
+    "and where somebody has both, the verified one wins",
+    // Happens when a customer chatted anonymously before signing in and the two
+    // records were merged. Replying should reach them as who they are now.
+    row([
+      { kind: "nestchat", value: "abc123" },
+      { kind: "external", value: "inbox_1:u_9" },
+    ]).visitorId === "inbox_1:u_9",
+  );
+  ok(
+    "a customer with neither has no chat address",
+    // The guard in the dispatcher has to keep meaning something: a WhatsApp-only
+    // contact must not look replyable on live chat.
+    row([{ kind: "phone", value: "+447700900111" }]).visitorId === undefined,
   );
 
   console.log(failed === 0 ? "\nall good\n" : `\n${failed} check(s) failed\n`);
