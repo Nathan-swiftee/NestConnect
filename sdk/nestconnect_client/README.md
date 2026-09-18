@@ -24,6 +24,28 @@ The app key comes from Settings › NestChat widget › In-app SDK, and identifi
 a channel without authorising anything else — safe in a binary, and for the same
 reason not proof of who is using it.
 
+## Platforms
+
+Anywhere Dart runs, browsers included. The transport is chosen at compile time:
+`dart:io`'s `HttpClient` where there is a socket, and the browser's own `fetch`
+and `EventSource` on Flutter web.
+
+That split is a compile-time one because the failure it avoids is a compile
+failure — `dart:io` does not exist in a browser build, so a package that reaches
+for it does not misbehave on web, it refuses to build. CI compiles the package
+for the browser on every push and checks the browser transport is the one that
+came out, because neither of those is something a test run can tell you.
+
+Nothing is needed on the server for web: the chat API already answers
+cross-origin (the embeddable widget runs in an iframe on other people's sites)
+and the stream takes its token in the query string, which is what makes
+`EventSource` usable — a browser gives no way to set a header on one.
+
+One behaviour differs, and deliberately. `registerPushToken` reports the
+platform as `web` in a browser, including on an iPhone: a Flutter web page has
+no APNs address and is not reachable the way an installed app is, so filing it
+under `ios` would file it under an address it does not have.
+
 ## Things worth knowing
 
 **A sent message appears before the network answers**, marked pending, and is

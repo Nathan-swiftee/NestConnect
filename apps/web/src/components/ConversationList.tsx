@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useConversations, useCustomFields, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
+import { filterChipFields } from "@ding/schemas";
 import { listTime, slaCountdown, timeUntil } from "../lib/format";
 import { Avatar } from "./Avatar";
 import { channelMeta, SearchIcon, MenuIcon, CmdIcon, SnoozeIcon, RefreshIcon, ComposeIcon, PanelLeftIcon, MicIcon } from "../lib/icons";
@@ -91,10 +92,9 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
               ? active.filter((c) => c.channel === "whatsapp_group").length
               : (data ?? []).filter((c) => c.status === "closed").length;
   // Only the fields somebody chose to filter by, in Settings › Custom fields.
-  // Offering every field was the earlier mistake: a row that grows a chip each
-  // time anybody defines a field stops being a row people read. An archived
-  // field is history rather than a filter, whatever its switch says.
-  const fieldChips = (useCustomFields().data ?? []).filter((f) => f.filterable && !f.archived);
+  // The rule lives in the schemas package because the phone's list applies the
+  // same one, and two copies of it is how they stop agreeing.
+  const fieldChips = filterChipFields(useCustomFields().data ?? []);
 
   const filters: { key: Filter; label: string; count: number }[] = [
     { key: "all" as Filter, label: "All" },

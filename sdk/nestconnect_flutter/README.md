@@ -76,6 +76,18 @@ FirebaseMessaging.onMessageOpenedApp.listen((m) {
 On Android, create a notification channel with id `nest_messages` — without it
 Android 8+ drops the notification silently.
 
+## Web
+
+Works on Flutter web with no extra setup — the client picks the browser's own
+`fetch` and `EventSource` when compiled for it.
+
+Two things behave differently there, both because a browser tab is not an
+installed app. Notifications register with the platform recorded as `web`, and
+`FirebaseMessaging` on web needs a service worker your app provides, so treat
+push as opt-in rather than assuming it. And a page has no photo library: the
+`onPickFile` you already pass is still the way files get in, and on web that is
+an `<input type="file">` behind whatever picker you use.
+
 ## The look is the channel's
 
 Colours, the greeting, the away message and whether the team's faces show all

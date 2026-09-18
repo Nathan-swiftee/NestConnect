@@ -554,6 +554,29 @@ export function fieldsForInbox<T extends { inboxIds: string[]; archived: boolean
     .sort((a, b) => a.position - b.position);
 }
 
+/**
+ * The fields that get a chip in an inbox's filter row, in display order.
+ *
+ * Shared by the web list and the phone's, because the rule has to be the same
+ * one: two copies of a predicate that must agree is how they stop agreeing.
+ *
+ * Two conditions, and they mean different things. `filterable` is somebody
+ * having decided this field is worth a permanent chip — defining a field and
+ * wanting a filter for it are different decisions, and a row that grows a chip
+ * each time anybody adds a field is a row people stop reading. `archived` is
+ * the field being history: the values recorded against it are kept and remain
+ * searchable, but it is no longer a question the inbox offers, so it must not
+ * offer one — whatever its filter switch was left on.
+ */
+export function filterChipFields<
+  T extends { filterable: boolean; archived: boolean; position: number },
+>(fields: T[]): T[] {
+  return fields
+    .filter((f) => f.filterable && !f.archived)
+    .slice()
+    .sort((a, b) => a.position - b.position);
+}
+
 /** What a message carries. "text" is the default; the rest imply attachments. */
 export const messageTypeSchema = z.enum([
   "text",

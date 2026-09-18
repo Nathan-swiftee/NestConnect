@@ -212,6 +212,28 @@ jobs:
         working-directory: sdk/nestconnect_client
         run: dart test
 
+      # Flutter web. This is a compile check because the failure it guards
+      # against is a compile failure: `dart:io` does not exist in a browser
+      # build, so a package that reaches for it does not misbehave on web — it
+      # refuses to build, in somebody else's app, at the point they add us.
+      # No test run can catch that, which is why this is `compile js` and not
+      # another `dart test`.
+      - name: SDK builds for the browser
+        working-directory: sdk/nestconnect_client
+        run: dart compile js -o /tmp/nest-web-probe.js test/web_compile_probe.dart
+
+      # …and that it picked the browser transport rather than quietly falling
+      # through to the stub. The io one would have failed the step above, but a
+      # stub compiles perfectly and would leave web builds with a package that
+      # throws the moment anybody opens the chat.
+      - name: SDK web build uses the browser transport
+        run: |
+          for symbol in EventSource FormData fetch; do
+            grep -q "$symbol" /tmp/nest-web-probe.js \
+              || { echo "::error::$symbol missing — web build is not using the browser transport"; exit 1; }
+          done
+          echo "Browser transport present: EventSource, FormData, fetch"
+
       # The widgets. Flutter rather than Dart, and its own step because the
       # toolchain is a different (much larger) install — worth it: these render
       # the messenger against a real server on loopback, so what is exercised is

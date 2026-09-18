@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'models.dart';
+import 'platform.dart';
 import 'store.dart';
 import 'transport.dart';
 
@@ -291,7 +291,7 @@ class NestConnect {
   /// what an app does on every launch, and necessary when Firebase rotates it.
   Future<void> registerPushToken(String token, {String? platform}) async {
     _pushToken = token;
-    _pushPlatform = platform ?? _defaultPlatform();
+    _pushPlatform = platform ?? defaultPushPlatform();
     await _registerPush();
   }
 
@@ -321,7 +321,7 @@ class NestConnect {
     try {
       await _transport.postJson('/device/forget', {
         'token': push,
-        'platform': _pushPlatform ?? _defaultPlatform(),
+        'platform': _pushPlatform ?? defaultPushPlatform(),
       }, token: session);
     } on NestException {
       // The server forgets it on its own once FCM reports the address dead.
@@ -335,19 +335,13 @@ class NestConnect {
     try {
       await _transport.postJson('/device', {
         'token': push,
-        'platform': _pushPlatform ?? _defaultPlatform(),
+        'platform': _pushPlatform ?? defaultPushPlatform(),
       }, token: session);
     } on NestException {
       // Not fatal and not worth a retry loop: the next session registers it
       // again, and a chat that works without notifications beats one that
       // refuses to open because a notification could not be arranged.
     }
-  }
-
-  String _defaultPlatform() {
-    if (Platform.isIOS || Platform.isMacOS) return 'ios';
-    if (Platform.isAndroid) return 'android';
-    return 'web';
   }
 
   Future<void> _markRead(String status) async {
