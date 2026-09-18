@@ -1,9 +1,19 @@
 /// The client, driven against a real HTTP server.
 ///
 /// A fake transport would test that the client calls methods we wrote, which is
-/// a tautology. This stands up an actual `HttpServer` speaking the shapes the
-/// API speaks, so what is under test is the thing that matters: whether this
-/// package and that server agree.
+/// a tautology. This stands up an actual `HttpServer` — but that alone was not
+/// enough, and it is worth saying why, because this file once passed for months
+/// while agent replies were dropped in production.
+///
+/// The fake server's events had been written from what the client expected
+/// rather than from what the server sends. Both said `type` and `message`; the
+/// real API says `kind` and `payload`. Two halves agreeing with each other and
+/// neither with production is a tautology too — a longer one, wearing a real
+/// socket.
+///
+/// So the stream events here are replayed from sdk/contract/visitor-events.json,
+/// the same file tools/check-visitor-events.ts holds the real server to. Neither
+/// side owns it, and a key renamed in either place breaks a build.
 library;
 
 import 'dart:async';
@@ -12,6 +22,28 @@ import 'dart:io';
 
 import 'package:nestconnect_client/nestconnect_client.dart';
 import 'package:test/test.dart';
+
+/// One event from the shared contract, as a fresh mutable copy.
+///
+/// Read from the file rather than transcribed into this test: transcribing is
+/// precisely how the shape drifted from the server's in the first place.
+Map<String, Object?> contractEvent(String kind) {
+  final file = File('../contract/visitor-events.json');
+  if (!file.existsSync()) {
+    throw StateError(
+      'Missing ${file.absolute.path}. The visitor-event contract is shared with '
+      'the API and this test cannot speak for the server without it.',
+    );
+  }
+  final all = jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
+  final event = all[kind];
+  if (event is! Map<String, Object?>) {
+    throw StateError('The contract has no "$kind" event. Kinds: ${all.keys.where((k) => !k.startsWith(r'$')).join(', ')}');
+  }
+  // Deep copy: a test that edited the loaded map would change what every later
+  // test in this file sees.
+  return jsonDecode(jsonEncode(event)) as Map<String, Object?>;
+}
 
 /// A stand-in for the NestChat API, recording what it was asked.
 class FakeServer {
@@ -132,19 +164,18 @@ class FakeServer {
     unawaited(req.response.close());
   }
 
-  /// Play an agent replying.
-  void agentSays(String id, String text) => _events.add(
-        'data: ${jsonEncode({
-              'type': 'message',
-              'message': {
-                'id': id,
-                'from': 'agent',
-                'body': text,
-                'at': DateTime.now().toIso8601String(),
-                'authorName': 'Nathan',
-              },
-            })}\n\n',
-      );
+  /// Play an agent replying — in the server's own shape, not ours.
+  void agentSays(String id, String text) {
+    final event = contractEvent('message');
+    (event['payload']! as Map<String, Object?>)
+      ..['id'] = id
+      ..['body'] = text
+      ..['at'] = DateTime.now().toIso8601String();
+    _events.add('data: ${jsonEncode(event)}\n\n');
+  }
+
+  /// Play an agent closing the chat, or reopening it.
+  void agentSetsStatus(String kind) => _events.add('data: ${jsonEncode(contractEvent(kind))}\n\n');
 
   Future<void> stop() async {
     await _events.close();
@@ -330,6 +361,38 @@ void main() {
     await chat.login(userId: 'u_2');
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(server.requests.where((r) => r.endsWith('/device')).length, 2);
+  });
+
+  test('an agent closing the chat reaches the app, and reopening it does too', () async {
+    // A live stream is what carries these, and one only opens for a session
+    // that already has a conversation.
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(chat.isClosed, isFalse);
+
+    // Both of these were dropped for the life of the package, alongside every
+    // reply, because the client read a key the server does not send.
+    server.agentSetsStatus('closed');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(chat.isClosed, isTrue);
+
+    // And closing must not be a one-way door: an agent who reopens a thread has
+    // deliberately invited the customer back into it.
+    server.agentSetsStatus('reopened');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(chat.isClosed, isFalse);
+  });
+
+  test('the contract is the server\'s, not ours', () async {
+    // The guard on the whole arrangement. If somebody "fixes" a future mismatch
+    // by editing the fixture to match the client, this fails — and the check on
+    // the API side fails too, which is the point of neither side owning it.
+    final event = contractEvent('message');
+    expect(event.keys, containsAll(<String>['kind', 'payload']));
+    expect(event.containsKey('type'), isFalse);
+    expect(event.containsKey('message'), isFalse);
+    expect((event['payload']! as Map).keys, containsAll(<String>['id', 'from', 'body', 'at']));
   });
 
   test('sending without a session refuses rather than guessing', () async {

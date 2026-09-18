@@ -25,6 +25,7 @@
     "check:visitor-uploads": "tsx --tsconfig apps/api/tsconfig.json tools/check-visitor-uploads.ts",
     "check:customer-push": "tsx --tsconfig apps/api/tsconfig.json tools/check-customer-push.ts",
     "check:field-filter": "tsx --tsconfig apps/api/tsconfig.json tools/check-field-filter.ts",
+    "check:visitor-events": "tsx --tsconfig apps/api/tsconfig.json tools/check-visitor-events.ts",
     "check:2fa-gate": "tsx --tsconfig apps/api/tsconfig.json tools/check-2fa-gate.ts",
     "check:hooks": "node tools/check-hook-order.mjs",
     "lint": "turbo run lint",

@@ -82,6 +82,15 @@ class NestConnect {
   /// Whether we have a session at all.
   bool get isOpen => _token != null;
 
+  /// Whether an agent has closed this chat.
+  ///
+  /// Exposed because otherwise the `closed` event lands and means nothing: it
+  /// stops the stream reconnecting and that is all, so a customer sits in front
+  /// of a live-looking composer typing into a conversation nobody is watching.
+  /// The web widget has always said so and stopped taking messages; a UI on top
+  /// of this can now do the same.
+  bool get isClosed => _closed;
+
   /// Say who this is.
   ///
   /// Calling it with a different user than last time throws the old session
@@ -380,9 +389,16 @@ class NestConnect {
     if (generation != _generation) return;
     // Connected: any earlier backoff is history.
     _attempt = 0;
-    switch (event['type']) {
+    // `kind` and `payload`, because that is what the server sends — see
+    // `VisitorEvent` in the API and the fixture both sides now assert against.
+    // This read `type` and `message` for its whole life, which meant every
+    // agent reply was parsed out of a key that was never there and silently
+    // dropped. The test did not catch it because its fake server was written
+    // from this switch rather than from the server, so the two agreed with each
+    // other and neither agreed with production.
+    switch (event['kind']) {
       case 'message':
-        final message = NestMessage.tryParse(event['message']);
+        final message = NestMessage.tryParse(event['payload']);
         if (message == null) break;
         // The server echoes our own messages back. Ours are already in the
         // thread, and adding them again would double every line somebody sent.
@@ -400,6 +416,11 @@ class NestConnect {
         }
       case 'closed':
         _closed = true;
+      case 'reopened':
+        // The other half of the pair. Without it `closed` is a one-way door:
+        // an agent reopening a thread would leave the app refusing to send
+        // into a conversation the business had deliberately opened again.
+        _closed = false;
     }
   }
 
