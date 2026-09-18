@@ -120,6 +120,8 @@ class NestAppearance {
     required this.headline,
     required this.placeholder,
     required this.awayMessage,
+    required this.closedMessage,
+    required this.newChatLabel,
     required this.showBranding,
     this.logoUrl,
   });
@@ -131,6 +133,11 @@ class NestAppearance {
   final String headline;
   final String placeholder;
   final String awayMessage;
+  /// What the business says when an agent closes a chat. Blank on purpose is a
+  /// real choice: some would rather the chat simply stop than announce it.
+  final String closedMessage;
+  /// The way back in, once a chat has been closed.
+  final String newChatLabel;
   final bool showBranding;
   final String? logoUrl;
 
@@ -142,6 +149,8 @@ class NestAppearance {
     headline: '',
     placeholder: 'Write a message…',
     awayMessage: "We're away — leave a message and we'll reply.",
+    closedMessage: 'This chat has been closed. Thanks for getting in touch!',
+    newChatLabel: 'Start a new chat',
     showBranding: true,
   );
 
@@ -155,6 +164,14 @@ class NestAppearance {
       headline: _str(raw['headline']) ?? fallback.headline,
       placeholder: _str(raw['placeholder']) ?? fallback.placeholder,
       awayMessage: _str(raw['awayMessage']) ?? fallback.awayMessage,
+      // `_str` treats '' as absent, which is right for a title and wrong here:
+      // the settings pane documents a blank closing message as a real choice —
+      // the chat simply stops rather than announcing that it has — so an empty
+      // string has to survive instead of being replaced by the default.
+      closedMessage: raw['closedMessage'] is String
+          ? raw['closedMessage']! as String
+          : fallback.closedMessage,
+      newChatLabel: _str(raw['newChatLabel']) ?? fallback.newChatLabel,
       showBranding: raw['showBranding'] is bool
           ? raw['showBranding'] as bool
           : fallback.showBranding,

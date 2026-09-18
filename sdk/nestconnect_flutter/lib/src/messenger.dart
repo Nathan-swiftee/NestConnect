@@ -44,6 +44,8 @@ class _NestMessengerState extends State<NestMessenger> {
   final _scroll = ScrollController();
   final _staged = <NestUpload>[];
   StreamSubscription<List<NestMessage>>? _sub;
+  StreamSubscription<bool>? _closedSub;
+  bool _restarting = false;
   Timer? _typing;
   bool _sending = false;
   bool _attaching = false;
@@ -55,6 +57,12 @@ class _NestMessengerState extends State<NestMessenger> {
     _sub = widget.chat.onMessages.listen((_) {
       if (mounted) setState(_scrollToEnd);
     });
+    // Its own subscription because nothing else moves when a chat closes: no
+    // message arrives, so watching the thread would never rebuild and the
+    // composer would sit there looking live.
+    _closedSub = widget.chat.onClosed.listen((_) {
+      if (mounted) setState(() {});
+    });
     // On screen: zeroes the badge, and turns the agent's ticks from delivered
     // to read — a different claim, and the only one worth showing them as read.
     unawaited(widget.chat.setViewing(true));
@@ -65,6 +73,7 @@ class _NestMessengerState extends State<NestMessenger> {
   void dispose() {
     _typing?.cancel();
     unawaited(_sub?.cancel());
+    unawaited(_closedSub?.cancel());
     unawaited(widget.chat.setViewing(false));
     _composer.dispose();
     _scroll.dispose();
@@ -131,6 +140,23 @@ class _NestMessengerState extends State<NestMessenger> {
     });
   }
 
+  Future<void> _startNewChat() async {
+    setState(() {
+      _restarting = true;
+      _error = null;
+    });
+    try {
+      await widget.chat.startNewChat();
+      // Anything staged belonged to the conversation that just ended; carrying
+      // it into a new one would attach it to a thread nobody chose it for.
+      if (mounted) setState(_staged.clear);
+    } on NestException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _restarting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final config = widget.chat.config;
@@ -186,16 +212,25 @@ class _NestMessengerState extends State<NestMessenger> {
               files: _staged,
               onRemove: (upload) => setState(() => _staged.remove(upload)),
             ),
-          _Composer(
-            controller: _composer,
-            theme: theme,
-            placeholder: appearance.placeholder,
-            sending: _sending,
-            attaching: _attaching,
-            onAttach: widget.onPickFile == null ? null : _attach,
-            onSend: _send,
-            onChanged: _onTyped,
-          ),
+          if (widget.chat.isClosed)
+            _ClosedNotice(
+              theme: theme,
+              message: appearance.closedMessage,
+              newChatLabel: appearance.newChatLabel,
+              busy: _restarting,
+              onNewChat: _startNewChat,
+            )
+          else
+            _Composer(
+              controller: _composer,
+              theme: theme,
+              placeholder: appearance.placeholder,
+              sending: _sending,
+              attaching: _attaching,
+              onAttach: widget.onPickFile == null ? null : _attach,
+              onSend: _send,
+              onChanged: _onTyped,
+            ),
           if (appearance.showBranding)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -459,6 +494,85 @@ class _Composer extends StatelessWidget {
                   )
                 : Icon(Icons.send_rounded, color: theme.accent),
             tooltip: 'Send',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What stands where the composer was, once an agent has closed the chat.
+///
+/// Two jobs, and the second is the one that matters. It says the conversation
+/// has ended — in the business's own words, because "closed" means a resolved
+/// ticket to one and an ended shift to another — and it offers the way back in.
+/// Without that button this is a dead end: the customer has been told the chat
+/// is over and given nothing to do about it, on a screen whose only other
+/// control is the one that dismisses it.
+///
+/// It replaces the composer rather than disabling it. A greyed-out text field
+/// invites a tap and then refuses it, which reads as the app being broken
+/// rather than as the conversation being finished.
+class _ClosedNotice extends StatelessWidget {
+  const _ClosedNotice({
+    required this.theme,
+    required this.message,
+    required this.newChatLabel,
+    required this.busy,
+    required this.onNewChat,
+  });
+
+  final NestTheme theme;
+
+  /// The business's closing words. Deliberately blank for some of them — the
+  /// chat simply stops rather than announcing that it has — so an empty string
+  /// is a layout with no paragraph, not a paragraph with no text.
+  final String message;
+  final String newChatLabel;
+  final bool busy;
+  final VoidCallback onNewChat;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = newChatLabel.trim().isEmpty ? 'Start a new chat' : newChatLabel;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(16, 14, 16, 14 + MediaQuery.of(context).viewInsets.bottom),
+      decoration: BoxDecoration(
+        color: theme.surface,
+        border: Border(top: BorderSide(color: theme.line)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (message.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: theme.muted, fontSize: 13, height: 1.4),
+              ),
+            ),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: busy ? null : onNewChat,
+              style: FilledButton.styleFrom(
+                backgroundColor: theme.accent,
+                foregroundColor: theme.onAccent,
+                // 44pt, so it is a target rather than a thing to aim at — this
+                // is the only way forward on the screen.
+                minimumSize: const Size.fromHeight(44),
+              ),
+              child: busy
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: theme.onAccent),
+                    )
+                  : Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
           ),
         ],
       ),

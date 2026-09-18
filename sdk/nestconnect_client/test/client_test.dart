@@ -384,6 +384,58 @@ void main() {
     expect(chat.isClosed, isFalse);
   });
 
+  test('closing is announced, so a UI can react to it', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    final seen = <bool>[];
+    chat.onClosed.listen(seen.add);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    server.agentSetsStatus('closed');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    // A getter alone would leave a widget with nothing to rebuild on: no
+    // message arrives when a chat closes, so the thread stream never fires.
+    expect(seen, [true]);
+
+    server.agentSetsStatus('reopened');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(seen, [true, false]);
+  });
+
+  test('the same state twice is announced once', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    final seen = <bool>[];
+    chat.onClosed.listen(seen.add);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    server.agentSetsStatus('closed');
+    server.agentSetsStatus('closed');
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    // Two agents closing the same thread, or a reconnect replaying it. A UI
+    // that rebuilt on every repeat would flicker for no reason.
+    expect(seen, [true]);
+  });
+
+  test('a new chat clears the thread but keeps the person', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    server.agentSays('m_1', 'All sorted!');
+    server.agentSetsStatus('closed');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(chat.messages, isNotEmpty);
+    expect(chat.isClosed, isTrue);
+
+    await chat.startNewChat();
+    expect(chat.messages, isEmpty);
+    expect(chat.isClosed, isFalse);
+    expect(chat.unread, 0);
+    // Still signed in: this is the same customer starting another conversation,
+    // not somebody signing out. Their history and their push registration stay.
+    expect(chat.isOpen, isTrue);
+  });
+
   test('the contract is the server\'s, not ours', () async {
     // The guard on the whole arrangement. If somebody "fixes" a future mismatch
     // by editing the fixture to match the client, this fails — and the check on
