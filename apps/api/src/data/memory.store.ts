@@ -118,6 +118,16 @@ function identityField(kind: ContactIdentityKind): {
 } {
   if (kind === "email") return { field: "email", matchAs: "email" };
   if (kind === "nestchat") return { field: "visitorId", matchAs: "nestchat" };
+  // A signed-in app user. Shares the opaque-id field with a NestChat visitor —
+  // both are a channel-scoped handle rather than a way to reach somebody — but
+  // matched as itself, because the two normalise differently and must not be
+  // mistaken for one another.
+  //
+  // It fell through to `phone` until this was written, which is the exact
+  // failure the note above describes: an app user's id filed as a phone number,
+  // and — because an `inbox:uid` string normalises to nothing as a number — a
+  // fresh contact every single time they signed in.
+  if (kind === "external") return { field: "visitorId", matchAs: "external" };
   return { field: "phone", matchAs: "phone" };
 }
 
