@@ -658,6 +658,16 @@ export class NestChatController {
     const claims = this.nestchat.verifyVisitorToken(bearer(auth));
     const inbox = await this.store.getInbox(claims.inboxId);
     if (!inbox) throw new NotFoundException("Channel not found");
+    // A token outlives the contact it names — the customer was merged into
+    // another record, or deleted. The row cannot be written (the foreign key
+    // says so) and that used to surface as a 500 on an endpoint the app calls
+    // at every launch, which reads as the whole chat being down rather than as
+    // one stale registration. Nothing is lost by declining it: the next
+    // session mints a token naming a contact that exists, and the SDK offers
+    // its push address again.
+    if (!(await this.store.getContact(claims.contactId))) {
+      return { ok: false, reason: "stale_session" };
+    }
     await this.store.registerCustomerDevice({
       orgId: inbox.orgId,
       contactId: claims.contactId,

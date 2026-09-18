@@ -224,6 +224,33 @@ async function main(): Promise<void> {
   ok("the email is recorded", known?.email === "sam@example.com");
   ok("and they are tagged too", known?.tags.includes("Ding app") === true);
 
+  console.log("\nThe same person, twice\n");
+  // The one that was missing, and it took production down for the app channel.
+  // A verified user is stored under the `external` identity kind, and the
+  // contact lookup matched on `phone`/`wa_id` for anything it did not recognise
+  // — so the second login never found the first, tried to insert a duplicate,
+  // and threw. Every check here passed throughout, because none of them logged
+  // the same person in twice.
+  const againA = await controller.appSession(appKey, {
+    externalId: "u_7003",
+    userHash: sign(rolled, "u_7003"),
+    name: "Priya Shah",
+  });
+  const againB = await controller.appSession(appKey, {
+    externalId: "u_7003",
+    userHash: sign(rolled, "u_7003"),
+    name: "Priya Shah",
+  });
+  ok("signing in again works at all", againA.identified && againB.identified);
+  const priya = (await store.listContacts()).filter((c) => c.displayName === "Priya Shah");
+  ok(
+    "and resumes the same customer rather than forking one",
+    // The whole point of keying on the app's own user id: a reinstall, a new
+    // phone, or simply opening the chat tomorrow is the same person.
+    priya.length === 1,
+    `${priya.length} contact(s)`,
+  );
+
   console.log(failed === 0 ? "\nall good\n" : `\n${failed} check(s) failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 }

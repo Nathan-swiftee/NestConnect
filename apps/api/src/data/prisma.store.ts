@@ -1865,11 +1865,19 @@ export class PrismaStore extends Store {
     // A phone number can arrive as either `phone` or `wa_id` — match across both
     // so we don't fork one customer into two contacts (mirrors setIdentity).
     // phone and wa_id are the same number in two notations, so they match each
-    // other; email and a NestChat visitor id each match only themselves.
-    const matchKinds =
-      params.kind === "email" || params.kind === "nestchat"
-        ? [params.kind]
-        : ["phone", "wa_id"];
+    // other; everything else matches only itself.
+    //
+    // Listed as "which kinds pair up" rather than "which are on their own",
+    // because the previous spelling made *self-matching* the special case and
+    // the pair the default. `external` was added for the in-app SDK and fell
+    // into the default, so a signed-in app user was looked up among phone
+    // numbers: never found, re-created on every login, and from the second one
+    // onwards a unique-constraint violation that surfaced as a 500 on the
+    // session endpoint. Anonymous sessions were unaffected — `nestchat` was in
+    // the list — which is why this only appeared the day an app started
+    // signing its users.
+    const PAIRED = ["phone", "wa_id"];
+    const matchKinds = PAIRED.includes(params.kind) ? PAIRED : [params.kind];
     // Match on the CANONICAL value (scoped to the org): "+44 7911…", "07911…"
     // and WhatsApp's "447911…" all resolve to one contact.
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
@@ -1904,7 +1912,7 @@ export class PrismaStore extends Store {
         include: { identities: true },
       });
       return mapContact(contact);
-    } catch {
+    } catch (err) {
       // Concurrent webhook raced us to the same identity (global [kind,value]
       // unique) — re-fetch and return the contact that won.
       const raced = await this.prisma.contactIdentity.findFirst({
@@ -1912,7 +1920,18 @@ export class PrismaStore extends Store {
         include: { contact: { include: { identities: true } } },
       });
       if (raced) return mapContact(raced.contact);
-      throw new Error("Failed to create or resolve contact identity");
+      // One more look, on the exact row the unique index is over. The lookup
+      // above searches `matchKinds` and a normalized value; if those disagree
+      // with what is actually stored — which is the mistake that caused this —
+      // the re-fetch misses and a working contact is reported as a failure.
+      const exact = await this.prisma.contactIdentity.findFirst({
+        where: { kind: params.kind, value: params.value },
+        include: { contact: { include: { identities: true } } },
+      });
+      if (exact) return mapContact(exact.contact);
+      // The original cause, not a sentence replacing it. Swallowing it is what
+      // turned a one-line constraint violation into an afternoon.
+      throw new Error(`Failed to create or resolve contact identity: ${String(err)}`);
     }
   }
 
