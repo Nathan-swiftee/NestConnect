@@ -13,6 +13,14 @@ environment:
 # a dependency every one of those inherits, and `http` buys us very little over
 # `HttpClient` — while `dart:io` alone means the package has no version
 # constraints to conflict with whatever the host app already uses.
+# One exception, and only for the browser build: `package:web` is the Dart
+# team's own binding to the DOM, has no transitive dependencies of its own, and
+# replaces `dart:html` — which still works but is deprecated and does not
+# compile to wasm. Shipping an SDK on an API with an end date is the kind of
+# thing you pay for later, in somebody else's build.
+dependencies:
+  web: ^1.1.0
+
 dev_dependencies:
   test: ^1.25.0
   lints: ^4.0.0
