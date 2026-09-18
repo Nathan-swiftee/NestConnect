@@ -25,6 +25,7 @@
 import { createHmac } from "node:crypto";
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { NestChatController } from "../apps/api/src/channels/nestchat/nestchat.controller";
 import { NestChatService } from "../apps/api/src/channels/nestchat/nestchat.service";
 import { VisitorBus } from "../apps/api/src/channels/nestchat/visitor-bus";
 import { DEFAULT_NESTCHAT_APP, externalIdentity } from "../packages/schemas/src/index";
@@ -154,6 +155,74 @@ async function main(): Promise<void> {
   await nestchat.applyContactTag(contact.id, "Website");
   tagged = await store.getContact(contact.id);
   ok("and a second channel adds rather than replaces", tagged?.tags.includes("Ding app") === true && tagged?.tags.includes("Website") === true);
+
+  /* ---- the endpoint, not the pieces ---- */
+
+  console.log("\nWhat a real session actually writes\n");
+  // Driven through the controller rather than the service. Every assertion
+  // above passed while the endpoint was dropping the channel's tag on the
+  // floor: the units were right and the wiring was not, which is precisely the
+  // gap a check on the pieces cannot see. `appSession` touches only the two
+  // dependencies given here; the other four are for routes this does not call.
+  const controller = new NestChatController(
+    nestchat,
+    store,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+    undefined as never,
+  );
+  const appKey = await nestchat.ensureAppKey(inbox.id);
+
+  const unsigned = await controller.appSession(appKey, {
+    externalId: "u_7001",
+    name: "Marta Nowak",
+    email: "marta@example.com",
+    phone: "+447700900111",
+  });
+  ok("an unsigned claim opens anonymously", unsigned.identified === false);
+
+  const anonContact = (await store.listContacts()).find((c) => c.displayName.startsWith("Visitor"));
+  ok("and the details it sent are not written", !!anonContact && anonContact.displayName !== "Marta Nowak");
+  ok(
+    "no email lands on the record either",
+    // The rule worth keeping: a matching email is what merges a session onto a
+    // customer we already hold, so an unverified caller writing one is an
+    // impersonation route, not a convenience.
+    !!anonContact && !anonContact.email,
+  );
+  ok(
+    "but the channel's tag still goes on",
+    // This was the bug. The setting says "a tag put on every contact this
+    // channel creates" and it only ever went on verified ones — so a business
+    // whose app was not signing yet could not find its own customers by the
+    // tag that exists to find them. Where somebody came from is not a claim
+    // about who they are.
+    anonContact?.tags.includes("Ding app") === true,
+  );
+
+  const diagnostics = await store.listWebhookDiagnostics(10);
+  ok(
+    "and somebody is told it happened",
+    // Silence here is what let an app run for weeks filing every customer as
+    // "Visitor" and six hex digits with nobody able to say why.
+    diagnostics.some((d) => d.kind.startsWith("app_identity_")),
+    diagnostics[0]?.kind ?? "nothing recorded",
+  );
+
+  const signedIn = await controller.appSession(appKey, {
+    externalId: "u_7002",
+    // `rolled`, not `secret`: the check rotates the channel's secret further up,
+    // and signing with the old one is exactly the "no" this file asserts elsewhere.
+    userHash: sign(rolled, "u_7002"),
+    name: "Sam Patel",
+    email: "sam@example.com",
+  });
+  ok("a signed claim is believed", signedIn.identified === true);
+  const known = (await store.listContacts()).find((c) => c.displayName === "Sam Patel");
+  ok("the name is theirs", !!known);
+  ok("the email is recorded", known?.email === "sam@example.com");
+  ok("and they are tagged too", known?.tags.includes("Ding app") === true);
 
   console.log(failed === 0 ? "\nall good\n" : `\n${failed} check(s) failed\n`);
   process.exit(failed === 0 ? 0 : 1);

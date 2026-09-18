@@ -334,8 +334,21 @@ export class NestChatController {
         { visitorId, inboxId: inbox.id, contactId: contact.id, conversationId: "" },
         { name: body.name, email: body.email, phone: body.phone },
       );
-      await this.nestchat.applyContactTag(contact.id, app.contactTag);
+    } else if (externalId) {
+      // They told us who this is and we could not believe it. Everything they
+      // sent has just been dropped, which is right — and used to be silent,
+      // which is how an app can run for weeks filing every customer as
+      // "Visitor 3f9a21" with nobody able to say why.
+      await this.nestchat.reportUnverifiedIdentity(inbox, externalId);
     }
+
+    // The tag goes on either way. It says where this customer came from, which
+    // is true whether or not we could verify who they are — the setting calls
+    // it "a tag put on every contact this channel creates", and it was only
+    // ever applied to verified ones. Attribution is not an identity claim, and
+    // withholding it meant a channel's own customers could not be found by the
+    // tag that exists to find them.
+    await this.nestchat.applyContactTag(contact.id, app.contactTag);
 
     const { values, unknown } = await this.nestchat.validateFields(inbox.id, body.fields ?? {});
     const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values);
