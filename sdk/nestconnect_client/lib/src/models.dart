@@ -182,17 +182,68 @@ class NestAppearance {
 
 /// One of the faces behind the counter.
 class NestTeamMate {
-  const NestTeamMate({required this.name, this.avatarUrl});
+  const NestTeamMate({
+    required this.name,
+    required this.initials,
+    this.color,
+    this.avatarUrl,
+    this.online = false,
+  });
+
   final String name;
+
+  /// Theirs, not the first letter of their name: "Mary-Jane O'Neill" is MO, and
+  /// a name that starts with an emoji has initials that do not.
+  final String initials;
+
+  /// Their own avatar colour, so the fallback circle is theirs rather than a
+  /// generic one — the same face they have everywhere else in the product.
+  final String? color;
+
+  /// Absolute by the time it gets here. The server sends it root-relative,
+  /// which is right for a widget resolving against the page that served it and
+  /// useless in an app, where there is no page.
   final String? avatarUrl;
 
-  static NestTeamMate? tryParse(Object? raw) {
+  final bool online;
+
+  static NestTeamMate? tryParse(Object? raw, {String? baseUrl}) {
     if (raw is! Map) return null;
     final name = _str(raw['name']);
-    return name == null
-        ? null
-        : NestTeamMate(name: name, avatarUrl: _str(raw['avatarUrl']));
+    if (name == null) return null;
+    final path = _str(raw['avatarUrl']);
+    return NestTeamMate(
+      name: name,
+      initials: _str(raw['initials']) ?? (name.isEmpty ? '?' : name.substring(0, 1).toUpperCase()),
+      color: _str(raw['color']),
+      avatarUrl: path == null ? null : _absolute(path, baseUrl),
+      online: raw['online'] == true,
+    );
   }
+}
+
+/// A root-relative path made loadable from an app.
+String _absolute(String path, String? baseUrl) {
+  if (!path.startsWith('/') || baseUrl == null) return path;
+  return '${baseUrl.replaceAll(RegExp(r'/+$'), '')}$path';
+}
+
+/// Put the customer's name into a line the business wrote — "Hello {name} 👋".
+///
+/// The same rule the web widget applies, spelled out again here because the two
+/// have to agree: an app and a website showing the same channel must greet the
+/// same person the same way.
+///
+/// A missing name leaves the sentence readable — the token goes and the space
+/// before it goes with it, so "Hello {name} 👋" reads "Hello 👋" rather than
+/// "Hello  👋". Only the first name is used: a greeting that says "Hello Nathan
+/// Amos" reads like a letter from a bank.
+String fillVisitorName(String text, String? name) {
+  final first = (name ?? '').trim().split(RegExp(r'\s+')).firstWhere((p) => p.isNotEmpty, orElse: () => '');
+  if (first.isEmpty) {
+    return text.replaceAll(RegExp(r'\s*\{name\}'), '').replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+  }
+  return text.replaceAll('{name}', first);
 }
 
 /// Everything the messenger needs before it draws anything.
@@ -211,13 +262,17 @@ class NestConfig {
   final bool online;
   final List<NestTeamMate> team;
 
-  static NestConfig parse(Object? raw) {
+  static NestConfig parse(Object? raw, {String? baseUrl}) {
     final map = raw is Map ? raw : const <String, Object?>{};
     return NestConfig(
       appearance: NestAppearance.parse(map['appearance']),
       online: map['online'] == true,
-      team: _list((map['team'] as Map?)?['members'])
-          .map(NestTeamMate.tryParse)
+      // `faces`, which is what the server sends. This read `members` for its
+      // whole life, so the list was always empty and the header never showed
+      // anybody — the same mistake as the stream events: written from what
+      // seemed reasonable rather than from the payload.
+      team: _list((map['team'] as Map?)?['faces'])
+          .map((f) => NestTeamMate.tryParse(f, baseUrl: baseUrl))
           .whereType<NestTeamMate>()
           .toList(growable: false),
     );
