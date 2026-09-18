@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
@@ -120,8 +120,17 @@ export interface VisitorClaims {
  *  browser profile stops working. */
 const TOKEN_TTL = "7d";
 
+/** At most one "we could not verify this app" row per channel per window. */
+const UNVERIFIED_REPORT_EVERY_MS = 15 * 60_000;
+
 @Injectable()
 export class NestChatService {
+  /** inboxId → when we last reported an unverifiable session for it. Static so
+   *  it survives the per-request scope, and in memory because losing it on a
+   *  restart costs one extra row. */
+  private static readonly unverifiedReports = new Map<string, number>();
+
+  private readonly logger = new Logger(NestChatService.name);
   constructor(
     private readonly store: Store,
     private readonly bus: VisitorBus,
@@ -289,6 +298,53 @@ export class NestChatService {
     // "no" either way.
     if (given.length !== expected.length) return false;
     return timingSafeEqual(given, expected);
+  }
+
+  /**
+   * An app told us who its user is and we could not believe it.
+   *
+   * Recorded because the alternative is what actually happened: an integrator
+   * passes a name, an email and a phone number, gets a working chat, and every
+   * one of those is discarded on the way in — correctly, since an unverified
+   * caller must not write an email onto a customer record — with nothing
+   * anywhere saying so. The chats arrive as "Visitor 3f9a21" and the first
+   * person to notice is whoever is reading the inbox, weeks later.
+   *
+   * It lands beside the webhook diagnostics, which exist for the same shape of
+   * problem: a channel that looks fine and is quietly doing the wrong thing.
+   *
+   * Throttled per channel, because a busy app would otherwise write one row per
+   * session forever. The point is that somebody sees it at all, not that every
+   * instance is counted.
+   */
+  async reportUnverifiedIdentity(inbox: Inbox, externalId: string): Promise<void> {
+    const last = NestChatService.unverifiedReports.get(inbox.id) ?? 0;
+    if (Date.now() - last < UNVERIFIED_REPORT_EVERY_MS) return;
+    NestChatService.unverifiedReports.set(inbox.id, Date.now());
+    // Which of the two it is matters: one is a box nobody filled in on our
+    // side, the other is somebody signing wrong on theirs, and they are fixed
+    // by different people.
+    const hasSecret = await this.hasIdentitySecret(inbox.id);
+    try {
+      await this.store.recordWebhookDiagnostic({
+        channel: "nestchat",
+        kind: hasSecret ? "app_identity_signature_mismatch" : "app_identity_no_secret",
+        reference: inbox.name,
+        detail: hasSecret
+          ? `An app session for "${externalId}" arrived with a signature that did not verify. ` +
+            "Its name, email and phone were discarded and the chat opened anonymously. " +
+            "Check the backend is signing HMAC-SHA256 of the user id, hex, under this channel's current signing secret."
+          : `An app session for "${externalId}" arrived but this channel has no signing secret, ` +
+            "so nothing can be verified and every chat opens anonymously. " +
+            "Create one under Settings › NestChat widget › In-app SDK and give it to the app's backend.",
+      });
+    } catch {
+      // A diagnostic that cannot be written must not fail the session it is
+      // describing. The customer still gets their chat.
+    }
+    this.logger.warn(
+      `Unverified app identity on "${inbox.name}" (${hasSecret ? "signature mismatch" : "no signing secret"}) — details discarded`,
+    );
   }
 
   /**

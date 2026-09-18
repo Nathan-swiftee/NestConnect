@@ -188,7 +188,24 @@ class NestConnect {
     unawaited(_registerPush());
     if (map['hasConversation'] == true) _listen();
 
-    return map['identified'] == true ? NestIdentity.verified : NestIdentity.anonymous;
+    final identified = map['identified'] == true;
+    // Said out loud, because the alternative is what happens in practice: a
+    // name, an email and a phone number are sent, the chat works perfectly,
+    // and every one of them was discarded on the way in. The return value has
+    // always carried this and is very easy not to read — and nothing else on
+    // screen looks wrong until somebody notices every customer is called
+    // "Visitor" and something-hex.
+    if (!identified && externalId != null) {
+      // ignore: avoid_print
+      print(
+        '[nestconnect] this session was not verified, so the name, email and '
+        'phone were discarded and the chat is anonymous. The backend must send '
+        'userHash: HMAC-SHA256 of the user id, hex, under the channel\'s '
+        'signing secret.',
+      );
+    }
+
+    return identified ? NestIdentity.verified : NestIdentity.anonymous;
   }
 
   Future<void> _loadConfig() async {
