@@ -343,7 +343,17 @@ export function mapInbox(i: InboxWithTeams): Inbox {
 export function mapContact(c: ContactWithIdentities): Contact {
   const phone = c.identities.find((x) => x.kind === "phone" || x.kind === "wa_id")?.value;
   const email = c.identities.find((x) => x.kind === "email")?.value;
-  const visitorId = c.identities.find((x) => x.kind === "nestchat")?.value;
+  // The handle this person chats under on a live-chat channel: a per-install id
+  // for somebody anonymous, the app's own verified user id for somebody signed
+  // in. Both are "who to deliver to" on `nestchat`, and reading only the first
+  // meant a verified app customer had no address at all — so an agent replying
+  // to them was told the conversation had none, which was true and useless.
+  //
+  // The verified one wins where a contact has both, which happens when somebody
+  // chatted anonymously before signing in and the two records were merged.
+  const visitorId =
+    c.identities.find((x) => x.kind === "external")?.value ??
+    c.identities.find((x) => x.kind === "nestchat")?.value;
   return {
     id: c.id,
     orgId: c.orgId,
