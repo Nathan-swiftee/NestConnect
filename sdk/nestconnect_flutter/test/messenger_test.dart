@@ -48,7 +48,13 @@ class FakeServer {
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     unawaited(() async {
       await for (final req in _server) {
-        unawaited(_handle(req));
+        // Never allowed to take the loop down. A client that goes away
+        // mid-request is ordinary — a widget test ends while a session call is
+        // still in flight, and the real server does not treat that as an error
+        // either. Left unguarded it surfaces as a failure in whichever test
+        // happened to be last, which is a fault report pointing at the wrong
+        // place entirely.
+        unawaited(_handle(req).catchError((Object _) {}));
       }
     }());
   }
@@ -87,6 +93,8 @@ class FakeServer {
           'subtitle': 'We usually reply in minutes',
           'awayMessage': 'We are closed — leave a message',
           'placeholder': 'Write a message…',
+          'closedMessage': 'That order is all wrapped up. Thanks!',
+          'newChatLabel': 'Ask about something else',
           'showBranding': false,
         },
         'online': true,
@@ -120,6 +128,9 @@ class FakeServer {
     }
     unawaited(req.response.close());
   }
+
+  /// Play an agent closing the chat, or reopening it.
+  void agentSetsStatus(String kind) => _events.add('data: ${jsonEncode(contractEvent(kind))}\n\n');
 
   void agentSays(String id, String text) {
     final event = contractEvent('message');
@@ -226,6 +237,39 @@ void main() {
     expect(find.text('On its way!'), findsOneWidget);
     // Named once, above the run.
     expect(find.text('Nathan'), findsOneWidget);
+  });
+
+  testWidgets('a closed chat says so, in the business\'s own words', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+    expect(find.text('Write a message…'), findsOneWidget);
+
+    server.agentSetsStatus('closed');
+    await settle(tester, 500);
+
+    // The composer is replaced, not disabled: a greyed-out field invites a tap
+    // and then refuses it, which reads as a broken app rather than a finished
+    // conversation.
+    expect(find.text('Write a message…'), findsNothing);
+    expect(find.text('That order is all wrapped up. Thanks!'), findsOneWidget);
+    expect(find.text('Ask about something else'), findsOneWidget);
+  });
+
+  testWidgets('and lets the customer start another one', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+    server.agentSays('msg_a', 'All sorted!');
+    server.agentSetsStatus('closed');
+    await settle(tester, 500);
+    expect(find.text('All sorted!'), findsOneWidget);
+
+    await tester.tap(find.text('Ask about something else'));
+    await settle(tester, 500);
+
+    // Without this the screen is a dead end: told the chat is over and given
+    // nothing to do about it but dismiss the sheet.
+    expect(find.text('Write a message…'), findsOneWidget);
+    expect(find.text('All sorted!'), findsNothing);
   });
 
   testWidgets('no attach button when the app has no picker', (tester) async {

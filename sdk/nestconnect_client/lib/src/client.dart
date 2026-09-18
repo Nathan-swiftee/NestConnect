@@ -35,6 +35,7 @@ class NestConnect {
   final _messages = <NestMessage>[];
   final _messagesController = StreamController<List<NestMessage>>.broadcast();
   final _unreadController = StreamController<int>.broadcast();
+  final _closedController = StreamController<bool>.broadcast();
 
   String? _token;
   NestConfig? _config;
@@ -75,6 +76,13 @@ class NestConnect {
   /// Unread agent replies. What a launcher badge shows.
   int get unread => _unread;
   Stream<int> get onUnread => _unreadController.stream;
+
+  /// Whether an agent has closed this chat, as it changes.
+  ///
+  /// A getter alone was not enough: nothing else moves when a chat closes — no
+  /// message arrives — so a UI watching [onMessages] would never rebuild, and
+  /// the customer would keep typing into a composer that still looked live.
+  Stream<bool> get onClosed => _closedController.stream;
 
   /// The channel's appearance, once [open] has fetched it.
   NestConfig? get config => _config;
@@ -286,6 +294,23 @@ class NestConnect {
     await _markRead('read');
   }
 
+  /// Begin a fresh conversation after an agent has closed this one.
+  ///
+  /// The thread on screen is cleared and a new session opened. Nothing has to
+  /// be said to the server about starting over: a closed conversation is never
+  /// resumed — `threadFor` only ever joins an open one — so the next message
+  /// lands in a new thread by itself.
+  ///
+  /// Which is also why this is not `logout`. The customer is the same person
+  /// and should stay so: their history, their contact record and their push
+  /// registration all survive. Only the conversation is new.
+  Future<NestIdentity> startNewChat({Map<String, String>? fields}) async {
+    _setMessages(const []);
+    _setUnread(0);
+    _setClosed(false);
+    return _session(fields: fields);
+  }
+
   /* ---- notifications ---- */
 
   /// Where to reach this phone when an agent replies and the app is closed.
@@ -415,12 +440,12 @@ class NestConnect {
           }
         }
       case 'closed':
-        _closed = true;
+        _setClosed(true);
       case 'reopened':
         // The other half of the pair. Without it `closed` is a one-way door:
         // an agent reopening a thread would leave the app refusing to send
         // into a conversation the business had deliberately opened again.
-        _closed = false;
+        _setClosed(false);
     }
   }
 
@@ -457,6 +482,12 @@ class NestConnect {
     if (!_messagesController.isClosed) _messagesController.add(messages);
   }
 
+  void _setClosed(bool next) {
+    if (next == _closed) return;
+    _closed = next;
+    if (!_closedController.isClosed) _closedController.add(next);
+  }
+
   void _setUnread(int next) {
     if (next == _unread) return;
     _unread = next;
@@ -483,5 +514,6 @@ class NestConnect {
     _streamSub = null;
     await _messagesController.close();
     await _unreadController.close();
+    await _closedController.close();
   }
 }

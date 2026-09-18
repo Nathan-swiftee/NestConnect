@@ -76,6 +76,18 @@ FirebaseMessaging.onMessageOpenedApp.listen((m) {
 On Android, create a notification channel with id `nest_messages` — without it
 Android 8+ drops the notification silently.
 
+## When an agent closes the chat
+
+The messenger swaps the composer for the channel's own closing words and a
+button that starts another conversation. Both come from Settings › NestChat
+widget, so a business changes them without an app release, and a blank closing
+message is honoured — the chat simply stops rather than announcing it.
+
+Nothing to wire: `NestMessenger` does it. If you have built your own UI on
+`NestConnect`, `isClosed` and the `onClosed` stream are what to watch, and
+`startNewChat()` is the way back — the same customer, a new thread, their
+history and push registration intact.
+
 ## Web
 
 Works on Flutter web with no extra setup — the client picks the browser's own

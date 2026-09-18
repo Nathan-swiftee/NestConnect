@@ -68,6 +68,12 @@ an hour later) works without you sequencing it. `logout()` stops notifications
 for that account but keeps the address, because the address belongs to the
 handset rather than to whoever was signed in.
 
+**A closed chat is a state, not a message.** An agent closing a conversation
+sends no message, so nothing on `onMessages` fires — watch `onClosed` instead, or
+a UI reading only the thread will leave somebody typing into a composer that
+still looks live. `startNewChat()` begins a fresh conversation for the same
+customer; a closed one is never resumed server-side, so nothing else is needed.
+
 **Tokens are kept where you say.** `NestTokenStore` is an interface; the default
 forgets on exit. A Flutter app plugs in secure storage without this package
 depending on a plugin.
