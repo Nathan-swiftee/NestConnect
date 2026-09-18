@@ -63,6 +63,12 @@ class NestConnect {
   /// which of the two happened first.
   String? _pushToken;
   String? _pushPlatform;
+
+  /// What to greet them by. Kept because the header's "Hello {name}" is drawn
+  /// long after `login` returned, and the session response does not echo it —
+  /// so without holding it the token had nothing to be replaced with and the
+  /// literal "{name}" went on screen.
+  String? _visitorName;
   bool _viewing = false;
   int _unread = 0;
 
@@ -83,6 +89,9 @@ class NestConnect {
   /// message arrives — so a UI watching [onMessages] would never rebuild, and
   /// the customer would keep typing into a composer that still looked live.
   Stream<bool> get onClosed => _closedController.stream;
+
+  /// The name this customer was opened with, for "Hello {name}".
+  String? get visitorName => _visitorName;
 
   /// The channel's appearance, once [open] has fetched it.
   NestConfig? get config => _config;
@@ -161,6 +170,7 @@ class NestConnect {
       if (phone != null) 'phone': phone,
       if (fields != null && fields.isNotEmpty) 'fields': fields,
     };
+    _visitorName = name?.trim().isEmpty ?? true ? _visitorName : name!.trim();
     final raw = await _transport.postJson('/app/$appKey/session', body);
     final map = raw is Map ? raw : const <String, Object?>{};
 
@@ -210,7 +220,13 @@ class NestConnect {
 
   Future<void> _loadConfig() async {
     try {
-      _config = NestConfig.parse(await _transport.getJson('/app/$appKey/config'));
+      // The base url goes in so the faces' photo paths — root-relative, because
+      // the web widget resolves them against whatever origin served it — come
+      // back as something an app can actually load.
+      _config = NestConfig.parse(
+        await _transport.getJson('/app/$appKey/config'),
+        baseUrl: _transport.baseUrl,
+      );
     } on NestException {
       // The messenger opens in fallback colours rather than not opening. A
       // chat that refuses to appear because a greeting did not load is a chat
@@ -489,6 +505,8 @@ class NestConnect {
     _streamSub = null;
     _token = null;
     _attempt = 0;
+    // The next person to open this chat is not the last one.
+    _visitorName = null;
     await _store.delete(_tokenKey());
   }
 

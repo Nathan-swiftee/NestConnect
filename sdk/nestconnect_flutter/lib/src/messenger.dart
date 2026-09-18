@@ -178,6 +178,7 @@ class _NestMessengerState extends State<NestMessenger> {
             theme: theme,
             online: config?.online ?? false,
             team: config?.team ?? const [],
+            visitorName: widget.chat.visitorName,
             onClose: widget.onClose,
           ),
           Flexible(
@@ -282,6 +283,7 @@ class _Header extends StatelessWidget {
     required this.theme,
     required this.online,
     required this.team,
+    required this.visitorName,
     this.onClose,
   });
 
@@ -289,6 +291,10 @@ class _Header extends StatelessWidget {
   final NestTheme theme;
   final bool online;
   final List<NestTeamMate> team;
+
+  /// Whoever the app signed in, so "Hello {name} 👋" is a greeting rather than
+  /// a template nobody filled in.
+  final String? visitorName;
   final VoidCallback? onClose;
 
   @override
@@ -312,11 +318,11 @@ class _Header extends StatelessWidget {
               children: [
                 if (appearance.headline.isNotEmpty)
                   Text(
-                    appearance.headline,
+                    fillVisitorName(appearance.headline, visitorName),
                     style: TextStyle(color: theme.onAccent.withValues(alpha: 0.75), fontSize: 13),
                   ),
                 Text(
-                  appearance.title,
+                  fillVisitorName(appearance.title, visitorName),
                   style: TextStyle(
                     color: theme.onAccent,
                     fontSize: 20,
@@ -328,7 +334,10 @@ class _Header extends StatelessWidget {
                 Text(
                   // The away message is not decoration: it is the difference
                   // between a promise we keep and one made at 3am.
-                  online ? appearance.subtitle : appearance.awayMessage,
+                  fillVisitorName(
+                    online ? appearance.subtitle : appearance.awayMessage,
+                    visitorName,
+                  ),
                   style: TextStyle(color: theme.onAccent.withValues(alpha: 0.85), fontSize: 13),
                 ),
                 if (team.isNotEmpty) ...[
@@ -371,22 +380,51 @@ class _Faces extends StatelessWidget {
                 height: 28,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: theme.accentDeep,
+                  // Their own avatar colour where they have one, so the stack
+                  // reads as people rather than as four identical discs.
+                  color: NestTheme.parseColor(shown[i].color ?? '') ?? theme.accentDeep,
                   border: Border.all(color: theme.accent, width: 2),
                 ),
+                clipBehavior: Clip.antiAlias,
                 alignment: Alignment.center,
-                child: Text(
-                  shown[i].name.characters.first.toUpperCase(),
-                  style: TextStyle(
-                    color: theme.onAccent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                child: _Face(mate: shown[i], theme: theme),
               ),
             ),
         ],
       ),
+    );
+  }
+}
+
+/// One agent in the stack: their photo, or their initials on their own colour.
+///
+/// The photo is the point — a row of letters says somebody exists, a row of
+/// faces says somebody is there, which is the whole reason a chat outperforms a
+/// contact form. It falls back rather than failing: a broken image URL, a
+/// filtered network or an agent who never uploaded one all land on initials
+/// instead of an empty circle.
+class _Face extends StatelessWidget {
+  const _Face({required this.mate, required this.theme});
+  final NestTeamMate mate;
+  final NestTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = Text(
+      mate.initials,
+      style: TextStyle(color: theme.onAccent, fontSize: 11, fontWeight: FontWeight.w600),
+    );
+    final url = mate.avatarUrl;
+    if (url == null || url.isEmpty) return initials;
+    return Image.network(
+      url,
+      width: 28,
+      height: 28,
+      fit: BoxFit.cover,
+      // Their initials stay under it while it loads, so the stack does not pop
+      // into place a face at a time.
+      loadingBuilder: (_, child, progress) => progress == null ? child : initials,
+      errorBuilder: (_, __, ___) => initials,
     );
   }
 }

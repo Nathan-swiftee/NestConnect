@@ -89,6 +89,7 @@ class FakeServer {
         'appearance': {
           'accent': '#1f7a3d',
           'onAccent': '#ffffff',
+          'headline': 'Hello {name} 👋',
           'title': 'Ding support',
           'subtitle': 'We usually reply in minutes',
           'awayMessage': 'We are closed — leave a message',
@@ -98,9 +99,16 @@ class FakeServer {
           'showBranding': false,
         },
         'online': true,
+        // The server's own shape: `faces`, with the details a face is drawn
+        // from. This said `members` and carried nothing but a name — written
+        // from what the client happened to read rather than from the payload —
+        // so the header showed nobody and no test noticed.
         'team': {
-          'members': [
-            {'name': 'Nathan'},
+          'name': 'Support',
+          'total': 2,
+          'faces': [
+            {'name': 'Nathan', 'initials': 'NA', 'color': '#3B82F6', 'online': true},
+            {'name': 'Priya', 'initials': 'PS', 'color': '#DB2777', 'online': false},
           ],
         },
       }));
@@ -179,7 +187,9 @@ void main() {
     server = FakeServer();
     await server.start();
     chat = NestConnect(baseUrl: server.baseUrl, appKey: 'na_test');
-    await chat.open();
+    // Signed in, like a customer opening the chat from inside an app they are
+    // logged into — which is the case the header's greeting is written for.
+    await chat.login(userId: 'u_1', name: 'Marta Nowak');
     // Let the config land before anything is drawn.
     await Future<void>.delayed(const Duration(milliseconds: 150));
   });
@@ -270,6 +280,25 @@ void main() {
     // nothing to do about it but dismiss the sheet.
     expect(find.text('Write a message…'), findsOneWidget);
     expect(find.text('All sorted!'), findsNothing);
+  });
+
+  testWidgets('the greeting says the customer\'s name', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    // "Hello {name} 👋" went on screen with the braces showing, because the
+    // token was only ever filled in on the web.
+    expect(find.text('Hello Marta 👋'), findsOneWidget);
+    expect(find.textContaining('{name}'), findsNothing);
+  });
+
+  testWidgets('and the people who answer are shown', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    // Their own initials, not the first letter of their name.
+    expect(find.text('NA'), findsOneWidget);
+    expect(find.text('PS'), findsOneWidget);
   });
 
   testWidgets('no attach button when the app has no picker', (tester) async {
