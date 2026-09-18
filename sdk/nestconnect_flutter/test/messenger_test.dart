@@ -3,6 +3,11 @@
 /// Driven against a real `HttpServer` and a real `NestConnect`, not a mock, so
 /// what is under test is the whole path a customer touches: tap, type, send,
 /// and a reply arriving on the stream while the sheet is open.
+///
+/// The stream events are replayed from sdk/contract/visitor-events.json rather
+/// than written here. They used to be written here, in the shape the client
+/// happened to read — which is how every agent reply came to be dropped in
+/// production while three tests in this file said replies worked.
 library;
 
 import 'dart:async';
@@ -12,6 +17,25 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nestconnect_flutter/nestconnect_flutter.dart';
+
+/// One event from the contract the API is held to, as a fresh mutable copy.
+///
+/// Read from the file for the same reason its twin in `nestconnect_client` is:
+/// a fake server written from the client's expectation tests only that somebody
+/// typed the same thing twice.
+Map<String, Object?> contractEvent(String kind) {
+  final file = File('../contract/visitor-events.json');
+  if (!file.existsSync()) {
+    throw StateError(
+      'Missing ${file.absolute.path}. The visitor-event contract is shared with '
+      'the API and this test cannot speak for the server without it.',
+    );
+  }
+  final all = jsonDecode(file.readAsStringSync()) as Map<String, Object?>;
+  final event = all[kind];
+  if (event is! Map<String, Object?>) throw StateError('The contract has no "$kind" event.');
+  return jsonDecode(jsonEncode(event)) as Map<String, Object?>;
+}
 
 class FakeServer {
   late HttpServer _server;
@@ -97,18 +121,14 @@ class FakeServer {
     unawaited(req.response.close());
   }
 
-  void agentSays(String id, String text) => _events.add(
-        'data: ${jsonEncode({
-              'type': 'message',
-              'message': {
-                'id': id,
-                'from': 'agent',
-                'body': text,
-                'at': DateTime.now().toIso8601String(),
-                'authorName': 'Nathan',
-              },
-            })}\n\n',
-      );
+  void agentSays(String id, String text) {
+    final event = contractEvent('message');
+    (event['payload']! as Map<String, Object?>)
+      ..['id'] = id
+      ..['body'] = text
+      ..['at'] = DateTime.now().toIso8601String();
+    _events.add('data: ${jsonEncode(event)}\n\n');
+  }
 
   Future<void> stop() async {
     await _events.close();

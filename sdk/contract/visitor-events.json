@@ -1,0 +1,40 @@
+{
+  "$comment": [
+    "One sample of every event the server pushes down a visitor's live stream.",
+    "",
+    "Both sides of the wire assert against this file and neither one owns it.",
+    "tools/check-visitor-events.ts drives the real server code and checks what it",
+    "publishes has these shapes; the Dart SDK's fake server replays these samples",
+    "rather than literals somebody typed. A key renamed on either side now breaks",
+    "a build.",
+    "",
+    "It exists because of a bug it would have caught on day one: the Dart client",
+    "read 'type' and 'message' while the server sent 'kind' and 'payload', so",
+    "every agent reply was dropped before it reached the UI — and the SDK's own",
+    "test passed throughout, because its fake server had been written from the",
+    "client's expectation instead of the server's contract. Two halves agreeing",
+    "with each other and neither with production is the failure this prevents.",
+    "",
+    "Values are illustrative. Only the shape is the contract: which keys exist,",
+    "and what kind of thing each holds."
+  ],
+
+  "message": {
+    "kind": "message",
+    "payload": {
+      "id": "msg_1",
+      "from": "agent",
+      "authorName": "Nathan",
+      "body": "Your driver is two minutes away",
+      "at": "2026-09-18T12:00:00.000Z"
+    }
+  },
+
+  "typing": { "kind": "typing", "who": "agent", "typing": true },
+
+  "read": { "kind": "read", "at": "2026-09-18T12:00:00.000Z" },
+
+  "closed": { "kind": "closed" },
+
+  "reopened": { "kind": "reopened" }
+}

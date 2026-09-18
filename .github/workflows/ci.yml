@@ -154,6 +154,17 @@ jobs:
       - name: Custom field filtering
         run: pnpm check:field-filter
 
+      # What the server pushes down a visitor's live stream, checked against the
+      # fixture the Dart SDK replays. This shipped wrong and stayed wrong: the
+      # SDK read `type`/`message` where the server sends `kind`/`payload`, so
+      # every agent reply was dropped before it reached the UI — while the SDK's
+      # own test passed, because its fake server had been written from the
+      # client's expectation rather than from the server. Two halves agreeing
+      # with each other and neither with production is what this catches, and
+      # the fixture is owned by neither side so a rename breaks a build.
+      - name: Visitor event contract
+        run: pnpm check:visitor-events
+
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a
       # password alone was the whole credential. Now the guard holds those
