@@ -2118,6 +2118,12 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .keyrow{display:flex;gap:var(--sp-2);align-items:center}
 .keyrow input{font-family:var(--mono);font-size:var(--fs-sm);letter-spacing:.01em}
 .keyrow .btn-ghost{flex:0 0 auto;white-space:nowrap}
+/* The verdict from a test push. Kept readable rather than shouty: a failure
+   here is a setup step still to do, not an incident. */
+.pushtest{margin:var(--sp-2) 0 0;font-size:var(--fs-sm);line-height:1.45}
+.pushtest.ok{color:var(--ok, #157f3d)}
+.pushtest.bad{color:var(--danger, #b42318)}
+.pushtest code{font-family:var(--mono);font-size:.92em;opacity:.8}
 
 /* A titled sub-section inside a credential sheet (e.g. "Real-time delivery
    (optional)") — a hairline rule and a heading, not a nested card. */

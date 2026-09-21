@@ -2311,6 +2311,25 @@ export const nestchatPushCredentialInputSchema = z.object({
 });
 export type NestChatPushCredentialInput = z.infer<typeof nestchatPushCredentialInputSchema>;
 
+/**
+ * What a "send a test push" attempt found.
+ *
+ * `ok` alone would be no better than the silence it replaces. The three
+ * failures are genuinely different jobs for whoever is reading: register a
+ * phone, save a key, or go and compare two Firebase projects — so the reason
+ * is carried, and `detail` says it in words rather than in an error code.
+ */
+export const nestchatPushTestSchema = z.object({
+  ok: z.boolean(),
+  /** `no_devices` or `not_configured` when it never reached Google. */
+  reason: z.string().optional(),
+  /** Google's own code when it did, e.g. `SENDER_ID_MISMATCH`. */
+  error: z.string().optional(),
+  detail: z.string(),
+  platform: z.string().optional(),
+});
+export type NestChatPushTest = z.infer<typeof nestchatPushTestSchema>;
+
 export const nestchatIdentifyInputSchema = z.object({
   name: z.string().max(80).optional(),
   email: z.string().email().max(200).optional(),

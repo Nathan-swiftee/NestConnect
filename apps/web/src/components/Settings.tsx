@@ -27,6 +27,7 @@ import type {
   NestChatHome,
   NestChatHomeCard,
   NestChatPreChat,
+  NestChatPushTest,
   NestChatRouting,
   NestChatRoutingOption,
   NestChatTeam,
@@ -2053,6 +2054,8 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
    *  write-only at the other end, so there is nothing to read back into it. */
   const [serviceAccount, setServiceAccount] = useState("");
   const [savingPush, setSavingPush] = useState(false);
+  const [pushTest, setPushTest] = useState<NestChatPushTest | null>(null);
+  const [testingPush, setTestingPush] = useState(false);
 
   /** Upload a logo and point this channel at it. */
   const pickLogo = async (file: File | undefined) => {
@@ -2810,7 +2813,39 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                           Turn off
                         </button>
                       )}
+                      {settings.data?.hasPushCredential && (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          disabled={testingPush || savingPush}
+                          onClick={() => {
+                            setTestingPush(true);
+                            setPushTest(null);
+                            api
+                              .testNestchatPush(inboxId!)
+                              .then(setPushTest)
+                              .catch((err: unknown) =>
+                                setPushTest({
+                                  ok: false,
+                                  detail:
+                                    (err instanceof Error && err.message) ||
+                                    "Couldn’t run the test.",
+                                }),
+                              )
+                              .finally(() => setTestingPush(false));
+                          }}
+                        >
+                          {testingPush ? "Sending…" : "Send test push"}
+                        </button>
+                      )}
                     </div>
+                    {pushTest && (
+                      <p className={pushTest.ok ? "pushtest ok" : "pushtest bad"}>
+                        {pushTest.ok ? "✓ " : "✗ "}
+                        {pushTest.detail}
+                        {pushTest.error && <code> {pushTest.error}</code>}
+                      </p>
+                    )}
                     <em className="fieldhint">
                       Firebase console › Project settings › Service accounts › Generate new private
                       key. Paste the whole file. Like the signing secret it is stored encrypted and

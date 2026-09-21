@@ -767,6 +767,12 @@ export class MemoryStore extends Store {
     );
   }
 
+  async latestCustomerDeviceFor(inboxId: string): Promise<StoredCustomerDevice | null> {
+    const live = this.customerDevices.filter((d) => d.inboxId === inboxId && !d.disabledAt);
+    if (!live.length) return null;
+    return live.reduce((newest, d) => (d.lastSeenAt > newest.lastSeenAt ? d : newest));
+  }
+
   async deleteCustomerDevice(contactId: string, token: string): Promise<boolean> {
     const i = this.customerDevices.findIndex((d) => d.token === token && d.contactId === contactId);
     if (i === -1) return false;

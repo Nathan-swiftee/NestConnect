@@ -9,6 +9,7 @@ import { Store } from "../../data/store";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
 import { NestChatService } from "./nestchat.service";
+import { CustomerPushService, type CustomerPushTest } from "./customer-push.service";
 
 /**
  * The agent-facing half of NestChat: reading and editing how a channel's widget
@@ -23,6 +24,7 @@ export class NestChatAdminController {
   constructor(
     private readonly nestchat: NestChatService,
     private readonly store: Store,
+    private readonly customerPush: CustomerPushService,
   ) {}
 
   @Get(":inboxId")
@@ -95,6 +97,27 @@ export class NestChatAdminController {
     await this.requireManager(userId);
     await this.nestchat.setPushCredential(inboxId, body.serviceAccount);
     return this.nestchat.settingsFor(inboxId);
+  }
+
+  /**
+   * Send a real notification to the last phone that registered here.
+   *
+   * The counterpart of the agent app's own test button, and needed for the
+   * same reason: everything about push can look correct on both sides and
+   * still not arrive, because the one thing neither side can check alone is
+   * whether the key and the app belong to the same Firebase project. Google
+   * only says so when a message is actually sent.
+   *
+   * A manager, like saving the key — it sends a real notification to a real
+   * customer's handset, which is not something a viewer should be able to do.
+   */
+  @Post(":inboxId/push-test")
+  async pushTest(
+    @CurrentUserId() userId: string,
+    @Param("inboxId") inboxId: string,
+  ): Promise<CustomerPushTest> {
+    await this.requireManager(userId);
+    return this.customerPush.sendTest(inboxId);
   }
 
   /** How a channel looks to the public is a channel setting, so it takes the
