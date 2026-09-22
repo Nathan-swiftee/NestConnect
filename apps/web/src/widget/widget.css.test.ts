@@ -84,3 +84,57 @@ describe("the header's fade", () => {
     expect(stops.at(-1)![1]).toBeLessThan(overlap);
   });
 });
+
+/**
+ * Three more things that are silent when they are wrong.
+ *
+ * A gesture that drags needs `touch-action: none` on the element it starts
+ * from, or the browser claims the movement for scrolling and the drag simply
+ * never happens — on phones only, which is where all three of these gestures
+ * live and where nobody is looking at a console.
+ *
+ * An animation added without a matching rule in the reduced-motion block is
+ * the same kind of failure: correct-looking everywhere except on the machines
+ * of the people who asked for it to stop.
+ */
+describe("gestures the browser could take away", () => {
+  it("lets the microphone button own the drag", () => {
+    // Hold-to-talk with slide-to-cancel. Without this, sliding scrolls the
+    // page and the note can never be cancelled.
+    const mic = css.slice(css.indexOf(".nc__mic {"), css.indexOf(".nc__mic--live"));
+    expect(mic).toMatch(/touch-action:\s*none/);
+  });
+
+  it("stops the microphone button being selected instead of held", () => {
+    const mic = css.slice(css.indexOf(".nc__mic {"), css.indexOf(".nc__mic--live"));
+    // A long press on a button otherwise raises the text-selection loupe on
+    // iOS, over the top of the thing being held.
+    expect(mic).toMatch(/user-select:\s*none/);
+  });
+});
+
+describe("motion somebody asked us to stop", () => {
+  const reduced = css.slice(css.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
+
+  /** Every class that carries its own `animation:` in the new sections. */
+  const animated = [
+    "nc__react",
+    "nc__picker",
+    "nc__pick",
+    "nc__replying",
+    "nc__micerror",
+    "nc__rec",
+    "nc__rec-dot",
+  ];
+
+  it.each(animated)("stills .%s", (name) => {
+    expect(reduced).toContain(`.${name}`);
+  });
+
+  it("keeps the flash, without the pulse", () => {
+    // The flash is not decoration — it is the answer to "which message did
+    // that quote point at". Removing it entirely would leave the tap doing
+    // nothing visible, so it steps instead of easing.
+    expect(reduced).toMatch(/nc__msg--flash[\s\S]*?animation:\s*nc-flash/);
+  });
+});

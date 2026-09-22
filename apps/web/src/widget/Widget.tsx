@@ -7,6 +7,7 @@ import type {
   NestChatMessage,
   NestChatPreChat,
   NestChatPublicRouting,
+  NestChatQuote,
 } from "@ding/schemas";
 import {
   fillVisitorName,
@@ -21,12 +22,18 @@ import {
   identify,
   openSession,
   pingTyping,
+  react as reactTo,
   reportRead,
   sendMessage,
   start,
   streamUrl,
+  uploadVoice,
 } from "./api";
 import { gateFor } from "./prechat";
+import { MessageRow, describeQuote } from "./MessageRow";
+import { VoiceNote } from "./VoiceNote";
+import { VoiceRecorder } from "./VoiceRecorder";
+import type { VoiceNote as RecordedNote } from "./voice";
 
 /**
  * What this browser remembers between visits, per widget key — so two
@@ -74,6 +81,25 @@ function initials(name: string | undefined): string {
   if (!trimmed) return "•";
   const parts = trimmed.split(/\s+/);
   return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
+}
+
+/**
+ * The quote a reply will carry, drawn from the message on screen.
+ *
+ * Built locally so an optimistic reply shows its quote at once. The server
+ * sends its own back a moment later and that one wins — this only has to be
+ * right for the half-second before it arrives, and it is built from the same
+ * message the server will resolve the id against.
+ */
+function quoteOf(m: NestChatMessage): NestChatQuote {
+  const words = m.body.trim().replace(/\s+/g, " ");
+  return {
+    id: m.id,
+    from: m.from,
+    ...(m.authorName ? { authorName: m.authorName } : {}),
+    preview: words.length > 120 ? `${words.slice(0, 119)}\u2026` : words,
+    ...(m.attachments?.[0]?.kind ? { kind: m.attachments[0].kind } : {}),
+  };
 }
 
 function clockTime(iso: string): string {
@@ -275,6 +301,13 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   const [detailsError, setDetailsError] = useState(false);
   /** When an agent last read this thread — the "Seen" under our own messages. */
   const [seenAt, setSeenAt] = useState<string>();
+  /** The message the composer is answering, set by a swipe or the reply button. */
+  const [replyTo, setReplyTo] = useState<NestChatMessage>();
+  /** Flashing, because a quote above was tapped and this is what it pointed at. */
+  const [flash, setFlash] = useState<string>();
+  /** Something the browser refused — no microphone, permission declined. Shown
+   *  above the composer and cleared by the next thing they do. */
+  const [micError, setMicError] = useState<string>();
 
   const threadRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -285,6 +318,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   /** The trailing half of the typing throttle — see `sendTyping`. */
   const previewTimer = useRef<ReturnType<typeof setTimeout>>();
   const typingTimer = useRef<ReturnType<typeof setTimeout>>();
+  /** Blob URLs for notes still uploading, so one can be played back the moment
+   *  it is recorded rather than after a round trip. Keyed by the optimistic id
+   *  and dropped when the server's copy replaces it. */
+  const localVoice = useRef(new Map<string, string>());
 
   /* ---- boot: appearance, then session ---- */
 
@@ -342,7 +379,8 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           | { kind: "typing"; typing: boolean }
           | { kind: "read"; at: string }
           | { kind: "closed" }
-          | { kind: "reopened" };
+          | { kind: "reopened" }
+          | { kind: "reaction"; payload: NestChatMessage };
         if (event.kind === "read") {
           setSeenAt(event.at);
           return;
@@ -358,6 +396,16 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         }
         if (event.kind === "reopened") {
           setClosed(false);
+          return;
+        }
+        if (event.kind === "reaction") {
+          // The whole message, replacing the row rather than merging emoji
+          // into it. A set with one slot per person cannot be reconciled from
+          // a delta without knowing what was already in it, and the two sides
+          // disagree about exactly that during two quick taps.
+          setMessages((prev) =>
+            prev.map((m) => (m.id === event.payload.id ? event.payload : m)),
+          );
           return;
         }
         if (event.kind === "typing") {
@@ -448,8 +496,12 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   const send = useCallback(async () => {
     const body = draft.trim();
     if (!body || !token || sending) return;
+    const answering = replyTo;
     setSending(true);
     setDraft("");
+    // The quote chip goes the moment they send, not when the reply lands. It
+    // describes an intention, and the intention has been carried out.
+    setReplyTo(undefined);
     // Take the draft off the agent's screen now. The typing indicator times
     // itself out in a few seconds, but those are the seconds where the message
     // has arrived and the ghost of it is still sitting underneath — the same
@@ -466,10 +518,16 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
       body,
       at: new Date().toISOString(),
       reactions: [],
+      // Drawn from what is on screen rather than waiting for the server's
+      // copy. The quote is the reason they are typing at all, and a reply
+      // that appears without it for half a second reads as the wrong reply.
+      ...(answering ? { quote: quoteOf(answering) } : {}),
     };
     setMessages((prev) => [...prev, optimistic]);
     try {
-      const res = await sendMessage(token, body, window.location.href);
+      const res = await sendMessage(token, body, window.location.href, {
+        quotedMsgId: answering?.id,
+      });
       if (res.token) setToken(res.token);
       setLive(true);
       setMessages((prev) =>
@@ -479,11 +537,127 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
       // Put it back in the box rather than losing what they wrote.
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
       setDraft(body);
+      // And so does the quote, for the same reason: they are about to press
+      // send again, and it should still be answering what it was answering.
+      setReplyTo(answering);
     } finally {
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [draft, token, sending]);
+  }, [draft, token, sending, replyTo]);
+
+  /**
+   * A finished recording, uploaded and sent as its own message.
+   *
+   * Shown before it has gone anywhere, with the bars that were drawn while it
+   * was being recorded — so the bubble that appears is the one they watched
+   * themselves make, rather than a spinner that becomes a waveform.
+   */
+  const sendVoice = useCallback(
+    async (note: RecordedNote) => {
+      if (!token) return;
+      const answering = replyTo;
+      setReplyTo(undefined);
+      setMicError(undefined);
+      const localId = `local:${Date.now()}`;
+      // Playable immediately, from the blob in memory — there is no round trip
+      // between recording something and being able to hear it back.
+      const localUrl = URL.createObjectURL(note.blob);
+      localVoice.current.set(localId, localUrl);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: localId,
+          from: "visitor",
+          body: "",
+          at: new Date().toISOString(),
+          reactions: [],
+          attachments: [
+            {
+              id: localId,
+              filename: "voice",
+              mime: note.blob.type || "audio/webm",
+              kind: "voice",
+              durationMs: note.durationMs,
+              waveform: note.waveform,
+            },
+          ],
+          ...(answering ? { quote: quoteOf(answering) } : {}),
+        },
+      ]);
+      try {
+        const up = await uploadVoice(token, note.blob, note);
+        const res = await sendMessage(token, "", window.location.href, {
+          attachments: [up.ticket],
+          quotedMsgId: answering?.id,
+        });
+        if (res.token) setToken(res.token);
+        setLive(true);
+        setMessages((prev) => prev.map((m) => (m.id === localId && res.message ? res.message : m)));
+      } catch {
+        setMessages((prev) => prev.filter((m) => m.id !== localId));
+        setMicError("That voice message didn’t send. Try again?");
+      } finally {
+        // Only once the bubble holding it is gone or replaced. Revoking while
+        // it is still on screen is a player that silently refuses to play.
+        setTimeout(() => {
+          localVoice.current.delete(localId);
+          URL.revokeObjectURL(localUrl);
+        }, 60_000);
+      }
+    },
+    [token, replyTo],
+  );
+
+  /**
+   * Put an emoji on a message, or take ours off.
+   *
+   * Drawn first and corrected afterwards. A reaction is the one interaction
+   * where the round trip is longer than the feeling — the tap should land
+   * under the finger, and the server's copy replaces it a moment later.
+   */
+  const react = useCallback(
+    async (message: NestChatMessage, emoji: string) => {
+      if (!token || message.id.startsWith("local:")) return;
+      const before = message.reactions;
+      const after = [
+        ...before.filter((r) => r.by !== "visitor"),
+        ...(emoji ? [{ emoji, by: "visitor" as const }] : []),
+      ];
+      setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, reactions: after } : m)));
+      try {
+        const res = await reactTo(token, message.id, emoji);
+        if (res.message) {
+          setMessages((prev) => prev.map((m) => (m.id === message.id ? res.message! : m)));
+        }
+      } catch {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === message.id ? { ...m, reactions: before } : m)),
+        );
+      }
+    },
+    [token],
+  );
+
+  /**
+   * Tapping a quote goes to what it answers.
+   *
+   * Scrolled to and flashed rather than only scrolled to: in a thread of
+   * similar-looking bubbles, arriving somewhere is not the same as being shown
+   * which one. The flash clears itself — it marks a moment, not a state.
+   */
+  const jumpToQuote = useCallback((quote: NestChatQuote) => {
+    const el = threadRef.current?.querySelector(`[data-message-id="${CSS.escape(quote.id)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    setFlash(quote.id);
+    setTimeout(() => setFlash((id) => (id === quote.id ? undefined : id)), 1400);
+  }, []);
+
+  const startReply = useCallback((m: NestChatMessage) => {
+    setReplyTo(m);
+    inputRef.current?.focus();
+  }, []);
 
   const onDraft = (value: string) => {
     setDraft(value);
@@ -998,8 +1172,22 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           // the first, the face and the time on the last.
           const startsRun = !prev || prev.from !== m.from || prev.authorName !== m.authorName;
           const endsRun = !next || next.from !== m.from;
+          // A voice note is the whole bubble rather than a file listed under
+          // one: the waveform *is* the message, and wrapping it in an empty
+          // text bubble would put a box round it for no reason.
+          const voice = m.attachments?.find((a) => a.kind === "voice");
+          const others = m.attachments?.filter((a) => a.kind !== "voice") ?? [];
+
           return (
-            <div key={m.id} className={`nc__msg nc__msg--${m.from}`}>
+            <MessageRow
+              key={m.id}
+              message={m}
+              highlighted={flash === m.id}
+              canAct={!closed && !m.id.startsWith("local:")}
+              onReply={startReply}
+              onReact={react}
+              onJumpToQuote={jumpToQuote}
+            >
               {m.from === "agent" && startsRun && m.authorName ? (
                 <div className="nc__author">{m.authorName}</div>
               ) : null}
@@ -1009,24 +1197,40 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                     {initials(m.authorName)}
                   </div>
                 ) : null}
-                <div className="nc__bubble">
-                  {m.body}
-                  {m.attachments?.length ? (
-                    <div className="nc__files">
-                      {m.attachments.map((a) => (
-                        <a
-                          key={a.id}
-                          className="nc__file"
-                          href={token ? attachmentUrl(token, a.id) : undefined}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          📎 {a.filename}
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+                {voice ? (
+                  <VoiceNote
+                    attachment={voice}
+                    mine={m.from === "visitor"}
+                    src={
+                      // A note still on its way is played from the blob it was
+                      // recorded into; anything else comes from the server.
+                      m.id.startsWith("local:")
+                        ? localVoice.current.get(m.id)
+                        : token
+                          ? attachmentUrl(token, voice.id)
+                          : undefined
+                    }
+                  />
+                ) : (
+                  <div className="nc__bubble">
+                    {m.body}
+                    {others.length ? (
+                      <div className="nc__files">
+                        {others.map((a) => (
+                          <a
+                            key={a.id}
+                            className="nc__file"
+                            href={token ? attachmentUrl(token, a.id) : undefined}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            📎 {a.filename}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
               {endsRun ? (
                 <div className="nc__time">
@@ -1034,7 +1238,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
                   {showSeen && m.id === lastOwn?.id ? <span className="nc__seen">Seen</span> : null}
                 </div>
               ) : null}
-            </div>
+            </MessageRow>
           );
         })}
 
@@ -1130,6 +1334,35 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
           been closed: a greyed-out message box reads as something broken, and in
           both cases there is exactly one thing to do and it is on screen. */}
       {gated || closed ? null : (
+      <>
+      {/* What they are answering, above the box rather than inside it: the
+          quote is context for what they are about to type, and putting it in
+          the field would mean deleting it to clear it. */}
+      {replyTo ? (
+        <div className="nc__replying">
+          <div className="nc__replying-body">
+            <span className="nc__replying-who">
+              Replying to {replyTo.from === "visitor" ? "yourself" : replyTo.authorName || "them"}
+            </span>
+            <span className="nc__replying-text">{describeQuote(quoteOf(replyTo))}</span>
+          </div>
+          <button
+            type="button"
+            className="nc__replying-x"
+            onClick={() => setReplyTo(undefined)}
+            aria-label="Stop replying"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
+
+      {micError ? (
+        <div className="nc__micerror" role="status">
+          {micError}
+        </div>
+      ) : null}
+
       <div className="nc__composer">
         <textarea
           ref={inputRef}
@@ -1147,18 +1380,30 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
             }
           }}
         />
-        <button
-          type="button"
-          className="nc__send"
-          disabled={!draft.trim() || sending}
-          onClick={() => void send()}
-          aria-label="Send"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M2 21l20-9L2 3l0 7 14 2-14 2z" fill="currentColor" />
-          </svg>
-        </button>
+        {/* The mic gives way to send the moment there is anything to send.
+            Two buttons side by side would make the commonest action — sending
+            what you just typed — a target choice. */}
+        {draft.trim() ? (
+          <button
+            type="button"
+            className="nc__send"
+            disabled={sending}
+            onClick={() => void send()}
+            aria-label="Send"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M2 21l20-9L2 3l0 7 14 2-14 2z" fill="currentColor" />
+            </svg>
+          </button>
+        ) : (
+          <VoiceRecorder
+            disabled={sending || !token}
+            onRecorded={(note) => void sendVoice(note)}
+            onError={setMicError}
+          />
+        )}
       </div>
+      </>
       )}
 
       </>

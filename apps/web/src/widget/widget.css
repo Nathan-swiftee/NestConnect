@@ -1275,3 +1275,548 @@ body {
     transform: none;
   }
 }
+
+/* ============================================================
+   Replying, reacting, and voice notes
+   ============================================================ */
+
+/* The row is the track a bubble slides along. `position: relative` so the
+   reply arrow, the hover button and the emoji row all hang off it rather than
+   off the bubble, which is the thing that moves. */
+.nc__msg {
+  position: relative;
+}
+
+.nc__slide {
+  /* The element the finger drags. Separate from .nc__msg so the swipe never
+     moves the things that mark where the message sits — the arrow behind it
+     and the reply button beside it both stay put while it travels. */
+  will-change: transform;
+}
+
+/* --- swipe to reply --- */
+
+.nc__swipe-hint {
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  transform: translateY(-50%) scale(0.7);
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  opacity: 0.55;
+  transition: transform 0.18s var(--nc-spring), opacity 0.14s ease,
+    background 0.18s ease, color 0.18s ease;
+  pointer-events: none;
+}
+
+/* Past the threshold the arrow commits: it fills in and springs to full size.
+   This is the whole feedback loop of the gesture — the moment it changes is
+   the moment letting go would reply, and it has to be visible without looking
+   away from the bubble. */
+.nc__swipe-hint--armed {
+  transform: translateY(-50%) scale(1);
+  opacity: 1;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.nc__msg--visitor .nc__swipe-hint {
+  left: auto;
+  right: 4px;
+}
+
+/* --- the reply button, for a mouse --- */
+
+.nc__reply-btn {
+  position: absolute;
+  top: 2px;
+  right: -2px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--panel, #fff);
+  color: var(--muted);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.14);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.16s ease, transform 0.2s var(--nc-spring),
+    color 0.16s ease;
+  /* Not in the way until it is wanted. A button that intercepts the pointer
+     while invisible is a bubble you cannot select text in. */
+  pointer-events: none;
+}
+
+.nc__msg--visitor .nc__reply-btn {
+  right: auto;
+  left: -2px;
+}
+
+/* Hover only — a touch device never matches this, and would otherwise be left
+   with a button permanently sitting over its own messages. */
+@media (hover: hover) and (pointer: fine) {
+  .nc__msg:hover .nc__reply-btn,
+  .nc__reply-btn:focus-visible {
+    opacity: 1;
+    transform: scale(1);
+    pointer-events: auto;
+  }
+
+  .nc__reply-btn:hover {
+    color: var(--accent);
+  }
+}
+
+/* --- the quote on a reply --- */
+
+.nc__quote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
+  text-align: left;
+  width: fit-content;
+  max-width: 78%;
+  margin: 0 0 -6px 42px;
+  padding: 6px 10px 12px;
+  border: 0;
+  border-left: 3px solid var(--accent);
+  border-radius: 10px 10px 0 0;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  cursor: pointer;
+  font: inherit;
+  /* Tucked under the bubble it belongs to, so the two read as one object
+     rather than as a card with a message beneath it. */
+  position: relative;
+  z-index: 0;
+}
+
+.nc__msg--visitor .nc__quote {
+  margin-left: auto;
+  margin-right: 0;
+}
+
+.nc__quote-who {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--accent);
+}
+
+.nc__quote-text {
+  font-size: 12.5px;
+  color: var(--muted);
+  /* One line. A quote that grows to four is a quote competing with the reply
+     it belongs to. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Tapped a quote: the message it points at flashes once. Marks a moment
+   rather than a state — in a thread of similar bubbles, arriving somewhere is
+   not the same as being shown which one. */
+.nc__msg--flash .nc__bubble,
+.nc__msg--flash .nc__voice {
+  animation: nc-flash 1.4s ease;
+}
+
+@keyframes nc-flash {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  12%,
+  55% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+}
+
+/* --- reactions --- */
+
+.nc__reacts {
+  display: flex;
+  gap: 3px;
+  /* Overlapping the bubble's bottom edge, the way every messenger does it:
+     the emoji belongs to the message, and a gap makes it a separate object. */
+  margin: -9px 0 0 46px;
+  position: relative;
+  z-index: 1;
+}
+
+.nc__reacts--mine {
+  margin-left: 0;
+  margin-right: 4px;
+  justify-content: flex-end;
+}
+
+.nc__react {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border: 1px solid var(--line, rgba(16, 24, 40, 0.1));
+  border-radius: 999px;
+  background: var(--panel, #fff);
+  font-size: 12.5px;
+  line-height: 1.5;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+  animation: nc-pop 0.36s var(--nc-spring);
+  transition: transform 0.18s var(--nc-spring), border-color 0.18s ease;
+}
+
+.nc__react:active {
+  transform: scale(0.92);
+}
+
+/* Ours is ringed, because a second tap takes it off and nothing else says so. */
+.nc__react--ours {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel, #fff));
+}
+
+.nc__react b {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+/* The emoji row, on a long press. */
+.nc__picker {
+  position: absolute;
+  bottom: calc(100% - 10px);
+  left: 42px;
+  display: flex;
+  gap: 2px;
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: var(--panel, #fff);
+  box-shadow: 0 6px 20px -4px rgba(16, 24, 40, 0.26), 0 2px 6px rgba(16, 24, 40, 0.1);
+  z-index: 3;
+  animation: nc-pop 0.26s var(--nc-spring);
+}
+
+.nc__picker--mine {
+  left: auto;
+  right: 4px;
+}
+
+.nc__pick {
+  border: 0;
+  background: none;
+  font-size: 21px;
+  line-height: 1;
+  padding: 3px;
+  border-radius: 50%;
+  cursor: pointer;
+  /* Each one arrives just after the last, so the row reads as a row being
+     dealt rather than six things appearing at once. */
+  animation: nc-pop 0.3s var(--nc-spring) backwards;
+  transition: transform 0.16s var(--nc-spring);
+}
+
+.nc__pick:hover,
+.nc__pick:focus-visible {
+  transform: scale(1.22);
+}
+
+.nc__pick--ours {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+/* --- what you are replying to, above the composer --- */
+
+.nc__replying {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 10px;
+  padding: 7px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 8px 8px 0 0;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  animation: nc-rise 0.28s var(--nc-enter);
+}
+
+.nc__replying-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.nc__replying-who {
+  font-size: 11.5px;
+  font-weight: 650;
+  color: var(--accent);
+}
+
+.nc__replying-text {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nc__replying-x {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.nc__micerror {
+  margin: 0 10px 4px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #b42318 10%, transparent);
+  color: #b42318;
+  font-size: 12.5px;
+  animation: nc-rise 0.28s var(--nc-enter);
+}
+
+/* --- voice notes --- */
+
+.nc__voice {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  max-width: 78%;
+  padding: 8px 13px 8px 9px;
+  border-radius: 18px;
+  border-bottom-left-radius: 6px;
+  background: var(--bubble-in);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 12px -6px rgba(16, 24, 40, 0.12);
+}
+
+.nc__voice--mine {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-bottom-left-radius: 18px;
+  border-bottom-right-radius: 6px;
+  box-shadow: none;
+  margin-left: auto;
+}
+
+.nc__voice-play {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  transition: transform 0.18s var(--nc-spring);
+}
+
+.nc__voice--mine .nc__voice-play {
+  background: color-mix(in srgb, #fff 26%, transparent);
+  color: var(--accent-text);
+}
+
+.nc__voice-play:active {
+  transform: scale(0.9);
+}
+
+.nc__voice-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  flex: 1;
+  min-width: 92px;
+  cursor: pointer;
+}
+
+.nc__voice-bar {
+  flex: 1;
+  min-width: 2px;
+  max-width: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, currentColor 28%, transparent);
+  /* Each bar fills as the playhead reaches it. A transition rather than a
+     redraw so the colour moves across the note continuously, instead of
+     stepping bar to bar. */
+  transition: background 0.12s linear;
+}
+
+.nc__voice-bar--done {
+  background: currentColor;
+}
+
+.nc__voice--mine .nc__voice-bar {
+  background: color-mix(in srgb, var(--accent-text) 42%, transparent);
+}
+
+.nc__voice--mine .nc__voice-bar--done {
+  background: var(--accent-text);
+}
+
+.nc__voice-time {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+  flex: 0 0 auto;
+}
+
+/* --- recording --- */
+
+.nc__mic {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  /* The gesture is a drag. Without this the browser starts selecting text or
+     scrolling the page the moment the finger moves. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform 0.2s var(--nc-spring), color 0.18s ease,
+    background 0.18s ease;
+}
+
+.nc__mic--live {
+  background: var(--accent);
+  color: var(--accent-text);
+  /* Grown under the finger, so the thing being held looks held. */
+  transform: scale(1.18);
+}
+
+.nc__rec {
+  position: absolute;
+  inset: auto 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 22px;
+  background: var(--panel, #fff);
+  box-shadow: 0 6px 20px -4px rgba(16, 24, 40, 0.26);
+  animation: nc-rise 0.22s var(--nc-enter);
+  z-index: 4;
+}
+
+/* Past the cancel threshold the whole strip turns, so the answer to "will
+   letting go send this" is readable at a glance rather than by reading. */
+.nc__rec--cancel {
+  background: color-mix(in srgb, #b42318 12%, var(--panel, #fff));
+}
+
+.nc__rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e5484d;
+  flex: 0 0 auto;
+  animation: nc-recpulse 1.4s ease-in-out infinite;
+}
+
+@keyframes nc-recpulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+.nc__rec-time {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  flex: 0 0 auto;
+}
+
+.nc__rec-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.nc__rec-bars i {
+  width: 3px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: var(--accent);
+  /* The live meter. Short enough to track a voice, long enough that the bars
+     glide rather than snap between samples. */
+  transition: height 0.06s linear;
+}
+
+.nc__rec--cancel .nc__rec-bars i {
+  background: #b42318;
+}
+
+.nc__rec-hint {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+  transition: transform 0.05s linear, color 0.18s ease;
+}
+
+.nc__rec--cancel .nc__rec-hint {
+  color: #b42318;
+  font-weight: 600;
+}
+
+/* Everything above that moves, stilled for anybody who asked for that. The
+   gestures still work; they simply stop being animated. */
+@media (prefers-reduced-motion: reduce) {
+  .nc__react,
+  .nc__picker,
+  .nc__pick,
+  .nc__replying,
+  .nc__micerror,
+  .nc__rec,
+  .nc__rec-dot {
+    animation: none;
+    animation-delay: 0s;
+  }
+
+  .nc__msg--flash .nc__bubble,
+  .nc__msg--flash .nc__voice {
+    animation: nc-flash 1.4s steps(2, end);
+  }
+
+  .nc__slide,
+  .nc__swipe-hint,
+  .nc__reply-btn,
+  .nc__mic,
+  .nc__voice-play,
+  .nc__pick,
+  .nc__react {
+    transition: none;
+  }
+}
