@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:nestconnect_client/nestconnect_client.dart';
 
 import 'bubble.dart';
+import 'message_row.dart';
+import 'recorder.dart';
 import 'theme.dart';
+import 'voice.dart';
 
 /// What a host app hands back when the customer wants to attach something.
 ///
@@ -50,6 +53,13 @@ class _NestMessengerState extends State<NestMessenger> {
   bool _sending = false;
   bool _attaching = false;
   String? _error;
+  /// The message the composer is answering, set by a swipe.
+  NestMessage? _replyTo;
+  /// Flashing, because a quote above was tapped and this is what it pointed at.
+  String? _flash;
+  /// One key per message, so tapping a quote can scroll to the real widget
+  /// rather than to a guess at where it is.
+  final _keys = <String, GlobalKey>{};
 
   @override
   void initState() {
@@ -98,10 +108,14 @@ class _NestMessengerState extends State<NestMessenger> {
       _error = null;
     });
     final attachments = List<NestUpload>.from(_staged);
+    final answering = _replyTo;
     _composer.clear();
     _staged.clear();
+    // The quote chip goes the moment they send, not when the reply lands: it
+    // describes an intention, and the intention has been carried out.
+    _replyTo = null;
     try {
-      await widget.chat.send(text, attachments: attachments);
+      await widget.chat.send(text, attachments: attachments, replyTo: answering);
     } on NestException catch (e) {
       // The server's own words. "That kind of file can't be attached here" is
       // an answer; "something went wrong" is a shrug.
@@ -109,6 +123,46 @@ class _NestMessengerState extends State<NestMessenger> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  /// A finished recording, uploaded and sent as its own message.
+  Future<void> _sendVoice(RecordedNote note) async {
+    final answering = _replyTo;
+    setState(() {
+      _replyTo = null;
+      _error = null;
+    });
+    try {
+      final staged = await widget.chat.attachVoice(
+        bytes: note.bytes,
+        mime: note.mime,
+        durationMs: note.duration.inMilliseconds,
+        waveform: note.waveform,
+      );
+      await widget.chat.send('', attachments: [staged], replyTo: answering);
+    } on NestException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  /// Tapping a quote goes to what it answers, and flashes it.
+  void _jumpToQuote(NestQuote quote) {
+    final key = _keys[quote.id];
+    final target = key?.currentContext;
+    if (target == null) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        target,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+        alignment: 0.5,
+      ),
+    );
+    setState(() => _flash = quote.id);
+    // Clears itself. The ring marks a moment, not a state.
+    Timer(const Duration(milliseconds: 1400), () {
+      if (mounted && _flash == quote.id) setState(() => _flash = null);
+    });
   }
 
   Future<void> _attach() async {
@@ -188,14 +242,56 @@ class _NestMessengerState extends State<NestMessenger> {
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
                     itemCount: messages.length,
-                    itemBuilder: (context, i) => NestBubble(
-                      message: messages[i],
-                      theme: theme,
-                      attachmentUrl: widget.chat.attachmentUrl,
-                      // Only on the first of a run. Repeating a name down five
-                      // consecutive replies is noise.
-                      showAuthor: i == 0 || messages[i - 1].from != messages[i].from,
-                    ),
+                    itemBuilder: (context, i) {
+                      final m = messages[i];
+                      final key = _keys.putIfAbsent(m.id, GlobalKey.new);
+                      final voice = m.voice;
+                      return NestMessageRow(
+                        key: ValueKey(m.id),
+                        message: m,
+                        theme: theme,
+                        highlighted: _flash == m.id,
+                        // A message still on its way has no id the server
+                        // would recognise, so there is nothing to react to
+                        // and nothing to quote.
+                        canAct: !widget.chat.isClosed && !m.id.startsWith('pending-'),
+                        onReply: (target) => setState(() => _replyTo = target),
+                        onReact: (target, emoji) =>
+                            unawaited(widget.chat.react(target.id, emoji)),
+                        onJumpToQuote: _jumpToQuote,
+                        child: KeyedSubtree(
+                          key: key,
+                          // A recording is the whole bubble rather than a file
+                          // listed under one: the waveform *is* the message,
+                          // and wrapping it in an empty text bubble would put
+                          // a box round it for no reason.
+                          child: voice != null
+                              ? Align(
+                                  alignment: m.isMine
+                                      ? Alignment.centerRight
+                                      : Alignment.centerLeft,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 3),
+                                    child: NestVoiceNote(
+                                      attachment: voice,
+                                      source: widget.chat.attachmentUrl(voice),
+                                      mine: m.isMine,
+                                      theme: theme,
+                                    ),
+                                  ),
+                                )
+                              : NestBubble(
+                                  message: m,
+                                  theme: theme,
+                                  attachmentUrl: widget.chat.attachmentUrl,
+                                  // Only on the first of a run. Repeating a
+                                  // name down five consecutive replies is noise.
+                                  showAuthor:
+                                      i == 0 || messages[i - 1].from != messages[i].from,
+                                ),
+                        ),
+                      );
+                    },
                   ),
           ),
           if (_error != null)
@@ -221,7 +317,16 @@ class _NestMessengerState extends State<NestMessenger> {
               busy: _restarting,
               onNewChat: _startNewChat,
             )
-          else
+          else ...[
+            // What they are answering, above the box rather than inside it:
+            // the quote is context for what they are about to type, and in
+            // the field it would have to be deleted to be cleared.
+            if (_replyTo != null)
+              _ReplyingTo(
+                theme: theme,
+                message: _replyTo!,
+                onCancel: () => setState(() => _replyTo = null),
+              ),
             _Composer(
               controller: _composer,
               theme: theme,
@@ -231,7 +336,10 @@ class _NestMessengerState extends State<NestMessenger> {
               onAttach: widget.onPickFile == null ? null : _attach,
               onSend: _send,
               onChanged: _onTyped,
+              onRecorded: (note) => unawaited(_sendVoice(note)),
+              onRecordError: (message) => setState(() => _error = message),
             ),
+          ],
           if (appearance.showBranding)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -463,6 +571,8 @@ class _Composer extends StatelessWidget {
     required this.attaching,
     required this.onSend,
     required this.onChanged,
+    required this.onRecorded,
+    required this.onRecordError,
     this.onAttach,
   });
 
@@ -473,6 +583,8 @@ class _Composer extends StatelessWidget {
   final bool attaching;
   final VoidCallback onSend;
   final ValueChanged<String> onChanged;
+  final ValueChanged<RecordedNote> onRecorded;
+  final ValueChanged<String> onRecordError;
   final VoidCallback? onAttach;
 
   @override
@@ -523,15 +635,99 @@ class _Composer extends StatelessWidget {
               ),
             ),
           ),
-          IconButton(
-            onPressed: sending ? null : onSend,
-            icon: sending
-                ? const SizedBox(
-                    width: 18, height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+          // The mic gives way to send the moment there is anything to send.
+          // Two buttons side by side would make the commonest action — sending
+          // what you just typed — a choice between targets.
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) => value.text.trim().isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.only(right: 6, bottom: 4),
+                    child: NestRecorderButton(
+                      theme: theme,
+                      enabled: !sending,
+                      onRecorded: onRecorded,
+                      onError: onRecordError,
+                    ),
                   )
-                : Icon(Icons.send_rounded, color: theme.accent),
-            tooltip: 'Send',
+                : IconButton(
+                    onPressed: sending ? null : onSend,
+                    icon: sending
+                        ? const SizedBox(
+                            width: 18, height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(Icons.send_rounded, color: theme.accent),
+                    tooltip: 'Send',
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// What the composer is answering.
+class _ReplyingTo extends StatelessWidget {
+  const _ReplyingTo({
+    required this.theme,
+    required this.message,
+    required this.onCancel,
+  });
+
+  final NestTheme theme;
+  final NestMessage message;
+  final VoidCallback onCancel;
+
+  /// What to show when the message being answered had no words of its own.
+  String get _label {
+    final words = message.body.trim();
+    if (words.isNotEmpty) return words;
+    final voice = message.voice;
+    if (voice != null) return 'Voice message';
+    if (message.attachments.isEmpty) return 'Message';
+    return message.attachments.first.isImage ? 'Photo' : 'Attachment';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+      padding: const EdgeInsets.fromLTRB(10, 7, 4, 7),
+      decoration: BoxDecoration(
+        color: theme.accent.withValues(alpha: 0.08),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+        border: Border(left: BorderSide(color: theme.accent, width: 3)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  message.isMine ? 'Replying to yourself' : 'Replying to ${message.authorName ?? 'them'}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: theme.accent,
+                  ),
+                ),
+                Text(
+                  _label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12.5, color: theme.muted),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onCancel,
+            icon: Icon(Icons.close_rounded, size: 18, color: theme.muted),
+            tooltip: 'Stop replying',
+            visualDensity: VisualDensity.compact,
           ),
         ],
       ),
