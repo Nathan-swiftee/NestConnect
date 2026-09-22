@@ -399,6 +399,14 @@ export abstract class Store {
   /** Persist a new team ordering; ids not present keep their relative order after. */
   abstract reorderTeams(orderedIds: string[]): Promise<Team[]>;
   /**
+   * The same for channels — what the arrows in Settings write.
+   *
+   * Ids not in the list keep their relative order after the ones that are,
+   * which is what makes a channel connected in another tab land at the end
+   * rather than silently jumping to the top of somebody's sidebar.
+   */
+  abstract reorderInboxes(orderedIds: string[]): Promise<Inbox[]>;
+  /**
    * Create a user. With `password` set (seeding) the account can log in straight
    * away; without it, a single-use invite token is minted and returned so the
    * invitee can set their own password — the account has no usable password

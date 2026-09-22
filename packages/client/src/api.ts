@@ -252,6 +252,9 @@ export const api = {
   updateTeam: (id: string, input: UpdateTeamInput) => patch<Team>(`/settings/teams/${id}`, input),
   deleteTeam: (id: string) => del<{ ok: boolean }>(`/settings/teams/${id}`),
   reorderTeams: (orderedIds: string[]) => post<Team[]>("/settings/teams/reorder", { orderedIds }),
+  // The order channels are listed in, everywhere they are listed.
+  reorderInboxes: (orderedIds: string[]) =>
+    post<Inbox[]>("/settings/inboxes/reorder", { orderedIds }),
 
   // Custom fields: the org's definitions, and the values on one record.
   customFields: () => get<CustomField[]>("/custom-fields"),

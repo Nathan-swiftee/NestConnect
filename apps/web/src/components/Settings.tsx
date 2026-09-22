@@ -68,6 +68,7 @@ import {
   useIntegrations,
   useMe,
   usePeople,
+  useReorderInboxes,
   useReorderTeams,
   useRegisterWhatsappNumber,
   useRerouteInbox,
@@ -367,6 +368,7 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
   const inboxes = useInboxes();
   const teams = useTeams();
   const del = useDeleteInbox();
+  const reorder = useReorderInboxes();
   const [connecting, setConnecting] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   // After a one-click (OAuth) connect the new inbox is unrouted — open its editor
@@ -393,14 +395,25 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
     });
   };
 
-  const editingInbox = inboxes.data?.find((i) => i.id === editingId) ?? null;
+  // Already in the order the server decided; named so the arrows have
+  // something to index into and the count has something to count.
+  const ordered = inboxes.data ?? [];
+  const move = (index: number, dir: -1 | 1) => {
+    const j = index + dir;
+    if (j < 0 || j >= ordered.length) return;
+    const ids = ordered.map((i) => i.id);
+    [ids[index], ids[j]] = [ids[j], ids[index]];
+    reorder.mutate(ids, { onError: () => onToast("Only admins & managers can reorder channels") });
+  };
+
+  const editingInbox = ordered.find((i) => i.id === editingId) ?? null;
 
   return (
     <div className="setpane setpane--wide">
       <div className="setpane__head">
         <div>
-          <h2>Channels <span className="setcount">{inboxes.data?.length ?? 0}</span></h2>
-          <p>WhatsApp numbers and shared email inboxes. Each routes to one or more teams.</p>
+          <h2>Channels <span className="setcount">{ordered.length}</span></h2>
+          <p>WhatsApp numbers and shared email inboxes. Each routes to one or more teams. The arrows set the order they appear in everyone's sidebar.</p>
         </div>
         <button className="btn-primary" onClick={() => setConnecting(true)}>
           <PlusIcon /> Add channel
@@ -408,12 +421,36 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
       </div>
 
       <div className="cardgrid">
-        {inboxes.data?.map((i) => {
+        {ordered.map((i, idx) => {
           const cm = channelMeta(i.type);
           const Glyph = cm.Glyph;
           const connected = i.connected !== false;
           return (
-            <button className="chcard" key={i.id} onClick={() => setEditingId(i.id)}>
+            <div className="chcard__wrap" key={i.id}>
+            {/* Beside the card rather than inside it: the card is itself a
+                button that opens the editor, and a button inside a button is
+                not a thing a browser will render. */}
+            <span className="chcard__ord">
+              <button
+                className="iconbtn"
+                title="Move up in the sidebar"
+                aria-label={`Move ${i.name} up`}
+                disabled={idx === 0 || reorder.isPending}
+                onClick={() => move(idx, -1)}
+              >
+                <ChevronUp />
+              </button>
+              <button
+                className="iconbtn"
+                title="Move down in the sidebar"
+                aria-label={`Move ${i.name} down`}
+                disabled={idx === ordered.length - 1 || reorder.isPending}
+                onClick={() => move(idx, 1)}
+              >
+                <ChevronDown />
+              </button>
+            </span>
+            <button className="chcard" onClick={() => setEditingId(i.id)}>
               <div className="chcard__top">
                 <span className="chcard__ic" style={{ color: cm.color }}>
                   <Glyph />
@@ -433,6 +470,7 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
                 </span>
               </div>
             </button>
+            </div>
           );
         })}
         <button className="chcard chcard--add" onClick={() => setConnecting(true)}>

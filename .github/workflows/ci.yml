@@ -154,6 +154,12 @@ jobs:
       - name: Custom field filtering
         run: pnpm check:field-filter
 
+      # The sidebar's channel order. Its query had no ORDER BY at all, so the
+      # list came back in whatever order the heap held — and reshuffled as rows
+      # were updated.
+      - name: Channel order
+        run: pnpm check:channel-order
+
       # What the server pushes down a visitor's live stream, checked against the
       # fixture the Dart SDK replays. This shipped wrong and stayed wrong: the
       # SDK read `type`/`message` where the server sends `kind`/`payload`, so
