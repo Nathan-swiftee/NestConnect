@@ -1,5 +1,10 @@
 import { Injectable } from "@nestjs/common";
-import type { ChannelType } from "@ding/schemas";
+import type {
+  ChannelType,
+  Conversation,
+  ConversationWithMessages,
+  NestChatMessage,
+} from "@ding/schemas";
 import {
   ChannelProvider,
   type SendParams,
@@ -7,6 +12,7 @@ import {
 } from "../channel-provider";
 import { CustomerPushService } from "./customer-push.service";
 import { VisitorBus } from "./visitor-bus";
+import { toVisitorMessage } from "./visitor-message";
 
 /**
  * NestChat outbound: an agent's reply on our own live chat.
@@ -41,19 +47,7 @@ export class NestChatProvider extends ChannelProvider {
     // written — so this only wakes an open stream. A visitor who closed the tab
     // simply reads it when they come back. The id is the stored message's, so a
     // widget that also refetches recognises the two as one message.
-    this.bus.publish(conversationId, {
-      kind: "message",
-      payload: {
-        id: params.messageId ?? `${conversationId}:${Date.now()}`,
-        from: "agent" as const,
-        authorName: params.authorName,
-        body: params.body,
-        at: new Date().toISOString(),
-        attachments: params.media?.length
-          ? params.media.map((m) => ({ id: m.id, filename: m.filename, mime: m.mime }))
-          : undefined,
-      },
-    });
+    this.bus.publish(conversationId, { kind: "message", payload: this.visitorPayload(params) });
     // …and ring their phone, unless they are already looking at it. Here
     // rather than in the dispatcher because this is the one channel whose
     // recipient is a customer of somebody else's app: every other channel's
@@ -71,6 +65,43 @@ export class NestChatProvider extends ChannelProvider {
     return { ok: true };
   }
 
+  /**
+   * The reply, shaped the way the widget reads every other message.
+   *
+   * Preferring the stored row matters for one field in particular: a reply
+   * that quotes the visitor knows what it quotes only from the database.
+   * Rebuilding the payload from the send parameters alone loses the quote —
+   * the agent's reply arrives in the widget as a bare sentence answering
+   * nothing, which is exactly the case swipe-to-reply exists for.
+   *
+   * The fallback is for the window where the conversation we were handed was
+   * read before this message was appended to it. Everything the parameters
+   * carry is still true; only the quote is missing, and a reply without its
+   * quote beats no reply at all.
+   */
+  private visitorPayload(params: SendParams): NestChatMessage {
+    const thread = (params.conversation as ConversationWithMessages).messages;
+    const stored = params.messageId ? thread?.find((m) => m.id === params.messageId) : undefined;
+    const mapped = stored ? toVisitorMessage(stored, thread) : undefined;
+    if (mapped) return mapped;
+
+    return {
+      id: params.messageId ?? `${params.conversation.id}:${Date.now()}`,
+      from: "agent",
+      authorName: params.authorName,
+      body: params.body,
+      at: new Date().toISOString(),
+      attachments: params.media?.length
+        ? params.media.map((m) => ({ id: m.id, filename: m.filename, mime: m.mime }))
+        : undefined,
+      // Never absent, even though a message this new cannot have any. A key
+      // that appears only once somebody reacts is a key every reader has to
+      // defend against, and the widget would be reading `undefined.length` on
+      // the commonest message there is.
+      reactions: [],
+    };
+  }
+
   /** Relay the agent's typing to the visitor's widget. Unlike WhatsApp this is
    *  ours end to end, so there is no 25-second cap and no message to tie it to. */
   async sendTyping(params: { conversation: { id: string } }): Promise<void> {
@@ -86,5 +117,35 @@ export class NestChatProvider extends ChannelProvider {
    */
   async markRead(params: { conversation: { id: string } }): Promise<void> {
     this.bus.publish(params.conversation.id, { kind: "read", at: new Date().toISOString() });
+  }
+
+  /**
+   * An agent put an emoji on a message — show it in the visitor's widget.
+   *
+   * Every other channel's reaction is a request to somebody else's API keyed
+   * on their id for the message. Ours has no third party and no such id, so
+   * the dispatcher hands over our own `messageId` and this finds the message
+   * in the conversation it was given.
+   *
+   * The whole message goes over the wire, not the one emoji: reactions are a
+   * set with one slot per person, and a client applying a delta has to know
+   * what was already there to know whether this replaces it — which is
+   * exactly what the two sides disagree about during two taps in quick
+   * succession.
+   */
+  async sendReaction(params: {
+    conversation: Conversation;
+    channelMsgId: string;
+    messageId?: string;
+    emoji: string;
+  }): Promise<void> {
+    const id = params.messageId ?? params.channelMsgId;
+    const thread = (params.conversation as ConversationWithMessages).messages;
+    const updated = thread?.find((m) => m.id === id);
+    if (!updated) return;
+    const visible = toVisitorMessage(updated, thread);
+    // Nothing back for an internal note: the mapping refuses it, and a
+    // reaction on one is not the visitor's business either.
+    if (visible) this.bus.publish(params.conversation.id, { kind: "reaction", payload: visible });
   }
 }

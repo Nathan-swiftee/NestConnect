@@ -73,12 +73,19 @@ class WebTransport extends NestTransport {
     required List<int> bytes,
     required String filename,
     required String mime,
+    Map<String, String> fields = const {},
   }) async {
     final blob = web.Blob(
       [Uint8List.fromList(bytes).toJS].toJS,
       web.BlobPropertyBag(type: mime),
     );
-    final form = web.FormData()..append('file', blob, filename);
+    final form = web.FormData();
+    // Before the file, so the server has the fields off the request before it
+    // has finished receiving the audio.
+    // `append` with a string value rather than a Blob — package:web models
+    // the two overloads as one method taking a JSAny.
+    fields.forEach((name, value) => form.append(name, value.toJS));
+    form.append('file', blob, filename);
 
     final web.Response res;
     final String text;

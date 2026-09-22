@@ -292,6 +292,9 @@ export class IngestService {
     option?: { label: string; teamId: string | null };
     /** Files the customer attached, already redeemed from their tickets. */
     attachments?: AttachmentInput[];
+    /** The message they swiped to reply to. Checked against the thread here
+     *  rather than trusted — see below. */
+    quotedMsgId?: string;
   }): Promise<{ conversationId: string; created: boolean; message?: Message } | undefined> {
     if (input.contact.blocked) {
       this.logger.log(`Dropped inbound NestChat from blocked contact ${input.contact.id}`);
@@ -323,25 +326,43 @@ export class IngestService {
       );
     }
 
+    // A quote is a copy of somebody's words rendered inside the reply, so the
+    // id has to be one of ours and one of theirs. An id from another thread is
+    // dropped rather than refused: the reply is still worth sending, and
+    // failing it would turn a stale widget into a chat that cannot send.
+    // Internal notes are excluded for the stronger reason — the visitor has
+    // never seen them, and quoting one would be the first time they did.
+    const quotedMsgId = await this.resolveNestChatQuote(conversationId, input.quotedMsgId);
+
     const message = await this.store.appendInboundMessage(conversationId, {
       authorName: input.contact.displayName,
       body: input.text,
       channel: "nestchat",
       attachments: input.attachments,
+      quotedMsgId,
     });
     if (message) {
       this.realtime.emitMessageCreated(conversationId, message, input.inbox.orgId);
       // A photo on its own is a message. The alert has to say something, and
       // "" would arrive on a phone as a notification with no content at all.
-      const preview =
-        input.text.trim() ||
-        (input.attachments?.length === 1
-          ? `Sent ${input.attachments[0]!.kind === "image" ? "a photo" : "a file"}`
-          : `Sent ${input.attachments?.length ?? 0} files`);
+      const preview = input.text.trim() || describeAttachments(input.attachments);
       void this.pushInbound(conversationId, input.contact.displayName, preview);
     }
 
     return { conversationId, created: res.created, message };
+  }
+
+  /** The quoted id if it names a message in this thread the visitor may quote,
+   *  and nothing otherwise. */
+  private async resolveNestChatQuote(
+    conversationId: string,
+    quotedMsgId: string | undefined,
+  ): Promise<string | undefined> {
+    if (!quotedMsgId) return undefined;
+    const conv = await this.store.getConversation(conversationId);
+    const target = conv?.messages.find((m) => m.id === quotedMsgId);
+    if (!target || target.internal || target.authorType === "system") return undefined;
+    return quotedMsgId;
   }
 
   async ingestEmail(input: EmailInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
@@ -543,5 +564,27 @@ export class IngestService {
     if (!team?.slaMinutes) return;
     const due = new Date(Date.now() + team.slaMinutes * 60_000).toISOString();
     await this.store.setSla(conv.id, due);
+  }
+}
+
+/**
+ * What a notification says arrived when nobody typed anything.
+ *
+ * A voice note is not "a file". Somebody who gets "Sent a file" on a lock
+ * screen expects a PDF, opens the app for one, and finds a recording — and the
+ * whole value of the preview is that it sets that expectation right.
+ */
+function describeAttachments(attachments: AttachmentInput[] | undefined): string {
+  const files = attachments ?? [];
+  if (files.length !== 1) return `Sent ${files.length} files`;
+  switch (files[0]!.kind) {
+    case "voice":
+      return "Sent a voice message";
+    case "image":
+      return "Sent a photo";
+    case "video":
+      return "Sent a video";
+    default:
+      return "Sent a file";
   }
 }

@@ -12,7 +12,18 @@ export type VisitorEvent =
   /** An agent closed the chat: the widget says so and stops taking messages. */
   | { kind: "closed" }
   /** …and reopened it, so the widget lets them write again without a reload. */
-  | { kind: "reopened" };
+  | { kind: "reopened" }
+  /**
+   * An emoji landed on a message — from either side.
+   *
+   * Carries the whole message rather than the one emoji. Reactions are a set
+   * with one slot per person, so a client applying a delta has to know what
+   * was already there to know whether this one replaces it, and the two sides
+   * disagree about that exactly when it matters: two taps in quick
+   * succession. The payload is the same shape a message arrives in, so the
+   * widget replaces the row it already has and is done.
+   */
+  | { kind: "reaction"; payload: unknown };
 
 const CHANNEL = "nestchat:visitor";
 

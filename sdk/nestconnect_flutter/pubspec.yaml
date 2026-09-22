@@ -12,13 +12,28 @@ dependencies:
     sdk: flutter
   nestconnect_client:
     path: ../nestconnect_client
+  # Voice notes, and the two plugins they cannot be built without.
+  #
+  # This is the one place the no-plugin rule below is broken, and knowingly:
+  # Flutter cannot record or play audio without native code, so a voice note
+  # means a plugin wherever it lives. Leaving it to the host app would mean
+  # every app that wants the feature choosing and wiring its own recorder,
+  # which is a worse trade than the one made here.
+  #
+  # What it costs, said plainly: an app that takes this package inherits a
+  # microphone permission in its store listing whether or not it turns voice
+  # notes on. `record` asks for the permission only when recording actually
+  # starts, so nobody is prompted by a chat they merely opened.
+  record: ^5.1.2
+  just_audio: ^0.9.42
 
-# No plugins, deliberately.
+# No other plugins, deliberately.
 #
 # A plugin means native build configuration, a permissions prompt, and a
 # platform channel — for every app that takes this, whether or not it uses the
-# feature. Picking a photo is the one thing that would need one, and the host
-# app already has a picker and already has the permission: it hands us bytes.
+# feature. Picking a photo is the one thing that would otherwise need one, and
+# the host app already has a picker and already has the permission: it hands
+# us bytes.
 dev_dependencies:
   flutter_test:
     sdk: flutter

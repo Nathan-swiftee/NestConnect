@@ -68,6 +68,9 @@ class FakeServer {
   /// Status to answer the next send with, when it should fail.
   int? sendStatus;
 
+  /// The same, for a reaction.
+  int? reactStatus;
+
   Future<void> start() async {
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     unawaited(_serve());
@@ -119,6 +122,30 @@ class FakeServer {
             },
           });
         }
+      } else if (path.endsWith('/react')) {
+        if (reactStatus != null) {
+          req.response.statusCode = reactStatus!;
+          req.response.headers.contentType = ContentType.json;
+          req.response.write(jsonEncode({'message': 'No'}));
+          await req.response.close();
+          return;
+        }
+        // `body` is read once at the top of _handle — a request body is a
+        // stream and reading it twice is a state error, not a second copy.
+        final sent = jsonDecode(body) as Map<String, Object?>;
+        _json(req, {
+          'ok': true,
+          'message': {
+            'id': sent['messageId'],
+            'from': 'agent',
+            'body': 'On its way!',
+            'at': DateTime.now().toIso8601String(),
+            'reactions': [
+              if ((sent['emoji'] as String).isNotEmpty)
+                {'emoji': sent['emoji'], 'by': 'visitor'},
+            ],
+          },
+        });
       } else if (path.endsWith('/upload')) {
         _json(req, {
           'ticket': 'tkt_1',
@@ -127,7 +154,13 @@ class FakeServer {
           'size': 42,
         });
       } else if (path.endsWith('/stream')) {
-        req.response.headers.contentType = ContentType('text', 'event-stream');
+        // The charset is not decoration. Dart writes latin1 when the content
+        // type names none, so an event carrying an emoji — which every
+        // reaction does — throws on write and is swallowed by the catch in
+        // `push` below: the frame silently never goes out. That is precisely
+        // how this fake passed while delivering nothing.
+        req.response.headers.contentType =
+            ContentType('text', 'event-stream', charset: 'utf-8');
         // Dart's HttpResponse buffers by default, and a buffered stream is not
         // a stream — without this the events sit in the server until the
         // response ends, which for a connection held open all session means
@@ -167,10 +200,31 @@ class FakeServer {
   /// Play an agent replying — in the server's own shape, not ours.
   void agentSays(String id, String text) {
     final event = contractEvent('message');
+    // The contract's sample is deliberately the rich case — a reply with a
+    // recording, a quote and an emoji already on it — because the keys that
+    // vanish in a rename are the optional ones. This plays a plain reply, so
+    // the extras are cleared rather than inherited: a test about unread
+    // counts should not be quietly asserting against a message that arrived
+    // pre-reacted.
     (event['payload']! as Map<String, Object?>)
       ..['id'] = id
       ..['body'] = text
-      ..['at'] = DateTime.now().toIso8601String();
+      ..['at'] = DateTime.now().toIso8601String()
+      ..['reactions'] = <Object?>[]
+      ..['attachments'] = <Object?>[]
+      ..remove('quote');
+    _events.add('data: ${jsonEncode(event)}\n\n');
+  }
+
+  /// Play an agent reacting to a message — in the server's own shape.
+  void agentReacts(String messageId, String emoji) {
+    final event = contractEvent('reaction');
+    final payload = event['payload']! as Map<String, Object?>;
+    payload
+      ..['id'] = messageId
+      ..['reactions'] = [
+        {'emoji': emoji, 'by': 'agent'},
+      ];
     _events.add('data: ${jsonEncode(event)}\n\n');
   }
 
@@ -434,6 +488,120 @@ void main() {
     // Still signed in: this is the same customer starting another conversation,
     // not somebody signing out. Their history and their push registration stay.
     expect(chat.isOpen, isTrue);
+  });
+
+  test('a reply carries what it answers', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    server.agentSays('msg_a', 'Is it the house on the corner?');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    await chat.send('Yes', replyTo: chat.messages.last);
+    // The id the server resolves the quote against, and the only thing it
+    // takes on trust from us.
+    final sent = server.bodies.entries
+        .firstWhere((e) => e.key.endsWith('/message'))
+        .value! as Map;
+    expect(sent['quotedMsgId'], 'msg_a');
+  });
+
+  test('and shows the quote before the server answers', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    server.agentSays('msg_a', 'Is it the house on the corner?');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    final sending = chat.send('Yes', replyTo: chat.messages.last);
+    // Synchronously. The quote is the reason they are typing at all, and a
+    // reply that appears without it reads as the wrong reply.
+    expect(chat.messages.last.quote?.id, 'msg_a');
+    expect(chat.messages.last.quote?.label, 'Is it the house on the corner?');
+    await sending;
+  });
+
+  test('a quote with no words says what it was', () async {
+    // "" under a reply reads as a broken quote rather than as a recording.
+    final quote = NestQuote.tryParse({'id': 'm', 'from': 'agent', 'preview': '', 'kind': 'voice'});
+    expect(quote?.label, 'Voice message');
+  });
+
+  test('a reaction is drawn before the round trip finishes', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    server.agentSays('msg_a', 'On its way!');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    final reacting = chat.react('msg_a', '\u2764\ufe0f');
+    // Under the finger. This is the one interaction where the round trip is
+    // longer than the feeling it is meant to give.
+    expect(chat.messages.last.reactions.single.emoji, '\u2764\ufe0f');
+    expect(chat.messages.last.reactions.single.mine, isTrue);
+    await reacting;
+    expect(chat.messages.last.reactions.single.mine, isTrue);
+  });
+
+  test('and put back if the server refuses it', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    server.agentSays('msg_a', 'On its way!');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    server.reactStatus = 500;
+
+    await chat.react('msg_a', '\u2764\ufe0f');
+    // Leaving an emoji on screen that the server never took is worse than the
+    // tap appearing not to work: one is a delay, the other is a lie.
+    expect(chat.messages.last.reactions, isEmpty);
+  });
+
+  test('an agent reacting reaches the phone', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    server.agentSays('msg_a', 'On its way!');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    server.agentReacts('msg_a', '\ud83d\udc4d');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(chat.messages.last.reactions.single.emoji, '\ud83d\udc4d');
+    // Theirs, not ours — the highlight that says a second tap would remove it
+    // belongs on our own only.
+    expect(chat.messages.last.reactions.single.mine, isFalse);
+  });
+
+  test('reacting to a message still on its way does nothing', () async {
+    await chat.open();
+    // No id the server would recognise, so there is nothing to react to and
+    // asking would 404 against a message that does not exist yet.
+    await chat.react('pending-1', '\u2764\ufe0f');
+    expect(server.requests.where((r) => r.contains('/react')), isEmpty);
+  });
+
+  test('a voice note sends its shape with it', () async {
+    await chat.open();
+    final staged = await chat.attachVoice(
+      bytes: [1, 2, 3],
+      mime: 'audio/mp4',
+      durationMs: 7400,
+      waveform: const [0.1, 0.55, 2.0, -1.0],
+    );
+    expect(staged.durationMs, 7400);
+    // Clamped on the way out. A bar outside 0..1 draws as a sliver or as a
+    // spike through the bubble above.
+    expect(staged.waveform, [0.1, 0.55, 1.0, 0.0]);
+    // Enough to draw the bubble while it is still uploading — the one case
+    // where the person already knows exactly what they sent.
+    expect(staged.preview?.isVoice, isTrue);
+    expect(staged.preview?.durationMs, 7400);
+  });
+
+  test('an ordinary attachment has no shape to draw', () async {
+    await chat.open();
+    final staged = await chat.attach(bytes: [1], filename: 'curry.jpg', mime: 'image/jpeg');
+    expect(staged.preview, isNull);
   });
 
   test('the contract is the server\'s, not ours', () async {

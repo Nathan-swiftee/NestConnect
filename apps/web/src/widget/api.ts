@@ -5,6 +5,7 @@ import type {
   NestChatSession,
   NestChatStartInput,
   NestChatStartResult,
+  NestChatUploadResult,
 } from "@ding/schemas";
 import { TYPING_PREVIEW_MAX } from "@ding/schemas";
 
@@ -44,12 +45,65 @@ export function sendMessage(
   token: string,
   body: string,
   pageUrl?: string,
+  extra?: { attachments?: string[]; quotedMsgId?: string },
 ): Promise<{ ok: boolean; message?: NestChatMessage; token?: string }> {
   return fetch(`${base}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ body, pageUrl }),
+    body: JSON.stringify({
+      body,
+      pageUrl,
+      attachments: extra?.attachments ?? [],
+      quotedMsgId: extra?.quotedMsgId,
+    }),
   }).then(json<{ ok: boolean; message?: NestChatMessage; token?: string }>);
+}
+
+/**
+ * Put the recording somewhere, and get back the ticket that attaches it.
+ *
+ * Multipart rather than JSON because the audio is bytes, and base64 in a JSON
+ * body would cost a third again on a connection that is very often a phone's.
+ * The duration and the bars ride alongside as ordinary fields: the recorder
+ * measured both while the note was being made, and they are what tells the
+ * server this is a voice note rather than an audio file somebody attached.
+ */
+export function uploadVoice(
+  token: string,
+  blob: Blob,
+  meta: { durationMs: number; waveform: number[] },
+): Promise<NestChatUploadResult> {
+  const form = new FormData();
+  // An extension the server can map to a type, and a name nobody ever reads —
+  // a voice note is drawn as a waveform, never as its filename.
+  form.append("file", blob, `voice.${blob.type.includes("mp4") ? "m4a" : "webm"}`);
+  form.append("durationMs", String(Math.round(meta.durationMs)));
+  form.append("waveform", JSON.stringify(meta.waveform));
+  return fetch(`${base}/upload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  }).then(json<NestChatUploadResult>);
+}
+
+/**
+ * Put an emoji on a message, or take ours off.
+ *
+ * The answer carries the whole message back, because a reaction is a set with
+ * one slot per person: the server is the only party that knows what the set
+ * looks like after both sides have touched it, and applying our own guess on
+ * top is how two quick taps end up disagreeing.
+ */
+export function react(
+  token: string,
+  messageId: string,
+  emoji: string,
+): Promise<{ ok: boolean; message?: NestChatMessage }> {
+  return fetch(`${base}/react`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ messageId, emoji }),
+  }).then(json<{ ok: boolean; message?: NestChatMessage }>);
 }
 
 export function fetchMessages(token: string): Promise<{ messages: NestChatMessage[] }> {

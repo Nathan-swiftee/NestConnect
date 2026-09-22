@@ -300,11 +300,12 @@ export class ChannelDispatcher {
     conversation: ConversationWithMessages,
     channelMsgId: string,
     emoji: string,
+    messageId?: string,
   ): Promise<void> {
     const provider = this.providers.find((p) => p.supports(conversation.channel) && p.sendReaction);
     if (!provider?.sendReaction) return;
     try {
-      await provider.sendReaction({ conversation, channelMsgId, emoji });
+      await provider.sendReaction({ conversation, channelMsgId, messageId, emoji });
     } catch (err) {
       this.logger.warn(`sendReaction failed on ${conversation.channel}: ${String(err)}`);
     }

@@ -23,7 +23,11 @@
 import type { Conversation } from "../packages/schemas/src/index";
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
-import { CustomerPushService, preview } from "../apps/api/src/channels/nestchat/customer-push.service";
+import {
+  CustomerPushService,
+  explainFcmError,
+  preview,
+} from "../apps/api/src/channels/nestchat/customer-push.service";
 import {
   FcmSender,
   isDeadToken,
@@ -250,6 +254,178 @@ async function main(): Promise<void> {
       });
       return (await store.customerDevicesFor(contact.id, inbox.id)).length === 1;
     })(),
+  );
+
+  console.log("\nWhat reaches the logs\n");
+  // The reason this file grew a section. Every skip used to return its reason
+  // to a caller that threw it away, so "the push never arrived" and "no push
+  // was ever attempted" looked identical from outside the process — and
+  // answering a developer's question meant reading the source and guessing.
+  const lines: { level: string; text: string }[] = [];
+  const spy = {
+    warn: (m: unknown) => lines.push({ level: "warn", text: String(m) }),
+    debug: (m: unknown) => lines.push({ level: "debug", text: String(m) }),
+    log: () => {},
+    error: () => {},
+    verbose: () => {},
+  };
+  const logged = new TestPush(store, bus);
+  (logged as unknown as { logger: unknown }).logger = spy;
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  const quiet = await store.createInbox({
+    orgId: ORG_ID, type: "nestchat", name: "Ding site", handle: "site",
+    teamIds: [], routingStrategy: "manual",
+  });
+  const quietConv = {
+    id: "conv_log_1", inboxId: quiet.id, contact: { id: contact.id }, status: "open",
+  } as unknown as Conversation;
+
+  lines.length = 0;
+  logged.notify({ conversation: quietConv, authorName: "Nathan", body: "hello" });
+  await settle();
+  ok(
+    "a website widget with no app attached does not warn on every reply",
+    // Every NestChat channel that is only a website widget would otherwise
+    // warn on every message an agent ever sends, burying the channels that
+    // have a real problem.
+    lines.length === 1 && lines[0].level === "debug" && lines[0].text.includes("no_devices"),
+    lines.map((l) => `${l.level}:${l.text}`).join(" | ") || "nothing logged",
+  );
+
+  await store.registerCustomerDevice({
+    orgId: ORG_ID, contactId: contact.id, inboxId: quiet.id,
+    token: "fcm_logging", platform: "android",
+  });
+  lines.length = 0;
+  logged.notify({ conversation: quietConv, authorName: "Nathan", body: "hello" });
+  await settle();
+  ok(
+    "a registered phone with no key does warn, and says which is missing",
+    lines.some((l) => l.level === "warn" && /service account/i.test(l.text)),
+    lines.map((l) => `${l.level}:${l.text}`).join(" | ") || "nothing logged",
+  );
+
+  await store.updateInbox(quiet.id, { channelConfig: { fcmServiceAccount: SERVICE_ACCOUNT } });
+  lines.length = 0;
+  const watcher = bus.subscribe("conv_log_1", () => {});
+  logged.notify({ conversation: quietConv, authorName: "Nathan", body: "hello" });
+  await settle();
+  watcher();
+  ok(
+    "a chat open in front of them is noted, not warned about",
+    // This one is the system working. A warn here would train people to
+    // ignore the section.
+    lines.length === 1 && lines[0].level === "debug" && lines[0].text.includes("watching"),
+    lines.map((l) => `${l.level}:${l.text}`).join(" | ") || "nothing logged",
+  );
+
+  lines.length = 0;
+  logged.fake.answer = (m) => ({ token: m.token, ok: false, error: "SENDER_ID_MISMATCH" });
+  logged.notify({ conversation: quietConv, authorName: "Nathan", body: "hello" });
+  await settle();
+  ok(
+    "and Google's refusal is a warning carrying the code and the reason",
+    lines.some(
+      (l) =>
+        l.level === "warn" &&
+        l.text.includes("SENDER_ID_MISMATCH") &&
+        /different Firebase project/i.test(l.text),
+    ),
+    lines.map((l) => `${l.level}:${l.text}`).join(" | ") || "nothing logged",
+  );
+
+  console.log("\nSaying why a phone stayed quiet\n");
+  ok(
+    "two Firebase projects is the one worth spelling out",
+    // The commonest way for a channel to look configured and be broken: a
+    // valid key, a valid token, and two different projects. Google says
+    // SENDER_ID_MISMATCH and nothing else, which reads as a bug in us.
+    /different Firebase project/i.test(explainFcmError("SENDER_ID_MISMATCH")),
+  );
+  ok("an uninstalled app is explained", /uninstalled/i.test(explainFcmError("UNREGISTERED")));
+  ok(
+    "a refused key points at the key",
+    /revoked|disabled/i.test(explainFcmError("auth")),
+  );
+  ok(
+    "a blip says to try again rather than to go looking",
+    /try again/i.test(explainFcmError("UNAVAILABLE")),
+  );
+  ok(
+    "an unknown code falls back to what Google said",
+    explainFcmError("SOMETHING_NEW", "Some new message") === "Some new message",
+  );
+  ok(
+    "and to a sentence when it said nothing",
+    explainFcmError(undefined).length > 0 && !explainFcmError(undefined).includes("undefined"),
+  );
+
+  console.log("\nA test push\n");
+  const bare = await store.createInbox({
+    orgId: ORG_ID, type: "nestchat", name: "Ding web", handle: "web",
+    teamIds: [], routingStrategy: "manual",
+  });
+  const noPhone = await push.sendTest(bare.id);
+  ok(
+    "with no phone registered it says so",
+    noPhone.ok === false && noPhone.reason === "no_devices",
+    noPhone.detail,
+  );
+  ok("and tells them what to do about it", /registerPushToken/.test(noPhone.detail));
+
+  await store.registerCustomerDevice({
+    orgId: ORG_ID, contactId: contact.id, inboxId: bare.id,
+    token: "fcm_tester", platform: "android",
+  });
+  const noKey = await push.sendTest(bare.id);
+  ok(
+    "with a phone but no key it says which is missing",
+    noKey.ok === false && noKey.reason === "not_configured",
+    noKey.detail,
+  );
+
+  await store.updateInbox(bare.id, { channelConfig: { fcmServiceAccount: SERVICE_ACCOUNT } });
+  push.fake.sent.length = 0;
+  push.fake.answer = (m) => ({ token: m.token, ok: true });
+  const good = await push.sendTest(bare.id);
+  ok("with both, it sends", good.ok === true && push.fake.sent.length === 1);
+  ok(
+    "to the phone that registered last",
+    push.fake.sent[0]?.token === "fcm_tester",
+  );
+  ok(
+    "not held back by the rate limit",
+    // A test that the burst limiter can swallow is worse than no test: it
+    // reports a failure that is really the limiter working.
+    (await push.sendTest(bare.id)).ok === true && (await push.sendTest(bare.id)).ok === true,
+  );
+  ok(
+    "and not by an open chat",
+    // Same reason. The person pressing the button is very likely looking at
+    // the app they are testing.
+    await (async () => {
+      const watching = bus.subscribe("conv_bare", () => {});
+      const result = await push.sendTest(bare.id);
+      watching();
+      return result.ok === true;
+    })(),
+  );
+
+  push.fake.answer = (m) => ({ token: m.token, ok: false, error: "SENDER_ID_MISMATCH" });
+  const mismatch = await push.sendTest(bare.id);
+  ok(
+    "a mismatched project comes back as the code and the reason",
+    mismatch.ok === false &&
+      mismatch.error === "SENDER_ID_MISMATCH" &&
+      /different Firebase project/i.test(mismatch.detail),
+    mismatch.detail,
+  );
+  ok(
+    "and does not disable the phone over it",
+    // The address is fine; the key is pointed at the wrong project. Disabling
+    // here would mean the fix needs a reinstall to take effect.
+    (await store.customerDevicesFor(contact.id, bare.id)).length === 1,
   );
 
   await bus.onModuleDestroy();

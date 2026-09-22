@@ -787,6 +787,14 @@ export class PrismaStore extends Store {
     return rows.map(mapCustomerDevice);
   }
 
+  async latestCustomerDeviceFor(inboxId: string): Promise<StoredCustomerDevice | null> {
+    const row = await this.prisma.customerDevice.findFirst({
+      where: { inboxId, disabledAt: null },
+      orderBy: { lastSeenAt: "desc" },
+    });
+    return row ? mapCustomerDevice(row) : null;
+  }
+
   async deleteCustomerDevice(contactId: string, token: string): Promise<boolean> {
     const res = await this.prisma.customerDevice.deleteMany({ where: { token, contactId } });
     return res.count > 0;

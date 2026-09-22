@@ -14,6 +14,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nestconnect_flutter/nestconnect_flutter.dart';
@@ -64,7 +65,11 @@ class FakeServer {
     final body = await utf8.decoder.bind(req).join();
 
     if (path.endsWith('/stream')) {
-      req.response.headers.contentType = ContentType('text', 'event-stream');
+      // The charset is not decoration. Dart writes latin1 when the content
+      // type names none, so an event carrying an emoji — which every reaction
+      // does — throws on write and never reaches the client.
+      req.response.headers.contentType =
+          ContentType('text', 'event-stream', charset: 'utf-8');
       // Without this the events sit in the server until the response ends,
       // which for a connection held open all session means never.
       req.response.bufferOutput = false;
@@ -140,12 +145,64 @@ class FakeServer {
   /// Play an agent closing the chat, or reopening it.
   void agentSetsStatus(String kind) => _events.add('data: ${jsonEncode(contractEvent(kind))}\n\n');
 
+  /// Play an agent replying — a plain one.
+  ///
+  /// The contract's sample is deliberately the rich case: a reply with a
+  /// recording, a quote and an emoji already on it, because the keys that
+  /// vanish in a rename are the optional ones. The extras are cleared here
+  /// rather than inherited, so a test about unread badges is not quietly
+  /// asserting against a message that arrived pre-reacted — or, worse,
+  /// rendering as a waveform where it expects text.
   void agentSays(String id, String text) {
     final event = contractEvent('message');
     (event['payload']! as Map<String, Object?>)
       ..['id'] = id
       ..['body'] = text
-      ..['at'] = DateTime.now().toIso8601String();
+      ..['at'] = DateTime.now().toIso8601String()
+      ..['reactions'] = <Object?>[]
+      ..['attachments'] = <Object?>[]
+      ..remove('quote');
+    _events.add('data: ${jsonEncode(event)}\n\n');
+  }
+
+  /// Play an agent reacting to a message.
+  void agentReacts(String messageId, String emoji) {
+    final event = contractEvent('reaction');
+    (event['payload']! as Map<String, Object?>)
+      ..['id'] = messageId
+      ..['body'] = 'On its way!'
+      ..['attachments'] = <Object?>[]
+      ..['reactions'] = [
+        {'emoji': emoji, 'by': 'agent'},
+      ]
+      ..remove('quote');
+    _events.add('data: ${jsonEncode(event)}\n\n');
+  }
+
+  /// Play an agent sending a voice note.
+  void agentSendsVoice(String id, {int durationMs = 7400}) {
+    final event = contractEvent('message');
+    (event['payload']! as Map<String, Object?>)
+      ..['id'] = id
+      ..['body'] = ''
+      ..['at'] = DateTime.now().toIso8601String()
+      ..['reactions'] = <Object?>[]
+      ..remove('quote');
+    final attachments = (event['payload']! as Map<String, Object?>)['attachments']! as List;
+    (attachments.first as Map<String, Object?>)['durationMs'] = durationMs;
+    _events.add('data: ${jsonEncode(event)}\n\n');
+  }
+
+  /// Play an agent replying to something, quoting it.
+  void agentQuotes(String id, String text, {required String quotedId, required String preview}) {
+    final event = contractEvent('message');
+    (event['payload']! as Map<String, Object?>)
+      ..['id'] = id
+      ..['body'] = text
+      ..['at'] = DateTime.now().toIso8601String()
+      ..['reactions'] = <Object?>[]
+      ..['attachments'] = <Object?>[]
+      ..['quote'] = {'id': quotedId, 'from': 'visitor', 'preview': preview};
     _events.add('data: ${jsonEncode(event)}\n\n');
   }
 
@@ -221,6 +278,10 @@ void main() {
     await tester.pump();
 
     await tester.enterText(find.byType(TextField), 'Where is my order?');
+    // The composer swaps the microphone for the send button the moment there
+    // is anything to send, and a swap is a rebuild: it lands on the next
+    // frame, not the one the text arrived on.
+    await tester.pump();
 
     // One pump after the tap, and no waiting for the network: the message has
     // to be on screen before the server could possibly have answered, which is
@@ -378,6 +439,159 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
     expect(find.text('Ding support'), findsOneWidget);
+  });
+
+  testWidgets('a voice note is a waveform, not a file listed under a bubble',
+      (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    server.agentSendsVoice('msg_v');
+    await settle(tester, 500);
+
+    // The waveform *is* the message. Wrapping it in an empty text bubble would
+    // put a box round it for no reason.
+    expect(find.byType(NestVoiceNote), findsOneWidget);
+    // Said before a byte of it has been fetched, because the duration
+    // travelled with the message.
+    expect(find.text('0:07'), findsOneWidget);
+  });
+
+  testWidgets('a reply shows what it answers, and says so', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    server.agentQuotes(
+      'msg_r',
+      'Yes, the blue door',
+      quotedId: 'msg_q',
+      preview: 'Is it the house on the corner?',
+    );
+    await settle(tester, 500);
+
+    expect(find.text('Yes, the blue door'), findsOneWidget);
+    expect(find.text('Is it the house on the corner?'), findsOneWidget);
+    // Whose words are being quoted. Without it the quote is just a second
+    // message stuck above the first.
+    expect(find.text('You'), findsOneWidget);
+  });
+
+  testWidgets('an agent reacting puts the emoji on the message', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    server.agentSays('msg_a', 'On its way!');
+    await settle(tester, 500);
+    expect(find.text('\u2764\ufe0f'), findsNothing);
+
+    server.agentReacts('msg_a', '\u2764\ufe0f');
+    await settle(tester, 500);
+    expect(find.text('\u2764\ufe0f'), findsOneWidget);
+  });
+
+  testWidgets('swiping a message far enough offers to reply to it',
+      (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    server.agentSays('msg_a', 'On its way!');
+    await settle(tester, 500);
+
+    // Short of the threshold: a thumb that brushed past a bubble on the way
+    // down the thread has not asked for anything.
+    //
+    // The offsets allow for Flutter's touch slop, which the recogniser eats
+    // before it reports a single pixel of movement — a 20px drag delivers
+    // about two, which would "pass" this against any threshold at all and
+    // prove only that the slop exists.
+    await tester.drag(find.text('On its way!'), const Offset(kTouchSlop + 30, 0));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Replying to'), findsNothing);
+
+    // Past it.
+    await tester.drag(find.text('On its way!'), const Offset(kTouchSlop + 80, 0));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Replying to'), findsOneWidget);
+    // The message being answered, shown above the box rather than put in it —
+    // in the field it would have to be deleted to be cleared.
+    expect(find.text('On its way!'), findsWidgets);
+  });
+
+  testWidgets('and the reply can be called off', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    server.agentSays('msg_a', 'On its way!');
+    await settle(tester, 500);
+    await tester.drag(find.text('On its way!'), const Offset(kTouchSlop + 80, 0));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Stop replying'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Replying to'), findsNothing);
+  });
+
+  testWidgets('a closed chat can still be read, but not reacted to',
+      (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    server.agentSays('msg_a', 'On its way!');
+    await settle(tester, 500);
+    server.agentSetsStatus('closed');
+    await settle(tester, 500);
+
+    await tester.drag(find.text('On its way!'), const Offset(kTouchSlop + 80, 0));
+    await tester.pumpAndSettle();
+    // Nothing left to do to it. A reply box under a chat that has ended is a
+    // box nobody is reading the other end of.
+    expect(find.textContaining('Replying to'), findsNothing);
+  });
+
+  test('reaction pills count emoji, not people', () {
+    final pills = collapseReactions(const [
+      NestReaction(emoji: '\ud83d\udc4d', mine: true),
+      NestReaction(emoji: '\ud83d\udc4d', mine: false),
+      NestReaction(emoji: '\u2764\ufe0f', mine: false),
+    ]);
+    expect(pills.length, 2);
+    expect(pills.first.count, 2);
+    // The highlight that says a second tap would remove it has to survive an
+    // agent having reacted first.
+    expect(pills.first.mine, isTrue);
+    expect(pills.last.mine, isFalse);
+  });
+
+  test('a waveform keeps the syllables rather than averaging them away', () {
+    // Speech is mostly gaps. A bucket holding one loud moment and three silent
+    // ones is a syllable, and a mean would draw it as a quarter-height smudge.
+    expect(toBars([1, 0, 0, 0, 1, 0, 0, 0], bars: 2), [1, 1]);
+    // Six bars for a one-second note is honest; sixty interpolated from six is
+    // a drawing of nothing.
+    expect(toBars([0.2, 0.9, 0.4], bars: 60), hasLength(3));
+    expect(toBars(const [], bars: 60), isEmpty);
+  });
+
+  test('and fills the bubble for a normal speaking voice', () {
+    expect(normalise([0.08, 0.12, 0.05, 0.11]).reduce((a, b) => a > b ? a : b), 1.0);
+    // Near-silence draws as a line rather than as nothing at all.
+    expect(normalise([0, 0, 0]).every((v) => v > 0), isTrue);
+  });
+
+  test('the recorder treats room noise as silence', () {
+    // `record` reports dBFS: 0 is as loud as the hardware goes, and about
+    // -45 is the noise floor of a room. Mapping the whole range would draw a
+    // bubble full of hiss.
+    expect(levelFromDb(-60), 0);
+    expect(levelFromDb(0), 1);
+    expect(levelFromDb(double.negativeInfinity), 0);
+    expect(levelFromDb(-22.5), closeTo(0.5, 0.01));
+  });
+
+  test('a duration reads like a clock', () {
+    expect(formatDuration(const Duration(milliseconds: 7400)), '0:07');
+    expect(formatDuration(const Duration(seconds: 65)), '1:05');
+    expect(formatDuration(Duration.zero), '0:00');
   });
 
   test('a brand colour is read as authored, and refused when it is not', () {

@@ -37,6 +37,7 @@ import type {
   UpdateLabelInput,
   UpdateContactInput,
   UpdateInboxInput,
+  NestChatPushTest,
   NestChatSettings,
   UpdateIntegrationSettingsInput,
   UpdateNestchatInput,
@@ -238,6 +239,10 @@ export const api = {
   // channel pushes through. Write-only — the settings only say whether one is set.
   setNestchatPushCredential: (inboxId: string, serviceAccount: string) =>
     post<NestChatSettings>(`/settings/nestchat/${inboxId}/push-credential`, { serviceAccount }),
+  // Ring the last phone that registered on this channel and say what happened.
+  // The only way to prove the saved key and the app share a Firebase project.
+  testNestchatPush: (inboxId: string) =>
+    post<NestChatPushTest>(`/settings/nestchat/${inboxId}/push-test`, {}),
   updateNestchat: (inboxId: string, input: UpdateNestchatInput) =>
     patch<NestChatSettings>(`/settings/nestchat/${inboxId}`, input),
   // settings

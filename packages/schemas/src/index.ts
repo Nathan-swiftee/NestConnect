@@ -2097,6 +2097,52 @@ export type NestChatConfig = z.infer<typeof nestchatConfigSchema>;
  * shape carries notes, assignment, delivery state and author ids, none of which
  * belong on someone else's website. Everything the widget renders is built here.
  */
+/**
+ * One file on a visitor-facing message.
+ *
+ * `kind` rather than sniffing the mime on the client: a voice note and a
+ * recording someone attached from their files are both `audio/…`, and only one
+ * of them should be drawn as a waveform with a play button instead of a row
+ * with a download arrow.
+ */
+export const nestchatAttachmentSchema = z.object({
+  id: z.string(),
+  filename: z.string(),
+  mime: z.string(),
+  kind: attachmentKindSchema.optional(),
+  /** Voice and video: how long it runs, so the bubble can say "0:07" before a
+   *  byte of it has been fetched. */
+  durationMs: z.number().int().nonnegative().optional(),
+  /** Voice: the bars to draw, 0..1. Computed once when the note is recorded —
+   *  the alternative is every reader decoding the whole file to draw a shape
+   *  that was the same for all of them. */
+  waveform: z.array(z.number()).optional(),
+});
+export type NestChatAttachment = z.infer<typeof nestchatAttachmentSchema>;
+
+/**
+ * The message a reply is answering, flattened onto the reply itself.
+ *
+ * Carried rather than looked up by id, because the quoted message may be older
+ * than the window the widget holds — and a quote that renders as a blank
+ * because the original scrolled out of memory is worse than no quote. The
+ * preview is already trimmed to what fits.
+ */
+export const nestchatQuoteSchema = z.object({
+  id: z.string(),
+  from: z.enum(["visitor", "agent"]),
+  authorName: z.string().optional(),
+  /** Trimmed to {@link NESTCHAT_QUOTE_PREVIEW_MAX}; empty for a voice note or
+   *  a bare file, which `kind` describes instead. */
+  preview: z.string(),
+  /** What the original was, when it was not words: `voice`, `image`, … */
+  kind: attachmentKindSchema.optional(),
+});
+export type NestChatQuote = z.infer<typeof nestchatQuoteSchema>;
+
+/** How much of a quoted message rides along on the reply. Two lines' worth. */
+export const NESTCHAT_QUOTE_PREVIEW_MAX = 120;
+
 export const nestchatMessageSchema = z.object({
   id: z.string(),
   from: z.enum(["visitor", "agent"]),
@@ -2105,9 +2151,12 @@ export const nestchatMessageSchema = z.object({
   authorName: z.string().optional(),
   body: z.string(),
   at: z.string(),
-  attachments: z
-    .array(z.object({ id: z.string(), filename: z.string(), mime: z.string() }))
-    .optional(),
+  attachments: z.array(nestchatAttachmentSchema).optional(),
+  /** Emoji on this message. `by` is relative to the reader: "visitor" is the
+   *  person holding the phone, whichever side put it there. */
+  reactions: z.array(z.object({ emoji: z.string(), by: z.enum(["visitor", "agent"]) })).default([]),
+  /** The message this one is answering. */
+  quote: nestchatQuoteSchema.optional(),
 });
 export type NestChatMessage = z.infer<typeof nestchatMessageSchema>;
 
@@ -2252,8 +2301,52 @@ export const nestchatSendInputSchema = z.object({
   /** The page the widget is embedded on. Recorded as the subject of the thread
    *  this message opens, so the agent can see where the visitor was standing. */
   pageUrl: z.string().max(500).optional(),
+  /** The message being replied to. Checked against the conversation on arrival
+   *  — an id from another thread is dropped rather than quoted, which is the
+   *  difference between a reply and a way to read somebody else's messages. */
+  quotedMsgId: z.string().max(64).optional(),
 });
 export type NestChatSendInput = z.infer<typeof nestchatSendInputSchema>;
+
+/**
+ * The visitor putting an emoji on a message, or taking theirs off.
+ *
+ * One per person per message, like every other reaction in this product: an
+ * empty string is the removal, so the client has one call rather than two and
+ * a double-tap on the same emoji is a toggle without a second endpoint.
+ */
+export const nestchatReactInputSchema = z.object({
+  messageId: z.string().min(1).max(64),
+  /** One emoji, or empty to remove. Bounded rather than validated as an
+   *  emoji: the set grows every year and a widget that cannot send this
+   *  year's is worse than a database holding a character we did not expect. */
+  emoji: z.string().max(16),
+});
+export type NestChatReactInput = z.infer<typeof nestchatReactInputSchema>;
+
+/** How many bars a voice note carries. Enough to read as a shape rather than
+ *  a blur, few enough to draw on a narrow bubble without stacking. */
+export const NESTCHAT_WAVEFORM_BARS = 60;
+
+/** The longest voice note a visitor can record. Long enough to explain what
+ *  went wrong with an order, short enough that nobody sends a podcast. */
+export const NESTCHAT_VOICE_MAX_MS = 5 * 60_000;
+
+/**
+ * What a voice note knows about itself.
+ *
+ * Sent with the upload rather than derived on our side. The recorder already
+ * has both — it drew the bars while the person was talking — and the
+ * alternative is decoding the audio on the server to recover numbers the
+ * client measured for free.
+ */
+export const nestchatVoiceMetaSchema = z.object({
+  durationMs: z.number().int().nonnegative().max(10 * 60_000),
+  /** 0..1 per bar. Capped because this is drawn at about sixty bars wide and
+   *  anything beyond that is detail nobody can see. */
+  waveform: z.array(z.number().min(0).max(1)).max(NESTCHAT_WAVEFORM_BARS),
+});
+export type NestChatVoiceMeta = z.infer<typeof nestchatVoiceMetaSchema>;
 
 /** The visitor's widget reporting how far it has actually got through the
  *  thread — what turns an agent's ticks from sent to delivered to read. */
@@ -2310,6 +2403,25 @@ export const nestchatPushCredentialInputSchema = z.object({
   serviceAccount: z.string().max(8192),
 });
 export type NestChatPushCredentialInput = z.infer<typeof nestchatPushCredentialInputSchema>;
+
+/**
+ * What a "send a test push" attempt found.
+ *
+ * `ok` alone would be no better than the silence it replaces. The three
+ * failures are genuinely different jobs for whoever is reading: register a
+ * phone, save a key, or go and compare two Firebase projects — so the reason
+ * is carried, and `detail` says it in words rather than in an error code.
+ */
+export const nestchatPushTestSchema = z.object({
+  ok: z.boolean(),
+  /** `no_devices` or `not_configured` when it never reached Google. */
+  reason: z.string().optional(),
+  /** Google's own code when it did, e.g. `SENDER_ID_MISMATCH`. */
+  error: z.string().optional(),
+  detail: z.string(),
+  platform: z.string().optional(),
+});
+export type NestChatPushTest = z.infer<typeof nestchatPushTestSchema>;
 
 export const nestchatIdentifyInputSchema = z.object({
   name: z.string().max(80).optional(),

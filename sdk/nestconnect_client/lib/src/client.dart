@@ -241,7 +241,13 @@ class NestConnect {
   /// replaced by the server's copy when it lands. That is not decoration: on a
   /// phone the send button is pressed on a train, and a thread that shows
   /// nothing until the network answers looks broken.
-  Future<void> send(String text, {List<NestUpload> attachments = const []}) async {
+  Future<void> send(
+    String text, {
+    List<NestUpload> attachments = const [],
+    /// The message being answered. Checked against the thread by the server —
+    /// an id from another conversation is dropped rather than quoted.
+    NestMessage? replyTo,
+  }) async {
     final token = _token;
     if (token == null) throw const NestException('Open a chat before sending');
     final body = text.trim();
@@ -253,6 +259,14 @@ class NestConnect {
       body: body,
       at: DateTime.now(),
       pending: true,
+      // Drawn from what is already on screen rather than waiting for the
+      // server's copy. The quote is the reason they are typing at all, and a
+      // reply that appears without it reads as the wrong reply.
+      quote: replyTo == null ? null : _quoteOf(replyTo),
+      attachments: attachments
+          .map((a) => a.preview)
+          .whereType<NestAttachment>()
+          .toList(growable: false),
     );
     _setMessages([..._messages, local]);
 
@@ -263,6 +277,7 @@ class NestConnect {
           'body': body,
           if (attachments.isNotEmpty)
             'attachments': attachments.map((a) => a.ticket).toList(growable: false),
+          if (replyTo != null) 'quotedMsgId': replyTo.id,
         },
         token: token,
       );
@@ -302,6 +317,112 @@ class NestConnect {
     final token = _token;
     if (token == null) throw const NestException('Open a chat before attaching');
     return _transport.upload(token: token, bytes: bytes, filename: filename, mime: mime);
+  }
+
+  /// Stage a recording, with the shape that was measured while it was made.
+  ///
+  /// Separate from [attach] because of what the extra two arguments buy. They
+  /// are what tells the server this is a voice note rather than an audio file
+  /// somebody picked from their library — both are `audio/…`, and only one of
+  /// them is drawn as a waveform with a play button. They also mean nobody has
+  /// to decode the file to draw it: the duration is on the bubble before a
+  /// byte has been fetched, and the bars are the ones the person watched
+  /// while they were talking.
+  Future<NestUpload> attachVoice({
+    required List<int> bytes,
+    required String mime,
+    required int durationMs,
+    required List<double> waveform,
+    String filename = 'voice',
+  }) async {
+    final token = _token;
+    if (token == null) throw const NestException('Open a chat before attaching');
+    final bars = waveform
+        .where((v) => v.isFinite)
+        .map((v) => v.clamp(0.0, 1.0))
+        .toList(growable: false);
+    final staged = await _transport.upload(
+      token: token,
+      bytes: bytes,
+      filename: filename,
+      mime: mime,
+      fields: {
+        'durationMs': '$durationMs',
+        // A JSON array in a form field, trimmed to two decimals — the bars are
+        // drawn about three pixels wide and the rest is bytes nobody can see.
+        'waveform': '[${bars.map((v) => v.toStringAsFixed(2)).join(',')}]',
+      },
+    );
+    // The ticket is the server's; the shape is ours, kept so the pending
+    // bubble can draw the note while it is still on its way.
+    return NestUpload(
+      ticket: staged.ticket,
+      filename: staged.filename,
+      mime: staged.mime,
+      size: staged.size,
+      kind: staged.kind,
+      durationMs: durationMs,
+      waveform: bars,
+    );
+  }
+
+  /// Put an emoji on a message, or take ours off with an empty string.
+  ///
+  /// Drawn under the finger first and corrected when the server answers. A
+  /// reaction is the one interaction where the round trip is longer than the
+  /// feeling it is meant to give.
+  Future<void> react(String messageId, String emoji) async {
+    final token = _token;
+    if (token == null || messageId.startsWith('pending-')) return;
+    final at = _messages.indexWhere((m) => m.id == messageId);
+    if (at == -1) return;
+
+    final before = _messages[at];
+    final optimistic = [
+      ...before.reactions.where((r) => !r.mine),
+      if (emoji.isNotEmpty) NestReaction(emoji: emoji, mine: true),
+    ];
+    _replaceAt(at, before.copyWith(reactions: optimistic));
+
+    try {
+      final raw = await _transport.postJson(
+        '/react',
+        {'messageId': messageId, 'emoji': emoji},
+        token: token,
+      );
+      final map = raw is Map ? raw : const <String, Object?>{};
+      final saved = NestMessage.tryParse(map['message']);
+      // The server's copy is the whole message, not the one emoji: only it
+      // knows what the set looks like after both sides have touched it.
+      if (saved != null) {
+        final now = _messages.indexWhere((m) => m.id == messageId);
+        if (now != -1) _replaceAt(now, saved);
+      }
+    } on NestException {
+      final now = _messages.indexWhere((m) => m.id == messageId);
+      if (now != -1) _replaceAt(now, before);
+    }
+  }
+
+  void _replaceAt(int index, NestMessage message) {
+    final next = [..._messages];
+    next[index] = message;
+    _setMessages(next);
+  }
+
+  /// The quote a reply carries, built from the message on screen.
+  ///
+  /// Only has to be right for the moment before the server's copy arrives, and
+  /// it is built from the same message the server resolves the id against.
+  NestQuote _quoteOf(NestMessage m) {
+    final words = m.body.trim().replaceAll(RegExp(r'\s+'), ' ');
+    return NestQuote(
+      id: m.id,
+      fromMe: m.isMine,
+      authorName: m.authorName,
+      preview: words.length > 120 ? '${words.substring(0, 119)}\u2026' : words,
+      kind: m.attachments.isEmpty ? null : m.attachments.first.kind,
+    );
   }
 
   /// Tell the agent somebody is typing, and what they have written so far.
@@ -472,6 +593,18 @@ class NestConnect {
             unawaited(_markRead('delivered'));
           }
         }
+      case 'reaction':
+        // The whole message, replacing the row rather than merging an emoji
+        // into it. A set with one slot per person cannot be reconciled from a
+        // delta without knowing what was already in it, and the two sides
+        // disagree about exactly that during two taps in quick succession.
+        final updated = NestMessage.tryParse(event['payload']);
+        if (updated == null) break;
+        final at = _messages.indexWhere((m) => m.id == updated.id);
+        if (at == -1) break;
+        final next = [..._messages];
+        next[at] = updated;
+        _setMessages(next);
       case 'closed':
         _setClosed(true);
       case 'reopened':

@@ -19,14 +19,94 @@
     "and what kind of thing each holds."
   ],
 
+  "$comment_message": [
+    "One agent reply, carrying everything a message can carry: the note it",
+    "answers, a voice recording, and the emoji on it. Deliberately the rich case",
+    "rather than a bare sentence — the keys that go missing are the optional ones,",
+    "and a fixture showing only the simple shape is a fixture that never notices.",
+    "",
+    "`quote` flattens the message being answered onto the reply instead of naming",
+    "it by id: the original may be older than the window a client holds, and a",
+    "quote that renders blank because it scrolled out of memory is worse than no",
+    "quote at all.",
+    "",
+    "On an attachment, `kind` is what separates a recording from an audio file",
+    "somebody attached — both are audio/… and only one is drawn as a waveform.",
+    "The bars and the duration were measured by the recorder while the note was",
+    "being made, so no reader has to decode the file to draw a shape that would",
+    "be the same for all of them.",
+    "",
+    "`reactions` is always present, empty on a message nobody has reacted to. A",
+    "key that appears only once somebody taps is a key every reader has to defend",
+    "against, on the commonest message there is."
+  ],
+
   "message": {
     "kind": "message",
     "payload": {
-      "id": "msg_1",
+      "id": "msg_2",
       "from": "agent",
       "authorName": "Nathan",
-      "body": "Your driver is two minutes away",
-      "at": "2026-09-18T12:00:00.000Z"
+      "body": "Yes — it's the one with the blue door",
+      "at": "2026-09-18T12:01:00.000Z",
+      "attachments": [
+        {
+          "id": "att_1",
+          "filename": "voice.webm",
+          "mime": "audio/webm",
+          "kind": "voice",
+          "durationMs": 7400,
+          "waveform": [0.1, 0.55, 0.9, 0.42, 0.18]
+        }
+      ],
+      "reactions": [{ "emoji": "\u2764\ufe0f", "by": "visitor" }],
+      "quote": {
+        "id": "msg_1",
+        "from": "visitor",
+        "preview": "Is it the house on the corner?",
+        "kind": "image"
+      }
+    }
+  },
+
+  "$comment_reaction": [
+    "An emoji landed on a message, from either side.",
+    "",
+    "Carries the whole message, not the one emoji: reactions are a set with one",
+    "slot per person, so a client applying a delta has to know what was already",
+    "there to know whether this one replaces it — which is exactly what the two",
+    "sides disagree about during two taps in quick succession. Replacing the row",
+    "wholesale has no such failure.",
+    "",
+    "`by` is written from the reader's point of view: 'visitor' is the person",
+    "holding the phone, whichever side of the desk put it there."
+  ],
+
+  "reaction": {
+    "kind": "reaction",
+    "payload": {
+      "id": "msg_2",
+      "from": "agent",
+      "authorName": "Nathan",
+      "body": "Yes — it's the one with the blue door",
+      "at": "2026-09-18T12:01:00.000Z",
+      "attachments": [
+        {
+          "id": "att_1",
+          "filename": "voice.webm",
+          "mime": "audio/webm",
+          "kind": "voice",
+          "durationMs": 7400,
+          "waveform": [0.1, 0.55, 0.9, 0.42, 0.18]
+        }
+      ],
+      "reactions": [{ "emoji": "\u2764\ufe0f", "by": "visitor" }],
+      "quote": {
+        "id": "msg_1",
+        "from": "visitor",
+        "preview": "Is it the house on the corner?",
+        "kind": "image"
+      }
     }
   },
 

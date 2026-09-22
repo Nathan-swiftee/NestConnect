@@ -2,3 +2,7 @@
 .packages
 pubspec.lock
 build/
+# Written by `flutter pub get` from the pubspec, and different on every
+# machine that runs it — the native plugin list resolved to local paths.
+.flutter-plugins
+.flutter-plugins-dependencies

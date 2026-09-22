@@ -498,6 +498,11 @@ export abstract class Store {
   }): Promise<StoredCustomerDevice>;
   /** Every live address for this customer on this channel. */
   abstract customerDevicesFor(contactId: string, inboxId: string): Promise<StoredCustomerDevice[]>;
+  /** The most recently seen live address on this channel, whoever it belongs
+   *  to — what a "send a test push" button aims at. Nobody setting push up
+   *  knows a contact id, and the handset that registered last is the one in
+   *  the hand of the person pressing the button. */
+  abstract latestCustomerDeviceFor(inboxId: string): Promise<StoredCustomerDevice | null>;
   /** Forget a token the app itself surrendered — a sign-out, or notifications
    *  turned off. Scoped to the contact so a token can only be dropped by the
    *  session that holds it. */
