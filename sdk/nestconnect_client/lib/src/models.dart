@@ -22,13 +22,33 @@ class NestAttachment {
     required this.id,
     required this.filename,
     required this.mime,
+    this.kind,
+    this.durationMs,
+    this.waveform = const [],
   });
 
   final String id;
   final String filename;
   final String mime;
 
+  /// What the server calls it: `voice`, `image`, `video`, `audio`, `file`.
+  ///
+  /// Carried rather than sniffed from [mime], because a recording and an audio
+  /// file somebody attached are both `audio/…` and only one of them is drawn
+  /// as a waveform with a play button.
+  final String? kind;
+
+  /// How long a recording runs, so a bubble can say "0:07" before a byte of it
+  /// has been fetched.
+  final int? durationMs;
+
+  /// The bars to draw, 0..1. Measured by whoever recorded it, while it was
+  /// being recorded — the alternative is every reader decoding the whole file
+  /// to arrive at a shape that is the same for all of them.
+  final List<double> waveform;
+
   bool get isImage => mime.startsWith('image/');
+  bool get isVoice => kind == 'voice';
 
   static NestAttachment? tryParse(Object? raw) {
     if (raw is! Map) return null;
@@ -38,6 +58,90 @@ class NestAttachment {
       id: id,
       filename: _str(raw['filename']) ?? 'file',
       mime: _str(raw['mime']) ?? 'application/octet-stream',
+      kind: _str(raw['kind']),
+      durationMs: _int(raw['durationMs']),
+      waveform: _list(raw['waveform'])
+          .map(_double)
+          .whereType<double>()
+          // Clamped rather than trusted: a bar outside 0..1 is drawn as a
+          // sliver or as a spike through the bubble above.
+          .map((v) => v.clamp(0.0, 1.0))
+          .toList(growable: false),
+    );
+  }
+}
+
+/// An emoji somebody put on a message.
+class NestReaction {
+  const NestReaction({required this.emoji, required this.mine});
+
+  final String emoji;
+
+  /// Put there by the person holding this phone. The server writes `by` from
+  /// the reader's point of view, so this needs no interpretation here.
+  final bool mine;
+
+  static NestReaction? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final emoji = _str(raw['emoji']);
+    if (emoji == null || emoji.isEmpty) return null;
+    return NestReaction(emoji: emoji, mine: _str(raw['by']) == 'visitor');
+  }
+}
+
+/// The message a reply is answering.
+///
+/// Flattened onto the reply by the server rather than referenced by id: the
+/// original may be older than the window this client holds, and a quote that
+/// renders blank because it scrolled out of memory is worse than no quote.
+class NestQuote {
+  const NestQuote({
+    required this.id,
+    required this.fromMe,
+    required this.preview,
+    this.authorName,
+    this.kind,
+  });
+
+  final String id;
+
+  /// Quoting the person holding this phone, rather than an agent.
+  final bool fromMe;
+
+  /// Already trimmed by the server. Empty when the original had no words, in
+  /// which case [kind] says what it was instead.
+  final String preview;
+  final String? authorName;
+  final String? kind;
+
+  /// What to show when there were no words — "" under a reply reads as a
+  /// broken quote rather than as a recording.
+  String get label {
+    if (preview.isNotEmpty) return preview;
+    switch (kind) {
+      case 'voice':
+        return 'Voice message';
+      case 'image':
+        return 'Photo';
+      case 'video':
+        return 'Video';
+      case 'audio':
+        return 'Audio';
+      default:
+        return 'Attachment';
+    }
+  }
+
+  static NestQuote? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final id = _str(raw['id']);
+    if (id == null) return null;
+    return NestQuote(
+      id: id,
+      fromMe: _str(raw['from']) != 'agent',
+      preview: _str(raw['preview']) ?? '',
+      authorName: _str(raw['authorName']),
+      kind: _str(raw['kind']),
     );
   }
 }
@@ -54,6 +158,8 @@ class NestMessage {
     required this.at,
     this.authorName,
     this.attachments = const [],
+    this.reactions = const [],
+    this.quote,
     this.pending = false,
     this.failed = false,
   });
@@ -67,6 +173,22 @@ class NestMessage {
   final String? authorName;
   final List<NestAttachment> attachments;
 
+  /// Emoji on this message, at most one per person.
+  final List<NestReaction> reactions;
+
+  /// The message this one answers, if it answers one.
+  final NestQuote? quote;
+
+  /// The voice note on this message, if it is one. A recording is the whole
+  /// message rather than a file listed under it — the waveform *is* the
+  /// message, so the UI asks this rather than walking the attachments.
+  NestAttachment? get voice {
+    for (final a in attachments) {
+      if (a.isVoice) return a;
+    }
+    return null;
+  }
+
   /// On its way. Shown immediately so the thread never looks frozen while the
   /// network decides; replaced by the server's copy when it lands.
   final bool pending;
@@ -77,13 +199,20 @@ class NestMessage {
 
   bool get isMine => from == NestAuthor.visitor;
 
-  NestMessage copyWith({bool? pending, bool? failed}) => NestMessage(
+  NestMessage copyWith({
+    bool? pending,
+    bool? failed,
+    List<NestReaction>? reactions,
+  }) =>
+      NestMessage(
         id: id,
         from: from,
         body: body,
         at: at,
         authorName: authorName,
         attachments: attachments,
+        reactions: reactions ?? this.reactions,
+        quote: quote,
         pending: pending ?? this.pending,
         failed: failed ?? this.failed,
       );
@@ -104,6 +233,11 @@ class NestMessage {
           .map(NestAttachment.tryParse)
           .whereType<NestAttachment>()
           .toList(growable: false),
+      reactions: _list(raw['reactions'])
+          .map(NestReaction.tryParse)
+          .whereType<NestReaction>()
+          .toList(growable: false),
+      quote: NestQuote.tryParse(raw['quote']),
     );
   }
 }
@@ -286,20 +420,51 @@ class NestUpload {
     required this.filename,
     required this.mime,
     required this.size,
+    this.kind,
+    this.durationMs,
+    this.waveform = const [],
   });
 
   final String ticket;
   final String filename;
   final String mime;
   final int size;
+  final String? kind;
 
-  static NestUpload parse(Object? raw) {
+  /// Set only on a recording: what [NestChatClient.attachVoice] measured.
+  final int? durationMs;
+  final List<double> waveform;
+
+  /// What the pending bubble draws while this is on its way.
+  ///
+  /// Without it a voice note sent from a phone is a blank bubble until the
+  /// round trip finishes — which is the one case where the person already
+  /// knows exactly what they sent, because they watched themselves record it.
+  NestAttachment? get preview => durationMs == null
+      ? null
+      : NestAttachment(
+          id: ticket.hashCode.toRadixString(16),
+          filename: filename,
+          mime: mime,
+          kind: 'voice',
+          durationMs: durationMs,
+          waveform: waveform,
+        );
+
+  static NestUpload parse(
+    Object? raw, {
+    int? durationMs,
+    List<double> waveform = const [],
+  }) {
     final map = raw is Map ? raw : const <String, Object?>{};
     return NestUpload(
       ticket: _str(map['ticket']) ?? '',
       filename: _str(map['filename']) ?? 'file',
       mime: _str(map['mime']) ?? 'application/octet-stream',
       size: map['size'] is num ? (map['size'] as num).toInt() : 0,
+      kind: _str(map['kind']),
+      durationMs: durationMs,
+      waveform: waveform,
     );
   }
 }
@@ -320,3 +485,19 @@ class NestException implements Exception {
 
 String? _str(Object? v) => v is String && v.isNotEmpty ? v : null;
 List<Object?> _list(Object? v) => v is List ? v : const [];
+
+/// JSON numbers arrive as `int` or `double` depending on whether the encoder
+/// felt like writing a decimal point, and a server that sends `7400` today can
+/// send `7400.0` tomorrow without anybody calling it a change.
+int? _int(Object? v) {
+  if (v is int) return v;
+  if (v is double && v.isFinite) return v.round();
+  if (v is String) return int.tryParse(v);
+  return null;
+}
+
+double? _double(Object? v) {
+  if (v is num) return v.isFinite ? v.toDouble() : null;
+  if (v is String) return double.tryParse(v);
+  return null;
+}

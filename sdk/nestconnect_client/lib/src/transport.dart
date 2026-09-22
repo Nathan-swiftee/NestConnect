@@ -42,6 +42,11 @@ abstract class NestTransport {
     required List<int> bytes,
     required String filename,
     required String mime,
+    /// Extra form fields sent beside the file. A voice note's duration and
+    /// waveform travel this way: the recorder measured both while the note
+    /// was being made, and they are what tell the server this is a recording
+    /// rather than an audio file somebody attached.
+    Map<String, String> fields = const {},
   });
 
   /// The live stream of what an agent sends, as server-sent events.

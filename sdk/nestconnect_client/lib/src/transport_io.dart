@@ -68,9 +68,23 @@ class IoTransport extends NestTransport {
     required List<int> bytes,
     required String filename,
     required String mime,
+    Map<String, String> fields = const {},
   }) async {
     final boundary = '----nest${DateTime.now().microsecondsSinceEpoch}';
+    // The text parts go first so the file is the last thing on the wire —
+    // the server reads the fields off the request before it has finished
+    // receiving several megabytes of audio.
+    final leading = StringBuffer();
+    fields.forEach((name, value) {
+      leading
+        ..write('--$boundary\r\n')
+        ..write('Content-Disposition: form-data; name="'
+            '${name.replaceAll(RegExp(r'["\r\n]'), '_')}"\r\n\r\n')
+        ..write(value.replaceAll(RegExp(r'[\r\n]'), ' '))
+        ..write('\r\n');
+    });
     final head = utf8.encode(
+      '$leading'
       '--$boundary\r\n'
       // The filename is quoted and stripped of the two characters that would
       // let it break out of the header it sits in.

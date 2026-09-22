@@ -801,7 +801,12 @@ export class NestChatController {
     const claims = this.nestchat.verifyVisitorToken(token);
     if (!claims.conversationId) throw new BadRequestException("No conversation yet");
 
-    res.setHeader("Content-Type", "text/event-stream");
+    // Charset named explicitly. Every reader here already decodes UTF-8 — a
+    // browser's EventSource because the spec says so, the Dart SDK because it
+    // asks for it — so this changes nothing today. It is said anyway because
+    // the alternative relies on three separate clients each choosing right
+    // about a stream that carries emoji in every reaction.
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
     // Nginx and friends buffer by default, which turns a live stream into a
