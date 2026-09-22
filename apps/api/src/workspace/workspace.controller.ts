@@ -15,6 +15,7 @@ import {
   createLabelInputSchema,
   createTeamInputSchema,
   createUserInputSchema,
+  reorderInboxesInputSchema,
   reorderTeamsInputSchema,
   updateInboxInputSchema,
   setDefaultInboxInputSchema,
@@ -27,6 +28,7 @@ import {
   type CreateLabelInput,
   type CreateTeamInput,
   type CreateUserInput,
+  type ReorderInboxesInput,
   type ReorderTeamsInput,
   type UpdateInboxInput,
   type SetDefaultInboxInput,
@@ -216,6 +218,18 @@ export class WorkspaceController {
   ) {
     await this.requireManager(userId);
     return this.store.reorderTeams(body.orderedIds);
+  }
+
+  /** The order channels appear in, everywhere they are listed. A manager's
+   *  call, like the team ordering beside it: it is what the whole workspace
+   *  sees, not a per-person preference. */
+  @Post("settings/inboxes/reorder")
+  async reorderInboxes(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(reorderInboxesInputSchema)) body: ReorderInboxesInput,
+  ) {
+    await this.requireManager(userId);
+    return this.store.reorderInboxes(body.orderedIds);
   }
 
   @Patch("settings/teams/:id")

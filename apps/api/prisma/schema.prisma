@@ -343,6 +343,14 @@ model Inbox {
   // the migration rather than by the setter alone: it decides which number a
   // customer sees, and two rows claiming it would be a coin toss again.
   isDefault       Boolean         @default(false)
+  /// Where this channel sits in the sidebar, low first — the same idea as
+  /// Team.order and set the same way, by the arrows in Settings.
+  ///
+  /// Every existing row starts at 0, which is a deliberate tie rather than a
+  /// default nobody chose: the ordering falls back to createdAt, so a
+  /// workspace that has never touched the arrows keeps exactly the order it
+  /// had, and one that has keeps its own.
+  order           Int             @default(0)
   createdAt       DateTime        @default(now())
 
   org           Organization     @relation(fields: [orgId], references: [id])

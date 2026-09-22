@@ -206,12 +206,21 @@ export class PrismaStore extends Store {
     routingStrategy: RoutingStrategy;
     channelConfig?: Record<string, string>;
   }): Promise<Inbox> {
+    // Last in the list, not first. The column defaults to 0, which is fine
+    // while every row is 0 — but once somebody has used the arrows, a new
+    // channel left at 0 would shoulder its way to the top of the sidebar they
+    // arranged. It goes on the end instead, where a new thing belongs.
+    const last = await this.prisma.inbox.aggregate({
+      where: { orgId: params.orgId },
+      _max: { order: true },
+    });
     const created = await this.prisma.inbox.create({
       data: {
         orgId: params.orgId,
         type: params.type,
         name: params.name,
         handle: params.handle,
+        order: (last._max.order ?? 0) + 1,
         routingStrategy: params.routingStrategy,
         // Encrypt credential fields (accessToken/providerToken/refreshToken) at rest.
         channelConfig: params.channelConfig
@@ -502,6 +511,18 @@ export class PrismaStore extends Store {
       orderedIds.map((id, i) => this.prisma.team.update({ where: { id }, data: { order: i } })),
     );
     return this.listTeams();
+  }
+
+  async reorderInboxes(orderedIds: string[]): Promise<Inbox[]> {
+    // `updateMany` with the org in the filter rather than `update` keyed on the
+    // id alone: these ids come from a request, and an id belonging to another
+    // workspace would otherwise be taken at its word.
+    await this.prisma.$transaction(
+      orderedIds.map((id, i) =>
+        this.prisma.inbox.updateMany({ where: { id, orgId: ORG_ID }, data: { order: i } }),
+      ),
+    );
+    return this.listInboxes();
   }
 
   async deleteTeam(id: string): Promise<void> {
@@ -907,7 +928,7 @@ export class PrismaStore extends Store {
       include: { teams: true },
       // Oldest first, and never left to the database's own idea of row order —
       // see the contract on Store.listInboxes. `id` breaks a same-millisecond tie.
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     });
     return rows.map(mapInbox);
   }
@@ -1133,6 +1154,10 @@ export class PrismaStore extends Store {
     const inboxRows = await this.prisma.inbox.findMany({
       where: elevated ? { orgId: ORG_ID } : { teams: { some: { teamId: { in: userTeams } } } },
       include: { teams: true },
+      // This had no ordering at all, which is why the sidebar's channels came
+      // back in whatever order the database felt like — and changed between
+      // page loads, because an updated row moves within the heap.
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     });
     const inboxes: ViewItem[] = [];
     for (const i of inboxRows) {

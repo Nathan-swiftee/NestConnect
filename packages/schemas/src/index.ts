@@ -331,6 +331,9 @@ export const inboxSchema = z.object({
    *  reply switched onto this channel goes out from. At most one per channel
    *  type; with none set the oldest wins. */
   isDefault: z.boolean().default(false),
+  /** Where this channel sits in the sidebar, low first. Set by the arrows in
+   *  Settings, the same way a team's order is. */
+  order: z.number().int().default(0),
   unread: z.number().int().nonnegative().default(0),
   /** True once the integration credentials needed to send/receive live are set. */
   connected: z.boolean().optional(),
@@ -2512,6 +2515,12 @@ export const reorderTeamsInputSchema = z.object({
   orderedIds: z.array(z.string()).min(1),
 });
 export type ReorderTeamsInput = z.infer<typeof reorderTeamsInputSchema>;
+
+/** The same for channels: the ids, in the order they should be listed. */
+export const reorderInboxesInputSchema = z.object({
+  orderedIds: z.array(z.string()).min(1),
+});
+export type ReorderInboxesInput = z.infer<typeof reorderInboxesInputSchema>;
 
 export const createLabelInputSchema = z.object({
   name: z.string().min(1).max(40),

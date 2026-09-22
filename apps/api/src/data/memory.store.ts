@@ -237,6 +237,10 @@ export class MemoryStore extends Store {
       handle: params.handle,
       teamIds: params.teamIds,
       routingStrategy: params.routingStrategy,
+      // Last in the list, not first. A channel connected while somebody is
+      // looking at their sidebar should appear at the end of the channels they
+      // have arranged, rather than shouldering its way to the top of them.
+      order: this.inboxes.reduce((max, i) => Math.max(max, i.order ?? 0), 0) + 1,
       // A new channel never steals the default from one already carrying it.
       isDefault: false,
       unread: 0,
@@ -466,6 +470,14 @@ export class MemoryStore extends Store {
       if (team) team.order = i;
     });
     return this.listTeams();
+  }
+
+  async reorderInboxes(orderedIds: string[]): Promise<Inbox[]> {
+    orderedIds.forEach((id, i) => {
+      const inbox = this.inboxes.find((x) => x.id === id);
+      if (inbox) inbox.order = i;
+    });
+    return this.listInboxes();
   }
 
   async deleteTeam(id: string): Promise<void> {
@@ -850,11 +862,17 @@ export class MemoryStore extends Store {
   }
 
   async listInboxes(): Promise<Inbox[]> {
-    return this.inboxes.map((i) => ({
-      ...i,
-      connected: isInboxConnected(i.type, this.inboxConfig.get(i.id) ?? null),
-      channelConfigPublic: publicChannelConfig(this.inboxConfig.get(i.id) ?? null),
-    }));
+    // Sorted rather than returned in insertion order, so this store answers
+    // the same question the Postgres one does. A memory store that happens to
+    // be right because nothing has moved is a store that stops being right the
+    // first time somebody presses an arrow.
+    return [...this.inboxes]
+      .sort(byChosenOrder)
+      .map((i) => ({
+        ...i,
+        connected: isInboxConnected(i.type, this.inboxConfig.get(i.id) ?? null),
+        channelConfigPublic: publicChannelConfig(this.inboxConfig.get(i.id) ?? null),
+      }));
   }
 
   async getMembers(teamId: string): Promise<User[]> {
@@ -1064,7 +1082,8 @@ export class MemoryStore extends Store {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .filter((t) => elevated || userTeams.includes(t.id))
       .map((t) => ({ key: `team:${t.id}`, title: t.name, count: count(`team:${t.id}`) }));
-    const inboxes: ViewItem[] = this.inboxes
+    const inboxes: ViewItem[] = [...this.inboxes]
+      .sort(byChosenOrder)
       .filter((i) => elevated || i.teamIds.some((t) => userTeams.includes(t)))
       .map((i) => {
         const groups =
@@ -2507,4 +2526,20 @@ export class MemoryStore extends Store {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (rec) rec.participants = (rec.participants ?? []).filter((p) => p.contact.id !== contactId);
   }
+}
+
+/**
+ * Channels in the order somebody chose, oldest first among those that tie.
+ *
+ * The tie-break is implicit and worth saying out loud: `Array.prototype.sort`
+ * is stable, and this store appends on create, so rows sharing an order keep
+ * insertion order — which here *is* creation order. That matches the Postgres
+ * store's explicit `createdAt` tie-break without this store having to carry a
+ * timestamp the domain type does not have.
+ *
+ * It matters because every row starts at order 0: a workspace that has never
+ * touched the arrows is entirely ties, and the whole ordering is the tie-break.
+ */
+function byChosenOrder(a: { order?: number }, b: { order?: number }): number {
+  return (a.order ?? 0) - (b.order ?? 0);
 }

@@ -116,9 +116,9 @@ export function makeSeed() {
   };
 
   const inboxes: Inbox[] = [
-    { id: "inbox_wa", orgId: ORG_ID, type: "whatsapp", name: "+44 20 7946", handle: "+44 20 7946 0100", teamIds: ["team_support"], routingStrategy: "manual", isDefault: false, unread: 2 },
-    { id: "inbox_support", orgId: ORG_ID, type: "email", name: "support@swiftee.co.uk", handle: "support@swiftee.co.uk", teamIds: ["team_support"], routingStrategy: "round_robin", isDefault: false, unread: 1 },
-    { id: "inbox_hello", orgId: ORG_ID, type: "email", name: "hello@swiftee.co.uk", handle: "hello@swiftee.co.uk", teamIds: ["team_sales"], routingStrategy: "round_robin", isDefault: false, unread: 0 },
+    { id: "inbox_wa", orgId: ORG_ID, type: "whatsapp", name: "+44 20 7946", handle: "+44 20 7946 0100", teamIds: ["team_support"], routingStrategy: "manual", isDefault: false, order: 0, unread: 2 },
+    { id: "inbox_support", orgId: ORG_ID, type: "email", name: "support@swiftee.co.uk", handle: "support@swiftee.co.uk", teamIds: ["team_support"], routingStrategy: "round_robin", isDefault: false, order: 0, unread: 1 },
+    { id: "inbox_hello", orgId: ORG_ID, type: "email", name: "hello@swiftee.co.uk", handle: "hello@swiftee.co.uk", teamIds: ["team_sales"], routingStrategy: "round_robin", isDefault: false, order: 0, unread: 0 },
   ];
 
   const c = (contact: Omit<Contact, "tags"> & { tags?: string[] }): Contact => ({

@@ -446,6 +446,19 @@ export function useReorderTeams() {
   });
 }
 
+export function useReorderInboxes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (orderedIds: string[]) => api.reorderInboxes(orderedIds),
+    onSuccess: () => {
+      // Both, and the second is the point: the sidebar is where anybody
+      // notices this, and it reads from "views" rather than from "inboxes".
+      qc.invalidateQueries({ queryKey: ["inboxes"] });
+      qc.invalidateQueries({ queryKey: ["views"] });
+    },
+  });
+}
+
 /* ---- labels ---- */
 /* ---- custom fields ---- */
 

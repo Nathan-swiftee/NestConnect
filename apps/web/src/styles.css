@@ -1834,6 +1834,20 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 /* capitalize suits a routing strategy ("round_robin"); it mangles anything
    written as a sentence or an address, so those opt out. */
 .chcard__route--plain{text-transform:none}
+/* The card, plus the arrows that sit over it. The wrapper exists because the
+   card is itself a button and the arrows have to be its siblings, not its
+   children — and `position` has to live somewhere for them to hang off. */
+.chcard__wrap{position:relative;display:flex}
+.chcard__wrap > .chcard{flex:1;min-width:0}
+.chcard__ord{position:absolute;top:8px;right:8px;z-index:1;display:flex;flex-direction:column;gap:2px;opacity:0;transition:opacity var(--t-fast) var(--ease)}
+/* Shown on hover on a mouse, and always on a touch screen — where there is no
+   hover, and a control that only appears on one is a control nobody finds. */
+.chcard__wrap:hover .chcard__ord,
+.chcard__ord:focus-within{opacity:1}
+@media (hover:none){.chcard__ord{opacity:1}}
+.chcard__ord .iconbtn{width:24px;height:24px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-8)}
+.chcard__ord .iconbtn svg{width:13px;height:13px}
+.chcard__ord .iconbtn:disabled{opacity:.35;cursor:default}
 .chcard--add{align-items:center;justify-content:center;flex-direction:row;gap:8px;border-style:dashed;color:var(--text-muted);background:transparent;font-weight:600;font-size:var(--fs-sm)}
 .chcard--add svg{width:16px;height:16px}
 .chcard--add:hover{color:var(--brand-strong);border-color:var(--brand);box-shadow:none}
