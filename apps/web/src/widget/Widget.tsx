@@ -465,6 +465,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
       from: "visitor",
       body,
       at: new Date().toISOString(),
+      reactions: [],
     };
     setMessages((prev) => [...prev, optimistic]);
     try {

@@ -21,9 +21,12 @@ import {
   externalIdentity,
   nestchatAcceptsUpload,
   NESTCHAT_MAX_UPLOAD_BYTES,
+  NESTCHAT_VOICE_MAX_MS,
+  NESTCHAT_WAVEFORM_BARS,
   nestchatAppSessionInputSchema,
   nestchatDeviceInputSchema,
   nestchatIdentifyInputSchema,
+  nestchatReactInputSchema,
   nestchatReadInputSchema,
   nestchatSendInputSchema,
   nestchatSessionInputSchema,
@@ -36,6 +39,7 @@ import {
   type NestChatDeviceInput,
   type NestChatIdentifyInput,
   type NestChatIdentifyResult,
+  type NestChatReactInput,
   type NestChatReadInput,
   type NestChatSendInput,
   type NestChatSession,
@@ -46,6 +50,7 @@ import {
   type NestChatTypingInput,
 } from "@ding/schemas";
 import type { Inbox } from "@ding/schemas";
+import type { AttachmentInput } from "../../data/store";
 import { Public } from "../../auth/public.decorator";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
 import { Store } from "../../data/store";
@@ -397,6 +402,10 @@ export class NestChatController {
   async upload(
     @Headers("authorization") auth: string | undefined,
     @UploadedFile() file: UploadedFileLike | undefined,
+    // Multipart, so these arrive as strings beside the file part rather than
+    // as JSON. Unvalidated by a pipe on purpose — `readVoiceMeta` decides, and
+    // a malformed pair means "an ordinary audio file", not a failed upload.
+    @Body() body: Record<string, unknown> | undefined,
   ): Promise<NestChatUploadResult> {
     const claims = this.nestchat.verifyVisitorToken(bearer(auth));
     if (!file?.buffer?.length) throw new BadRequestException("No file uploaded");
@@ -413,12 +422,25 @@ export class NestChatController {
       // is never a path, so the one thing it must not carry is a separator.
       filename: (file.originalname || "file").replace(/[/\\\r\n"]/g, "_").slice(0, 120),
     });
+
+    // A recording and an audio file someone attached are both `audio/…`, and
+    // only the first should be drawn as a waveform with a play button. What
+    // separates them is that the recorder measured the note while it was being
+    // made: the duration and the bars it drew. So the presence of those is the
+    // claim "this is a voice note", and it rides inside the signed ticket with
+    // the rest of the file's details — otherwise a client could attach one
+    // upload's shape to another's bytes between uploading and sending.
+    const voice = readVoiceMeta(body);
+    const attachment: AttachmentInput = voice
+      ? { ...stored, kind: "voice", durationMs: voice.durationMs, waveform: voice.waveform }
+      : stored;
+
     return {
-      ticket: this.nestchat.signAttachmentTicket(claims.contactId, stored),
-      filename: stored.filename,
-      mime: stored.mime,
-      size: stored.size,
-      kind: stored.kind,
+      ticket: this.nestchat.signAttachmentTicket(claims.contactId, attachment),
+      filename: attachment.filename,
+      mime: attachment.mime,
+      size: attachment.size,
+      kind: attachment.kind,
     };
   }
 
@@ -457,6 +479,7 @@ export class NestChatController {
       pageUrl: body.pageUrl,
       option: chosen ? { label: chosen.option.label, teamId: chosen.teamId } : undefined,
       attachments,
+      quotedMsgId: body.quotedMsgId,
     });
     // Blocked contact: accepted and dropped. Telling them they're blocked only
     // teaches them to come back with a fresh visitor id.
@@ -475,7 +498,12 @@ export class NestChatController {
       );
     }
 
-    const message = result.message ? this.nestchat.toVisitorMessage(result.message) : undefined;
+    const message = result.message
+      ? this.nestchat.toVisitorMessage(
+          result.message,
+          (await this.store.getConversation(result.conversationId))?.messages,
+        )
+      : undefined;
     return {
       ok: true,
       message,
@@ -493,6 +521,33 @@ export class NestChatController {
               fields: undefined,
             }),
     };
+  }
+
+  /**
+   * The visitor puts an emoji on a message, or takes theirs off.
+   *
+   * Answers `{ ok: false }` rather than a 404 for a message that is not
+   * theirs to react to. The distinction a 404 would draw — this id exists,
+   * that one does not — is the only thing an unauthenticated caller could
+   * learn here, and it is worth nothing to the widget, which knows perfectly
+   * well which messages it is showing.
+   */
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Post("react")
+  async react(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatReactInputSchema)) body: NestChatReactInput,
+  ) {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const result = await this.nestchat.reactAsVisitor(claims, body.messageId, body.emoji);
+    if (!result) return { ok: false };
+    // Straight to the agents watching the thread. The visitor's own widget has
+    // already drawn it — it did so the moment they tapped, because a reaction
+    // that waits for a round trip feels broken however fast the round trip is.
+    if (claims.conversationId) {
+      this.realtime.emitMessageUpdated(claims.conversationId, result.stored);
+    }
+    return { ok: true, message: result.visible };
   }
 
   /** Everything said so far, for a widget that has just reconnected. */
@@ -767,4 +822,38 @@ export class NestChatController {
     res.on("error", stop);
   }
 
+}
+
+/**
+ * The duration and bars a recorder measured, if this upload came with them.
+ *
+ * Returns nothing for anything it does not like, and never throws: the worst
+ * outcome of a malformed pair is that a recording is filed as an ordinary
+ * audio file and drawn with a download arrow instead of a waveform. Failing
+ * the upload instead would lose the recording itself.
+ */
+function readVoiceMeta(
+  body: Record<string, unknown> | undefined,
+): { durationMs: number; waveform: number[] } | undefined {
+  if (!body) return undefined;
+  const durationMs = Number(body.durationMs);
+  if (!Number.isFinite(durationMs) || durationMs <= 0 || durationMs > NESTCHAT_VOICE_MAX_MS) {
+    return undefined;
+  }
+  // A JSON array in a form field. Parsed defensively — this is a string a
+  // stranger sent, and the shape it should have is very specific.
+  let raw: unknown;
+  try {
+    raw = typeof body.waveform === "string" ? JSON.parse(body.waveform) : body.waveform;
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(raw)) return undefined;
+  const waveform = raw
+    .slice(0, NESTCHAT_WAVEFORM_BARS)
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v))
+    .map((v) => Math.min(1, Math.max(0, v)));
+  if (!waveform.length) return undefined;
+  return { durationMs: Math.round(durationMs), waveform };
 }

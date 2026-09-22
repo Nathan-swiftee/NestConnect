@@ -149,7 +149,11 @@ export abstract class ChannelProvider {
    */
   sendReaction?(params: {
     conversation: Conversation;
+    /** The *channel's* id for the message — what WhatsApp needs. Empty on a
+     *  channel that has no third party and therefore no such id. */
     channelMsgId: string;
+    /** Our own id for it. The only handle a channel we host ourselves has. */
+    messageId?: string;
     emoji: string;
   }): Promise<void>;
 }

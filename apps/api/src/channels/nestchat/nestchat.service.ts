@@ -31,6 +31,7 @@ import { Store, type AttachmentInput } from "../../data/store";
 import { ORG_ID } from "../../data/fixtures";
 import { env } from "../../config/env";
 import { FCM_SERVICE_ACCOUNT_FIELD, parseServiceAccount } from "./fcm";
+import { toVisitorMessage } from "./visitor-message";
 import { VisitorBus } from "./visitor-bus";
 
 /**
@@ -763,18 +764,8 @@ export class NestChatService {
    * notes above all, which are agents talking to each other *about* them, and
    * system lines ("assigned to Sales"), which are our workflow, not their chat.
    */
-  toVisitorMessage(message: Message): NestChatMessage | undefined {
-    if (message.internal || message.authorType === "system") return undefined;
-    return {
-      id: message.id,
-      from: message.direction === "in" ? "visitor" : "agent",
-      authorName: message.direction === "out" ? message.authorName || undefined : undefined,
-      body: message.body,
-      at: message.createdAt,
-      attachments: message.attachments?.length
-        ? message.attachments.map((a) => ({ id: a.id, filename: a.filename, mime: a.mime }))
-        : undefined,
-    };
+  toVisitorMessage(message: Message, thread?: Message[]): NestChatMessage | undefined {
+    return toVisitorMessage(message, thread);
   }
 
   /** A conversation's history as the visitor sees it. */
@@ -782,8 +773,34 @@ export class NestChatService {
     const conv = await this.store.getConversation(conversationId);
     if (!conv) return [];
     return conv.messages
-      .map((m) => this.toVisitorMessage(m))
+      .map((m) => this.toVisitorMessage(m, conv.messages))
       .filter((m): m is NestChatMessage => Boolean(m));
+  }
+
+  /**
+   * The visitor puts an emoji on a message, or takes theirs off.
+   *
+   * Scoped to their own conversation: the id comes from the widget, and the
+   * only thing stopping it being any message in the database is this check.
+   * A reaction is a small thing to be able to write onto a stranger's thread,
+   * and being *told* the reaction landed is a way to learn that a message id
+   * exists, which is smaller still and just as much not theirs to know.
+   */
+  async reactAsVisitor(
+    claims: VisitorClaims,
+    messageId: string,
+    emoji: string,
+  ): Promise<{ stored: Message; visible: NestChatMessage } | undefined> {
+    if (!claims.conversationId) return undefined;
+    const conv = await this.store.getConversation(claims.conversationId);
+    const target = conv?.messages.find((m) => m.id === messageId);
+    // An internal note is in the thread and is not the visitor's to see, let
+    // alone decorate.
+    if (!conv || !target || target.internal || target.authorType === "system") return undefined;
+    const updated = await this.store.reactToMessage(messageId, emoji, "contact");
+    if (!updated) return undefined;
+    const visible = this.toVisitorMessage(updated.message, conv.messages);
+    return visible ? { stored: updated.message, visible } : undefined;
   }
 
   /* ---- who the visitor is ---- */
@@ -974,6 +991,17 @@ export class NestChatService {
    * team organises its own queue, and none of them means the visitor should
    * stop typing.
    */
+  /**
+   * Tell a visitor's open widget that an agent reacted to one of the messages.
+   *
+   * The mirror of the above, and the reason a reaction feels live in both
+   * directions rather than only the one that happens to be looking.
+   */
+  publishReactionToVisitor(conversationId: string, message: Message, thread: Message[]): void {
+    const visible = this.toVisitorMessage(message, thread);
+    if (visible) this.bus.publish(conversationId, { kind: "reaction", payload: visible });
+  }
+
   publishStatusToVisitor(conversationId: string, status: string): void {
     if (status === "closed") this.bus.publish(conversationId, { kind: "closed" });
     else if (status === "open") this.bus.publish(conversationId, { kind: "reopened" });

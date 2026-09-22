@@ -490,11 +490,16 @@ export class ConversationsService {
     const updated = await this.store.reactToMessage(messageId, emoji, "user");
     if (!updated) throw new NotFoundException("Message not found");
     this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
-    if (updated.message.channelMsgId) {
-      const conv = await this.store.getConversation(conversationId);
-      if (conv && (conv.channel === "whatsapp" || conv.channel === "whatsapp_group")) {
-        void this.dispatcher.sendReaction(conv, updated.message.channelMsgId, emoji);
-      }
+    const conv = await this.store.getConversation(conversationId);
+    if (conv?.channel === "nestchat") {
+      // Our own live chat: no provider id to key on, because there is no
+      // provider. The visitor's widget is told with our own message id.
+      void this.dispatcher.sendReaction(conv, "", emoji, updated.message.id);
+    } else if (
+      updated.message.channelMsgId &&
+      (conv?.channel === "whatsapp" || conv?.channel === "whatsapp_group")
+    ) {
+      void this.dispatcher.sendReaction(conv, updated.message.channelMsgId, emoji);
     }
     return updated.message;
   }
