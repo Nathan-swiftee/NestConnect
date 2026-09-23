@@ -181,7 +181,10 @@ export class CustomerPushService {
 
     const result = await this.fcm.send(credential, {
       token: device.token,
-      title: "Nest Connect",
+      // The channel's own name, not ours. This notification lands on a
+      // customer's phone under the business's app icon, and "Nest Connect"
+      // there names a company they have never heard of and did not install.
+      title: await this.channelName(inboxId),
       body: "Notifications are working on this device.",
       data: { source: "nestconnect", test: "1" },
       channelId: ANDROID_CHANNEL,
@@ -227,7 +230,11 @@ export class CustomerPushService {
     if (!credential) return none("not_configured");
 
     const collapseKey = `nest:${conversation.id}`;
-    const title = req.authorName?.trim() || "New message";
+    // The agent's name when there is one — a reply is from a person, and
+    // "Sarah" on a lock screen is what makes it read like one. Falling back to
+    // the channel's own name rather than "New message", which says nothing at
+    // all on a phone that has several of these apps on it.
+    const title = req.authorName?.trim() || (await this.channelName(conversation.inboxId));
     const body = preview(req.body, req.attachmentCount ?? 0);
 
     let sent = 0;
@@ -284,6 +291,20 @@ export class CustomerPushService {
   /** The business's Firebase project for this channel, or null if unset or
    *  unusable. Null rather than a throw: a channel with no push configured is
    *  an ordinary state, not an error. */
+  /**
+   * What a notification from this channel calls itself.
+   *
+   * The name the business gave the channel in Settings. Falls back to
+   * "New message" rather than to our own name: a customer who sees "Nest
+   * Connect" on their lock screen is being told about a company they have
+   * never heard of, on a notification from an app they installed for
+   * something else entirely.
+   */
+  private async channelName(inboxId: string): Promise<string> {
+    const inbox = await this.store.getInbox(inboxId).catch(() => undefined);
+    return inbox?.name?.trim() || "New message";
+  }
+
   private async credentialFor(inboxId: string): Promise<FcmCredential | null> {
     const config = await this.store.getInboxConfig(inboxId);
     return parseServiceAccount(config?.[FCM_SERVICE_ACCOUNT_FIELD]);

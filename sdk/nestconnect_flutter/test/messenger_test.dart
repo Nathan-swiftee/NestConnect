@@ -353,6 +353,18 @@ void main() {
     expect(find.textContaining('{name}'), findsNothing);
   });
 
+  test('a greeting with nobody to greet drops the token, never shows it', () {
+    // The other way "Hello {name} 👋" reaches a screen: not a stale build but
+    // an anonymous visitor. The line has to lose the placeholder *and* the
+    // space in front of it, or it reads as a typo rather than as a greeting.
+    expect(fillVisitorName('Hello {name} 👋', null), 'Hello 👋');
+    expect(fillVisitorName('Hello {name} 👋', '   '), 'Hello 👋');
+    // A full name is greeted by its first part — a surname on a chat header
+    // reads as a database record rather than as somebody saying hello.
+    expect(fillVisitorName('Hello {name} 👋', 'Marta Nowak'), 'Hello Marta 👋');
+    expect(fillVisitorName('Hello {name} 👋', 'Marta'), 'Hello Marta 👋');
+  });
+
   testWidgets('and the people who answer are shown', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
