@@ -335,6 +335,32 @@ async function main(): Promise<void> {
     lines.map((l) => `${l.level}:${l.text}`).join(" | ") || "nothing logged",
   );
 
+  console.log("\nWhat a notification calls itself\n");
+  push.fake.sent.length = 0;
+  push.fake.answer = (m) => ({ token: m.token, ok: true });
+  await push.notifyAndWait({ ...reply, conversation: { ...conversation, id: "conv_t1" } as Conversation });
+  ok(
+    "an agent's reply is titled with the agent",
+    // A reply is from a person, and their name on a lock screen is what makes
+    // it read like one rather than like an automated alert.
+    push.fake.sent.at(-1)?.title === "Nathan",
+    push.fake.sent.at(-1)?.title,
+  );
+
+  push.fake.sent.length = 0;
+  await push.notifyAndWait({
+    conversation: { ...conversation, id: "conv_t2" } as Conversation,
+    body: "On its way",
+  });
+  ok(
+    "and one with no author is titled with the channel",
+    // Never our own name. This lands on a customer's phone under the
+    // business's app icon, and "Nest Connect" there names a company they have
+    // never heard of and did not install.
+    push.fake.sent.at(-1)?.title === "Ding app",
+    push.fake.sent.at(-1)?.title,
+  );
+
   console.log("\nSaying why a phone stayed quiet\n");
   ok(
     "two Firebase projects is the one worth spelling out",
@@ -390,6 +416,13 @@ async function main(): Promise<void> {
   push.fake.answer = (m) => ({ token: m.token, ok: true });
   const good = await push.sendTest(bare.id);
   ok("with both, it sends", good.ok === true && push.fake.sent.length === 1);
+  ok(
+    "titled with the channel, never with us",
+    // The one somebody presses while setting this up, so it is also the one
+    // they judge the wording by.
+    push.fake.sent[0]?.title === "Ding web",
+    push.fake.sent[0]?.title,
+  );
   ok(
     "to the phone that registered last",
     push.fake.sent[0]?.token === "fcm_tester",
