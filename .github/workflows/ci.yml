@@ -160,6 +160,12 @@ jobs:
       - name: Channel order
         run: pnpm check:channel-order
 
+      # Whether a host app can say which build of the SDK it is running. Both
+      # packages sat at 0.1.0 through eight releases, so "have you pulled the
+      # latest?" was unanswerable by either side.
+      - name: SDK version
+        run: pnpm check:sdk-version
+
       # What the server pushes down a visitor's live stream, checked against the
       # fixture the Dart SDK replays. This shipped wrong and stayed wrong: the
       # SDK read `type`/`message` where the server sends `kind`/`payload`, so

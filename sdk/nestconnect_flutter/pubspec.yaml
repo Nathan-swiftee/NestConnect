@@ -1,6 +1,6 @@
 name: nestconnect_flutter
 description: Nest Connect live chat inside your Flutter app — a launcher, a messenger, and the channel's own branding.
-version: 0.1.0
+version: 0.2.0
 publish_to: none
 
 environment:

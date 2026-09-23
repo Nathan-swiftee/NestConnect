@@ -36,7 +36,8 @@
     "db:migrate": "pnpm --filter @ding/api db:migrate",
     "db:seed": "pnpm --filter @ding/api db:seed",
     "eas-build-post-install": "pnpm --filter \"@ding/client...\" build",
-    "check:channel-order": "tsx tools/check-channel-order.ts"
+    "check:channel-order": "tsx tools/check-channel-order.ts",
+    "check:sdk-version": "tsx tools/check-sdk-version.ts"
   },
   "devDependencies": {
     "pixelmatch": "^5.3.0",

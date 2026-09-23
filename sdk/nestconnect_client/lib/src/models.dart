@@ -7,6 +7,26 @@
 /// app that stops shipping our updates.
 library;
 
+/// Which build of the SDK an app is actually running.
+///
+/// Exists because "have you pulled the latest?" is not a question anybody can
+/// answer by looking. A host app takes this package as a git dependency, and
+/// `pubspec.lock` pins the commit it resolved to: pulling the NestConnect repo
+/// moves nothing, `pub get` honours the lock, and the app goes on building the
+/// same SDK it built last month while the repository looks completely current.
+///
+/// Print it at startup, or put it behind a debug screen. One line settles what
+/// otherwise takes a round trip and a screenshot:
+///
+/// ```dart
+/// debugPrint('Nest Connect SDK $nestConnectSdkVersion');
+/// ```
+///
+/// Kept in step with both pubspecs by tools/check-sdk-version.ts, because a
+/// version constant that drifts from the package it names is worse than none:
+/// it answers the question confidently and wrongly.
+const String nestConnectSdkVersion = '0.2.0';
+
 /// How hard the channel checked who you said you were.
 enum NestIdentity {
   /// The details sent were trusted, and the chat is on that customer's record.
