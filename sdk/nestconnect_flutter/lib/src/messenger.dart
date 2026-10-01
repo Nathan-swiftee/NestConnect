@@ -7,6 +7,7 @@ import 'bubble.dart';
 import 'message_row.dart';
 import 'recorder.dart';
 import 'theme.dart';
+import 'typing.dart';
 import 'voice.dart';
 
 /// What a host app hands back when the customer wants to attach something.
@@ -48,6 +49,7 @@ class _NestMessengerState extends State<NestMessenger> {
   final _staged = <NestUpload>[];
   StreamSubscription<List<NestMessage>>? _sub;
   StreamSubscription<bool>? _closedSub;
+  StreamSubscription<bool>? _typingSub;
   bool _restarting = false;
   Timer? _typing;
   bool _sending = false;
@@ -73,6 +75,11 @@ class _NestMessengerState extends State<NestMessenger> {
     _closedSub = widget.chat.onClosed.listen((_) {
       if (mounted) setState(() {});
     });
+    // And its own again for the dots, for the same reason: an agent starting to
+    // type is a change with no message attached to it.
+    _typingSub = widget.chat.onAgentTyping.listen((_) {
+      if (mounted) setState(_scrollToEnd);
+    });
     // On screen: zeroes the badge, and turns the agent's ticks from delivered
     // to read — a different claim, and the only one worth showing them as read.
     unawaited(widget.chat.setViewing(true));
@@ -84,19 +91,29 @@ class _NestMessengerState extends State<NestMessenger> {
     _typing?.cancel();
     unawaited(_sub?.cancel());
     unawaited(_closedSub?.cancel());
+    unawaited(_typingSub?.cancel());
     unawaited(widget.chat.setViewing(false));
     _composer.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
+  /// Put the newest message back under the composer.
+  ///
+  /// Zero, because the thread is built upwards — see `reverse` on the list. That
+  /// is the whole reason this is reliable now. It used to jump to
+  /// `maxScrollExtent`, which for a lazily built list is an *estimate* made from
+  /// the rows that happen to have been laid out: with a real conversation above
+  /// it, the jump landed a couple of hundred pixels short of the bottom and the
+  /// message somebody had just sent was built below the fold — present, stored,
+  /// delivered, and not on screen. Zero is not an estimate.
   void _scrollToEnd() {
     if (!_scroll.hasClients) return;
     // Jumped to rather than animated on a rebuild: a new message arriving while
     // somebody is reading should land, not glide, and an animation that
     // restarts on every keystroke is a thread that will not sit still.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      if (_scroll.hasClients) _scroll.jumpTo(0);
     });
   }
 
@@ -217,8 +234,33 @@ class _NestMessengerState extends State<NestMessenger> {
     final appearance = config?.appearance ?? NestAppearance.fallback;
     final theme = NestTheme.from(appearance, Theme.of(context).brightness);
     final messages = widget.chat.messages;
+    final typing = widget.chat.agentTyping && !widget.chat.isClosed;
 
-    return Container(
+    /// How much of the screen the keyboard has taken.
+    ///
+    /// Everything about the shape of this sheet follows from it, and it used to
+    /// be read in one place only — the composer's own padding — which is how
+    /// the thread came to be squeezed out of existence. A `Column` sized to its
+    /// children hands the flexible one whatever is left, and with a header, a
+    /// composer and a keyboard to pay for there was nothing left: on a 375×667
+    /// phone the thread was laid out *zero pixels tall* and the column
+    /// overflowed on top of that. Which is exactly the report — a message sent
+    /// and not visible until the chat was closed and opened again, because
+    /// closing it put the keyboard away and gave the thread its height back.
+    final keyboard = MediaQuery.of(context).viewInsets.bottom;
+
+    /// Chrome costs the thread its height, so with the keyboard up it goes.
+    /// The greeting, the away line and the faces are an introduction, and
+    /// somebody mid-sentence has been introduced.
+    final compact = keyboard > 0;
+
+    return Padding(
+      // The whole sheet sits on top of the keyboard, rather than the composer
+      // carrying it as padding inside a column that had already run out of
+      // room. One place, and the thread is measured in the space that is
+      // actually on screen.
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: Container(
       decoration: BoxDecoration(
         color: theme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -233,16 +275,35 @@ class _NestMessengerState extends State<NestMessenger> {
             online: config?.online ?? false,
             team: config?.team ?? const [],
             visitorName: widget.chat.visitorName,
+            compact: compact,
             onClose: widget.onClose,
           ),
           Flexible(
-            child: messages.isEmpty
+            child: messages.isEmpty && !typing
                 ? _Empty(theme: theme, appearance: appearance)
                 : ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                    itemCount: messages.length,
-                    itemBuilder: (context, i) {
+                    // Built from the bottom up, newest first.
+                    //
+                    // Not a style: it is what makes "the newest message is on
+                    // screen" true by construction. Downwards, the bottom of
+                    // the thread is `maxScrollExtent` — a guess, for a list
+                    // that builds rows as they are needed — so the scroll that
+                    // follows a new message landed short of it and the message
+                    // was built below the fold. Upwards, the newest message is
+                    // at offset zero, which needs no scrolling and cannot be
+                    // estimated wrongly. It is also why the conversation hugs
+                    // the composer instead of hanging from the header.
+                    reverse: true,
+                    itemCount: messages.length + (typing ? 1 : 0),
+                    itemBuilder: (context, row) {
+                      // The dots come first in a reversed list, which puts them
+                      // last on screen — where the reply itself is about to
+                      // appear, scrolling with the thread rather than hovering
+                      // over it.
+                      if (typing && row == 0) return NestTypingDots(theme: theme);
+                      final i = messages.length - 1 - (typing ? row - 1 : row);
                       final m = messages[i];
                       final key = _keys.putIfAbsent(m.id, GlobalKey.new);
                       final voice = m.voice;
@@ -340,7 +401,10 @@ class _NestMessengerState extends State<NestMessenger> {
               onRecordError: (message) => setState(() => _error = message),
             ),
           ],
-          if (appearance.showBranding)
+          // Dropped with the keyboard up for the same reason the greeting is:
+          // a line of our own branding is not worth a line of their
+          // conversation.
+          if (appearance.showBranding && !compact)
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
@@ -348,9 +412,10 @@ class _NestMessengerState extends State<NestMessenger> {
                 style: TextStyle(fontSize: 11, color: theme.muted),
               ),
             ),
-          // Above the home indicator, and above the keyboard when it is up.
-          SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 8 : 12),
+          // Clear of the home indicator. The keyboard is paid for once, above.
+          SizedBox(height: compact ? 6 : 12),
         ],
+      ),
       ),
     );
   }
@@ -392,6 +457,7 @@ class _Header extends StatelessWidget {
     required this.online,
     required this.team,
     required this.visitorName,
+    required this.compact,
     this.onClose,
   });
 
@@ -403,6 +469,10 @@ class _Header extends StatelessWidget {
   /// Whoever the app signed in, so "Hello {name} 👋" is a greeting rather than
   /// a template nobody filled in.
   final String? visitorName;
+
+  /// The keyboard is up, so this is an introduction nobody is reading. Title
+  /// only, on one line — the rest of it is the thread's height.
+  final bool compact;
   final VoidCallback? onClose;
 
   @override
@@ -416,12 +486,26 @@ class _Header extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 18, 12, 20),
+      padding: compact
+          ? const EdgeInsets.fromLTRB(20, 10, 8, 10)
+          : const EdgeInsets.fromLTRB(20, 18, 12, 20),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Column(
+            child: compact
+                ? Text(
+                    fillVisitorName(appearance.title, visitorName),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.onAccent,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  )
+                : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (appearance.headline.isNotEmpty)
@@ -467,6 +551,15 @@ class _Header extends StatelessWidget {
   }
 }
 
+/// How wide one face in the stack is, ring included.
+const _faceSize = 28.0;
+
+/// The collar between a face and the one it overlaps.
+const _faceRing = 2.0;
+
+/// How far along each face sits. Less than its width, which is the overlap.
+const _faceStep = 20.0;
+
 /// The people behind the counter, overlapped.
 class _Faces extends StatelessWidget {
   const _Faces({required this.team, required this.theme});
@@ -477,25 +570,42 @@ class _Faces extends StatelessWidget {
   Widget build(BuildContext context) {
     final shown = team.take(4).toList();
     return SizedBox(
-      height: 28,
+      height: _faceSize,
       child: Stack(
         children: [
           for (var i = 0; i < shown.length; i++)
             Positioned(
-              left: i * 20,
+              left: i * _faceStep,
+              // Two circles, one inside the other, rather than one circle with
+              // a border. A `Container` that draws its ring as a `Border` also
+              // insets its child by the ring's width — so the photo was laid
+              // out 24px wide inside a 28px clip, and a 28px circle takes
+              // nothing off a 24px square but its corners. Which is exactly
+              // what was reported: initials came out round, because text has
+              // no corners to cut, and a face came out a rounded square.
               child: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  // Their own avatar colour where they have one, so the stack
-                  // reads as people rather than as four identical discs.
-                  color: NestTheme.parseColor(shown[i].color ?? '') ?? theme.accentDeep,
-                  border: Border.all(color: theme.accent, width: 2),
+                width: _faceSize,
+                height: _faceSize,
+                // The collar, as the gap between two circles.
+                padding: const EdgeInsets.all(_faceRing),
+                decoration: BoxDecoration(shape: BoxShape.circle, color: theme.accent),
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    // Their own avatar colour where they have one, so the stack
+                    // reads as people rather than as four identical discs.
+                    color: NestTheme.parseColor(shown[i].color ?? '') ?? theme.accentDeep,
+                  ),
+                  // No border on this one, so the clip and the child are the
+                  // same circle and a photo fills it edge to edge.
+                  clipBehavior: Clip.antiAlias,
+                  alignment: Alignment.center,
+                  child: _Face(
+                    mate: shown[i],
+                    theme: theme,
+                    diameter: _faceSize - _faceRing * 2,
+                  ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                alignment: Alignment.center,
-                child: _Face(mate: shown[i], theme: theme),
               ),
             ),
         ],
@@ -512,9 +622,14 @@ class _Faces extends StatelessWidget {
 /// filtered network or an agent who never uploaded one all land on initials
 /// instead of an empty circle.
 class _Face extends StatelessWidget {
-  const _Face({required this.mate, required this.theme});
+  const _Face({required this.mate, required this.theme, required this.diameter});
   final NestTeamMate mate;
   final NestTheme theme;
+
+  /// The circle this fills — the stack's width less its collar. Passed rather
+  /// than assumed, because a photo that is not exactly the size of the circle
+  /// clipping it is the difference between a face and a rounded square.
+  final double diameter;
 
   @override
   Widget build(BuildContext context) {
@@ -526,8 +641,8 @@ class _Face extends StatelessWidget {
     if (url == null || url.isEmpty) return initials;
     return Image.network(
       url,
-      width: 28,
-      height: 28,
+      width: diameter,
+      height: diameter,
       fit: BoxFit.cover,
       // Their initials stay under it while it loads, so the stack does not pop
       // into place a face at a time.
@@ -590,14 +705,10 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        8,
-        8,
-        8,
-        // Lifted clear of the keyboard. A composer under the keyboard is a
-        // composer nobody can see what they are typing into.
-        8 + MediaQuery.of(context).viewInsets.bottom,
-      ),
+      // The keyboard is accounted for by the sheet, once, around the whole
+      // messenger — see `keyboard` in the build above. Adding it here as well
+      // is what left the thread with nothing.
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: theme.line)),
       ),
@@ -771,7 +882,9 @@ class _ClosedNotice extends StatelessWidget {
     final label = newChatLabel.trim().isEmpty ? 'Start a new chat' : newChatLabel;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(16, 14, 16, 14 + MediaQuery.of(context).viewInsets.bottom),
+      // As with the composer: the sheet above has already moved clear of the
+      // keyboard, and counting it twice was what collapsed the thread.
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: theme.surface,
         border: Border(top: BorderSide(color: theme.line)),

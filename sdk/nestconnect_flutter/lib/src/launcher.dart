@@ -24,16 +24,23 @@ Future<void> showNestMessenger(
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.45),
-    builder: (sheetContext) => Padding(
-      // The sheet itself moves with the keyboard rather than being resized by
-      // it, so the composer stays put and the thread scrolls under it.
-      padding: EdgeInsets.only(top: MediaQuery.of(sheetContext).size.height * 0.08),
-      child: NestMessenger(
-        chat: chat,
-        onPickFile: onPickFile,
-        onClose: () => Navigator.of(sheetContext).pop(),
-      ),
-    ),
+    builder: (sheetContext) {
+      final media = MediaQuery.of(sheetContext);
+      return Padding(
+        // The strip of app above the sheet, which is what says this is a layer
+        // rather than a screen — and which goes the moment the keyboard is up.
+        // With a keyboard taking half the screen those pixels are the
+        // difference between a thread you can read and two lines of one.
+        padding: EdgeInsets.only(
+          top: media.viewInsets.bottom > 0 ? 0 : media.size.height * 0.08,
+        ),
+        child: NestMessenger(
+          chat: chat,
+          onPickFile: onPickFile,
+          onClose: () => Navigator.of(sheetContext).pop(),
+        ),
+      );
+    },
   );
 }
 

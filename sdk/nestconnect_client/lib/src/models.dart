@@ -25,7 +25,7 @@ library;
 /// Kept in step with both pubspecs by tools/check-sdk-version.ts, because a
 /// version constant that drifts from the package it names is worse than none:
 /// it answers the question confidently and wrongly.
-const String nestConnectSdkVersion = '0.2.0';
+const String nestConnectSdkVersion = '0.3.0';
 
 /// How hard the channel checked who you said you were.
 enum NestIdentity {

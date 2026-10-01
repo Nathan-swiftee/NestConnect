@@ -36,12 +36,17 @@ class NestConnect {
   final _messagesController = StreamController<List<NestMessage>>.broadcast();
   final _unreadController = StreamController<int>.broadcast();
   final _closedController = StreamController<bool>.broadcast();
+  final _typingController = StreamController<bool>.broadcast();
 
   String? _token;
   NestConfig? _config;
   StreamSubscription<Map<String, Object?>>? _streamSub;
   Timer? _reconnect;
   int _attempt = 0;
+
+  /// Whether an agent is writing, and the timer that stops believing it.
+  bool _agentTyping = false;
+  Timer? _typingFor;
 
   /// Which stream is the current one.
   ///
@@ -82,6 +87,19 @@ class NestConnect {
   /// Unread agent replies. What a launcher badge shows.
   int get unread => _unread;
   Stream<int> get onUnread => _unreadController.stream;
+
+  /// Whether an agent is typing to us right now.
+  ///
+  /// The server says "typing" and never says "stopped" — an agent closing the
+  /// tab mid-sentence sends nothing at all — so this times itself out rather
+  /// than waiting for a signal that may not come. Comfortably longer than the
+  /// agent's ping interval, or the dots blink off and on again while somebody
+  /// is still mid-sentence.
+  bool get agentTyping => _agentTyping;
+  Stream<bool> get onAgentTyping => _typingController.stream;
+
+  /// How long a "typing" is believed for without being repeated.
+  static const typingLifetime = Duration(seconds: 6);
 
   /// Whether an agent has closed this chat, as it changes.
   ///
@@ -584,6 +602,10 @@ class NestConnect {
         if (_messages.any((m) => m.id == message.id)) break;
         _setMessages([..._messages, message]);
         if (message.from == NestAuthor.agent) {
+          // The sentence has arrived, so the ghost of it being written goes.
+          // Waiting for the timeout leaves the same words on screen twice, one
+          // of them apparently still being typed.
+          _setAgentTyping(false);
           if (_viewing) {
             unawaited(_markRead('read'));
           } else {
@@ -605,8 +627,17 @@ class NestConnect {
         final next = [..._messages];
         next[at] = updated;
         _setMessages(next);
+      case 'typing':
+        // Not under `payload`: typing is a flag, not a message. Reading it as
+        // one is how this came to be ignored for its whole life — the switch
+        // simply had no case, so the dots never appeared in an app however
+        // long an agent typed.
+        _setAgentTyping(event['typing'] == true);
       case 'closed':
         _setClosed(true);
+        // Whatever they were half-way through saying, nobody is going to send
+        // it now.
+        _setAgentTyping(false);
       case 'reopened':
         // The other half of the pair. Without it `closed` is a one-way door:
         // an agent reopening a thread would leave the app refusing to send
@@ -630,6 +661,7 @@ class NestConnect {
 
   Future<void> _endSession() async {
     _reconnect?.cancel();
+    _setAgentTyping(false);
     // Not awaited — see `_generation`. The stream is already disowned by the
     // bump, so whether the socket takes a moment or an age to go is nobody's
     // problem but the operating system's.
@@ -648,6 +680,14 @@ class NestConnect {
       ..clear()
       ..addAll(next);
     if (!_messagesController.isClosed) _messagesController.add(messages);
+  }
+
+  void _setAgentTyping(bool next) {
+    _typingFor?.cancel();
+    if (next) _typingFor = Timer(typingLifetime, () => _setAgentTyping(false));
+    if (next == _agentTyping) return;
+    _agentTyping = next;
+    if (!_typingController.isClosed) _typingController.add(next);
   }
 
   void _setClosed(bool next) {
@@ -676,6 +716,7 @@ class NestConnect {
   /// it — a customer tapping the X wants the sheet gone, not a spinner.
   Future<void> dispose() async {
     _reconnect?.cancel();
+    _typingFor?.cancel();
     _generation++;
     _transport.close();
     unawaited(_streamSub?.cancel());
@@ -683,5 +724,6 @@ class NestConnect {
     await _messagesController.close();
     await _unreadController.close();
     await _closedController.close();
+    await _typingController.close();
   }
 }

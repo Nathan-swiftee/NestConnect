@@ -27,5 +27,6 @@ export 'src/messenger.dart'
     show NestFilePicker, NestMessenger, NestPickedFile, NestStagedFiles;
 export 'src/recorder.dart' show NestRecorderButton, RecordedNote;
 export 'src/theme.dart' show NestTheme;
+export 'src/typing.dart' show NestTypingDots;
 export 'src/voice.dart'
     show NestVoiceNote, NestWaveform, formatDuration, levelFromDb, normalise, toBars;

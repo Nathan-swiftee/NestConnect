@@ -88,6 +88,26 @@ class FakeServer {
       return;
     }
 
+    if (path.contains('/avatar/')) {
+      // A real one-pixel PNG. The geometry under test is the circle the photo
+      // is clipped to, which is settled by layout and not by whether the bytes
+      // decode — but a 404 here would put the error builder's initials on
+      // screen instead of an `Image`, and the test would be measuring the
+      // fallback.
+      req.response.headers.contentType = ContentType('image', 'png');
+      // Flutter's image loader keeps its own HttpClient for the life of the
+      // process and never closes it, so a kept-alive connection leaves an idle
+      // timer behind — which a widget test reports as "a Timer is still
+      // pending" in whichever test happens to be running when it fires.
+      req.response.persistentConnection = false;
+      req.response.add(base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFAAH/q842'
+        'iQAAAABJRU5ErkJggg==',
+      ));
+      unawaited(req.response.close());
+      return;
+    }
+
     req.response.headers.contentType = ContentType.json;
     if (path.endsWith('/config')) {
       req.response.write(jsonEncode({
@@ -112,7 +132,15 @@ class FakeServer {
           'name': 'Support',
           'total': 2,
           'faces': [
-            {'name': 'Nathan', 'initials': 'NA', 'color': '#3B82F6', 'online': true},
+            {
+              'name': 'Nathan',
+              'initials': 'NA',
+              'color': '#3B82F6',
+              'online': true,
+              // Root-relative, the way the server sends it — the client makes
+              // it absolute against the base url, which is what an app needs.
+              'avatarUrl': '/api/nestchat/wk_1/avatar/u_9',
+            },
             {'name': 'Priya', 'initials': 'PS', 'color': '#DB2777', 'online': false},
           ],
         },
@@ -164,6 +192,9 @@ class FakeServer {
       ..remove('quote');
     _events.add('data: ${jsonEncode(event)}\n\n');
   }
+
+  /// Play an agent starting to type.
+  void agentTypes() => _events.add('data: ${jsonEncode(contractEvent('typing'))}\n\n');
 
   /// Play an agent reacting to a message.
   void agentReacts(String messageId, String emoji) {
@@ -224,6 +255,19 @@ Widget host(Widget child) => MaterialApp(home: Scaffold(body: child));
 /// It also replaces `pumpAndSettle` wherever a spinner might be on screen:
 /// settle waits for every animation to finish, and a progress indicator never
 /// finishes, so it times out rather than reporting anything useful.
+/// Let a modal sheet finish sliding in.
+///
+/// `settle` advances real time, for the socket; a sheet's entrance runs on the
+/// fake clock, and until it is over every rect in the sheet is offset by
+/// however much of the slide is left — which reads as a layout bug that isn't
+/// one.
+Future<void> sheetArrives(WidgetTester tester) async {
+  await settle(tester, 400);
+  await tester.pump(const Duration(milliseconds: 400));
+  await settle(tester, 200);
+  await tester.pump(const Duration(milliseconds: 400));
+}
+
 Future<void> settle(WidgetTester tester, [int ms = 350]) async {
   await tester.runAsync(() => Future<void>.delayed(Duration(milliseconds: ms)));
   await tester.pump();
@@ -369,9 +413,11 @@ void main() {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
-    // Their own initials, not the first letter of their name.
-    expect(find.text('NA'), findsOneWidget);
+    // Their own initials, not the first letter of their name — for the one who
+    // has no photo. The one who does is a photo, which is the point of showing
+    // faces at all, and is measured in its own test below.
     expect(find.text('PS'), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget);
   });
 
   testWidgets('no attach button when the app has no picker', (tester) async {
@@ -451,6 +497,146 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
     expect(find.text('Ding support'), findsOneWidget);
+  });
+
+  testWidgets(
+      'the thread keeps its height with the keyboard up, and holds what I send',
+      (tester) async {
+    // The report this is written from: a message sent and not visible until the
+    // chat was closed and opened again. Closing it put the keyboard away, which
+    // is the whole clue — with the keyboard up, the header, the composer and
+    // the keyboard were each paid for out of a column sized to its children,
+    // and the thread, the one flexible child, was handed what was left. On a
+    // phone this size that was nothing: it was laid out zero pixels tall and
+    // the column overflowed on top of that, so the message was sent, stored,
+    // and clipped out of sight.
+    //
+    // Everything here is the production arrangement rather than a widget on a
+    // page: the real sheet, a phone-sized screen, a conversation already in
+    // progress, and a keyboard up because somebody has just typed.
+    tester.view.physicalSize = const Size(750, 1334);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () => showNestMessenger(context, chat: chat),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await sheetArrives(tester);
+
+    // A conversation already in progress. A thread with nothing in it fits
+    // anywhere, and this is about what happens when it does not.
+    for (var i = 0; i < 20; i++) {
+      server.agentSays('old_$i', 'Something we said earlier, number $i');
+    }
+    await settle(tester, 400);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // A keyboard the size iOS puts up on this handset.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 672);
+    await tester.pump();
+    await tester.pump();
+
+    final thread = find.byType(ListView);
+    final threadBox = tester.getRect(thread);
+    // Enough for a couple of bubbles and the one being written. The number is a
+    // floor, not a measurement of the current layout: what must never happen
+    // again is the thread being squeezed to nothing.
+    expect(
+      threadBox.height,
+      greaterThan(120),
+      reason: 'the thread is what the sheet is for; chrome gives way to it',
+    );
+
+    await tester.enterText(find.byType(TextField), 'Where is my order?');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Send'));
+    await settle(tester, 400);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final bubble = find.text('Where is my order?');
+    expect(bubble, findsOneWidget);
+    // In the tree is not the claim. A row built below the fold of a clipped
+    // viewport is found by a finder and seen by nobody.
+    final bubbleBox = tester.getRect(bubble);
+    expect(
+      tester.getRect(thread).contains(bubbleBox.topLeft) &&
+          tester.getRect(thread).contains(bubbleBox.bottomRight - const Offset(1, 1)),
+      isTrue,
+      reason: 'the message I just sent is inside the part of the thread on '
+          'screen — it was $bubbleBox inside ${tester.getRect(thread)}',
+    );
+  });
+
+  testWidgets('an agent typing shows as dots, which the reply replaces',
+      (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    expect(find.byType(NestTypingDots), findsNothing);
+
+    // The server says "typing" and never says "stopped". For its whole life
+    // the client had no case for this event at all, so an agent could type for
+    // a minute and the app showed nothing.
+    server.agentTypes();
+    await settle(tester, 300);
+    expect(find.byType(NestTypingDots), findsOneWidget);
+
+    server.agentSays('msg_t', 'Two minutes away!');
+    await settle(tester, 300);
+    expect(find.text('Two minutes away!'), findsOneWidget);
+    // The sentence has arrived, so the ghost of it being written goes with it.
+    // Left to time out it is the same words twice, one still being typed.
+    expect(find.byType(NestTypingDots), findsNothing);
+  });
+
+  testWidgets('and stops believing it after a while with no word', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+    server.agentTypes();
+    await settle(tester, 300);
+    expect(find.byType(NestTypingDots), findsOneWidget);
+
+    // Real time, not pumped time: the event arrived over a socket, so the timer
+    // that stops believing it is a real one and a pumped clock never reaches it.
+    await settle(
+      tester,
+      NestConnect.typingLifetime.inMilliseconds + 600,
+    );
+    expect(find.byType(NestTypingDots), findsNothing);
+  });
+
+  testWidgets('a face with a photo fills the circle that clips it',
+      (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    final photo = find.byType(Image);
+    expect(photo, findsOneWidget, reason: 'one of the two faces has a photo');
+
+    // The circle doing the clipping and the photo inside it have to be the same
+    // size. They were not: a ring drawn as a `Border` also insets the child by
+    // its width, so a 24px photo sat inside a 28px circular clip — which takes
+    // nothing off a 24px square but its corners. The report was exactly that:
+    // initials came out round, a face came out a rounded square.
+    final clip = find.ancestor(of: photo, matching: find.byType(ClipPath));
+    expect(clip, findsAtLeastNWidgets(1));
+    expect(
+      tester.getSize(clip.first),
+      tester.getSize(photo),
+      reason: 'a photo smaller than its clip is a square with rounded corners',
+    );
   });
 
   testWidgets('a voice note is a waveform, not a file listed under a bubble',
