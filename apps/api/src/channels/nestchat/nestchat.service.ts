@@ -9,6 +9,7 @@ import {
   DEFAULT_NESTCHAT_PRECHAT,
   DEFAULT_NESTCHAT_ROUTING,
   fieldsForInbox,
+  NESTCHAT_MAX_PAST_CONVERSATIONS,
   nestchatAppSchema,
   type NestChatApp,
   nestchatAppearanceSchema,
@@ -21,6 +22,7 @@ import {
   type NestChatAgentFace,
   type NestChatMessage,
   type NestChatHome,
+  type NestChatPastConversation,
   type NestChatPreChat,
   type NestChatRouting,
   type NestChatRoutingOption,
@@ -31,7 +33,7 @@ import { Store, type AttachmentInput } from "../../data/store";
 import { ORG_ID } from "../../data/fixtures";
 import { env } from "../../config/env";
 import { FCM_SERVICE_ACCOUNT_FIELD, parseServiceAccount } from "./fcm";
-import { toVisitorMessage } from "./visitor-message";
+import { previewOf, toVisitorMessage } from "./visitor-message";
 import { VisitorBus } from "./visitor-bus";
 
 /**
@@ -775,6 +777,72 @@ export class NestChatService {
     return conv.messages
       .map((m) => this.toVisitorMessage(m, conv.messages))
       .filter((m): m is NestChatMessage => Boolean(m));
+  }
+
+  /**
+   * The visitor's own earlier conversations with this channel, newest first.
+   *
+   * There was no way to reach these at all. A chat the business has resolved is
+   * never resumed — `threadFor` only ever joins an open one — so the moment an
+   * agent closed a thread it left the customer's view entirely: they opened the
+   * chat, saw an empty box, and everything that had been agreed about their
+   * order was somewhere only the business could read it.
+   *
+   * Scoped twice, and both halves matter. The contact comes from the signed
+   * token, so this is their own history and not a list of anybody's. The inbox
+   * does too, so a business running two channels off one workspace does not
+   * show one channel's customer the threads they opened on the other.
+   *
+   * The preview is the last message *the visitor may see*, taken from the same
+   * projection the thread itself goes through — not the stored preview, which is
+   * whatever was last said and may well be an internal note.
+   */
+  async visitorConversations(claims: VisitorClaims): Promise<NestChatPastConversation[]> {
+    const withConvs = await this.store.getContactWithConversations(claims.contactId);
+    const mine = (withConvs?.conversations ?? [])
+      .filter((c) => c.inboxId === claims.inboxId)
+      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+      .slice(0, NESTCHAT_MAX_PAST_CONVERSATIONS);
+
+    const out: NestChatPastConversation[] = [];
+    for (const conv of mine) {
+      const visible = await this.visitorHistory(conv.id);
+      const last = visible.at(-1);
+      // A thread with nothing a visitor may see is not a thread as far as they
+      // are concerned — an internal note on a conversation nobody has answered
+      // yet would otherwise be a card with no words on it.
+      if (!last) continue;
+      out.push({
+        id: conv.id,
+        closed: conv.status === "closed",
+        preview: previewOf(last),
+        from: last.from,
+        ...(last.authorName ? { authorName: last.authorName } : {}),
+        at: last.at,
+      });
+    }
+    return out;
+  }
+
+  /**
+   * One of the visitor's own conversations, read in full.
+   *
+   * The scoping is the whole of this method. A conversation id is a string the
+   * client sends, and the only thing between it and any thread in the database
+   * is these two checks: it has to belong to the contact the token names, on the
+   * channel the token names. Answers undefined rather than throwing on a
+   * mismatch — "that is not yours" and "there is no such thing" are the same
+   * answer to somebody guessing ids.
+   */
+  async visitorConversation(
+    claims: VisitorClaims,
+    conversationId: string,
+  ): Promise<NestChatMessage[] | undefined> {
+    const conv = await this.store.getConversation(conversationId);
+    if (!conv || conv.contact.id !== claims.contactId || conv.inboxId !== claims.inboxId) {
+      return undefined;
+    }
+    return this.visitorHistory(conversationId);
   }
 
   /**

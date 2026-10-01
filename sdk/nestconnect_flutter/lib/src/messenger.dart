@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:nestconnect_client/nestconnect_client.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'bubble.dart';
+import 'home.dart';
 import 'message_row.dart';
 import 'recorder.dart';
 import 'theme.dart';
@@ -25,12 +27,31 @@ class NestPickedFile {
   final String mime;
 }
 
-/// The chat itself: header, thread, composer.
+/// Where the messenger is: the front door, the conversation, or an old one.
+enum NestView {
+  /// The cards. Only ever reached when the channel has a home screen turned on.
+  home,
+
+  /// The live conversation, with a composer.
+  thread,
+
+  /// One of the customer's earlier conversations, read and not written to.
+  past,
+}
+
+/// The chat itself: header, thread, composer — and the home screen in front of
+/// them, where the business has turned one on.
 ///
 /// Usually shown by [showNestMessenger] rather than built directly, but it is a
 /// plain widget — an app that wants chat on a page of its own can put it there.
 class NestMessenger extends StatefulWidget {
-  const NestMessenger({super.key, required this.chat, this.onPickFile, this.onClose});
+  const NestMessenger({
+    super.key,
+    required this.chat,
+    this.onPickFile,
+    this.onClose,
+    this.onOpenLink,
+  });
 
   final NestConnect chat;
 
@@ -38,6 +59,13 @@ class NestMessenger extends StatefulWidget {
   /// nothing.
   final NestFilePicker? onPickFile;
   final VoidCallback? onClose;
+
+  /// What to do when a home card is tapped. Defaults to handing the link to the
+  /// phone, which is what every one of them wants: a help centre opens in a
+  /// browser, a `tel:` opens the dialler, a `mailto:` opens Mail. An app that
+  /// would rather keep people inside — its own in-app browser, say — passes its
+  /// own.
+  final ValueChanged<NestHomeCard>? onOpenLink;
 
   @override
   State<NestMessenger> createState() => _NestMessengerState();
@@ -63,6 +91,24 @@ class _NestMessengerState extends State<NestMessenger> {
   /// rather than to a guess at where it is.
   final _keys = <String, GlobalKey>{};
 
+  /// Which of the three screens is up. Starts on the conversation and is moved
+  /// to the front door once the config says there is one — the config arrives
+  /// over the network a moment after the sheet opens, and opening onto a blank
+  /// screen that then becomes a home screen is worse than opening onto the chat.
+  NestView _view = NestView.thread;
+
+  /// Whether the customer has been shown the front door yet. Without this, going
+  /// Home → chat would be undone by the next config rebuild.
+  bool _landed = false;
+
+  /// The customer's own earlier conversations, for the home screen.
+  List<NestPastConversation> _history = const [];
+  bool _loadingHistory = false;
+
+  /// The old conversation being read, and what was said in it.
+  NestPastConversation? _reading;
+  List<NestMessage> _readingMessages = const [];
+
   @override
   void initState() {
     super.initState();
@@ -84,6 +130,81 @@ class _NestMessengerState extends State<NestMessenger> {
     // to read — a different claim, and the only one worth showing them as read.
     unawaited(widget.chat.setViewing(true));
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd());
+    unawaited(_settleView());
+  }
+
+  /// Decide which screen this opens on, once the channel's config has landed.
+  ///
+  /// The config is fetched when the session opens, which may be before this
+  /// widget exists or a moment after — so this waits for it rather than reading
+  /// whatever happens to be there on the first frame. A chat that opens on the
+  /// conversation and jumps to a home screen half a second later is worse than
+  /// either one on its own.
+  Future<void> _settleView() async {
+    for (var waited = 0; waited < 24 && mounted; waited++) {
+      if (widget.chat.config != null) break;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
+    if (!mounted || _landed) return;
+    _landed = true;
+    if (widget.chat.config?.home == null) return;
+    setState(() => _view = NestView.home);
+    await _loadHistory();
+  }
+
+  /// This customer's earlier conversations, for the cards on the home screen.
+  Future<void> _loadHistory() async {
+    if (_loadingHistory) return;
+    setState(() => _loadingHistory = true);
+    final found = await widget.chat.conversations();
+    if (!mounted) return;
+    setState(() {
+      _history = found;
+      _loadingHistory = false;
+    });
+  }
+
+  /// Open one of them, read-only.
+  Future<void> _read(NestPastConversation conversation) async {
+    setState(() {
+      _reading = conversation;
+      _readingMessages = const [];
+      _view = NestView.past;
+      _error = null;
+    });
+    try {
+      final messages = await widget.chat.conversation(conversation.id);
+      if (mounted) setState(() => _readingMessages = messages);
+    } on NestException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  /// Back to the cards — or out, where there is no home screen to go back to.
+  void _backHome() {
+    setState(() {
+      _reading = null;
+      _readingMessages = const [];
+      _view = widget.chat.config?.home == null ? NestView.thread : NestView.home;
+    });
+    // Refreshed rather than remembered: a conversation read and left may have
+    // been reopened by an agent while it was on screen, and the row describing
+    // it would still say "Resolved".
+    if (_view == NestView.home) unawaited(_loadHistory());
+  }
+
+  /// Hand a card's link to the phone.
+  Future<void> _openLink(NestHomeCard card) async {
+    final custom = widget.onOpenLink;
+    if (custom != null) {
+      custom(card);
+      return;
+    }
+    final uri = Uri.tryParse(card.href);
+    // Nothing is said when it fails. The business configured this link; a
+    // customer who taps "Call us" on a tablet with no dialler does not need an
+    // error about it, and there is nothing they could do with one.
+    if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -254,6 +375,136 @@ class _NestMessengerState extends State<NestMessenger> {
     /// somebody mid-sentence has been introduced.
     final compact = keyboard > 0;
 
+    /// The sheet, whichever of the three screens is inside it.
+    ///
+    /// Shared so the home screen, an old conversation and the live one are
+    /// demonstrably the same sheet — the rounded top, the clip and the keyboard
+    /// are one decision in one place rather than three that drift.
+    Widget shell(List<Widget> children) => Padding(
+          padding: EdgeInsets.only(bottom: keyboard),
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(mainAxisSize: MainAxisSize.min, children: children),
+          ),
+        );
+
+    if (_view == NestView.home) {
+      final home = config?.home;
+      // The config can only have gone backwards — a channel whose home screen
+      // was switched off between the session opening and now. The conversation
+      // is the right place to be in that case, not an empty screen.
+      if (home == null) _view = NestView.thread;
+      if (home != null) {
+        return shell([
+          _Header(
+            appearance: appearance,
+            theme: theme,
+            online: config?.online ?? false,
+            team: config?.team ?? const [],
+            visitorName: widget.chat.visitorName,
+            compact: false,
+            onClose: widget.onClose,
+          ),
+          Flexible(
+            child: NestHomeScreen(
+              home: home,
+              theme: theme,
+              greeting: fillVisitorName(appearance.greeting, widget.chat.visitorName),
+              conversations: _history,
+              loadingConversations: _loadingHistory,
+              onStartChat: () => setState(() => _view = NestView.thread),
+              onOpenConversation: (c) => unawaited(_read(c)),
+              onOpenLink: (card) => unawaited(_openLink(card)),
+            ),
+          ),
+          if (appearance.showBranding) _Branding(theme: theme),
+          const SizedBox(height: 12),
+        ]);
+      }
+    }
+
+    if (_view == NestView.past) {
+      final reading = _reading;
+      return shell([
+        _Header(
+          appearance: appearance,
+          theme: theme,
+          online: config?.online ?? false,
+          team: config?.team ?? const [],
+          visitorName: widget.chat.visitorName,
+          // Always compact here: this is a conversation being read back, and the
+          // greeting and the faces are an introduction to one being started.
+          compact: true,
+          onBack: _backHome,
+          onClose: widget.onClose,
+        ),
+        Flexible(
+          child: _readingMessages.isEmpty
+              ? Center(
+                  child: _error == null
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: theme.muted, fontSize: 14),
+                          ),
+                        ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                  reverse: true,
+                  itemCount: _readingMessages.length,
+                  itemBuilder: (context, row) {
+                    final i = _readingMessages.length - 1 - row;
+                    final m = _readingMessages[i];
+                    final voice = m.voice;
+                    // Bubbles and nothing else: no swipe, no long press, no
+                    // reactions. There is nothing to reply to in a conversation
+                    // that is over, and offering it would be offering something
+                    // the server would refuse.
+                    return voice != null
+                        ? Align(
+                            alignment:
+                                m.isMine ? Alignment.centerRight : Alignment.centerLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 3),
+                              child: NestVoiceNote(
+                                attachment: voice,
+                                source: widget.chat.attachmentUrl(voice),
+                                mine: m.isMine,
+                                theme: theme,
+                              ),
+                            ),
+                          )
+                        : NestBubble(
+                            message: m,
+                            theme: theme,
+                            attachmentUrl: widget.chat.attachmentUrl,
+                            showAuthor: i == 0 ||
+                                _readingMessages[i - 1].from != _readingMessages[i].from,
+                          );
+                  },
+                ),
+        ),
+        _PastFooter(
+          theme: theme,
+          closed: reading?.closed ?? true,
+          onBack: _backHome,
+        ),
+        const SizedBox(height: 12),
+      ]);
+    }
+
     return Padding(
       // The whole sheet sits on top of the keyboard, rather than the composer
       // carrying it as padding inside a column that had already run out of
@@ -276,6 +527,10 @@ class _NestMessengerState extends State<NestMessenger> {
             team: config?.team ?? const [],
             visitorName: widget.chat.visitorName,
             compact: compact,
+            // Only where there is something behind it. A channel with no home
+            // screen has no "back", and an arrow that goes nowhere is worse
+            // than no arrow.
+            onBack: config?.home == null ? null : _backHome,
             onClose: widget.onClose,
           ),
           Flexible(
@@ -404,14 +659,7 @@ class _NestMessengerState extends State<NestMessenger> {
           // Dropped with the keyboard up for the same reason the greeting is:
           // a line of our own branding is not worth a line of their
           // conversation.
-          if (appearance.showBranding && !compact)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                'Powered by Nest Connect',
-                style: TextStyle(fontSize: 11, color: theme.muted),
-              ),
-            ),
+          if (appearance.showBranding && !compact) _Branding(theme: theme),
           // Clear of the home indicator. The keyboard is paid for once, above.
           SizedBox(height: compact ? 6 : 12),
         ],
@@ -458,6 +706,7 @@ class _Header extends StatelessWidget {
     required this.team,
     required this.visitorName,
     required this.compact,
+    this.onBack,
     this.onClose,
   });
 
@@ -473,6 +722,9 @@ class _Header extends StatelessWidget {
   /// The keyboard is up, so this is an introduction nobody is reading. Title
   /// only, on one line — the rest of it is the thread's height.
   final bool compact;
+
+  /// The way back to the home screen, where this channel has one.
+  final VoidCallback? onBack;
   final VoidCallback? onClose;
 
   @override
@@ -493,6 +745,16 @@ class _Header extends StatelessWidget {
         crossAxisAlignment:
             compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
+          if (onBack != null)
+            Padding(
+              padding: EdgeInsets.only(right: 4, top: compact ? 0 : 2),
+              child: IconButton(
+                onPressed: onBack,
+                visualDensity: VisualDensity.compact,
+                icon: Icon(Icons.arrow_back_rounded, color: theme.onAccent),
+                tooltip: 'Back',
+              ),
+            ),
           Expanded(
             child: compact
                 ? Text(
@@ -925,4 +1187,66 @@ class _ClosedNotice extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Our one line, at the bottom of whichever screen is up.
+class _Branding extends StatelessWidget {
+  const _Branding({required this.theme});
+  final NestTheme theme;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          'Powered by Nest Connect',
+          style: TextStyle(fontSize: 11, color: theme.muted),
+        ),
+      );
+}
+
+/// Under a conversation being read back: what it is, and the way out of it.
+///
+/// Where the live thread has a composer, this says why there isn't one. A
+/// read-only thread with nothing under it looks like a chat whose box has failed
+/// to load.
+class _PastFooter extends StatelessWidget {
+  const _PastFooter({required this.theme, required this.closed, required this.onBack});
+
+  final NestTheme theme;
+  final bool closed;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        decoration: BoxDecoration(border: Border(top: BorderSide(color: theme.line))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              closed
+                  ? 'This conversation is closed.'
+                  : 'You are reading an earlier conversation.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: theme.muted),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onBack,
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.accent,
+                  foregroundColor: theme.onAccent,
+                ),
+                // Not "start a new chat": the chat card on the screen this goes
+                // back to is that offer, and making the same offer twice in two
+                // wordings reads as two different things.
+                child: const Text('Back'),
+              ),
+            ),
+          ],
+        ),
+      );
 }

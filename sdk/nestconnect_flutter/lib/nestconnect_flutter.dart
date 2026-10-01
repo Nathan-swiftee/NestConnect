@@ -20,11 +20,12 @@ library;
 export 'package:nestconnect_client/nestconnect_client.dart';
 
 export 'src/bubble.dart' show NestBubble;
+export 'src/home.dart' show NestHomeScreen;
 export 'src/launcher.dart' show NestLauncher, showNestMessenger;
 export 'src/message_row.dart'
     show NestMessageRow, collapseReactions, nestQuickReactions;
 export 'src/messenger.dart'
-    show NestFilePicker, NestMessenger, NestPickedFile, NestStagedFiles;
+    show NestFilePicker, NestMessenger, NestPickedFile, NestStagedFiles, NestView;
 export 'src/recorder.dart' show NestRecorderButton, RecordedNote;
 export 'src/theme.dart' show NestTheme;
 export 'src/typing.dart' show NestTypingDots;

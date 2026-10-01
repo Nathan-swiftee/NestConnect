@@ -14,6 +14,9 @@ Future<void> showNestMessenger(
   BuildContext context, {
   required NestConnect chat,
   NestFilePicker? onPickFile,
+  /// What to do when a home card is tapped. Omit it and the link goes to the
+  /// phone — a help centre to the browser, a `tel:` to the dialler.
+  ValueChanged<NestHomeCard>? onOpenLink,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -37,6 +40,7 @@ Future<void> showNestMessenger(
         child: NestMessenger(
           chat: chat,
           onPickFile: onPickFile,
+          onOpenLink: onOpenLink,
           onClose: () => Navigator.of(sheetContext).pop(),
         ),
       );
@@ -53,11 +57,13 @@ class NestLauncher extends StatelessWidget {
     super.key,
     required this.chat,
     this.onPickFile,
+    this.onOpenLink,
     this.icon = Icons.chat_bubble_rounded,
   });
 
   final NestConnect chat;
   final NestFilePicker? onPickFile;
+  final ValueChanged<NestHomeCard>? onOpenLink;
   final IconData icon;
 
   @override
@@ -79,7 +85,12 @@ class NestLauncher extends StatelessWidget {
               heroTag: 'nestconnect-launcher',
               backgroundColor: theme.accent,
               foregroundColor: theme.onAccent,
-              onPressed: () => showNestMessenger(context, chat: chat, onPickFile: onPickFile),
+              onPressed: () => showNestMessenger(
+                context,
+                chat: chat,
+                onPickFile: onPickFile,
+                onOpenLink: onOpenLink,
+              ),
               child: Icon(icon),
             ),
             if (unread > 0)

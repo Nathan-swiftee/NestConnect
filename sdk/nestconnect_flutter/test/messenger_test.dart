@@ -43,6 +43,13 @@ class FakeServer {
   final _events = StreamController<String>.broadcast();
   final sent = <Map<String, Object?>>[];
 
+  /// Whether this channel has a home screen turned on. Off for most tests, which
+  /// is the common configuration and the one every other test is written for.
+  bool home = false;
+
+  /// The customer's earlier conversations, as the history endpoint answers them.
+  List<Map<String, Object?>> past = const [];
+
   String get baseUrl => 'http://${_server.address.host}:${_server.port}';
 
   Future<void> start() async {
@@ -124,6 +131,23 @@ class FakeServer {
           'showBranding': false,
         },
         'online': true,
+        // Sent only when the business enabled it — the key is simply absent
+        // otherwise, which is the same answer as "go straight to the chat".
+        if (home)
+          'home': {
+            'enabled': true,
+            'chatLabel': 'Send us a message',
+            'chatSublabel': 'We usually reply in minutes',
+            'cards': [
+              {
+                'id': 'card_help',
+                'label': 'Help centre',
+                'sublabel': 'Answers to the usual questions',
+                'icon': 'help',
+                'href': 'https://help.dingnow.co.uk',
+              },
+            ],
+          },
         // The server's own shape: `faces`, with the details a face is drawn
         // from. This said `members` and carried nothing but a name — written
         // from what the client happened to read rather than from the payload —
@@ -152,6 +176,34 @@ class FakeServer {
         'messages': <Object?>[],
         'identified': true,
         'unknownFields': <Object?>[],
+      }));
+    } else if (path.endsWith('/conversations')) {
+      // Not kept alive. These two are fetched while the test is pumping the fake
+      // clock rather than inside a `runAsync` window, so a kept-alive socket's
+      // idle timer lands on that clock and is still pending when the widget tree
+      // goes — which the binding reports as "a Timer is still pending" against
+      // whichever test was unlucky.
+      req.response.persistentConnection = false;
+      req.response.write(jsonEncode({'conversations': past}));
+    } else if (path.contains('/conversations/') && path.endsWith('/messages')) {
+      req.response.persistentConnection = false;
+      final id = path.split('/conversations/').last.replaceAll('/messages', '');
+      req.response.write(jsonEncode({
+        'messages': [
+          {
+            'id': '${id}_m1',
+            'from': 'visitor',
+            'body': 'My order was missing an item',
+            'at': DateTime.now().toIso8601String(),
+          },
+          {
+            'id': '${id}_m2',
+            'from': 'agent',
+            'authorName': 'Nathan',
+            'body': 'Sorted — a replacement is on the way',
+            'at': DateTime.now().toIso8601String(),
+          },
+        ],
       }));
     } else if (path.endsWith('/message')) {
       sent.add(jsonDecode(body) as Map<String, Object?>);
@@ -637,6 +689,122 @@ void main() {
       tester.getSize(photo),
       reason: 'a photo smaller than its clip is a square with rounded corners',
     );
+  });
+
+  group('the home screen', () {
+    /// A channel with a front door, and a customer with history behind it.
+    ///
+    /// Set before the messenger is built but after the session: the config is
+    /// fetched per `NestConnect`, and these tests turn it on for a server the
+    /// client is already talking to, so the config is re-read here.
+    Future<void> openHome(WidgetTester tester) async {
+      server.home = true;
+      server.past = [
+        {
+          'id': 'cv_old',
+          'closed': true,
+          'preview': 'Sorted — a replacement is on the way',
+          'from': 'agent',
+          'authorName': 'Nathan',
+          'at': DateTime.now().subtract(const Duration(days: 2)).toIso8601String(),
+        },
+      ];
+      // A second session, so the config this test configured is the one the
+      // client holds.
+      await tester.runAsync(() => chat.login(userId: 'u_1', name: 'Marta Nowak'));
+      await settle(tester, 250);
+      await tester.pumpWidget(host(NestMessenger(chat: chat)));
+      await settle(tester, 400);
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+
+    testWidgets('is where the chat opens, when the business has one', (tester) async {
+      await openHome(tester);
+
+      // The channel's own words for its own front door.
+      expect(find.text('Send us a message'), findsOneWidget);
+      expect(find.text('Help centre'), findsOneWidget);
+      // And no composer: nobody has chosen to write anything yet.
+      expect(find.byType(TextField), findsNothing);
+    });
+
+    testWidgets('and the chat card goes to the conversation', (tester) async {
+      await openHome(tester);
+      await tester.tap(find.text('Send us a message'));
+      await settle(tester, 200);
+
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('Help centre'), findsNothing);
+    });
+
+    testWidgets('an earlier conversation can be read, and not written to',
+        (tester) async {
+      await openHome(tester);
+
+      // The whole reason this exists: a chat the business resolved used to leave
+      // the customer's side entirely — a new session only ever joins an open
+      // thread, so everything agreed about their order was readable only by us.
+      expect(find.textContaining('Sorted — a replacement is on the way'), findsOneWidget);
+      await tester.tap(find.textContaining('Sorted — a replacement is on the way'));
+      await settle(tester, 400);
+
+      // Two more windows of real time. The fetch was started by a tap, which
+      // runs against the test's fake clock, so the socket only makes progress
+      // inside a `runAsync` — one window opens the request and the next carries
+      // the answer back.
+      await settle(tester, 400);
+      await settle(tester, 400);
+      expect(find.text('My order was missing an item'), findsOneWidget);
+      expect(find.text('This conversation is closed.'), findsOneWidget);
+      // Read, not continued. There is nothing to send into a finished thread.
+      expect(find.byType(TextField), findsNothing);
+    });
+
+    testWidgets('and leaving it comes back to the cards', (tester) async {
+      await openHome(tester);
+      await tester.tap(find.textContaining('Sorted — a replacement is on the way'));
+      await settle(tester, 400);
+      await settle(tester, 400);
+
+      await tester.tap(find.text('Back'));
+      // The way back re-reads the history: a conversation read and left may have
+      // been reopened by an agent while it was on screen, and the row describing
+      // it would still say "Resolved".
+      await settle(tester, 400);
+      await settle(tester, 400);
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Help centre'), findsOneWidget);
+    });
+
+    testWidgets('a card hands its link to the app', (tester) async {
+      server.home = true;
+      await tester.runAsync(() => chat.login(userId: 'u_1', name: 'Marta Nowak'));
+      await settle(tester, 250);
+
+      final opened = <String>[];
+      await tester.pumpWidget(
+        host(NestMessenger(chat: chat, onOpenLink: (card) => opened.add(card.href))),
+      );
+      await settle(tester, 400);
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await tester.tap(find.text('Help centre'));
+      await tester.pump();
+      expect(opened, ['https://help.dingnow.co.uk']);
+    });
+  });
+
+  testWidgets('with no home screen, the chat opens on the conversation',
+      (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester, 400);
+    await tester.pump(const Duration(milliseconds: 400));
+
+    // The default, and the one every app shipped against: a front door is a tap
+    // between somebody and the message box, and a business that answers on one
+    // channel should not grow one because this feature was added.
+    expect(find.byType(TextField), findsOneWidget);
   });
 
   testWidgets('a voice note is a waveform, not a file listed under a bubble',

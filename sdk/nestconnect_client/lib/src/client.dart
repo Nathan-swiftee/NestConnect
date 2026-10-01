@@ -443,6 +443,52 @@ class NestConnect {
     );
   }
 
+  /// Every conversation this customer has had on this channel, newest first.
+  ///
+  /// Why it has to exist: a chat the business resolves is never resumed — a new
+  /// session only ever joins an open thread — so the moment an agent closed one
+  /// it left this side entirely. The app showed an empty box, and everything
+  /// agreed about the order was readable only by the business.
+  ///
+  /// No id goes up. The customer and the channel both come out of the token, so
+  /// this can only ever return their own.
+  Future<List<NestPastConversation>> conversations() async {
+    final token = _token;
+    if (token == null) return const [];
+    try {
+      final raw = await _transport.getJson('/conversations', token: token);
+      final map = raw is Map ? raw : const <String, Object?>{};
+      return (map['conversations'] as List? ?? const [])
+          .map(NestPastConversation.tryParse)
+          .whereType<NestPastConversation>()
+          .toList(growable: false);
+    } on NestException {
+      // A history that will not load is a home screen with no history on it, not
+      // a chat that refuses to open.
+      return const [];
+    }
+  }
+
+  /// One earlier conversation, read in full.
+  ///
+  /// Read-only on purpose, and separate from [messages] for that reason: this is
+  /// not the thread being added to, so it is handed back rather than swapped into
+  /// the live one. Sending into a finished conversation is not a thing the
+  /// customer can do — [startNewChat] is.
+  Future<List<NestMessage>> conversation(String conversationId) async {
+    final token = _token;
+    if (token == null) return const [];
+    final raw = await _transport.getJson(
+      '/conversations/${Uri.encodeComponent(conversationId)}/messages',
+      token: token,
+    );
+    final map = raw is Map ? raw : const <String, Object?>{};
+    return (map['messages'] as List? ?? const [])
+        .map(NestMessage.tryParse)
+        .whereType<NestMessage>()
+        .toList(growable: false);
+  }
+
   /// Tell the agent somebody is typing, and what they have written so far.
   Future<void> typing(String preview) async {
     final token = _token;
