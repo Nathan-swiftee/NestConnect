@@ -25,7 +25,7 @@ library;
 /// Kept in step with both pubspecs by tools/check-sdk-version.ts, because a
 /// version constant that drifts from the package it names is worse than none:
 /// it answers the question confidently and wrongly.
-const String nestConnectSdkVersion = '0.3.0';
+const String nestConnectSdkVersion = '0.4.0';
 
 /// How hard the channel checked who you said you were.
 enum NestIdentity {
@@ -279,10 +279,24 @@ class NestAppearance {
     required this.newChatLabel,
     required this.showBranding,
     this.logoUrl,
+    this.accentTo,
+    this.headerGradient = false,
+    this.theme = 'light',
   });
 
   final String accent;
   final String onAccent;
+
+  /// The far end of the header's gradient, and whether there is one at all.
+  /// The same pair the web widget reads, so a business that turned the gradient
+  /// on sees it on both surfaces rather than on its website alone.
+  final String? accentTo;
+  final bool headerGradient;
+
+  /// `light`, `dark` or `auto` — chosen by the business, not inherited from the
+  /// phone. A brand that set its chat to light should not open dark because the
+  /// customer's phone is.
+  final String theme;
   final String title;
   final String subtitle;
   final String headline;
@@ -315,11 +329,19 @@ class NestAppearance {
     showBranding: true,
   );
 
-  static NestAppearance parse(Object? raw) {
+  static NestAppearance parse(Object? raw, {String? baseUrl}) {
     if (raw is! Map) return fallback;
+    final logo = _str(raw['logoUrl']);
     return NestAppearance(
       accent: _str(raw['accent']) ?? fallback.accent,
-      onAccent: _str(raw['onAccent']) ?? fallback.onAccent,
+      // `accentText`, which is what the server sends. This read `onAccent` — a
+      // key that has never existed — so every business got white text on its
+      // header whatever it chose, which is unreadable on exactly the pale brand
+      // colours that choice exists for.
+      onAccent: _str(raw['accentText']) ?? _str(raw['onAccent']) ?? fallback.onAccent,
+      accentTo: _str(raw['accentTo']),
+      headerGradient: raw['headerGradient'] == true,
+      theme: _str(raw['theme']) ?? 'light',
       title: _str(raw['title']) ?? fallback.title,
       subtitle: _str(raw['subtitle']) ?? fallback.subtitle,
       headline: _str(raw['headline']) ?? fallback.headline,
@@ -337,7 +359,10 @@ class NestAppearance {
       showBranding: raw['showBranding'] is bool
           ? raw['showBranding'] as bool
           : fallback.showBranding,
-      logoUrl: _str(raw['logoUrl']),
+      // Root-relative when the business uploaded it, which is right for the web
+      // widget and useless in an app — the same treatment the faces get. Read
+      // raw, it was a path with no host, and the logo silently never loaded.
+      logoUrl: logo == null ? null : _absolute(logo, baseUrl),
     );
   }
 }
@@ -538,6 +563,7 @@ class NestConfig {
     required this.appearance,
     required this.online,
     this.team = const [],
+    this.teamTotal = 0,
     this.home,
   });
 
@@ -553,10 +579,14 @@ class NestConfig {
   final bool online;
   final List<NestTeamMate> team;
 
+  /// Everybody who could answer, of whom [team] is the few shown. The rest are
+  /// the "+2" at the end of the stack.
+  final int teamTotal;
+
   static NestConfig parse(Object? raw, {String? baseUrl}) {
     final map = raw is Map ? raw : const <String, Object?>{};
     return NestConfig(
-      appearance: NestAppearance.parse(map['appearance']),
+      appearance: NestAppearance.parse(map['appearance'], baseUrl: baseUrl),
       online: map['online'] == true,
       // `faces`, which is what the server sends. This read `members` for its
       // whole life, so the list was always empty and the header never showed
@@ -566,6 +596,7 @@ class NestConfig {
           .map((f) => NestTeamMate.tryParse(f, baseUrl: baseUrl))
           .whereType<NestTeamMate>()
           .toList(growable: false),
+      teamTotal: ((map['team'] as Map?)?['total'] as num?)?.toInt() ?? 0,
       // Sent only when the business enabled it — the server leaves the key out
       // otherwise, which is the same answer as "go straight to the chat".
       home: NestHome.tryParse(map['home']),

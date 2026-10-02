@@ -155,6 +155,20 @@ come from Settings › NestChat widget, so changing one reaches customers withou
 an app release. Your app's typography is inherited, so the chat still reads as
 part of your app rather than as a pasted-in web view.
 
+## Seeing it without building an app
+
+```sh
+cd sdk/nestconnect_flutter
+flutter test tool/screenshots_test.dart   # writes build/screenshots/*.png
+```
+
+Renders every screen — home, loading, a conversation, the keyboard up, an old
+conversation, an agent typing, the first load — at iPhone size with real fonts,
+against a local server speaking the API's shapes. One of them puts the
+messenger inside an app that lifts *itself* for the keyboard, because that is
+the arrangement that floated the sheet a keyboard's height above the keyboard
+and no test noticed: none of them was ever looked at.
+
 ## Tests
 
 `flutter test` renders the messenger against a real `HttpServer` on loopback.

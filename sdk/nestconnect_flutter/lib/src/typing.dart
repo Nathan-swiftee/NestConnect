@@ -45,9 +45,10 @@ class _NestTypingDotsState extends State<NestTypingDots>
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(18),
               topRight: Radius.circular(18),
-              bottomLeft: Radius.circular(5),
+              bottomLeft: Radius.circular(6),
               bottomRight: Radius.circular(18),
             ),
+            boxShadow: t.lift,
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           child: AnimatedBuilder(

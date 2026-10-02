@@ -50,6 +50,9 @@ class FakeServer {
   /// The customer's earlier conversations, as the history endpoint answers them.
   List<Map<String, Object?>> past = const [];
 
+  /// Holds the history back, so what is on screen while it loads can be seen.
+  Completer<void>? holdHistory;
+
   String get baseUrl => 'http://${_server.address.host}:${_server.port}';
 
   Future<void> start() async {
@@ -95,7 +98,7 @@ class FakeServer {
       return;
     }
 
-    if (path.contains('/avatar/')) {
+    if (path.contains('/avatar/') || path.endsWith('/logo')) {
       // A real one-pixel PNG. The geometry under test is the circle the photo
       // is clipped to, which is settled by layout and not by whether the bytes
       // decode — but a 404 here would put the error builder's initials on
@@ -120,7 +123,10 @@ class FakeServer {
       req.response.write(jsonEncode({
         'appearance': {
           'accent': '#1f7a3d',
-          'onAccent': '#ffffff',
+          // The server's key. The client read `onAccent`, which has never
+          // existed, so every business's choice was replaced with white.
+          'accentText': '#fffbe6',
+          'logoUrl': '/api/nestchat/wk_1/logo',
           'headline': 'Hello {name} 👋',
           'title': 'Ding support',
           'subtitle': 'We usually reply in minutes',
@@ -145,6 +151,13 @@ class FakeServer {
                 'sublabel': 'Answers to the usual questions',
                 'icon': 'help',
                 'href': 'https://help.dingnow.co.uk',
+              },
+              {
+                'id': 'card_wa',
+                'label': 'Message us on WhatsApp',
+                'sublabel': 'Avg response time: 3 mins',
+                'icon': 'whatsapp',
+                'href': 'https://wa.me/447000000000',
               },
             ],
           },
@@ -184,6 +197,7 @@ class FakeServer {
       // goes — which the binding reports as "a Timer is still pending" against
       // whichever test was unlucky.
       req.response.persistentConnection = false;
+      await holdHistory?.future;
       req.response.write(jsonEncode({'conversations': past}));
     } else if (path.contains('/conversations/') && path.endsWith('/messages')) {
       req.response.persistentConnection = false;
@@ -307,6 +321,12 @@ Widget host(Widget child) => MaterialApp(home: Scaffold(body: child));
 /// It also replaces `pumpAndSettle` wherever a spinner might be on screen:
 /// settle waits for every animation to finish, and a progress indicator never
 /// finishes, so it times out rather than reporting anything useful.
+/// The one agent photo in the header — told apart from the business's logo,
+/// which is an image too.
+Finder facePhoto() => find.byWidgetPredicate(
+      (w) => w is Image && w.image is NetworkImage && (w.image as NetworkImage).url.contains('/avatar/'),
+    );
+
 /// Let a modal sheet finish sliding in.
 ///
 /// `settle` advances real time, for the socket; a sheet's entrance runs on the
@@ -469,7 +489,7 @@ void main() {
     // has no photo. The one who does is a photo, which is the point of showing
     // faces at all, and is measured in its own test below.
     expect(find.text('PS'), findsOneWidget);
-    expect(find.byType(Image), findsOneWidget);
+    expect(facePhoto(), findsOneWidget);
   });
 
   testWidgets('no attach button when the app has no picker', (tester) async {
@@ -674,7 +694,7 @@ void main() {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
-    final photo = find.byType(Image);
+    final photo = facePhoto();
     expect(photo, findsOneWidget, reason: 'one of the two faces has a photo');
 
     // The circle doing the clipping and the photo inside it have to be the same
@@ -700,6 +720,14 @@ void main() {
     Future<void> openHome(WidgetTester tester) async {
       server.home = true;
       server.past = [
+        {
+          'id': 'cv_live',
+          'closed': false,
+          'preview': 'Anything else I can help with?',
+          'from': 'agent',
+          'authorName': 'Priya',
+          'at': DateTime.now().subtract(const Duration(minutes: 3)).toIso8601String(),
+        },
         {
           'id': 'cv_old',
           'closed': true,
@@ -777,6 +805,47 @@ void main() {
       expect(find.text('Help centre'), findsOneWidget);
     });
 
+    testWidgets('lists every conversation, open and closed, and says which',
+        (tester) async {
+      await openHome(tester);
+
+      // The report: "need to be able to see the chat history, recent chats,
+      // even closed, with a tag". A closed conversation used to leave this side
+      // entirely, and the live one sat in the same list with nothing to tell
+      // the two apart.
+      expect(find.text('Your conversations'), findsOneWidget);
+      expect(find.text('Open'), findsOneWidget);
+      expect(find.text('Closed'), findsOneWidget);
+      expect(find.text('Sorted — a replacement is on the way'), findsOneWidget);
+      // And the live one leads, the way a messenger's home does.
+      expect(find.text('Recent message'), findsOneWidget);
+    });
+
+    testWidgets('shows the shape of the list while it loads, not a spinner',
+        (tester) async {
+      server.holdHistory = Completer<void>();
+      await openHome(tester);
+
+      expect(find.byType(NestConversationBone), findsWidgets);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      server.holdHistory!.complete();
+      await settle(tester, 400);
+      await settle(tester, 400);
+      expect(find.byType(NestConversationBone), findsNothing);
+      expect(find.text('Closed'), findsOneWidget);
+    });
+
+    testWidgets('a WhatsApp card carries the WhatsApp mark', (tester) async {
+      await openHome(tester);
+
+      // It carried a flame. Material has no WhatsApp glyph, so the
+      // nearest-looking icon got used, on a card that said "WhatsApp".
+      final marks = tester.widgetList<NestCardIcon>(find.byType(NestCardIcon));
+      expect(marks.map((m) => m.name), contains('whatsapp'));
+      expect(find.byIcon(Icons.whatshot_rounded), findsNothing);
+    });
+
     testWidgets('a card hands its link to the app', (tester) async {
       server.home = true;
       await tester.runAsync(() => chat.login(userId: 'u_1', name: 'Marta Nowak'));
@@ -792,6 +861,114 @@ void main() {
       await tester.tap(find.text('Help centre'));
       await tester.pump();
       expect(opened, ['https://help.dingnow.co.uk']);
+    });
+  });
+
+  testWidgets('the business\'s logo is in the header', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    // Sent root-relative, which is right for the web widget and useless in an
+    // app. Read as it came, it was a path with no host and never loaded.
+    final logo = tester
+        .widgetList<Image>(find.byType(Image))
+        .map((i) => i.image)
+        .whereType<NetworkImage>()
+        .map((i) => i.url)
+        .where((u) => u.endsWith('/logo'));
+    expect(logo, [ '${server.baseUrl}/api/nestchat/wk_1/logo' ]);
+  });
+
+  testWidgets('the header\'s text is the colour the business chose', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+
+    final title = tester.widget<Text>(find.text('Ding support'));
+    expect(title.style?.color, const Color(0xFFFFFBE6));
+  });
+
+  group('with the keyboard up', () {
+    /// Opens the real sheet on a phone-sized screen, raises a keyboard, and
+    /// answers where the sheet's bottom edge ended up against the keyboard's
+    /// top.
+    ///
+    /// [hostLifts] is the app the gap was reported from: its whole navigator is
+    /// lifted clear of the keyboard — its tab bar sat on top of the keyboard in
+    /// the screenshot — without taking the inset out of what it hands down. A
+    /// messenger that also lifts by the full keyboard pays for it twice and
+    /// floats a keyboard's height above it.
+    Future<double> gapAboveKeyboard(WidgetTester tester, {required bool hostLifts}) async {
+      tester.view.physicalSize = const Size(1170, 2532);
+      tester.view.devicePixelRatio = 3;
+      tester.view.padding = const FakeViewPadding(top: 141, bottom: 102);
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => hostLifts
+              ? Padding(
+                  padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+                  child: child,
+                )
+              : child!,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => showNestMessenger(context, chat: chat),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await sheetArrives(tester);
+
+      // As a phone reports it: the keyboard's height as an inset, and the home
+      // indicator's strip gone from the padding because the keyboard covers it.
+      tester.view.viewInsets = const FakeViewPadding(bottom: 1008);
+      tester.view.padding = const FakeViewPadding(top: 141);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => hostLifts
+              ? Padding(
+                  padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+                  child: child,
+                )
+              : child!,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => showNestMessenger(context, chat: chat),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      // The clearance measures after a frame and applies on the next.
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      const keyboardTop = 2532 / 3 - 1008 / 3;
+      final sheet = find.descendant(
+        of: find.byType(NestKeyboardClearance),
+        matching: find.byType(Container),
+      );
+      return keyboardTop - tester.getRect(sheet.first).bottom;
+    }
+
+    testWidgets('the composer sits on the keyboard', (tester) async {
+      final gap = await gapAboveKeyboard(tester, hostLifts: false);
+      expect(gap.abs(), lessThan(1), reason: 'neither a gap nor an overlap: ${gap}pt');
+    });
+
+    testWidgets('and still does in an app that lifts itself for the keyboard',
+        (tester) async {
+      // The report: the sheet "flies up" with a gap exactly one keyboard tall.
+      final gap = await gapAboveKeyboard(tester, hostLifts: true);
+      expect(gap.abs(), lessThan(1), reason: 'neither a gap nor an overlap: ${gap}pt');
     });
   });
 
