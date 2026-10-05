@@ -53,6 +53,13 @@ class FakeServer {
   /// Holds the history back, so what is on screen while it loads can be seen.
   Completer<void>? holdHistory;
 
+  /// Each "is the chat on screen" the app reported, in order.
+  final viewing = <bool>[];
+
+  /// The current thread, as the server has it — what a returning app fetches
+  /// to catch up on replies it slept through.
+  List<Map<String, Object?>> thread = const [];
+
   String get baseUrl => 'http://${_server.address.host}:${_server.port}';
 
   Future<void> start() async {
@@ -118,6 +125,13 @@ class FakeServer {
       return;
     }
 
+    // "The chat is no longer on screen" is said as the messenger closes, on the
+    // test's fake clock. A kept-alive socket would leave its idle timer there,
+    // pending, after the test has ended.
+    if (path.endsWith('/viewing')) {
+      req.response.persistentConnection = false;
+      viewing.add((jsonDecode(body) as Map)['viewing'] == true);
+    }
     req.response.headers.contentType = ContentType.json;
     if (path.endsWith('/config')) {
       req.response.write(jsonEncode({
@@ -219,6 +233,9 @@ class FakeServer {
           },
         ],
       }));
+    } else if (path.endsWith('/messages')) {
+      req.response.persistentConnection = false;
+      req.response.write(jsonEncode({'messages': thread}));
     } else if (path.endsWith('/message')) {
       sent.add(jsonDecode(body) as Map<String, Object?>);
       req.response.write(jsonEncode({
@@ -312,15 +329,30 @@ class FakeServer {
 /// Wrap a widget in just enough app to render it.
 Widget host(Widget child) => MaterialApp(home: Scaffold(body: child));
 
-/// Let real network work happen, then redraw.
+/// `testWidgets`, then the chat closed and given the real time to say so.
 ///
-/// A widget test runs its body against a fake clock, and `pumpAndSettle` only
-/// advances that — so a socket that needs actual milliseconds never gets them.
-/// `runAsync` steps outside to real time, which is where the server lives.
-///
-/// It also replaces `pumpAndSettle` wherever a spinner might be on screen:
-/// settle waits for every animation to finish, and a progress indicator never
-/// finishes, so it times out rather than reporting anything useful.
+/// Closing the messenger tells the server the chat is no longer on screen —
+/// it has to, or the reply that arrives next is never pushed. That is a
+/// request, and a widget test's fake clock cannot finish one by itself, so
+/// without this the binding reports its connection timer as pending against
+/// every test that ever showed the chat.
+void chatTest(String description, WidgetTesterCallback body) {
+  testWidgets(description, (tester) async {
+    await body(tester);
+    await tester.pumpWidget(const SizedBox());
+    await settle(tester, 300);
+    // Closing the chat here, inside the test, rather than in tearDown: the
+    // sockets it opened under the fake clock keep timers (connect, keep-alive)
+    // that only closing cancels, and the test fails on any still pending.
+    unawaited(_openChat?.dispose());
+    _openChat = null;
+    await settle(tester, 50);
+  });
+}
+
+/// The chat the current test runs against, for [chatTest] to close.
+NestConnect? _openChat;
+
 /// The one agent photo in the header — told apart from the business's logo,
 /// which is an image too.
 Finder facePhoto() => find.byWidgetPredicate(
@@ -340,6 +372,15 @@ Future<void> sheetArrives(WidgetTester tester) async {
   await tester.pump(const Duration(milliseconds: 400));
 }
 
+/// Let real network work happen, then redraw.
+///
+/// A widget test runs its body against a fake clock, and `pumpAndSettle` only
+/// advances that — so a socket that needs actual milliseconds never gets them.
+/// `runAsync` steps outside to real time, which is where the server lives.
+///
+/// It also replaces `pumpAndSettle` wherever a spinner might be on screen:
+/// settle waits for every animation to finish, and a progress indicator never
+/// finishes, so it times out rather than reporting anything useful.
 Future<void> settle(WidgetTester tester, [int ms = 350]) async {
   await tester.runAsync(() => Future<void>.delayed(Duration(milliseconds: ms)));
   await tester.pump();
@@ -360,6 +401,7 @@ void main() {
     server = FakeServer();
     await server.start();
     chat = NestConnect(baseUrl: server.baseUrl, appKey: 'na_test');
+    _openChat = chat;
     // Signed in, like a customer opening the chat from inside an app they are
     // logged into — which is the case the header's greeting is written for.
     await chat.login(userId: 'u_1', name: 'Marta Nowak');
@@ -368,11 +410,13 @@ void main() {
   });
 
   tearDown(() async {
-    await chat.dispose();
+    // Closed already by [chatTest] — closing twice waits on streams that
+    // finished under the fake clock, and never returns.
+    await _openChat?.dispose();
     await server.stop();
   });
 
-  testWidgets('the header speaks the channel\'s own words', (tester) async {
+  chatTest('the header speaks the channel\'s own words', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await tester.pump();
 
@@ -383,13 +427,13 @@ void main() {
     expect(find.text('We are closed — leave a message'), findsNothing);
   });
 
-  testWidgets('an empty thread invites rather than reports emptiness', (tester) async {
+  chatTest('an empty thread invites rather than reports emptiness', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await tester.pump();
     expect(find.text('Ask us anything — we read every message.'), findsOneWidget);
   });
 
-  testWidgets('typing and sending puts the message in the thread', (tester) async {
+  chatTest('typing and sending puts the message in the thread', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await tester.pump();
 
@@ -414,7 +458,7 @@ void main() {
     expect(tester.widget<TextField>(find.byType(TextField)).controller?.text, '');
   });
 
-  testWidgets('an agent reply appears while the sheet is open', (tester) async {
+  chatTest('an agent reply appears while the sheet is open', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
@@ -426,7 +470,7 @@ void main() {
     expect(find.text('Nathan'), findsOneWidget);
   });
 
-  testWidgets('a closed chat says so, in the business\'s own words', (tester) async {
+  chatTest('a closed chat says so, in the business\'s own words', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
     expect(find.text('Write a message…'), findsOneWidget);
@@ -442,7 +486,7 @@ void main() {
     expect(find.text('Ask about something else'), findsOneWidget);
   });
 
-  testWidgets('and lets the customer start another one', (tester) async {
+  chatTest('and lets the customer start another one', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
     server.agentSays('msg_a', 'All sorted!');
@@ -459,7 +503,47 @@ void main() {
     expect(find.text('All sorted!'), findsNothing);
   });
 
-  testWidgets('the greeting says the customer\'s name', (tester) async {
+  chatTest('a chat in the background says so, so the reply is pushed', (tester) async {
+    await tester.pumpWidget(host(NestMessenger(chat: chat)));
+    await settle(tester);
+    await settle(tester);
+    expect(server.viewing.last, isTrue);
+
+    // The app goes to the background with the chat still open. The server
+    // took the open stream as "reading it" and sent no notification, so the
+    // reply sat there unseen until the app was opened again.
+    for (final state in [AppLifecycleState.inactive, AppLifecycleState.hidden, AppLifecycleState.paused]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    // Several windows of real time: the report starts on the fake clock, and
+    // each step of a request there (connect, send, answer) needs one.
+    for (var i = 0; i < 6; i++) {
+      await settle(tester, 150);
+    }
+    expect(server.viewing.last, isFalse);
+
+    // A reply lands while it is away — and the stream is not what carries it.
+    server.thread = [
+      {
+        'id': 'msg_late',
+        'from': 'agent',
+        'authorName': 'Nathan',
+        'body': 'Your refund has gone through',
+        'at': DateTime.now().toIso8601String(),
+      },
+    ];
+    for (final state in [AppLifecycleState.hidden, AppLifecycleState.inactive, AppLifecycleState.resumed]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await settle(tester);
+    await settle(tester);
+    await settle(tester);
+
+    expect(server.viewing.last, isTrue);
+    expect(find.text('Your refund has gone through'), findsOneWidget);
+  });
+
+  chatTest('the greeting says the customer\'s name', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
@@ -481,7 +565,7 @@ void main() {
     expect(fillVisitorName('Hello {name} 👋', 'Marta'), 'Hello Marta 👋');
   });
 
-  testWidgets('and the people who answer are shown', (tester) async {
+  chatTest('and the people who answer are shown', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
@@ -492,14 +576,14 @@ void main() {
     expect(facePhoto(), findsOneWidget);
   });
 
-  testWidgets('no attach button when the app has no picker', (tester) async {
+  chatTest('no attach button when the app has no picker', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await tester.pump();
     // Better than a button that opens nothing.
     expect(find.byTooltip('Attach'), findsNothing);
   });
 
-  testWidgets('a picker gets a button, and tapping it asks the app', (tester) async {
+  chatTest('a picker gets a button, and tapping it asks the app', (tester) async {
     var asked = 0;
     await tester.pumpWidget(host(NestMessenger(
       chat: chat,
@@ -518,7 +602,7 @@ void main() {
     expect(asked, 1);
   });
 
-  testWidgets('a staged file can be taken back off', (tester) async {
+  chatTest('a staged file can be taken back off', (tester) async {
     const file = NestUpload(
       ticket: 'tkt', filename: 'curry.jpg', mime: 'image/jpeg', size: 42);
     final staged = [file];
@@ -539,7 +623,7 @@ void main() {
     expect(staged, isEmpty);
   });
 
-  testWidgets('the launcher badges what is waiting', (tester) async {
+  chatTest('the launcher badges what is waiting', (tester) async {
     await tester.pumpWidget(host(NestLauncher(chat: chat)));
     await settle(tester);
     expect(find.text('1'), findsNothing);
@@ -549,7 +633,7 @@ void main() {
     expect(find.text('1'), findsOneWidget);
   });
 
-  testWidgets('the badge stops counting past nine', (tester) async {
+  chatTest('the badge stops counting past nine', (tester) async {
     await tester.pumpWidget(host(NestLauncher(chat: chat)));
     await settle(tester);
     for (var i = 0; i < 12; i++) {
@@ -560,7 +644,7 @@ void main() {
     expect(find.text('9+'), findsOneWidget);
   });
 
-  testWidgets('the launcher opens the messenger', (tester) async {
+  chatTest('the launcher opens the messenger', (tester) async {
     await tester.pumpWidget(host(Builder(
       builder: (context) => NestLauncher(chat: chat),
     )));
@@ -571,7 +655,7 @@ void main() {
     expect(find.text('Ding support'), findsOneWidget);
   });
 
-  testWidgets(
+  chatTest(
       'the thread keeps its height with the keyboard up, and holds what I send',
       (tester) async {
     // The report this is written from: a message sent and not visible until the
@@ -651,7 +735,7 @@ void main() {
     );
   });
 
-  testWidgets('an agent typing shows as dots, which the reply replaces',
+  chatTest('an agent typing shows as dots, which the reply replaces',
       (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
@@ -673,7 +757,7 @@ void main() {
     expect(find.byType(NestTypingDots), findsNothing);
   });
 
-  testWidgets('and stops believing it after a while with no word', (tester) async {
+  chatTest('and stops believing it after a while with no word', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
     server.agentTypes();
@@ -689,7 +773,7 @@ void main() {
     expect(find.byType(NestTypingDots), findsNothing);
   });
 
-  testWidgets('a face with a photo fills the circle that clips it',
+  chatTest('a face with a photo fills the circle that clips it',
       (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
@@ -743,10 +827,83 @@ void main() {
       await settle(tester, 250);
       await tester.pumpWidget(host(NestMessenger(chat: chat)));
       await settle(tester, 400);
+      // A second window of real time. Opening the chat now tells the server it
+      // is on screen, and that request and the history fetch both start on the
+      // test's fake clock — the second only goes out once the first has.
+      await settle(tester, 400);
       await tester.pump(const Duration(milliseconds: 400));
     }
 
-    testWidgets('is where the chat opens, when the business has one', (tester) async {
+    chatTest('a tapped notification opens on the conversation, not here', (tester) async {
+      server.home = true;
+      await tester.runAsync(() => chat.login(userId: 'u_1', name: 'Marta Nowak'));
+      await settle(tester, 250);
+      // The reply the notification was about, which arrived while the app slept.
+      server.thread = [
+        {
+          'id': 'msg_late',
+          'from': 'agent',
+          'authorName': 'Nathan',
+          'body': 'Your refund has gone through',
+          'at': DateTime.now().toIso8601String(),
+        },
+      ];
+      late BuildContext app;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        app = context;
+        return const SizedBox.expand();
+      })));
+
+      // Somebody else's notification is left to the app.
+      var opened = false;
+      await tester.runAsync(() async {
+        opened = await openNestNotification(app, chat: chat, data: {'source': 'shop'});
+      });
+      expect(opened, isFalse);
+
+      await tester.runAsync(() async {
+        opened = await openNestNotification(
+          app,
+          chat: chat,
+          data: {'source': 'nestconnect', 'conversationId': 'cv_live'},
+        );
+      });
+      await sheetArrives(tester);
+      await settle(tester, 400);
+
+      // Tapping "Nathan replied" used to land on the app's own screen, or at
+      // best on the home cards: the reply itself was two taps away.
+      expect(opened, isTrue);
+      expect(find.text('Your refund has gone through'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('Send us a message'), findsNothing);
+    });
+
+    chatTest('a waiting reply opens the chat on it, even from showNestMessenger', (tester) async {
+      server.home = true;
+      await tester.runAsync(() => chat.login(userId: 'u_1', name: 'Marta Nowak'));
+      await settle(tester, 250);
+      await settle(tester, 250);
+      server.agentSays('msg_w', 'Your refund has gone through');
+      await settle(tester, 300);
+      expect(chat.unread, 1);
+
+      late BuildContext app;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        app = context;
+        return const SizedBox.expand();
+      })));
+      // What an app wired before openNestNotification existed does on a tap.
+      unawaited(showNestMessenger(app, chat: chat));
+      await sheetArrives(tester);
+      await settle(tester, 400);
+
+      expect(find.text('Your refund has gone through'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('Send us a message'), findsNothing);
+    });
+
+    chatTest('is where the chat opens, when the business has one', (tester) async {
       await openHome(tester);
 
       // The channel's own words for its own front door.
@@ -756,7 +913,7 @@ void main() {
       expect(find.byType(TextField), findsNothing);
     });
 
-    testWidgets('and the chat card goes to the conversation', (tester) async {
+    chatTest('and the chat card goes to the conversation', (tester) async {
       await openHome(tester);
       await tester.tap(find.text('Send us a message'));
       await settle(tester, 200);
@@ -765,7 +922,7 @@ void main() {
       expect(find.text('Help centre'), findsNothing);
     });
 
-    testWidgets('an earlier conversation can be read, and not written to',
+    chatTest('an earlier conversation can be read, and not written to',
         (tester) async {
       await openHome(tester);
 
@@ -788,7 +945,7 @@ void main() {
       expect(find.byType(TextField), findsNothing);
     });
 
-    testWidgets('and leaving it comes back to the cards', (tester) async {
+    chatTest('and leaving it comes back to the cards', (tester) async {
       await openHome(tester);
       await tester.tap(find.textContaining('Sorted — a replacement is on the way'));
       await settle(tester, 400);
@@ -805,7 +962,7 @@ void main() {
       expect(find.text('Help centre'), findsOneWidget);
     });
 
-    testWidgets('lists every conversation, open and closed, and says which',
+    chatTest('lists every conversation, open and closed, and says which',
         (tester) async {
       await openHome(tester);
 
@@ -821,7 +978,7 @@ void main() {
       expect(find.text('Recent message'), findsOneWidget);
     });
 
-    testWidgets('shows the shape of the list while it loads, not a spinner',
+    chatTest('shows the shape of the list while it loads, not a spinner',
         (tester) async {
       server.holdHistory = Completer<void>();
       await openHome(tester);
@@ -836,7 +993,7 @@ void main() {
       expect(find.text('Closed'), findsOneWidget);
     });
 
-    testWidgets('a WhatsApp card carries the WhatsApp mark', (tester) async {
+    chatTest('a WhatsApp card carries the WhatsApp mark', (tester) async {
       await openHome(tester);
 
       // It carried a flame. Material has no WhatsApp glyph, so the
@@ -846,7 +1003,7 @@ void main() {
       expect(find.byIcon(Icons.whatshot_rounded), findsNothing);
     });
 
-    testWidgets('a card hands its link to the app', (tester) async {
+    chatTest('a card hands its link to the app', (tester) async {
       server.home = true;
       await tester.runAsync(() => chat.login(userId: 'u_1', name: 'Marta Nowak'));
       await settle(tester, 250);
@@ -864,7 +1021,7 @@ void main() {
     });
   });
 
-  testWidgets('the business\'s logo is in the header', (tester) async {
+  chatTest('the business\'s logo is in the header', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
@@ -879,7 +1036,7 @@ void main() {
     expect(logo, [ '${server.baseUrl}/api/nestchat/wk_1/logo' ]);
   });
 
-  testWidgets('the header\'s text is the colour the business chose', (tester) async {
+  chatTest('the header\'s text is the colour the business chose', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
@@ -959,12 +1116,12 @@ void main() {
       return keyboardTop - tester.getRect(sheet.first).bottom;
     }
 
-    testWidgets('the composer sits on the keyboard', (tester) async {
+    chatTest('the composer sits on the keyboard', (tester) async {
       final gap = await gapAboveKeyboard(tester, hostLifts: false);
       expect(gap.abs(), lessThan(1), reason: 'neither a gap nor an overlap: ${gap}pt');
     });
 
-    testWidgets('and still does in an app that lifts itself for the keyboard',
+    chatTest('and still does in an app that lifts itself for the keyboard',
         (tester) async {
       // The report: the sheet "flies up" with a gap exactly one keyboard tall.
       final gap = await gapAboveKeyboard(tester, hostLifts: true);
@@ -972,7 +1129,7 @@ void main() {
     });
   });
 
-  testWidgets('with no home screen, the chat opens on the conversation',
+  chatTest('with no home screen, the chat opens on the conversation',
       (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester, 400);
@@ -984,7 +1141,7 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
   });
 
-  testWidgets('a voice note is a waveform, not a file listed under a bubble',
+  chatTest('a voice note is a waveform, not a file listed under a bubble',
       (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
@@ -1000,7 +1157,7 @@ void main() {
     expect(find.text('0:07'), findsOneWidget);
   });
 
-  testWidgets('a reply shows what it answers, and says so', (tester) async {
+  chatTest('a reply shows what it answers, and says so', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
@@ -1019,7 +1176,7 @@ void main() {
     expect(find.text('You'), findsOneWidget);
   });
 
-  testWidgets('an agent reacting puts the emoji on the message', (tester) async {
+  chatTest('an agent reacting puts the emoji on the message', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
@@ -1032,7 +1189,7 @@ void main() {
     expect(find.text('\u2764\ufe0f'), findsOneWidget);
   });
 
-  testWidgets('swiping a message far enough offers to reply to it',
+  chatTest('swiping a message far enough offers to reply to it',
       (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
@@ -1060,7 +1217,7 @@ void main() {
     expect(find.text('On its way!'), findsWidgets);
   });
 
-  testWidgets('and the reply can be called off', (tester) async {
+  chatTest('and the reply can be called off', (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);
 
@@ -1074,7 +1231,7 @@ void main() {
     expect(find.textContaining('Replying to'), findsNothing);
   });
 
-  testWidgets('a closed chat can still be read, but not reacted to',
+  chatTest('a closed chat can still be read, but not reacted to',
       (tester) async {
     await tester.pumpWidget(host(NestMessenger(chat: chat)));
     await settle(tester);

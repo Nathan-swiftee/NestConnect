@@ -23,7 +23,7 @@ export 'src/bubble.dart' show NestBubble, nestClock;
 export 'src/header.dart' show NestHeader, nestFaceSize;
 export 'src/home.dart' show NestHomeScreen, nestAgo;
 export 'src/icons.dart' show NestCardIcon, svgPath;
-export 'src/launcher.dart' show NestLauncher, showNestMessenger;
+export 'src/launcher.dart' show NestLauncher, openNestNotification, showNestMessenger;
 export 'src/message_row.dart'
     show NestMessageRow, collapseReactions, nestQuickReactions;
 export 'src/messenger.dart'

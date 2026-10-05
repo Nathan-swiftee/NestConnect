@@ -179,6 +179,41 @@ async function main(): Promise<void> {
   );
   stop();
 
+  console.log("\nAn app in a pocket\n");
+  // Its own conversation, so these sends do not count against the burst limit
+  // the next section measures on conv_1.
+  const inApp = {
+    conversation: { ...conversation, id: "conv_app" } as unknown as Conversation,
+    authorName: "Nathan",
+    body: "Your rider is outside",
+  };
+  // The report: "when the app is in the background the notification doesn't
+  // come". An app holds its stream open for as long as somebody is signed in,
+  // and that stream used to count as somebody reading — so a phone locked on a
+  // table never heard a reply. An app's stream reports nothing on its own.
+  const appStream = bus.subscribe("conv_app", () => {}, { reportsViewing: true });
+  const pocket = await push.notifyAndWait(inApp);
+  ok(
+    "an app that is connected but not showing the chat is pushed",
+    pocket.sent === 1 && pocket.skipped === "",
+    pocket.skipped || "sent",
+  );
+
+  await bus.setViewing("conv_app", true);
+  ok(
+    "an app that says the chat is on screen is not",
+    (await push.notifyAndWait(inApp)).skipped === "watching",
+  );
+
+  await bus.setViewing("conv_app", false);
+  const away = await push.notifyAndWait(inApp);
+  ok(
+    "and is again the moment it says the chat has gone",
+    away.sent === 1 && away.skipped === "",
+    away.skipped || "sent",
+  );
+  appStream();
+
   console.log("\nA burst of replies\n");
   push.fake.sent.length = 0;
   const bursts = [await push.notifyAndWait(reply), await push.notifyAndWait(reply), await push.notifyAndWait(reply)];

@@ -2423,6 +2423,17 @@ export const nestchatTypingInputSchema = z.object({
 });
 export type NestChatTypingInput = z.infer<typeof nestchatTypingInputSchema>;
 
+/**
+ * An app saying its chat is on screen, or that it no longer is.
+ *
+ * What decides whether an agent's reply rings the customer's phone. It used to
+ * be decided by whether the app held the live stream open — and an app holds
+ * that for as long as somebody is signed in, so a phone locked in a pocket
+ * counted as a customer reading, and no reply was ever pushed to it.
+ */
+export const nestchatViewingInputSchema = z.object({ viewing: z.boolean() });
+export type NestChatViewingInput = z.infer<typeof nestchatViewingInputSchema>;
+
 /** Where a customer's phone is reachable, registered by the in-app SDK. */
 export const nestchatDeviceInputSchema = z.object({
   /** The FCM registration token. Long, opaque, and not ours to validate beyond

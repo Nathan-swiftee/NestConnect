@@ -131,7 +131,7 @@ class WebTransport extends NestTransport {
       onCancel: () => closeSource(),
     );
 
-    source = web.EventSource(uriFor('/stream', {'token': token}).toString())
+    source = web.EventSource(uriFor('/stream', {'token': token, 'presence': 'viewing'}).toString())
       ..onmessage = ((web.MessageEvent event) {
         final data = event.data;
         if (data == null) return;

@@ -38,6 +38,16 @@ const PRESENCE_TTL_S = 45;
 const presenceKey = (conversationId: string) => `nestchat:watching:${conversationId}`;
 
 /**
+ * How long "the chat is on screen" is believed without being said again.
+ *
+ * An app repeats it every 25 seconds while it is true, so this only ever
+ * matters for an app that went away without saying so — killed, crashed, out of
+ * signal. Then it is how long a reply goes unpushed, which is why it is short.
+ */
+const VIEWING_TTL_S = 60;
+const viewingKey = (conversationId: string) => `nestchat:viewing:${conversationId}`;
+
+/**
  * Fan-out to visitors' open widgets.
  *
  * Agents get their realtime over the authenticated Socket.IO gateway. Visitors
@@ -61,6 +71,12 @@ export class VisitorBus implements OnModuleDestroy {
   private readonly local = new EventEmitter();
   private publisher?: Redis;
   private subscriber?: Redis;
+
+  /** Streams that count as somebody watching, per conversation, here. */
+  private readonly watchers = new Map<string, number>();
+
+  /** Conversations an app has said are on screen, and until when. */
+  private readonly viewers = new Map<string, number>();
 
   constructor() {
     // Node's default of 10 listeners is a leak warning, not a limit, and a busy
@@ -107,8 +123,27 @@ export class VisitorBus implements OnModuleDestroy {
   }
 
   /** Listen for one conversation's events. Returns the unsubscribe. */
-  subscribe(conversationId: string, handler: (event: VisitorEvent) => void): () => void {
+  /**
+   * Listen to one conversation.
+   *
+   * [reportsViewing] is the difference between the two kinds of client. The web
+   * widget's stream *is* its presence: the page is open, so somebody is looking.
+   * An app's is not. It holds the stream for as long as somebody is signed in —
+   * chat open or shut, app in front or in a pocket — so a connected app is not
+   * a reading customer, and treating it as one is how replies went unpushed to
+   * phones that were locked on a table. An app says when the chat is actually
+   * on screen, through [setViewing], and its stream counts for nothing here.
+   */
+  subscribe(
+    conversationId: string,
+    handler: (event: VisitorEvent) => void,
+    opts: { reportsViewing?: boolean } = {},
+  ): () => void {
     this.local.on(conversationId, handler);
+    if (opts.reportsViewing) {
+      return () => this.local.off(conversationId, handler);
+    }
+    this.watchers.set(conversationId, (this.watchers.get(conversationId) ?? 0) + 1);
     void this.mark(conversationId);
     // Refreshed while the stream is up, so presence expires on its own if this
     // process dies rather than leaving a customer permanently "here".
@@ -116,8 +151,33 @@ export class VisitorBus implements OnModuleDestroy {
     return () => {
       clearInterval(beat);
       this.local.off(conversationId, handler);
-      if (!this.local.listenerCount(conversationId)) void this.clear(conversationId);
+      const left = (this.watchers.get(conversationId) ?? 1) - 1;
+      if (left > 0) {
+        this.watchers.set(conversationId, left);
+        return;
+      }
+      this.watchers.delete(conversationId);
+      void this.clear(conversationId);
     };
+  }
+
+  /**
+   * An app saying its chat is on screen — or that it no longer is.
+   *
+   * Believed for [VIEWING_TTL_S] at a time and repeated by the app while true,
+   * so an app that disappears without a word stops counting within a minute
+   * instead of silencing that customer's notifications for good.
+   */
+  async setViewing(conversationId: string, viewing: boolean): Promise<void> {
+    if (viewing) this.viewers.set(conversationId, Date.now() + VIEWING_TTL_S * 1000);
+    else this.viewers.delete(conversationId);
+    if (!this.publisher) return;
+    try {
+      if (viewing) await this.publisher.set(viewingKey(conversationId), "1", "EX", VIEWING_TTL_S);
+      else await this.publisher.del(viewingKey(conversationId));
+    } catch {
+      // Presence is an optimisation. Losing it costs a duplicate banner.
+    }
   }
 
   /**
@@ -140,10 +200,17 @@ export class VisitorBus implements OnModuleDestroy {
    * own listener count is the whole truth.
    */
   async isWatching(conversationId: string): Promise<boolean> {
-    if (this.local.listenerCount(conversationId) > 0) return true;
+    if ((this.watchers.get(conversationId) ?? 0) > 0) return true;
+    const until = this.viewers.get(conversationId);
+    if (until !== undefined) {
+      if (until > Date.now()) return true;
+      this.viewers.delete(conversationId);
+    }
     if (!this.publisher) return false;
     try {
-      return (await this.publisher.exists(presenceKey(conversationId))) === 1;
+      return (
+        (await this.publisher.exists(presenceKey(conversationId), viewingKey(conversationId))) > 0
+      );
     } catch {
       // Unreachable Redis means we cannot prove they are watching. Pushing
       // anyway is the safer failure: a spare notification beats a customer

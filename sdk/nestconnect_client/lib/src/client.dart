@@ -77,6 +77,25 @@ class NestConnect {
   bool _viewing = false;
   int _unread = 0;
 
+  /// Who [login] said this is, kept for [startNewChat].
+  ///
+  /// It used to open the new session with none of it, which made somebody
+  /// signed in to the app an *anonymous* visitor the moment they started a
+  /// second conversation: a new contact with no history, their phone's
+  /// notifications moved onto it, and nothing on screen to say so.
+  ({String id, String? hash, String? email, String? phone})? _identity;
+
+  /// Repeats "the chat is on screen" while it is, so the server's belief in
+  /// it expires on its own if this app is killed without saying otherwise.
+  Timer? _viewingBeat;
+
+  /// The stream dropped, so something may have arrived while it was down.
+  bool _missed = false;
+
+  /// How often an open chat says so. Under the server's minute, with room for
+  /// one to go missing.
+  static const viewingBeat = Duration(seconds: 25);
+
   String _tokenKey() => 'nestconnect.token.$appKey';
 
   /// The thread so far, oldest first. Replaced wholesale on every change, so a
@@ -145,6 +164,7 @@ class NestConnect {
     Map<String, String>? fields,
   }) async {
     await _endSession();
+    _identity = (id: userId, hash: userHash, email: email, phone: phone);
     return _session(
       externalId: userId,
       userHash: userHash,
@@ -195,6 +215,9 @@ class NestConnect {
     _token = map['token'] as String?;
     if (_token != null) await _store.write(_tokenKey(), _token!);
     _closed = false;
+    // A new token can name a different conversation; the server's "on screen"
+    // belongs to the one it names.
+    if (_viewing) unawaited(_reportViewing());
 
     _setMessages(
       (map['messages'] as List? ?? const [])
@@ -308,6 +331,9 @@ class NestConnect {
         _token = next;
         await _store.write(_tokenKey(), next);
         _listen();
+        // The first message is what creates the conversation, so this is the
+        // first moment there is one for the chat on screen to be showing.
+        if (_viewing) unawaited(_reportViewing());
       }
 
       final saved = NestMessage.tryParse(map['message']);
@@ -505,12 +531,96 @@ class NestConnect {
   /// Two jobs: it zeroes the badge, and it is what turns an agent's ticks from
   /// delivered to read — a different claim, and the only one worth showing them
   /// as read.
+  ///
+  /// And a third, which is the one notifications depend on: it tells the
+  /// server, and only while this is true does an agent's reply go unpushed.
+  /// The server used to infer it from the live stream — which this holds for
+  /// as long as somebody is signed in, so a phone locked in a pocket counted
+  /// as a customer reading and was never rung. `NestMessenger` calls this as
+  /// the chat opens and closes and as the app goes to and from the background;
+  /// a UI of your own should do the same.
   Future<void> setViewing(bool viewing) async {
+    final changed = viewing != _viewing;
     _viewing = viewing;
+    _viewingBeat?.cancel();
+    _viewingBeat = viewing
+        ? Timer.periodic(viewingBeat, (_) => unawaited(_reportViewing()))
+        : null;
+    if (changed || viewing) unawaited(_reportViewing());
     if (!viewing) return;
     _setUnread(0);
     await _markRead('read');
   }
+
+  Future<void> _reportViewing() async {
+    final token = _token;
+    if (token == null) return;
+    try {
+      await _transport.postJson('/viewing', {'viewing': _viewing}, token: token);
+    } on NestException {
+      // The server forgets "on screen" within a minute on its own. The cost of
+      // a lost "off" is one unrung reply; of a lost "on", one spare banner.
+    }
+  }
+
+  /// Come back from the background, or from a notification being tapped.
+  ///
+  /// Reconnects the live stream, because a phone quietly kills a backgrounded
+  /// app's socket without either end hearing about it, and fetches the thread
+  /// again, because whatever arrived in the meantime — the very reply the
+  /// notification was about — came while nothing was listening. Without the
+  /// second half, tapping a notification opened a chat that did not have the
+  /// message in it.
+  Future<void> resume() async {
+    if (_token == null) return;
+    if (!_closed) {
+      _reconnect?.cancel();
+      _attempt = 0;
+      _listen();
+    }
+    await refresh();
+  }
+
+  /// Fetch the thread again and fold it into what is on screen.
+  ///
+  /// The server's copy wins for every message it has; messages still on their
+  /// way from here are kept after it, since the server has not seen them yet.
+  Future<void> refresh() async {
+    final token = _token;
+    if (token == null) return;
+    try {
+      final raw = await _transport.getJson('/messages', token: token);
+      final map = raw is Map ? raw : const <String, Object?>{};
+      final fresh = (map['messages'] as List? ?? const [])
+          .map(NestMessage.tryParse)
+          .whereType<NestMessage>()
+          .toList(growable: false);
+      if (fresh.isEmpty || token != _token) return;
+      final known = _messages.map((m) => m.id).toSet();
+      final arrived = fresh.where((m) => !known.contains(m.id) && m.from == NestAuthor.agent).length;
+      final ids = fresh.map((m) => m.id).toSet();
+      _setMessages([
+        ...fresh,
+        ..._messages.where((m) => (m.pending || m.failed) && !ids.contains(m.id)),
+      ]);
+      if (arrived > 0) {
+        if (_viewing) {
+          unawaited(_markRead('read'));
+        } else {
+          _setUnread(_unread + arrived);
+        }
+      }
+    } on NestException {
+      // Nothing new is the same as nothing fetched, as far as the screen goes.
+    }
+  }
+
+  /// Whether a push notification's data is one of ours.
+  ///
+  /// Every push this sends carries `source: nestconnect` and the conversation
+  /// it is about, so an app that also receives its own notifications can tell
+  /// which ones should open the chat.
+  static bool isNotification(Map<String, Object?> data) => data['source'] == 'nestconnect';
 
   /// Begin a fresh conversation after an agent has closed this one.
   ///
@@ -526,7 +636,17 @@ class NestConnect {
     _setMessages(const []);
     _setUnread(0);
     _setClosed(false);
-    return _session(fields: fields);
+    // The same person, still signed in. Opened without these, this made them a
+    // stranger: a new anonymous contact with no history, holding their phone.
+    final who = _identity;
+    return _session(
+      externalId: who?.id,
+      userHash: who?.hash,
+      name: _visitorName,
+      email: who?.email,
+      phone: who?.phone,
+      fields: fields,
+    );
   }
 
   /* ---- notifications ---- */
@@ -624,6 +744,12 @@ class NestConnect {
       onDone: () => _scheduleReconnect(mine),
       cancelOnError: true,
     );
+    // Back after a drop: the stream carries what happens from now on, not what
+    // happened while it was down.
+    if (_missed) {
+      _missed = false;
+      unawaited(refresh());
+    }
   }
 
   void _onEvent(int generation, Map<String, Object?> event) {
@@ -699,6 +825,7 @@ class NestConnect {
   /// minute, because past that the customer has put the phone down.
   void _scheduleReconnect(int generation) {
     if (_closed || _token == null || generation != _generation) return;
+    _missed = true;
     _reconnect?.cancel();
     final wait = Duration(milliseconds: (500 * (1 << _attempt)).clamp(500, 30000));
     _attempt = (_attempt + 1).clamp(0, 6);
@@ -716,8 +843,12 @@ class NestConnect {
     _streamSub = null;
     _token = null;
     _attempt = 0;
+    _missed = false;
+    _viewingBeat?.cancel();
+    _viewingBeat = null;
     // The next person to open this chat is not the last one.
     _visitorName = null;
+    _identity = null;
     await _store.delete(_tokenKey());
   }
 
@@ -762,6 +893,7 @@ class NestConnect {
   /// it — a customer tapping the X wants the sheet gone, not a spinner.
   Future<void> dispose() async {
     _reconnect?.cancel();
+    _viewingBeat?.cancel();
     _typingFor?.cancel();
     _generation++;
     _transport.close();
