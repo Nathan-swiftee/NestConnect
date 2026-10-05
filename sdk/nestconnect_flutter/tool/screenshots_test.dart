@@ -54,6 +54,18 @@ class _Server {
   Completer<void>? holdHistory;
   Completer<void>? holdConfig;
 
+  void agentSays(String id, String body) => _events.add('data: ${jsonEncode({
+        'kind': 'message',
+        'payload': {
+          'id': id,
+          'from': 'agent',
+          'authorName': 'Nathan',
+          'body': body,
+          'at': DateTime.now().toIso8601String(),
+          'attachments': <Object?>[],
+          'reactions': <Object?>[],
+        },
+      })}\n\n');
   void agentTypes() =>
       _events.add('data: ${jsonEncode({'kind': 'typing', 'who': 'agent', 'typing': true})}\n\n');
   Completer<void>? holdPast;
@@ -199,7 +211,9 @@ Future<void> _loadFonts() async {
     await loader.load();
   }
 
-  const material = '/opt/flutter/bin/cache/artifacts/material_fonts';
+  // Wherever this machine's Flutter is — `flutter test` says where.
+  final root = Platform.environment['FLUTTER_ROOT'] ?? '/opt/flutter';
+  final material = '$root/bin/cache/artifacts/material_fonts';
   await family('Roboto', [
     for (final w in ['Light', 'Regular', 'Medium', 'Bold', 'Black']) '$material/Roboto-$w.ttf',
   ]);
@@ -648,6 +662,32 @@ void main() {
     await _capture(tester, '08-first-load-skeleton');
     server.holdConfig!.complete();
     await _settle(tester);
+  });
+
+  testWidgets('09 minimised, mid-conversation', (tester) async {
+    // The bar floats on its shadow; a test draws shadows as a hard grey ring
+    // unless told otherwise, which is not what a phone shows.
+    debugDisableShadows = false;
+    await open(tester);
+    server
+      ..config = _dingConfig(home: false)
+      ..session = _thread();
+    await login(tester);
+    await showSheet(tester);
+    await _capture(tester, '09a-conversation-minimise-arrow');
+    await tester.tap(find.byTooltip('Minimise'));
+    await _settle(tester);
+    await _capture(tester, '09b-minimised');
+
+    server.agentSays('m5', "Your £3 credit is on its way — it'll show on your next order.");
+    await _settle(tester);
+    await _capture(tester, '09c-minimised-new-reply');
+
+    server.agentTypes();
+    await _settle(tester, rounds: 2);
+    await _capture(tester, '09d-minimised-agent-typing');
+    // Put back before the test ends — the binding checks it was.
+    debugDisableShadows = true;
   });
 
   testWidgets('06 an earlier conversation', (tester) async {

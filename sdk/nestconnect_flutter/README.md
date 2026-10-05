@@ -136,6 +136,25 @@ showNestMessenger(
 If you have built your own UI on `NestConnect`, `config?.home` is the cards,
 `conversations()` is the history, and `conversation(id)` reads one of them.
 
+## Minimised chat
+
+Closing the chat mid-conversation minimises it instead: a bar along the bottom
+of the app with the agent's face, the last message and an unread count. It
+updates live (new replies, "typing…"), stays put as the customer moves between
+screens, and opens the conversation again when tapped. A chat with nothing said
+in it, or one an agent has closed, just closes. While the bar is up,
+`NestLauncher` hides itself.
+
+It sits 88pt above the bottom of the safe area, clear of a tab bar. Adjust or
+turn it off per call:
+
+```dart
+showNestMessenger(context, chat: chat, minimisedLift: 0);          // no tab bar
+showNestMessenger(context, chat: chat, minimiseWhenActive: false); // just close
+```
+
+`hideNestMinimised()` takes it away, for example on sign-out.
+
 ## When an agent closes the chat
 
 The messenger swaps the composer for the channel's own closing words and a

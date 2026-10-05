@@ -42,6 +42,7 @@ class NestHeader extends StatelessWidget {
     this.title,
     this.onBack,
     this.onClose,
+    this.minimise = false,
   });
 
   final NestAppearance appearance;
@@ -59,6 +60,10 @@ class NestHeader extends StatelessWidget {
 
   final VoidCallback? onBack;
   final VoidCallback? onClose;
+
+  /// Closing minimises the chat to a bar rather than putting it away, and the
+  /// close button is drawn as the arrow that says so.
+  final bool minimise;
 
   /// How much of the bottom of a fading header is given to the fade. The cards
   /// are pulled up by this much less twenty, so they start inside the colour.
@@ -124,7 +129,7 @@ class NestHeader extends StatelessWidget {
                 style: TextStyle(color: on, fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ),
-            if (onClose != null) _CloseButton(color: on, onTap: onClose!),
+            if (onClose != null) _CloseButton(color: on, onTap: onClose!, minimise: minimise),
           ],
         ),
       );
@@ -153,7 +158,7 @@ class NestHeader extends StatelessWidget {
                 if (team.isNotEmpty) _Faces(team: team, total: teamTotal, theme: theme),
                 if (onClose != null) ...[
                   const SizedBox(width: 10),
-                  _CloseButton(color: on, onTap: onClose!),
+                  _CloseButton(color: on, onTap: onClose!, minimise: minimise),
                 ],
               ],
             ),
@@ -253,9 +258,10 @@ class _BackButton extends StatelessWidget {
 }
 
 class _CloseButton extends StatelessWidget {
-  const _CloseButton({required this.color, required this.onTap});
+  const _CloseButton({required this.color, required this.onTap, this.minimise = false});
   final Color color;
   final VoidCallback onTap;
+  final bool minimise;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -265,11 +271,13 @@ class _CloseButton extends StatelessWidget {
           onTap: onTap,
           customBorder: const CircleBorder(),
           child: Tooltip(
-            message: 'Close',
+            message: minimise ? 'Minimise' : 'Close',
             child: SizedBox(
               width: 32,
               height: 32,
-              child: Icon(Icons.close_rounded, size: 19, color: color),
+              child: minimise
+                  ? Icon(Icons.keyboard_arrow_down_rounded, size: 24, color: color)
+                  : Icon(Icons.close_rounded, size: 19, color: color),
             ),
           ),
         ),

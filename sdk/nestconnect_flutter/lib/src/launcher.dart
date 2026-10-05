@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:nestconnect_client/nestconnect_client.dart';
 
 import 'messenger.dart';
+import 'minimised.dart';
 import 'theme.dart';
 
 /// Bring the chat up from the bottom of the screen.
@@ -16,12 +17,26 @@ Future<void> showNestMessenger(
   BuildContext context, {
   required NestConnect chat,
   NestFilePicker? onPickFile,
+
   /// Skip the home screen and open on the conversation.
   bool startOnConversation = false,
+
   /// What to do when a home card is tapped. Omit it and the link goes to the
   /// phone — a help centre to the browser, a `tel:` to the dialler.
   ValueChanged<NestHomeCard>? onOpenLink,
+
+  /// Closed mid-conversation, shrink to a bar over the app rather than go.
+  /// Off for an app that would rather the chat simply closed.
+  bool minimiseWhenActive = true,
+
+  /// How high above the bottom of the safe area the minimised chat sits. The
+  /// default clears a standard tab bar; 0 for an app without one.
+  double minimisedLift = nestMinimisedLift,
 }) {
+  // Taken now: the root overlay outlives whichever screen opened the chat, and
+  // the bar belongs over the whole app rather than over that one page.
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
+  hideNestMinimised();
   return showModalBottomSheet<void>(
     context: context,
     // Full height is available but not taken: the sheet is as tall as it needs
@@ -50,7 +65,23 @@ Future<void> showNestMessenger(
         ),
       );
     },
-  );
+  ).whenComplete(() {
+    if (!minimiseWhenActive || overlay == null || !overlay.mounted) return;
+    if (!nestChatActive(chat)) return;
+    showNestMinimised(
+      overlay,
+      chat: chat,
+      lift: minimisedLift,
+      onOpen: () => showNestMessenger(
+        context.mounted ? context : overlay.context,
+        chat: chat,
+        onPickFile: onPickFile,
+        onOpenLink: onOpenLink,
+        startOnConversation: true,
+        minimisedLift: minimisedLift,
+      ),
+    );
+  });
 }
 
 /// Open the chat from a tapped push notification, if it is one of ours.
@@ -124,54 +155,60 @@ class NestLauncher extends StatelessWidget {
       Theme.of(context).brightness,
     );
 
-    return StreamBuilder<int>(
-      stream: chat.onUnread,
-      initialData: chat.unread,
-      builder: (context, snapshot) {
-        final unread = snapshot.data ?? 0;
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            FloatingActionButton(
-              heroTag: 'nestconnect-launcher',
-              backgroundColor: theme.accent,
-              foregroundColor: theme.onAccent,
-              onPressed: () => showNestMessenger(
-                context,
-                chat: chat,
-                onPickFile: onPickFile,
-                onOpenLink: onOpenLink,
+    // The minimised chat is a bigger version of the same thing — who is
+    // talking, and how much is waiting — so the button steps aside for it.
+    return ValueListenableBuilder<bool>(
+      valueListenable: nestMinimisedShowing,
+      builder: (context, minimised, button) => minimised ? const SizedBox.shrink() : button!,
+      child: StreamBuilder<int>(
+        stream: chat.onUnread,
+        initialData: chat.unread,
+        builder: (context, snapshot) {
+          final unread = snapshot.data ?? 0;
+          return Stack(
+            clipBehavior: Clip.none,
+            children: [
+              FloatingActionButton(
+                heroTag: 'nestconnect-launcher',
+                backgroundColor: theme.accent,
+                foregroundColor: theme.onAccent,
+                onPressed: () => showNestMessenger(
+                  context,
+                  chat: chat,
+                  onPickFile: onPickFile,
+                  onOpenLink: onOpenLink,
+                ),
+                child: Icon(icon),
               ),
-              child: Icon(icon),
-            ),
-            if (unread > 0)
-              Positioned(
-                top: -2,
-                right: -2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  constraints: const BoxConstraints(minWidth: 20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDC2626),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: theme.surface, width: 2),
-                  ),
-                  child: Text(
-                    // Past nine it stops being a number worth reading and
-                    // starts being "several".
-                    unread > 9 ? '9+' : '$unread',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
+              if (unread > 0)
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    constraints: const BoxConstraints(minWidth: 20),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDC2626),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: theme.surface, width: 2),
+                    ),
+                    child: Text(
+                      // Past nine it stops being a number worth reading and
+                      // starts being "several".
+                      unread > 9 ? '9+' : '$unread',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
-        );
-      },
+            ],
+          );
+        },
+      ),
     );
   }
 }

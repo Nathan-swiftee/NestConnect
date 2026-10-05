@@ -339,6 +339,8 @@ Widget host(Widget child) => MaterialApp(home: Scaffold(body: child));
 void chatTest(String description, WidgetTesterCallback body) {
   testWidgets(description, (tester) async {
     await body(tester);
+    // The minimised bar is the app's, not a screen's: put away between tests.
+    hideNestMinimised();
     await tester.pumpWidget(const SizedBox());
     await settle(tester, 300);
     // Closing the chat here, inside the test, rather than in tearDown: the
@@ -541,6 +543,106 @@ void main() {
 
     expect(server.viewing.last, isTrue);
     expect(find.text('Your refund has gone through'), findsOneWidget);
+  });
+
+  group('minimised', () {
+    /// The app, with the chat opened from it the way an app does.
+    Future<void> openFromApp(WidgetTester tester) async {
+      late BuildContext app;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        app = context;
+        return const SizedBox.expand();
+      })));
+      unawaited(showNestMessenger(app, chat: chat));
+      await sheetArrives(tester);
+      await settle(tester);
+    }
+
+    chatTest('closing mid-conversation shrinks the chat to a bar that follows it',
+        (tester) async {
+      await openFromApp(tester);
+      server.agentSays('msg_a', 'Your order is on its way');
+      await settle(tester, 400);
+
+      // Mid-conversation the close button is an arrow down: put down, not away.
+      await tester.tap(find.byTooltip('Minimise'));
+      await settle(tester, 400);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(NestMessenger), findsNothing);
+      expect(find.byType(NestMinimisedChat), findsOneWidget);
+      expect(find.text('Your order is on its way'), findsOneWidget);
+
+      // A reply while it is down arrives on the bar, counted.
+      server.agentSays('msg_b', 'Should be with you in 10 minutes');
+      await settle(tester, 400);
+      expect(find.text('Should be with you in 10 minutes'), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(NestMinimisedChat), matching: find.text('1')),
+        findsOneWidget,
+      );
+
+      // And tapping it is the conversation again, not the bar plus a sheet.
+      await tester.tap(find.text('Should be with you in 10 minutes'));
+      await sheetArrives(tester);
+      await settle(tester);
+      expect(find.byType(NestMinimisedChat), findsNothing);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(chat.unread, 0);
+    });
+
+    chatTest('a chat with nothing said in it just closes', (tester) async {
+      await openFromApp(tester);
+      expect(find.byTooltip('Minimise'), findsNothing);
+      await tester.tap(find.byTooltip('Close'));
+      await settle(tester, 400);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(NestMessenger), findsNothing);
+      expect(find.byType(NestMinimisedChat), findsNothing);
+    });
+
+    chatTest('the bar can be put away', (tester) async {
+      await openFromApp(tester);
+      server.agentSays('msg_a', 'Your order is on its way');
+      await settle(tester, 400);
+      await tester.tap(find.byTooltip('Minimise'));
+      await settle(tester, 400);
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await tester.tap(find.byTooltip('Hide'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(NestMinimisedChat), findsNothing);
+    });
+
+    chatTest('the launcher steps aside for the bar', (tester) async {
+      await tester.pumpWidget(host(Stack(children: [
+        Positioned(right: 16, bottom: 16, child: NestLauncher(chat: chat)),
+      ])));
+      await settle(tester);
+      await tester.tap(find.byType(FloatingActionButton));
+      await sheetArrives(tester);
+      await settle(tester);
+      server.agentSays('msg_a', 'Your order is on its way');
+      await settle(tester, 400);
+      await tester.tap(find.byTooltip('Minimise'));
+      await settle(tester, 400);
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(NestMinimisedChat), findsOneWidget);
+      expect(find.byType(FloatingActionButton), findsNothing);
+
+      await tester.tap(find.byTooltip('Hide'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(FloatingActionButton), findsOneWidget);
+    });
+  });
+
+  test('a minimised preview says what a message was, in one line', () {
+    NestMessage msg(NestAuthor from, String body, [List<NestAttachment> files = const []]) =>
+        NestMessage(id: 'm', from: from, body: body, at: DateTime(2026), attachments: files);
+    expect(nestPreview(msg(NestAuthor.agent, 'Two\n\nlines')), 'Two lines');
+    expect(nestPreview(msg(NestAuthor.visitor, 'Thanks!')), 'You: Thanks!');
   });
 
   chatTest('the greeting says the customer\'s name', (tester) async {

@@ -10,6 +10,7 @@ import 'home.dart';
 import 'message_row.dart';
 import 'recorder.dart';
 import 'skeleton.dart';
+import 'minimised.dart';
 import 'theme.dart';
 import 'typing.dart';
 import 'voice.dart';
@@ -424,6 +425,9 @@ class _NestMessengerState extends State<NestMessenger> with WidgetsBindingObserv
           title: title,
           onBack: onBack,
           onClose: widget.onClose,
+          // Mid-conversation, closing is putting it down rather than away: it
+          // shrinks to a bar over the app, and the arrow says so.
+          minimise: _view == NestView.thread && nestChatActive(widget.chat),
         );
 
     /// What is under the last control: the home indicator, while the keyboard
@@ -797,14 +801,20 @@ class _NestKeyboardClearanceState extends State<NestKeyboardClearance>
 /// The face beside an agent's last bubble, 26 points — whoever said it, if they
 /// are one of the team, and their initials on the brand colour otherwise.
 class NestAgentFace extends StatelessWidget {
-  const NestAgentFace({super.key, required this.name, required this.team, required this.theme});
+  const NestAgentFace({
+    super.key,
+    required this.name,
+    required this.team,
+    required this.theme,
+    this.size = 26,
+  });
   final String? name;
   final List<NestTeamMate> team;
   final NestTheme theme;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    const size = 26.0;
     final mate = name == null ? null : team.where((m) => m.name == name).firstOrNull;
     final own = NestTheme.parseColor(mate?.color ?? '');
     final initials = mate?.initials ??
@@ -820,7 +830,7 @@ class NestAgentFace extends StatelessWidget {
         initials,
         style: TextStyle(
           color: own != null ? Colors.white : theme.onAccent,
-          fontSize: 10.5,
+          fontSize: size * 0.4,
           fontWeight: FontWeight.w700,
         ),
       ),
