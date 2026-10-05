@@ -77,19 +77,31 @@ already tells the server to stop pushing for that account; call
 `chat.unregisterPushToken()` separately when someone turns notifications off
 without signing out.
 
-A reply arriving while the chat is open on screen is **not** pushed — it is
-already there. Everything else is, addressed to your Firebase project so the
-banner carries your app's name and icon. Add the service-account key under
-Settings › NestChat widget › In-app SDK; without it nothing is pushed at all.
+A reply arriving while the chat is on screen is **not** pushed — it is already
+there. Everything else is, including a chat left open when the app goes to the
+background (the messenger tells the server when it stops being seen). Pushes are
+addressed to your Firebase project so the banner carries your app's name and
+icon. Add the service-account key under Settings › NestChat widget › In-app SDK;
+without it nothing is pushed at all.
 
-Messages carry `data.source == 'nestconnect'` and a `conversationId`, so tapping
-one can open the messenger:
+To open the chat on the conversation when a notification is tapped, call
+`openNestNotification` from **both** places a tap arrives. It ignores your own
+notifications (returns `false`) and fetches the reply before showing it:
 
 ```dart
+// The app was in the background.
 FirebaseMessaging.onMessageOpenedApp.listen((m) {
-  if (m.data['source'] == 'nestconnect') showNestMessenger(context, chat: chat);
+  openNestNotification(navigatorKey.currentContext!, chat: chat, data: m.data);
 });
+
+// The app was closed and the tap launched it.
+final initial = await FirebaseMessaging.instance.getInitialMessage();
+if (initial != null) {
+  openNestNotification(navigatorKey.currentContext!, chat: chat, data: initial.data);
+}
 ```
+
+`navigatorKey` is the `GlobalKey<NavigatorState>` given to your `MaterialApp`.
 
 On Android, create a notification channel with id `nest_messages` — without it
 Android 8+ drops the notification silently.

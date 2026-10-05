@@ -51,6 +51,16 @@ class FakeServer {
   final requests = <String>[];
   final bodies = <String, Object?>{};
 
+  /// Every session body, in order — `bodies` keeps only the last per path, and
+  /// what a second session sent is the whole question for a new chat.
+  final sessionBodies = <Map<String, Object?>>[];
+
+  /// The query each stream was opened with.
+  final streamQueries = <Map<String, String>>[];
+
+  /// What `GET /messages` answers: the thread as the server holds it.
+  List<Map<String, Object?>> history = const [];
+
   /// Pushed to any open stream, so a test can play the part of an agent.
   final _events = StreamController<String>.broadcast();
 
@@ -93,6 +103,9 @@ class FakeServer {
       final body = await utf8.decoder.bind(req).join();
       if (body.isNotEmpty && req.headers.contentType?.mimeType == 'application/json') {
         bodies[path] = jsonDecode(body);
+        if (path.endsWith('/session')) {
+          sessionBodies.add(jsonDecode(body) as Map<String, Object?>);
+        }
       } else if (body.isNotEmpty) {
         bodies[path] = body;
       }
@@ -153,7 +166,10 @@ class FakeServer {
           'mime': 'image/jpeg',
           'size': 42,
         });
+      } else if (path.endsWith('/messages') && req.method == 'GET') {
+        _json(req, {'messages': history});
       } else if (path.endsWith('/stream')) {
+        streamQueries.add(req.uri.queryParameters);
         // The charset is not decoration. Dart writes latin1 when the content
         // type names none, so an event carrying an emoji — which every
         // reaction does — throws on write and is swallowed by the catch in
@@ -488,6 +504,86 @@ void main() {
     // Still signed in: this is the same customer starting another conversation,
     // not somebody signing out. Their history and their push registration stay.
     expect(chat.isOpen, isTrue);
+  });
+
+  test('a new chat keeps who they are, not just that somebody is', () async {
+    await chat.login(userId: 'u_9182', userHash: 'deadbeef', name: 'Marta', email: 'marta@example.com');
+    await chat.startNewChat();
+
+    // The second session used to go out with none of this, which made somebody
+    // signed in to the app an anonymous visitor the moment they started a new
+    // conversation: a fresh contact with no history, and their phone's
+    // notifications moved onto it.
+    expect(server.sessionBodies, hasLength(2));
+    final again = server.sessionBodies.last;
+    expect(again['externalId'], 'u_9182');
+    expect(again['userHash'], 'deadbeef');
+    expect(again['name'], 'Marta');
+    expect(again['email'], 'marta@example.com');
+  });
+
+  test('and signing out forgets it, so the next person is not them', () async {
+    await chat.login(userId: 'u_9182', userHash: 'deadbeef');
+    await chat.logout();
+    await chat.open();
+    await chat.startNewChat();
+    expect(server.sessionBodies.last.containsKey('externalId'), isFalse);
+  });
+
+  test('the chat being on screen is said to the server, and so is it going', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+
+    // What decides whether an agent's reply rings the phone. It used to be
+    // inferred from the live stream, which an app holds open in the
+    // background — so a phone in a pocket counted as somebody reading.
+    await chat.setViewing(true);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(server.bodies['/api/nestchat/viewing'], {'viewing': true});
+
+    await chat.setViewing(false);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(server.bodies['/api/nestchat/viewing'], {'viewing': false});
+  });
+
+  test("an app's stream says it reports what is on screen itself", () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    // Without it the server counts the connection as a customer reading.
+    expect(server.streamQueries.last['presence'], 'viewing');
+  });
+
+  test('coming back fetches what arrived while nothing was listening', () async {
+    server.session = {...server.session, 'hasConversation': true};
+    await chat.open();
+    expect(chat.messages, isEmpty);
+
+    // A reply that came while the phone had the app asleep — the one the
+    // notification was about. The stream was not there to carry it, so
+    // tapping the notification opened a chat without the message in it.
+    server.history = [
+      {
+        'id': 'm_away',
+        'from': 'agent',
+        'authorName': 'Nathan',
+        'body': 'Your rider is outside',
+        'at': DateTime.now().toIso8601String(),
+      },
+    ];
+    await chat.resume();
+    expect(chat.messages.map((m) => m.body), ['Your rider is outside']);
+    expect(chat.unread, 1, reason: 'not on screen, so it is waiting');
+
+    // Fetching again finds nothing new and counts nothing twice.
+    await chat.refresh();
+    expect(chat.messages, hasLength(1));
+    expect(chat.unread, 1);
+  });
+
+  test('a notification of ours can be told from the app\'s own', () {
+    expect(NestConnect.isNotification({'source': 'nestconnect', 'conversationId': 'c_1'}), isTrue);
+    expect(NestConnect.isNotification({'type': 'order_update'}), isFalse);
   });
 
   test('a reply carries what it answers', () async {

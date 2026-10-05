@@ -124,7 +124,7 @@ class IoTransport extends NestTransport {
     // and surfaces as an unhandled zone error — a crash in somebody's app,
     // caused by them closing the chat.
     try {
-      final req = await _client.getUrl(uriFor('/stream', {'token': token}));
+      final req = await _client.getUrl(uriFor('/stream', {'token': token, 'presence': 'viewing'}));
       req.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
       final res = await req.close();
       if (res.statusCode >= 400) return;

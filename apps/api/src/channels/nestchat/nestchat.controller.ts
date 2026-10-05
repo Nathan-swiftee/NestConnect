@@ -32,6 +32,7 @@ import {
   nestchatSessionInputSchema,
   nestchatStartInputSchema,
   nestchatTypingInputSchema,
+  nestchatViewingInputSchema,
   toPublicRouting,
   type NestChatAppSession,
   type NestChatAppSessionInput,
@@ -50,6 +51,7 @@ import {
   type NestChatStartInput,
   type NestChatStartResult,
   type NestChatTypingInput,
+  type NestChatViewingInput,
 } from "@ding/schemas";
 import type { Inbox } from "@ding/schemas";
 import type { AttachmentInput } from "../../data/store";
@@ -831,6 +833,30 @@ export class NestChatController {
   }
 
   /**
+   * The app's chat is on screen, or is not.
+   *
+   * Said by apps, repeated every 25 seconds while true, and what decides whether
+   * an agent's reply is pushed: not while the customer is reading it, always
+   * otherwise. Before this the server inferred it from the live stream, which an
+   * app keeps open while it sits in the background — so the replies a push
+   * exists for, the ones that arrive while the phone is in a pocket, were the
+   * ones it skipped.
+   *
+   * Nothing to record before the first message: there is no conversation for
+   * the screen to be showing, and nothing an agent could reply to.
+   */
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post("viewing")
+  async viewing(
+    @Headers("authorization") auth: string | undefined,
+    @Body(new ZodValidationPipe(nestchatViewingInputSchema)) body: NestChatViewingInput,
+  ): Promise<{ ok: true }> {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    if (claims.conversationId) await this.bus.setViewing(claims.conversationId, body.viewing);
+    return { ok: true };
+  }
+
+  /**
    * The live stream: agent replies pushed to an open widget.
    *
    * Server-Sent Events rather than the Socket.IO the agents use — see VisitorBus
@@ -839,7 +865,11 @@ export class NestChatController {
    * which the comment heartbeat does.
    */
   @Get("stream")
-  async stream(@Query("token") token: string | undefined, @Res() res: Response): Promise<void> {
+  async stream(
+    @Query("token") token: string | undefined,
+    @Query("presence") presence: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
     const claims = this.nestchat.verifyVisitorToken(token);
     if (!claims.conversationId) throw new BadRequestException("No conversation yet");
 
@@ -857,9 +887,16 @@ export class NestChatController {
     res.flushHeaders?.();
     res.write(": open\n\n");
 
-    const unsubscribe = this.bus.subscribe(claims.conversationId, (event) => {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
-    });
+    // An app sends `presence=viewing`: it reports what is on screen itself, so
+    // its stream is not taken to mean somebody is reading. The web widget's
+    // stream still is — a widget that is open is a page that is open.
+    const unsubscribe = this.bus.subscribe(
+      claims.conversationId,
+      (event) => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      },
+      { reportsViewing: presence === "viewing" },
+    );
     const heartbeat = setInterval(() => res.write(": ping\n\n"), 25_000);
     const stop = () => {
       clearInterval(heartbeat);

@@ -53,9 +53,15 @@ class NestMessenger extends StatefulWidget {
     this.onPickFile,
     this.onClose,
     this.onOpenLink,
+    this.startOnConversation = false,
   });
 
   final NestConnect chat;
+
+  /// Open on the conversation even where the channel has a home screen — what
+  /// tapping a notification about a reply should do. The cards are one tap
+  /// back.
+  final bool startOnConversation;
 
   /// Omit it and there is no attach button. Better than a button that opens
   /// nothing.
@@ -73,7 +79,16 @@ class NestMessenger extends StatefulWidget {
   State<NestMessenger> createState() => _NestMessengerState();
 }
 
-class _NestMessengerState extends State<NestMessenger> {
+/// How many messengers are mounted — so a notification tapped while the chat
+/// is already up does not stack a second one on top of it.
+///
+/// Counted by the screens themselves rather than by the sheets opened: a sheet
+/// whose navigator is torn down never reports closing, and a count of sheets
+/// would then say "open" for the rest of the app's life, and no notification
+/// would open the chat again.
+int nestMessengersShowing = 0;
+
+class _NestMessengerState extends State<NestMessenger> with WidgetsBindingObserver {
   final _composer = TextEditingController();
   final _scroll = ScrollController();
   final _staged = <NestUpload>[];
@@ -131,8 +146,26 @@ class _NestMessengerState extends State<NestMessenger> {
     // On screen: zeroes the badge, and turns the agent's ticks from delivered
     // to read — a different claim, and the only one worth showing them as read.
     unawaited(widget.chat.setViewing(true));
+    // Open is not the same as on screen. A chat left open when the phone is
+    // put down is still mounted, and if it went on telling the server it was
+    // being read, no reply would ring the phone until the app was killed.
+    WidgetsBinding.instance.addObserver(this);
+    nestMessengersShowing++;
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd());
     unawaited(_settleView());
+  }
+
+  /// The app going to the background, or coming back.
+  ///
+  /// In the background the chat is not on screen, whatever is mounted, and the
+  /// server has to hear it or it will not push the reply that arrives meanwhile.
+  /// Coming back, the stream the phone quietly killed is reopened and the
+  /// thread fetched again, so the reply the notification was about is there.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final onScreen = state == AppLifecycleState.resumed;
+    unawaited(widget.chat.setViewing(onScreen));
+    if (onScreen) unawaited(widget.chat.resume());
   }
 
   /// Decide which screen this opens on, once the channel's config has landed.
@@ -149,7 +182,7 @@ class _NestMessengerState extends State<NestMessenger> {
     }
     if (!mounted || _landed) return;
     _landed = true;
-    if (widget.chat.config?.home == null) return;
+    if (widget.chat.config?.home == null || widget.startOnConversation) return;
     setState(() => _view = NestView.home);
     await _loadHistory();
   }
@@ -211,6 +244,8 @@ class _NestMessengerState extends State<NestMessenger> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    nestMessengersShowing--;
     _typing?.cancel();
     unawaited(_sub?.cancel());
     unawaited(_closedSub?.cancel());
