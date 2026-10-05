@@ -121,6 +121,22 @@ async function main(): Promise<void> {
   ok("newest first", listed[0]?.id === live, `${listed[0]?.id} vs ${live}`);
   ok("and the live one is not marked closed", listed[0]?.closed === false);
 
+  // ── a tie: both touched in the same instant ─────────────────────────────
+  // Forced rather than left to the clock, which is the point: on a fast machine
+  // two writes land on one millisecond, and whatever order the store returns
+  // then is the order the customer sees. This passed on a laptop and failed on
+  // CI, which is the only reason it was found.
+  const stamp = new Date().toISOString();
+  const records = (store as unknown as { conversations: { id: string; lastActivityAt: string }[] })
+    .conversations;
+  for (const rec of records) if (rec.id === first || rec.id === live) rec.lastActivityAt = stamp;
+  listed = await nestchat.visitorConversations(claims);
+  ok(
+    "a tie puts the open conversation ahead of the closed one",
+    listed[0]?.id === live && listed[1]?.id === first,
+    listed.map((c) => `${c.id}${c.closed ? " (closed)" : ""}`).join(", "),
+  );
+
   // ── an internal note must not become the preview ────────────────────────
   await store.addMessage(
     live,

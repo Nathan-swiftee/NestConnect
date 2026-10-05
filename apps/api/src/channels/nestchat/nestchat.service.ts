@@ -801,7 +801,16 @@ export class NestChatService {
     const withConvs = await this.store.getContactWithConversations(claims.contactId);
     const mine = (withConvs?.conversations ?? [])
       .filter((c) => c.inboxId === claims.inboxId)
-      .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt))
+      // Newest first, and an open conversation ahead of a closed one when the
+      // two were last touched in the same instant. Without the second rule the
+      // order of a tie was whatever the store happened to return — which is how
+      // a resolved thread came to sit above the live one on CI, where two
+      // writes a moment apart land on the same millisecond.
+      .sort(
+        (a, b) =>
+          b.lastActivityAt.localeCompare(a.lastActivityAt) ||
+          Number(a.status === "closed") - Number(b.status === "closed"),
+      )
       .slice(0, NESTCHAT_MAX_PAST_CONVERSATIONS);
 
     const out: NestChatPastConversation[] = [];
