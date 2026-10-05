@@ -2,11 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:nestconnect_client/nestconnect_client.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'bubble.dart';
+import 'header.dart';
+import 'home.dart';
 import 'message_row.dart';
 import 'recorder.dart';
+import 'skeleton.dart';
 import 'theme.dart';
+import 'typing.dart';
 import 'voice.dart';
 
 /// What a host app hands back when the customer wants to attach something.
@@ -24,12 +29,31 @@ class NestPickedFile {
   final String mime;
 }
 
-/// The chat itself: header, thread, composer.
+/// Where the messenger is: the front door, the conversation, or an old one.
+enum NestView {
+  /// The cards. Only ever reached when the channel has a home screen turned on.
+  home,
+
+  /// The live conversation, with a composer.
+  thread,
+
+  /// One of the customer's earlier conversations, read and not written to.
+  past,
+}
+
+/// The chat itself: header, thread, composer — and the home screen in front of
+/// them, where the business has turned one on.
 ///
 /// Usually shown by [showNestMessenger] rather than built directly, but it is a
 /// plain widget — an app that wants chat on a page of its own can put it there.
 class NestMessenger extends StatefulWidget {
-  const NestMessenger({super.key, required this.chat, this.onPickFile, this.onClose});
+  const NestMessenger({
+    super.key,
+    required this.chat,
+    this.onPickFile,
+    this.onClose,
+    this.onOpenLink,
+  });
 
   final NestConnect chat;
 
@@ -37,6 +61,13 @@ class NestMessenger extends StatefulWidget {
   /// nothing.
   final NestFilePicker? onPickFile;
   final VoidCallback? onClose;
+
+  /// What to do when a home card is tapped. Defaults to handing the link to the
+  /// phone, which is what every one of them wants: a help centre opens in a
+  /// browser, a `tel:` opens the dialler, a `mailto:` opens Mail. An app that
+  /// would rather keep people inside — its own in-app browser, say — passes its
+  /// own.
+  final ValueChanged<NestHomeCard>? onOpenLink;
 
   @override
   State<NestMessenger> createState() => _NestMessengerState();
@@ -48,6 +79,7 @@ class _NestMessengerState extends State<NestMessenger> {
   final _staged = <NestUpload>[];
   StreamSubscription<List<NestMessage>>? _sub;
   StreamSubscription<bool>? _closedSub;
+  StreamSubscription<bool>? _typingSub;
   bool _restarting = false;
   Timer? _typing;
   bool _sending = false;
@@ -61,6 +93,24 @@ class _NestMessengerState extends State<NestMessenger> {
   /// rather than to a guess at where it is.
   final _keys = <String, GlobalKey>{};
 
+  /// Which of the three screens is up. Starts on the conversation and is moved
+  /// to the front door once the config says there is one — the config arrives
+  /// over the network a moment after the sheet opens, and opening onto a blank
+  /// screen that then becomes a home screen is worse than opening onto the chat.
+  NestView _view = NestView.thread;
+
+  /// Whether the customer has been shown the front door yet. Without this, going
+  /// Home → chat would be undone by the next config rebuild.
+  bool _landed = false;
+
+  /// The customer's own earlier conversations, for the home screen.
+  List<NestPastConversation> _history = const [];
+  bool _loadingHistory = false;
+
+  /// The old conversation being read, and what was said in it.
+  NestPastConversation? _reading;
+  List<NestMessage> _readingMessages = const [];
+
   @override
   void initState() {
     super.initState();
@@ -73,10 +123,90 @@ class _NestMessengerState extends State<NestMessenger> {
     _closedSub = widget.chat.onClosed.listen((_) {
       if (mounted) setState(() {});
     });
+    // And its own again for the dots, for the same reason: an agent starting to
+    // type is a change with no message attached to it.
+    _typingSub = widget.chat.onAgentTyping.listen((_) {
+      if (mounted) setState(_scrollToEnd);
+    });
     // On screen: zeroes the badge, and turns the agent's ticks from delivered
     // to read — a different claim, and the only one worth showing them as read.
     unawaited(widget.chat.setViewing(true));
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd());
+    unawaited(_settleView());
+  }
+
+  /// Decide which screen this opens on, once the channel's config has landed.
+  ///
+  /// The config is fetched when the session opens, which may be before this
+  /// widget exists or a moment after — so this waits for it rather than reading
+  /// whatever happens to be there on the first frame. A chat that opens on the
+  /// conversation and jumps to a home screen half a second later is worse than
+  /// either one on its own.
+  Future<void> _settleView() async {
+    for (var waited = 0; waited < 24 && mounted; waited++) {
+      if (widget.chat.config != null) break;
+      await Future<void>.delayed(const Duration(milliseconds: 120));
+    }
+    if (!mounted || _landed) return;
+    _landed = true;
+    if (widget.chat.config?.home == null) return;
+    setState(() => _view = NestView.home);
+    await _loadHistory();
+  }
+
+  /// This customer's earlier conversations, for the cards on the home screen.
+  Future<void> _loadHistory() async {
+    if (_loadingHistory) return;
+    setState(() => _loadingHistory = true);
+    final found = await widget.chat.conversations();
+    if (!mounted) return;
+    setState(() {
+      _history = found;
+      _loadingHistory = false;
+    });
+  }
+
+  /// Open one of them, read-only.
+  Future<void> _read(NestPastConversation conversation) async {
+    setState(() {
+      _reading = conversation;
+      _readingMessages = const [];
+      _view = NestView.past;
+      _error = null;
+    });
+    try {
+      final messages = await widget.chat.conversation(conversation.id);
+      if (mounted) setState(() => _readingMessages = messages);
+    } on NestException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  /// Back to the cards — or out, where there is no home screen to go back to.
+  void _backHome() {
+    setState(() {
+      _reading = null;
+      _readingMessages = const [];
+      _view = widget.chat.config?.home == null ? NestView.thread : NestView.home;
+    });
+    // Refreshed rather than remembered: a conversation read and left may have
+    // been reopened by an agent while it was on screen, and the row describing
+    // it would still say "Resolved".
+    if (_view == NestView.home) unawaited(_loadHistory());
+  }
+
+  /// Hand a card's link to the phone.
+  Future<void> _openLink(NestHomeCard card) async {
+    final custom = widget.onOpenLink;
+    if (custom != null) {
+      custom(card);
+      return;
+    }
+    final uri = Uri.tryParse(card.href);
+    // Nothing is said when it fails. The business configured this link; a
+    // customer who taps "Call us" on a tablet with no dialler does not need an
+    // error about it, and there is nothing they could do with one.
+    if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -84,19 +214,29 @@ class _NestMessengerState extends State<NestMessenger> {
     _typing?.cancel();
     unawaited(_sub?.cancel());
     unawaited(_closedSub?.cancel());
+    unawaited(_typingSub?.cancel());
     unawaited(widget.chat.setViewing(false));
     _composer.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
+  /// Put the newest message back under the composer.
+  ///
+  /// Zero, because the thread is built upwards — see `reverse` on the list. That
+  /// is the whole reason this is reliable now. It used to jump to
+  /// `maxScrollExtent`, which for a lazily built list is an *estimate* made from
+  /// the rows that happen to have been laid out: with a real conversation above
+  /// it, the jump landed a couple of hundred pixels short of the bottom and the
+  /// message somebody had just sent was built below the fold — present, stored,
+  /// delivered, and not on screen. Zero is not an estimate.
   void _scrollToEnd() {
     if (!_scroll.hasClients) return;
     // Jumped to rather than animated on a rebuild: a new message arriving while
     // somebody is reading should land, not glide, and an animation that
     // restarts on every keystroke is a thread that will not sit still.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      if (_scroll.hasClients) _scroll.jumpTo(0);
     });
   }
 
@@ -216,142 +356,274 @@ class _NestMessengerState extends State<NestMessenger> {
     final config = widget.chat.config;
     final appearance = config?.appearance ?? NestAppearance.fallback;
     final theme = NestTheme.from(appearance, Theme.of(context).brightness);
-    final messages = widget.chat.messages;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _Header(
-            appearance: appearance,
-            theme: theme,
-            online: config?.online ?? false,
-            team: config?.team ?? const [],
-            visitorName: widget.chat.visitorName,
-            onClose: widget.onClose,
+    /// Whether the keyboard is up, and so whether the header is worth its
+    /// height. The greeting, the away line and the faces are an introduction,
+    /// and somebody mid-sentence has been introduced.
+    final compact = MediaQuery.viewInsetsOf(context).bottom > 0;
+
+    NestHeader header({bool fade = false, bool compact = false, String? title, VoidCallback? onBack}) =>
+        NestHeader(
+          appearance: appearance,
+          theme: theme,
+          online: config?.online ?? false,
+          team: config?.team ?? const [],
+          teamTotal: config?.teamTotal ?? 0,
+          visitorName: widget.chat.visitorName,
+          fade: fade,
+          compact: compact,
+          title: title,
+          onBack: onBack,
+          onClose: widget.onClose,
+        );
+
+    /// What is under the last control: the home indicator, while the keyboard
+    /// is down. Zero with it up — the keyboard covers that strip.
+    final bottomInset = compact ? 0.0 : MediaQuery.paddingOf(context).bottom;
+
+    /// The sheet, whichever screen is inside it — one shape, one clip, one
+    /// decision about the keyboard, rather than three that drift.
+    Widget shell(List<Widget> children) => NestKeyboardClearance(
+          child: Container(
+            decoration: BoxDecoration(
+              color: theme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(children: children),
           ),
-          Flexible(
-            child: messages.isEmpty
-                ? _Empty(theme: theme, appearance: appearance)
-                : ListView.builder(
-                    controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                    itemCount: messages.length,
-                    itemBuilder: (context, i) {
-                      final m = messages[i];
-                      final key = _keys.putIfAbsent(m.id, GlobalKey.new);
-                      final voice = m.voice;
-                      return NestMessageRow(
-                        key: ValueKey(m.id),
-                        message: m,
-                        theme: theme,
-                        highlighted: _flash == m.id,
-                        // A message still on its way has no id the server
-                        // would recognise, so there is nothing to react to
-                        // and nothing to quote.
-                        canAct: !widget.chat.isClosed && !m.id.startsWith('pending-'),
-                        onReply: (target) => setState(() => _replyTo = target),
-                        onReact: (target, emoji) =>
-                            unawaited(widget.chat.react(target.id, emoji)),
-                        onJumpToQuote: _jumpToQuote,
-                        child: KeyedSubtree(
-                          key: key,
-                          // A recording is the whole bubble rather than a file
-                          // listed under one: the waveform *is* the message,
-                          // and wrapping it in an empty text bubble would put
-                          // a box round it for no reason.
-                          child: voice != null
-                              ? Align(
-                                  alignment: m.isMine
-                                      ? Alignment.centerRight
-                                      : Alignment.centerLeft,
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 3),
-                                    child: NestVoiceNote(
-                                      attachment: voice,
-                                      source: widget.chat.attachmentUrl(voice),
-                                      mine: m.isMine,
-                                      theme: theme,
-                                    ),
-                                  ),
-                                )
-                              : NestBubble(
-                                  message: m,
-                                  theme: theme,
-                                  attachmentUrl: widget.chat.attachmentUrl,
-                                  // Only on the first of a run. Repeating a
-                                  // name down five consecutive replies is noise.
-                                  showAuthor:
-                                      i == 0 || messages[i - 1].from != messages[i].from,
-                                ),
+        );
+
+    // The channel's look has not arrived yet. The shape of the screen rather
+    // than a spinner, so nothing jumps when it does.
+    if (config == null) {
+      return shell([
+        Expanded(
+          child: ColoredBox(
+            color: theme.panel,
+            child: NestShimmer(theme: theme, child: const _OpeningBones()),
+          ),
+        ),
+      ]);
+    }
+
+    final home = config.home;
+    if (_view == NestView.home && home != null) {
+      return shell([
+        Expanded(
+          child: NestHomeScreen(
+            home: home,
+            theme: theme,
+            header: header(fade: true),
+            team: config.team,
+            conversations: _history,
+            loadingConversations: _loadingHistory,
+            onStartChat: () => setState(() => _view = NestView.thread),
+            onOpenConversation: (c) => unawaited(_read(c)),
+            onOpenLink: (card) => unawaited(_openLink(card)),
+            footer: appearance.showBranding ? _Branding(theme: theme) : null,
+            bottomInset: bottomInset,
+          ),
+        ),
+      ]);
+    }
+
+    if (_view == NestView.past) {
+      final reading = _reading;
+      final list = _readingMessages;
+      return shell([
+        header(
+          compact: true,
+          title: reading?.authorName == null ? null : 'Conversation with ${reading!.authorName}',
+          onBack: _backHome,
+        ),
+        Expanded(
+          child: ColoredBox(
+            color: theme.panel,
+            child: list.isEmpty
+                ? (_error == null
+                    ? NestShimmer(theme: theme, child: const NestThreadBone())
+                    : Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: theme.muted, fontSize: 14),
+                          ),
                         ),
-                      );
-                    },
+                      ))
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+                    reverse: true,
+                    itemCount: list.length,
+                    // Bubbles and nothing else: no swipe, no long press, no
+                    // reactions. There is nothing to reply to in a conversation
+                    // that is over, and offering it would be offering something
+                    // the server would refuse.
+                    itemBuilder: (context, row) =>
+                        _message(list, list.length - 1 - row, theme, config.team),
                   ),
           ),
-          if (_error != null)
-            Container(
-              width: double.infinity,
-              color: const Color(0x14DC2626),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(
-                _error!,
-                style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13),
-              ),
-            ),
-          if (_staged.isNotEmpty)
-            NestStagedFiles(
-              files: _staged,
-              onRemove: (upload) => setState(() => _staged.remove(upload)),
-            ),
-          if (widget.chat.isClosed)
-            _ClosedNotice(
+        ),
+        _PastFooter(theme: theme, closed: reading?.closed ?? true, onBack: _backHome),
+        SizedBox(height: bottomInset),
+      ]);
+    }
+
+    final messages = widget.chat.messages;
+    final typing = widget.chat.agentTyping && !widget.chat.isClosed;
+
+    return shell([
+      header(
+        compact: compact,
+        // Only where there is something behind it. A channel with no home
+        // screen has no "back", and an arrow that goes nowhere is worse than no
+        // arrow.
+        onBack: home == null ? null : _backHome,
+      ),
+      Expanded(
+        child: ColoredBox(
+          color: theme.panel,
+          child: messages.isEmpty && !typing
+              ? _Greeting(theme: theme, appearance: appearance, name: widget.chat.visitorName)
+              : ListView.builder(
+                  controller: _scroll,
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
+                  // Built from the bottom up, newest first.
+                  //
+                  // Not a style: it is what makes "the newest message is on
+                  // screen" true by construction. Downwards, the bottom of the
+                  // thread is `maxScrollExtent` — a guess, for a list that
+                  // builds rows as they are needed — so the scroll that followed
+                  // a new message landed short of it and the message was built
+                  // below the fold. Upwards, the newest message is at offset
+                  // zero, which needs no scrolling and cannot be estimated
+                  // wrongly. It is also why the conversation hugs the composer
+                  // instead of hanging from the header.
+                  reverse: true,
+                  itemCount: messages.length + (typing ? 1 : 0),
+                  itemBuilder: (context, row) {
+                    // The dots come first in a reversed list, which puts them
+                    // last on screen — where the reply itself is about to
+                    // appear, scrolling with the thread rather than hovering
+                    // over it.
+                    if (typing && row == 0) {
+                      return Padding(
+                        padding: const EdgeInsets.only(left: NestBubble.faceColumn + 8, top: 6),
+                        child: NestTypingDots(theme: theme),
+                      );
+                    }
+                    final i = messages.length - 1 - (typing ? row - 1 : row);
+                    final m = messages[i];
+                    final key = _keys.putIfAbsent(m.id, GlobalKey.new);
+                    return NestMessageRow(
+                      key: ValueKey(m.id),
+                      message: m,
+                      theme: theme,
+                      highlighted: _flash == m.id,
+                      // A message still on its way has no id the server would
+                      // recognise, so there is nothing to react to and nothing
+                      // to quote.
+                      canAct: !widget.chat.isClosed && !m.id.startsWith('pending-'),
+                      onReply: (target) => setState(() => _replyTo = target),
+                      onReact: (target, emoji) => unawaited(widget.chat.react(target.id, emoji)),
+                      onJumpToQuote: _jumpToQuote,
+                      child: KeyedSubtree(key: key, child: _message(messages, i, theme, config.team)),
+                    );
+                  },
+                ),
+        ),
+      ),
+      if (_error != null)
+        Container(
+          width: double.infinity,
+          color: const Color(0x14DC2626),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(_error!, style: const TextStyle(color: Color(0xFFDC2626), fontSize: 13)),
+        ),
+      if (_staged.isNotEmpty)
+        NestStagedFiles(
+          files: _staged,
+          onRemove: (upload) => setState(() => _staged.remove(upload)),
+        ),
+      if (widget.chat.isClosed)
+        _ClosedNotice(
+          theme: theme,
+          message: appearance.closedMessage,
+          newChatLabel: appearance.newChatLabel,
+          busy: _restarting,
+          onNewChat: _startNewChat,
+        )
+      else ...[
+        // What they are answering, above the box rather than inside it: the
+        // quote is context for what they are about to type, and in the field it
+        // would have to be deleted to be cleared.
+        if (_replyTo != null)
+          _ReplyingTo(
+            theme: theme,
+            message: _replyTo!,
+            onCancel: () => setState(() => _replyTo = null),
+          ),
+        _Composer(
+          controller: _composer,
+          theme: theme,
+          placeholder: appearance.placeholder,
+          sending: _sending,
+          attaching: _attaching,
+          onAttach: widget.onPickFile == null ? null : _attach,
+          onSend: _send,
+          onChanged: _onTyped,
+          onRecorded: (note) => unawaited(_sendVoice(note)),
+          onRecordError: (message) => setState(() => _error = message),
+        ),
+      ],
+      // Dropped with the keyboard up for the same reason the greeting is: a line
+      // of our own branding is not worth a line of their conversation.
+      if (appearance.showBranding && !compact) _Branding(theme: theme),
+      SizedBox(height: bottomInset),
+    ]);
+  }
+
+  /// One message, drawn the same way in the live thread and in an old one: the
+  /// author over the first of a run, the face and the time under the last.
+  Widget _message(List<NestMessage> list, int i, NestTheme theme, List<NestTeamMate> team) {
+    final m = list[i];
+    final firstOfRun = i == 0 || list[i - 1].from != m.from;
+    final lastOfRun = i == list.length - 1 || list[i + 1].from != m.from;
+    final face = m.isMine ? null : NestAgentFace(name: m.authorName, team: team, theme: theme);
+    final voice = m.voice;
+    if (voice != null) {
+      // A recording is the whole bubble rather than a file listed under one:
+      // the waveform *is* the message, and wrapping it in an empty text bubble
+      // would put a box round it for no reason.
+      return Padding(
+        padding: EdgeInsets.only(top: firstOfRun ? 10 : 3, bottom: lastOfRun ? 4 : 0),
+        child: Row(
+          mainAxisAlignment: m.isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!m.isMine) ...[
+              SizedBox(width: NestBubble.faceColumn, child: lastOfRun ? face : null),
+              const SizedBox(width: 8),
+            ],
+            NestVoiceNote(
+              attachment: voice,
+              source: widget.chat.attachmentUrl(voice),
+              mine: m.isMine,
               theme: theme,
-              message: appearance.closedMessage,
-              newChatLabel: appearance.newChatLabel,
-              busy: _restarting,
-              onNewChat: _startNewChat,
-            )
-          else ...[
-            // What they are answering, above the box rather than inside it:
-            // the quote is context for what they are about to type, and in
-            // the field it would have to be deleted to be cleared.
-            if (_replyTo != null)
-              _ReplyingTo(
-                theme: theme,
-                message: _replyTo!,
-                onCancel: () => setState(() => _replyTo = null),
-              ),
-            _Composer(
-              controller: _composer,
-              theme: theme,
-              placeholder: appearance.placeholder,
-              sending: _sending,
-              attaching: _attaching,
-              onAttach: widget.onPickFile == null ? null : _attach,
-              onSend: _send,
-              onChanged: _onTyped,
-              onRecorded: (note) => unawaited(_sendVoice(note)),
-              onRecordError: (message) => setState(() => _error = message),
             ),
           ],
-          if (appearance.showBranding)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(
-                'Powered by Nest Connect',
-                style: TextStyle(fontSize: 11, color: theme.muted),
-              ),
-            ),
-          // Above the home indicator, and above the keyboard when it is up.
-          SizedBox(height: MediaQuery.of(context).viewInsets.bottom > 0 ? 8 : 12),
-        ],
-      ),
+        ),
+      );
+    }
+    return NestBubble(
+      message: m,
+      theme: theme,
+      attachmentUrl: widget.chat.attachmentUrl,
+      showAuthor: firstOfRun,
+      lastOfRun: lastOfRun,
+      face: face,
     );
   }
 }
@@ -385,183 +657,239 @@ class NestStagedFiles extends StatelessWidget {
       );
 }
 
-class _Header extends StatelessWidget {
-  const _Header({
-    required this.appearance,
-    required this.theme,
-    required this.online,
-    required this.team,
-    required this.visitorName,
-    this.onClose,
-  });
+/// Lifts what it holds clear of the keyboard — by exactly as much as the
+/// keyboard covers it, and no more.
+///
+/// It used to lift by the keyboard's full height, read from `MediaQuery`. That
+/// is right only when nothing above has already moved out of the way, and the
+/// app this was reported from had: its whole navigator was lifted for the
+/// keyboard — its own tab bar sat *on top of* the keyboard in the screenshot —
+/// without taking the inset out of what it handed down. So the keyboard was
+/// paid for twice, and the sheet floated a full keyboard's height above it with
+/// the app showing through the gap.
+///
+/// What a host does about the keyboard is its own business and cannot be known
+/// from in here. Where this box actually ends on the screen can. So it measures:
+/// its own bottom edge against the top of the keyboard, both read from the
+/// window itself rather than from a `MediaQuery` an ancestor may have edited,
+/// and pads by the overlap. Lifted by somebody else, the overlap is nothing and
+/// so is the padding; lifted by nobody, it is the whole keyboard.
+///
+/// Measured after each frame and applied on the next, so while the keyboard is
+/// animating it follows one frame behind — about sixteen milliseconds, which is
+/// not something a thumb can feel.
+class NestKeyboardClearance extends StatefulWidget {
+  const NestKeyboardClearance({super.key, required this.child});
+  final Widget child;
 
-  final NestAppearance appearance;
-  final NestTheme theme;
-  final bool online;
-  final List<NestTeamMate> team;
+  @override
+  State<NestKeyboardClearance> createState() => _NestKeyboardClearanceState();
+}
 
-  /// Whoever the app signed in, so "Hello {name} 👋" is a greeting rather than
-  /// a template nobody filled in.
-  final String? visitorName;
-  final VoidCallback? onClose;
+class _NestKeyboardClearanceState extends State<NestKeyboardClearance>
+    with WidgetsBindingObserver {
+  double _lift = 0;
+  bool _queued = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// The keyboard moving is a change in the window's metrics — heard here even
+  /// when an ancestor has hidden it from the `MediaQuery` below it.
+  @override
+  void didChangeMetrics() => _queue();
+
+  void _queue() {
+    if (_queued) return;
+    _queued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _queued = false;
+      _measure();
+    });
+  }
+
+  void _measure() {
+    if (!mounted) return;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize || !box.attached) return;
+    final view = View.of(context);
+    final ratio = view.devicePixelRatio;
+    final keyboard = view.viewInsets.bottom / ratio;
+    var lift = 0.0;
+    if (keyboard > 0) {
+      final keyboardTop = view.physicalSize.height / ratio - keyboard;
+      // The box's own bottom edge does not move with the lift — the lift is
+      // padding inside it — so this converges in one step.
+      final bottom = box.localToGlobal(Offset(0, box.size.height)).dy;
+      lift = (bottom - keyboardTop).clamp(0.0, keyboard);
+    }
+    if ((lift - _lift).abs() > 0.5) setState(() => _lift = lift);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [theme.accent, theme.accentDeep],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    // A dependency on the keyboard, so the ordinary case rebuilds and measures
+    // as it moves without waiting on the metrics callback.
+    MediaQuery.viewInsetsOf(context);
+    _queue();
+    return Padding(padding: EdgeInsets.only(bottom: _lift), child: widget.child);
+  }
+}
+
+/// The face beside an agent's last bubble, 26 points — whoever said it, if they
+/// are one of the team, and their initials on the brand colour otherwise.
+class NestAgentFace extends StatelessWidget {
+  const NestAgentFace({super.key, required this.name, required this.team, required this.theme});
+  final String? name;
+  final List<NestTeamMate> team;
+  final NestTheme theme;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 26.0;
+    final mate = name == null ? null : team.where((m) => m.name == name).firstOrNull;
+    final own = NestTheme.parseColor(mate?.color ?? '');
+    final initials = mate?.initials ??
+        (name ?? '?')
+            .trim()
+            .split(RegExp(r'\s+'))
+            .where((p) => p.isNotEmpty)
+            .take(2)
+            .map((p) => p.characters.first.toUpperCase())
+            .join();
+    final fallback = Center(
+      child: Text(
+        initials,
+        style: TextStyle(
+          color: own != null ? Colors.white : theme.onAccent,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 18, 12, 20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (appearance.headline.isNotEmpty)
-                  Text(
-                    fillVisitorName(appearance.headline, visitorName),
-                    style: TextStyle(color: theme.onAccent.withValues(alpha: 0.75), fontSize: 13),
-                  ),
-                Text(
-                  fillVisitorName(appearance.title, visitorName),
-                  style: TextStyle(
-                    color: theme.onAccent,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    height: 1.25,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  // The away message is not decoration: it is the difference
-                  // between a promise we keep and one made at 3am.
-                  fillVisitorName(
-                    online ? appearance.subtitle : appearance.awayMessage,
-                    visitorName,
-                  ),
-                  style: TextStyle(color: theme.onAccent.withValues(alpha: 0.85), fontSize: 13),
-                ),
-                if (team.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  _Faces(team: team, theme: theme),
-                ],
-              ],
+    );
+    final url = mate?.avatarUrl;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: own ?? theme.accent),
+      clipBehavior: Clip.antiAlias,
+      child: url == null || url.isEmpty
+          ? fallback
+          : Image.network(
+              url,
+              fit: BoxFit.cover,
+              // Initials until the photo has a frame to draw. A loading
+              // builder is not enough: before the first byte arrives it is
+              // handed no progress at all, which reads as "done", and the
+              // circle is drawn empty.
+              frameBuilder: (_, child, frame, __) => frame == null ? fallback : child,
+              errorBuilder: (_, __, ___) => fallback,
             ),
-          ),
-          if (onClose != null)
-            IconButton(
-              onPressed: onClose,
-              icon: Icon(Icons.close, color: theme.onAccent),
-              tooltip: 'Close',
-            ),
-        ],
-      ),
     );
   }
 }
 
-/// The people behind the counter, overlapped.
-class _Faces extends StatelessWidget {
-  const _Faces({required this.team, required this.theme});
-  final List<NestTeamMate> team;
-  final NestTheme theme;
+/// The messenger before the channel has said what it looks like: the logo's
+/// corner, the faces, the greeting's lines and the cards under them — each where
+/// it is about to be, so the screen fills in rather than rearranging.
+class _OpeningBones extends StatelessWidget {
+  const _OpeningBones();
 
   @override
-  Widget build(BuildContext context) {
-    final shown = team.take(4).toList();
-    return SizedBox(
-      height: 28,
-      child: Stack(
-        children: [
-          for (var i = 0; i < shown.length; i++)
-            Positioned(
-              left: i * 20,
-              child: Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  // Their own avatar colour where they have one, so the stack
-                  // reads as people rather than as four identical discs.
-                  color: NestTheme.parseColor(shown[i].color ?? '') ?? theme.accentDeep,
-                  border: Border.all(color: theme.accent, width: 2),
-                ),
-                clipBehavior: Clip.antiAlias,
-                alignment: Alignment.center,
-                child: _Face(mate: shown[i], theme: theme),
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.fromLTRB(20, 16, 14, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              height: 38,
+              child: Row(
+                children: [
+                  NestBone(width: 72, height: 24),
+                  Spacer(),
+                  NestBone(height: 38, circle: true),
+                  SizedBox(width: 4),
+                  NestBone(height: 38, circle: true),
+                  SizedBox(width: 12),
+                  NestBone(height: 32, circle: true),
+                ],
               ),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One agent in the stack: their photo, or their initials on their own colour.
-///
-/// The photo is the point — a row of letters says somebody exists, a row of
-/// faces says somebody is there, which is the whole reason a chat outperforms a
-/// contact form. It falls back rather than failing: a broken image URL, a
-/// filtered network or an agent who never uploaded one all land on initials
-/// instead of an empty circle.
-class _Face extends StatelessWidget {
-  const _Face({required this.mate, required this.theme});
-  final NestTeamMate mate;
-  final NestTheme theme;
-
-  @override
-  Widget build(BuildContext context) {
-    final initials = Text(
-      mate.initials,
-      style: TextStyle(color: theme.onAccent, fontSize: 11, fontWeight: FontWeight.w600),
-    );
-    final url = mate.avatarUrl;
-    if (url == null || url.isEmpty) return initials;
-    return Image.network(
-      url,
-      width: 28,
-      height: 28,
-      fit: BoxFit.cover,
-      // Their initials stay under it while it loads, so the stack does not pop
-      // into place a face at a time.
-      loadingBuilder: (_, child, progress) => progress == null ? child : initials,
-      errorBuilder: (_, __, ___) => initials,
-    );
-  }
-}
-
-class _Empty extends StatelessWidget {
-  const _Empty({required this.theme, required this.appearance});
-  final NestTheme theme;
-  final NestAppearance appearance;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 44),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.forum_outlined, size: 34, color: theme.muted),
-            const SizedBox(height: 12),
-            Text(
-              // Not "no messages". An empty chat is an invitation, and saying
-              // it is empty is the one thing that makes it feel broken.
-              'Ask us anything — we read every message.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: theme.muted, fontSize: 14, height: 1.4),
+            SizedBox(height: 34),
+            NestBone(width: 190, height: 24),
+            SizedBox(height: 10),
+            NestBone(width: 240, height: 24),
+            SizedBox(height: 14),
+            NestBone(width: 280, height: 12),
+            SizedBox(height: 40),
+            Padding(
+              padding: EdgeInsets.only(right: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  NestBone(height: 72, radius: 14),
+                  SizedBox(height: 10),
+                  NestBone(height: 150, radius: 14),
+                  SizedBox(height: 10),
+                  NestBone(height: 72, radius: 14),
+                ],
+              ),
             ),
           ],
         ),
       );
 }
 
+/// An empty conversation: the business's own opening line, as the first bubble.
+///
+/// Not "no messages". An empty chat is an invitation, and saying it is empty is
+/// the one thing that makes it feel broken.
+class _Greeting extends StatelessWidget {
+  const _Greeting({required this.theme, required this.appearance, required this.name});
+  final NestTheme theme;
+  final NestAppearance appearance;
+  final String? name;
+
+  @override
+  Widget build(BuildContext context) {
+    final words = fillVisitorName(appearance.greeting, name).trim();
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14 + NestBubble.faceColumn + 8, 14, 40, 14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+          decoration: BoxDecoration(
+            color: theme.raised,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(18),
+              topRight: Radius.circular(18),
+              bottomRight: Radius.circular(18),
+              bottomLeft: Radius.circular(6),
+            ),
+            boxShadow: theme.lift,
+          ),
+          child: Text(
+            words.isEmpty ? 'Ask us anything — we read every message.' : words,
+            style: TextStyle(fontSize: 15, height: 1.42, color: theme.text),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Where the customer writes: the web widget's composer — a rounded field on
+/// the panel colour, the attach button before it, and the send button after.
 class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
@@ -590,81 +918,124 @@ class _Composer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        8,
-        8,
-        8,
-        // Lifted clear of the keyboard. A composer under the keyboard is a
-        // composer nobody can see what they are typing into.
-        8 + MediaQuery.of(context).viewInsets.bottom,
-      ),
+      padding: const EdgeInsets.fromLTRB(8, 10, 10, 10),
       decoration: BoxDecoration(
+        color: theme.surface,
         border: Border(top: BorderSide(color: theme.line)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (onAttach != null)
-            IconButton(
-              onPressed: attaching ? null : onAttach,
-              icon: attaching
-                  ? const SizedBox(
-                      width: 18, height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(Icons.add_photo_alternate_outlined, color: theme.muted),
-              tooltip: 'Attach',
-            ),
+            SizedBox(
+              width: 40,
+              height: 40,
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                onPressed: attaching ? null : onAttach,
+                icon: attaching
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(Icons.add_photo_alternate_outlined, color: theme.muted, size: 24),
+                tooltip: 'Attach',
+              ),
+            )
+          else
+            const SizedBox(width: 4),
+          const SizedBox(width: 4),
           Expanded(
-            child: TextField(
-              controller: controller,
-              onChanged: onChanged,
-              minLines: 1,
-              maxLines: 5,
-              textCapitalization: TextCapitalization.sentences,
-              // Newline, not send. On a phone the return key is next to
-              // everything, and a half-written complaint sent by accident is
-              // worse than one extra tap.
-              textInputAction: TextInputAction.newline,
-              keyboardType: TextInputType.multiline,
-              decoration: InputDecoration(
-                hintText: placeholder,
-                hintStyle: TextStyle(color: theme.muted),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 40),
+              decoration: BoxDecoration(
+                color: theme.panel,
+                border: Border.all(color: theme.line),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: TextField(
+                controller: controller,
+                onChanged: onChanged,
+                minLines: 1,
+                maxLines: 5,
+                cursorColor: theme.accent,
+                textCapitalization: TextCapitalization.sentences,
+                // Newline, not send. On a phone the return key is next to
+                // everything, and a half-written complaint sent by accident is
+                // worse than one extra tap.
+                textInputAction: TextInputAction.newline,
+                keyboardType: TextInputType.multiline,
+                style: TextStyle(fontSize: 16, height: 1.3, color: theme.text),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: placeholder,
+                  hintStyle: TextStyle(color: theme.muted, fontSize: 16),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                ),
               ),
             ),
           ),
-          // The mic gives way to send the moment there is anything to send.
-          // Two buttons side by side would make the commonest action — sending
-          // what you just typed — a choice between targets.
+          const SizedBox(width: 8),
+          // The mic gives way to send the moment there is anything to send. Two
+          // buttons side by side would make the commonest action — sending what
+          // you just typed — a choice between targets.
           ValueListenableBuilder<TextEditingValue>(
             valueListenable: controller,
             builder: (context, value, _) => value.text.trim().isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.only(right: 6, bottom: 4),
-                    child: NestRecorderButton(
-                      theme: theme,
-                      enabled: !sending,
-                      onRecorded: onRecorded,
-                      onError: onRecordError,
+                ? SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Center(
+                      child: NestRecorderButton(
+                        theme: theme,
+                        enabled: !sending,
+                        onRecorded: onRecorded,
+                        onError: onRecordError,
+                      ),
                     ),
                   )
-                : IconButton(
-                    onPressed: sending ? null : onSend,
-                    icon: sending
-                        ? const SizedBox(
-                            width: 18, height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(Icons.send_rounded, color: theme.accent),
-                    tooltip: 'Send',
-                  ),
+                : _SendButton(theme: theme, sending: sending, onSend: onSend),
           ),
         ],
       ),
     );
   }
+}
+
+/// The round send button, in the brand colour.
+class _SendButton extends StatelessWidget {
+  const _SendButton({required this.theme, required this.sending, required this.onSend});
+  final NestTheme theme;
+  final bool sending;
+  final VoidCallback onSend;
+
+  @override
+  Widget build(BuildContext context) => AnimatedScale(
+        scale: sending ? 0.94 : 1,
+        duration: const Duration(milliseconds: 140),
+        child: AnimatedOpacity(
+          opacity: sending ? 0.5 : 1,
+          duration: const Duration(milliseconds: 140),
+          child: Material(
+            color: theme.accent,
+            shape: const CircleBorder(),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: sending ? null : onSend,
+              child: Tooltip(
+                message: 'Send',
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: Icon(Icons.arrow_upward_rounded, color: theme.onAccent, size: 22),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 /// What the composer is answering.
@@ -771,7 +1142,9 @@ class _ClosedNotice extends StatelessWidget {
     final label = newChatLabel.trim().isEmpty ? 'Start a new chat' : newChatLabel;
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(16, 14, 16, 14 + MediaQuery.of(context).viewInsets.bottom),
+      // As with the composer: the sheet above has already moved clear of the
+      // keyboard, and counting it twice was what collapsed the thread.
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
         color: theme.surface,
         border: Border(top: BorderSide(color: theme.line)),
@@ -812,4 +1185,68 @@ class _ClosedNotice extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Our one line, at the bottom of whichever screen is up.
+class _Branding extends StatelessWidget {
+  const _Branding({required this.theme});
+  final NestTheme theme;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+        child: Center(
+          child: Text(
+            'Powered by Nest Connect',
+            style: TextStyle(fontSize: 11, color: theme.muted),
+          ),
+        ),
+      );
+}
+
+/// Under a conversation being read back: what it is, and the way out of it.
+///
+/// Where the live thread has a composer, this says why there isn't one. A
+/// read-only thread with nothing under it looks like a chat whose box has failed
+/// to load.
+class _PastFooter extends StatelessWidget {
+  const _PastFooter({required this.theme, required this.closed, required this.onBack});
+
+  final NestTheme theme;
+  final bool closed;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        decoration: BoxDecoration(border: Border(top: BorderSide(color: theme.line))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              closed
+                  ? 'This conversation is closed.'
+                  : 'You are reading an earlier conversation.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: theme.muted),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: onBack,
+                style: FilledButton.styleFrom(
+                  backgroundColor: theme.accent,
+                  foregroundColor: theme.onAccent,
+                ),
+                // Not "start a new chat": the chat card on the screen this goes
+                // back to is that offer, and making the same offer twice in two
+                // wordings reads as two different things.
+                child: const Text('Back'),
+              ),
+            ),
+          ],
+        ),
+      );
 }

@@ -36,6 +36,8 @@ import {
   type NestChatAppSession,
   type NestChatAppSessionInput,
   type NestChatConfig,
+  type NestChatConversations,
+  type NestChatMessage,
   type NestChatDeviceInput,
   type NestChatIdentifyInput,
   type NestChatIdentifyResult,
@@ -556,6 +558,46 @@ export class NestChatController {
     const claims = this.nestchat.verifyVisitorToken(bearer(auth));
     if (!claims.conversationId) return { messages: [] };
     return { messages: await this.nestchat.visitorHistory(claims.conversationId) };
+  }
+
+  /**
+   * Every conversation this visitor has had on this channel.
+   *
+   * What makes it necessary: a closed chat is never resumed — `threadFor` only
+   * joins an open one — so the moment an agent resolved a thread it vanished
+   * from the customer's side. They opened the chat, found an empty box, and
+   * everything agreed about their order was readable only by the business.
+   *
+   * No id in the request. The contact and the channel both come out of the
+   * signed token, so this can only ever be the caller's own history.
+   */
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Get("conversations")
+  async conversations(
+    @Headers("authorization") auth: string | undefined,
+  ): Promise<NestChatConversations> {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    return { conversations: await this.nestchat.visitorConversations(claims) };
+  }
+
+  /**
+   * One earlier conversation, read in full.
+   *
+   * 404 for a thread that is not this visitor's, which is the same answer as one
+   * that does not exist. The distinction is the only thing somebody trying ids
+   * could learn here, and it is worth nothing to a client that already knows
+   * which conversations it was offered.
+   */
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Get("conversations/:conversationId/messages")
+  async pastMessages(
+    @Headers("authorization") auth: string | undefined,
+    @Param("conversationId") conversationId: string,
+  ): Promise<{ messages: NestChatMessage[] }> {
+    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const messages = await this.nestchat.visitorConversation(claims, conversationId);
+    if (!messages) throw new NotFoundException("No such conversation");
+    return { messages };
   }
 
   /**

@@ -36,12 +36,17 @@ class NestConnect {
   final _messagesController = StreamController<List<NestMessage>>.broadcast();
   final _unreadController = StreamController<int>.broadcast();
   final _closedController = StreamController<bool>.broadcast();
+  final _typingController = StreamController<bool>.broadcast();
 
   String? _token;
   NestConfig? _config;
   StreamSubscription<Map<String, Object?>>? _streamSub;
   Timer? _reconnect;
   int _attempt = 0;
+
+  /// Whether an agent is writing, and the timer that stops believing it.
+  bool _agentTyping = false;
+  Timer? _typingFor;
 
   /// Which stream is the current one.
   ///
@@ -82,6 +87,19 @@ class NestConnect {
   /// Unread agent replies. What a launcher badge shows.
   int get unread => _unread;
   Stream<int> get onUnread => _unreadController.stream;
+
+  /// Whether an agent is typing to us right now.
+  ///
+  /// The server says "typing" and never says "stopped" — an agent closing the
+  /// tab mid-sentence sends nothing at all — so this times itself out rather
+  /// than waiting for a signal that may not come. Comfortably longer than the
+  /// agent's ping interval, or the dots blink off and on again while somebody
+  /// is still mid-sentence.
+  bool get agentTyping => _agentTyping;
+  Stream<bool> get onAgentTyping => _typingController.stream;
+
+  /// How long a "typing" is believed for without being repeated.
+  static const typingLifetime = Duration(seconds: 6);
 
   /// Whether an agent has closed this chat, as it changes.
   ///
@@ -425,6 +443,52 @@ class NestConnect {
     );
   }
 
+  /// Every conversation this customer has had on this channel, newest first.
+  ///
+  /// Why it has to exist: a chat the business resolves is never resumed — a new
+  /// session only ever joins an open thread — so the moment an agent closed one
+  /// it left this side entirely. The app showed an empty box, and everything
+  /// agreed about the order was readable only by the business.
+  ///
+  /// No id goes up. The customer and the channel both come out of the token, so
+  /// this can only ever return their own.
+  Future<List<NestPastConversation>> conversations() async {
+    final token = _token;
+    if (token == null) return const [];
+    try {
+      final raw = await _transport.getJson('/conversations', token: token);
+      final map = raw is Map ? raw : const <String, Object?>{};
+      return (map['conversations'] as List? ?? const [])
+          .map(NestPastConversation.tryParse)
+          .whereType<NestPastConversation>()
+          .toList(growable: false);
+    } on NestException {
+      // A history that will not load is a home screen with no history on it, not
+      // a chat that refuses to open.
+      return const [];
+    }
+  }
+
+  /// One earlier conversation, read in full.
+  ///
+  /// Read-only on purpose, and separate from [messages] for that reason: this is
+  /// not the thread being added to, so it is handed back rather than swapped into
+  /// the live one. Sending into a finished conversation is not a thing the
+  /// customer can do — [startNewChat] is.
+  Future<List<NestMessage>> conversation(String conversationId) async {
+    final token = _token;
+    if (token == null) return const [];
+    final raw = await _transport.getJson(
+      '/conversations/${Uri.encodeComponent(conversationId)}/messages',
+      token: token,
+    );
+    final map = raw is Map ? raw : const <String, Object?>{};
+    return (map['messages'] as List? ?? const [])
+        .map(NestMessage.tryParse)
+        .whereType<NestMessage>()
+        .toList(growable: false);
+  }
+
   /// Tell the agent somebody is typing, and what they have written so far.
   Future<void> typing(String preview) async {
     final token = _token;
@@ -584,6 +648,10 @@ class NestConnect {
         if (_messages.any((m) => m.id == message.id)) break;
         _setMessages([..._messages, message]);
         if (message.from == NestAuthor.agent) {
+          // The sentence has arrived, so the ghost of it being written goes.
+          // Waiting for the timeout leaves the same words on screen twice, one
+          // of them apparently still being typed.
+          _setAgentTyping(false);
           if (_viewing) {
             unawaited(_markRead('read'));
           } else {
@@ -605,8 +673,17 @@ class NestConnect {
         final next = [..._messages];
         next[at] = updated;
         _setMessages(next);
+      case 'typing':
+        // Not under `payload`: typing is a flag, not a message. Reading it as
+        // one is how this came to be ignored for its whole life — the switch
+        // simply had no case, so the dots never appeared in an app however
+        // long an agent typed.
+        _setAgentTyping(event['typing'] == true);
       case 'closed':
         _setClosed(true);
+        // Whatever they were half-way through saying, nobody is going to send
+        // it now.
+        _setAgentTyping(false);
       case 'reopened':
         // The other half of the pair. Without it `closed` is a one-way door:
         // an agent reopening a thread would leave the app refusing to send
@@ -630,6 +707,7 @@ class NestConnect {
 
   Future<void> _endSession() async {
     _reconnect?.cancel();
+    _setAgentTyping(false);
     // Not awaited — see `_generation`. The stream is already disowned by the
     // bump, so whether the socket takes a moment or an age to go is nobody's
     // problem but the operating system's.
@@ -648,6 +726,14 @@ class NestConnect {
       ..clear()
       ..addAll(next);
     if (!_messagesController.isClosed) _messagesController.add(messages);
+  }
+
+  void _setAgentTyping(bool next) {
+    _typingFor?.cancel();
+    if (next) _typingFor = Timer(typingLifetime, () => _setAgentTyping(false));
+    if (next == _agentTyping) return;
+    _agentTyping = next;
+    if (!_typingController.isClosed) _typingController.add(next);
   }
 
   void _setClosed(bool next) {
@@ -676,6 +762,7 @@ class NestConnect {
   /// it — a customer tapping the X wants the sheet gone, not a spinner.
   Future<void> dispose() async {
     _reconnect?.cancel();
+    _typingFor?.cancel();
     _generation++;
     _transport.close();
     unawaited(_streamSub?.cancel());
@@ -683,5 +770,6 @@ class NestConnect {
     await _messagesController.close();
     await _unreadController.close();
     await _closedController.close();
+    await _typingController.close();
   }
 }

@@ -15,6 +15,7 @@ import type { ConversationWithMessages } from "@ding/schemas";
 import { Avatar } from "./Avatar";
 import { ChannelDot } from "./ChannelDot";
 import { ContactEditor } from "./ContactEditor";
+import { CustomFieldsCard } from "./CustomFieldsCard";
 import { TagEditor } from "./TagEditor";
 import { BellIcon, CheckIcon, ChevronRight, TeamGlyph, XIcon, channelMeta } from "../icons";
 import { useTheme } from "../theme";
@@ -157,6 +158,18 @@ export function DetailsPanel({
               ) : null}
               <Field label="Last activity" value={`${relativeTime(conv.lastActivityAt)} ago`} last />
             </Card>
+
+            {/* The channel's own fields — the order number an app's SDK attached
+                to this thread before anybody spoke, and anything else the
+                business records against a conversation or a customer. The web
+                has shown these beside every thread since they existed; the
+                phone showed none of them. Draws nothing where the channel has
+                no fields. */}
+            <CustomFieldsCard
+              inboxId={conv.inboxId}
+              conversationId={conv.id}
+              contactId={conv.contact.id}
+            />
 
             {/* Notifications for this one thread */}
             <Section>Notifications</Section>

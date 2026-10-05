@@ -19,13 +19,26 @@ library;
 
 export 'package:nestconnect_client/nestconnect_client.dart';
 
-export 'src/bubble.dart' show NestBubble;
+export 'src/bubble.dart' show NestBubble, nestClock;
+export 'src/header.dart' show NestHeader, nestFaceSize;
+export 'src/home.dart' show NestHomeScreen, nestAgo;
+export 'src/icons.dart' show NestCardIcon, svgPath;
 export 'src/launcher.dart' show NestLauncher, showNestMessenger;
 export 'src/message_row.dart'
     show NestMessageRow, collapseReactions, nestQuickReactions;
 export 'src/messenger.dart'
-    show NestFilePicker, NestMessenger, NestPickedFile, NestStagedFiles;
+    show
+        NestAgentFace,
+        NestFilePicker,
+        NestKeyboardClearance,
+        NestMessenger,
+        NestPickedFile,
+        NestStagedFiles,
+        NestView;
+export 'src/skeleton.dart'
+    show NestBone, NestConversationBone, NestShimmer, NestThreadBone;
 export 'src/recorder.dart' show NestRecorderButton, RecordedNote;
 export 'src/theme.dart' show NestTheme;
+export 'src/typing.dart' show NestTypingDots;
 export 'src/voice.dart'
     show NestVoiceNote, NestWaveform, formatDuration, levelFromDb, normalise, toBars;

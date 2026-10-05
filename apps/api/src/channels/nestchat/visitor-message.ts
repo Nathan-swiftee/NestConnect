@@ -84,3 +84,20 @@ export function quoteFor(message: Message, thread?: Message[]): NestChatQuote | 
     ...(kind ? { kind } : {}),
   };
 }
+
+/**
+ * One line describing a message, for a conversation card.
+ *
+ * Words where there are words. Where there are none the attachment is the
+ * message, and "📷 Photo" says what happened — an empty row says the thread is
+ * empty, which is the one thing it is not.
+ */
+export function previewOf(message: NestChatMessage): string {
+  const words = message.body.trim().replace(/\s+/g, " ");
+  if (words) return words.length > 120 ? `${words.slice(0, 119)}…` : words;
+  const kind = message.attachments?.[0]?.kind;
+  if (kind === "voice") return "Voice message";
+  if (kind === "image") return "Photo";
+  if (message.attachments?.length) return message.attachments[0]!.filename;
+  return "";
+}

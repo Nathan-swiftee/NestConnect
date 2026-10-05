@@ -18,11 +18,29 @@ Stack(children: [
 showNestMessenger(context, chat: chat);
 ```
 
-## No plugins
+## Which version am I running?
 
-Nothing here needs native build configuration or a permissions prompt. The one
-thing that would — picking a photo — is handed back to you, because your app
-already has a picker and already has the permission:
+```dart
+debugPrint('Nest Connect SDK $nestConnectSdkVersion');
+```
+
+Worth printing somewhere your own diagnostics can see. The SDK is consumed as a
+git dependency, and `pubspec.lock` pins the commit it resolved to — so
+`flutter pub get` keeps giving you the build you already have. `flutter pub
+upgrade nestconnect_flutter nestconnect_client` is what moves it, and the three
+plugins below mean a **native rebuild**, not a hot restart.
+
+## Three plugins, and the one thing still handed back to you
+
+Recording and playing audio, and opening a link, cannot be done from Flutter
+without native code — so `record`, `just_audio` and `url_launcher` are bundled
+rather than left to you to choose and wire. What that costs, said plainly: your
+store listing inherits a microphone permission whether or not you turn voice
+notes on. Nobody is *prompted* by a chat they merely opened — `record` asks when
+recording actually starts.
+
+Picking a photo is still yours, because your app already has a picker and
+already has the permission:
 
 ```dart
 NestLauncher(
@@ -76,6 +94,36 @@ FirebaseMessaging.onMessageOpenedApp.listen((m) {
 On Android, create a notification channel with id `nest_messages` — without it
 Android 8+ drops the notification silently.
 
+## The home screen, and earlier conversations
+
+Turn on Settings › NestChat widget › Home screen and the messenger opens on
+cards instead of straight into the conversation: the chat itself first, then this
+customer's own earlier conversations, then the business's other ways of being
+reached. Leave it off — the default — and nothing changes: the chat opens on the
+conversation exactly as before.
+
+The earlier ones matter more than they sound. A chat the business resolves is
+never resumed, so until now the moment an agent closed a thread it left the
+customer's side entirely: they reopened the chat, found an empty box, and
+everything agreed about their order was readable only by the business. They are
+read-only — a new message starts a new conversation rather than reopening
+somebody's finished ticket.
+
+Tapping one of the business's cards hands its link to the phone: a help centre
+to the browser, a `tel:` to the dialler, a `mailto:` to Mail. An app that would
+rather keep people inside passes its own handler:
+
+```dart
+showNestMessenger(
+  context,
+  chat: chat,
+  onOpenLink: (card) => myInAppBrowser.open(card.href),
+);
+```
+
+If you have built your own UI on `NestConnect`, `config?.home` is the cards,
+`conversations()` is the history, and `conversation(id)` reads one of them.
+
 ## When an agent closes the chat
 
 The messenger swaps the composer for the channel's own closing words and a
@@ -107,11 +155,26 @@ come from Settings › NestChat widget, so changing one reaches customers withou
 an app release. Your app's typography is inherited, so the chat still reads as
 part of your app rather than as a pasted-in web view.
 
+## Seeing it without building an app
+
+```sh
+cd sdk/nestconnect_flutter
+flutter test tool/screenshots_test.dart   # writes build/screenshots/*.png
+```
+
+Renders every screen — home, loading, a conversation, the keyboard up, an old
+conversation, an agent typing, the first load — at iPhone size with real fonts,
+against a local server speaking the API's shapes. One of them puts the
+messenger inside an app that lifts *itself* for the keyboard, because that is
+the arrangement that floated the sheet a keyboard's height above the keyboard
+and no test noticed: none of them was ever looked at.
+
 ## Tests
 
 `flutter test` renders the messenger against a real `HttpServer` on loopback.
 Two things are worth knowing if you add to them: `flutter_test` installs an
 `HttpClient` that answers 400 to everything, so `HttpOverrides.global = null`
-is what lets these reach the loopback server; and a network request *started*
-under the widget-test clock never completes, so anything that has to reach the
-wire belongs in `nestconnect_client`'s tests, where it runs in real time.
+is what lets these reach the loopback server; and a request started under the
+widget-test clock only progresses while `tester.runAsync` is holding the door
+open, so one that is kicked off by a tap usually needs two of those windows
+before its answer is on screen — one to send it and one to carry it back.

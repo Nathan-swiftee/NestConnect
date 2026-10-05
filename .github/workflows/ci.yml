@@ -160,6 +160,12 @@ jobs:
       - name: Channel order
         run: pnpm check:channel-order
 
+      # Whether a host app can say which build of the SDK it is running. Both
+      # packages sat at 0.1.0 through eight releases, so "have you pulled the
+      # latest?" was unanswerable by either side.
+      - name: SDK version
+        run: pnpm check:sdk-version
+
       # What the server pushes down a visitor's live stream, checked against the
       # fixture the Dart SDK replays. This shipped wrong and stayed wrong: the
       # SDK read `type`/`message` where the server sends `kind`/`payload`, so
@@ -170,6 +176,17 @@ jobs:
       # the fixture is owned by neither side so a rename breaks a build.
       - name: Visitor event contract
         run: pnpm check:visitor-events
+
+      # A customer reading their own past conversations — and only their own.
+      # Half of this is the feature: a resolved chat was never resumed, so it
+      # left the customer's side entirely and everything agreed about their
+      # order was readable only by the business. The other half is that the new
+      # endpoint takes a conversation id from a stranger on a public surface,
+      # and two comparisons against a signed token are all that stand between it
+      # and any thread in the database — so the refusals are checked as hard as
+      # the reads.
+      - name: Visitor history scoping
+        run: pnpm check:visitor-history
 
       # The mandatory two-factor gate. It used to be drawn by the web app and
       # nowhere else, so anything that wasn't the web app was never asked — a

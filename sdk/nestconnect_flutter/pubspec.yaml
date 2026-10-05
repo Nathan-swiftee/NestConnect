@@ -1,6 +1,6 @@
 name: nestconnect_flutter
 description: Nest Connect live chat inside your Flutter app — a launcher, a messenger, and the channel's own branding.
-version: 0.1.0
+version: 0.4.0
 publish_to: none
 
 environment:
@@ -26,6 +26,13 @@ dependencies:
   # starts, so nobody is prompted by a chat they merely opened.
   record: ^5.1.2
   just_audio: ^0.9.42
+  # The home screen's cards are the business's other ways of being reached — a
+  # help centre, a WhatsApp number, an email address — so tapping one has to
+  # leave the app. Bundled rather than left to the host for the same reason as
+  # the two above: there is no way to open a URL from Flutter without native
+  # code, so it is a plugin wherever it lives. This one asks for no permission
+  # and adds nothing to a store listing.
+  url_launcher: ^6.3.0
 
 # No other plugins, deliberately.
 #

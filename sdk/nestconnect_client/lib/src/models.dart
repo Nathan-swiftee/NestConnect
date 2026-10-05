@@ -7,6 +7,26 @@
 /// app that stops shipping our updates.
 library;
 
+/// Which build of the SDK an app is actually running.
+///
+/// Exists because "have you pulled the latest?" is not a question anybody can
+/// answer by looking. A host app takes this package as a git dependency, and
+/// `pubspec.lock` pins the commit it resolved to: pulling the NestConnect repo
+/// moves nothing, `pub get` honours the lock, and the app goes on building the
+/// same SDK it built last month while the repository looks completely current.
+///
+/// Print it at startup, or put it behind a debug screen. One line settles what
+/// otherwise takes a round trip and a screenshot:
+///
+/// ```dart
+/// debugPrint('Nest Connect SDK $nestConnectSdkVersion');
+/// ```
+///
+/// Kept in step with both pubspecs by tools/check-sdk-version.ts, because a
+/// version constant that drifts from the package it names is worse than none:
+/// it answers the question confidently and wrongly.
+const String nestConnectSdkVersion = '0.4.0';
+
 /// How hard the channel checked who you said you were.
 enum NestIdentity {
   /// The details sent were trusted, and the chat is on that customer's record.
@@ -252,19 +272,39 @@ class NestAppearance {
     required this.title,
     required this.subtitle,
     required this.headline,
+    required this.greeting,
     required this.placeholder,
     required this.awayMessage,
     required this.closedMessage,
     required this.newChatLabel,
     required this.showBranding,
     this.logoUrl,
+    this.accentTo,
+    this.headerGradient = false,
+    this.theme = 'light',
   });
 
   final String accent;
   final String onAccent;
+
+  /// The far end of the header's gradient, and whether there is one at all.
+  /// The same pair the web widget reads, so a business that turned the gradient
+  /// on sees it on both surfaces rather than on its website alone.
+  final String? accentTo;
+  final bool headerGradient;
+
+  /// `light`, `dark` or `auto` — chosen by the business, not inherited from the
+  /// phone. A brand that set its chat to light should not open dark because the
+  /// customer's phone is.
+  final String theme;
   final String title;
   final String subtitle;
   final String headline;
+
+  /// The channel's opening line, shown before anybody has said anything. Where
+  /// the thread's empty state is the invitation, this is the business's own
+  /// words for it — and it takes the customer's name the way the headline does.
+  final String greeting;
   final String placeholder;
   final String awayMessage;
   /// What the business says when an agent closes a chat. Blank on purpose is a
@@ -281,6 +321,7 @@ class NestAppearance {
     title: 'How can we help?',
     subtitle: 'We usually reply in a few minutes',
     headline: '',
+    greeting: '',
     placeholder: 'Write a message…',
     awayMessage: "We're away — leave a message and we'll reply.",
     closedMessage: 'This chat has been closed. Thanks for getting in touch!',
@@ -288,14 +329,23 @@ class NestAppearance {
     showBranding: true,
   );
 
-  static NestAppearance parse(Object? raw) {
+  static NestAppearance parse(Object? raw, {String? baseUrl}) {
     if (raw is! Map) return fallback;
+    final logo = _str(raw['logoUrl']);
     return NestAppearance(
       accent: _str(raw['accent']) ?? fallback.accent,
-      onAccent: _str(raw['onAccent']) ?? fallback.onAccent,
+      // `accentText`, which is what the server sends. This read `onAccent` — a
+      // key that has never existed — so every business got white text on its
+      // header whatever it chose, which is unreadable on exactly the pale brand
+      // colours that choice exists for.
+      onAccent: _str(raw['accentText']) ?? _str(raw['onAccent']) ?? fallback.onAccent,
+      accentTo: _str(raw['accentTo']),
+      headerGradient: raw['headerGradient'] == true,
+      theme: _str(raw['theme']) ?? 'light',
       title: _str(raw['title']) ?? fallback.title,
       subtitle: _str(raw['subtitle']) ?? fallback.subtitle,
       headline: _str(raw['headline']) ?? fallback.headline,
+      greeting: _str(raw['greeting']) ?? fallback.greeting,
       placeholder: _str(raw['placeholder']) ?? fallback.placeholder,
       awayMessage: _str(raw['awayMessage']) ?? fallback.awayMessage,
       // `_str` treats '' as absent, which is right for a title and wrong here:
@@ -309,7 +359,134 @@ class NestAppearance {
       showBranding: raw['showBranding'] is bool
           ? raw['showBranding'] as bool
           : fallback.showBranding,
-      logoUrl: _str(raw['logoUrl']),
+      // Root-relative when the business uploaded it, which is right for the web
+      // widget and useless in an app — the same treatment the faces get. Read
+      // raw, it was a path with no host, and the logo silently never loaded.
+      logoUrl: logo == null ? null : _absolute(logo, baseUrl),
+    );
+  }
+}
+
+/// One card on the channel's home screen — another way to reach the business.
+///
+/// The words and the link are the business's; the mark is a key from a fixed set
+/// rather than an emoji, so a WhatsApp card carries the same glyph on every
+/// phone instead of four styles at four weights.
+class NestHomeCard {
+  const NestHomeCard({
+    required this.id,
+    required this.label,
+    required this.sublabel,
+    required this.href,
+    this.icon,
+  });
+
+  final String id;
+  final String label;
+
+  /// The quiet second line — "Usually answers within the hour".
+  final String sublabel;
+
+  /// Where it goes. The server only ever stores http, https, mailto and tel, so
+  /// this is a link and never a script.
+  final String href;
+
+  /// One of `chat`, `whatsapp`, `email`, `phone`, `instagram`, `facebook`, and
+  /// whatever the server adds next. Null — including for a key this build has
+  /// never heard of — means no mark rather than no card.
+  final String? icon;
+
+  static NestHomeCard? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final label = _str(raw['label']);
+    final href = _str(raw['href']);
+    if (label == null || href == null) return null;
+    return NestHomeCard(
+      id: _str(raw['id']) ?? label,
+      label: label,
+      sublabel: _str(raw['sublabel']) ?? '',
+      href: href,
+      icon: _str(raw['icon']),
+    );
+  }
+}
+
+/// The screen a customer lands on before the conversation.
+///
+/// Off unless the business turned it on, which is the server's decision and not
+/// this package's: it puts a tap between somebody and the message box, and a
+/// business that answers on one channel does not need it.
+class NestHome {
+  const NestHome({
+    required this.chatLabel,
+    required this.chatSublabel,
+    this.cards = const [],
+  });
+
+  /// The chat's own card. Not one of [cards] — it is the front door rather than
+  /// a link out, always first, and only its words are configurable.
+  final String chatLabel;
+  final String chatSublabel;
+  final List<NestHomeCard> cards;
+
+  static NestHome? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    return NestHome(
+      chatLabel: _str(raw['chatLabel']) ?? 'Send us a message',
+      chatSublabel: _str(raw['chatSublabel']) ?? '',
+      cards: _list(raw['cards'])
+          .map(NestHomeCard.tryParse)
+          .whereType<NestHomeCard>()
+          .toList(growable: false),
+    );
+  }
+}
+
+/// One of the customer's own earlier conversations, as a row on the home screen.
+///
+/// Deliberately not a [NestMessage] list. A chat list row needs what was last
+/// said, by whom, when, and whether the thread is still open — and fetching
+/// every message of twenty threads to draw twenty rows is twenty threads of
+/// traffic for twenty lines of text.
+class NestPastConversation {
+  const NestPastConversation({
+    required this.id,
+    required this.closed,
+    required this.preview,
+    required this.at,
+    this.fromMe = false,
+    this.authorName,
+  });
+
+  final String id;
+
+  /// Resolved by the business. Readable, not writable — a new message starts a
+  /// new conversation rather than reopening somebody's finished ticket.
+  final bool closed;
+
+  /// The last thing said that this customer is allowed to see. Never an internal
+  /// note: the server builds it through the same projection the thread goes
+  /// through.
+  final String preview;
+
+  /// Whether that last word was theirs, so a row can read "You: …".
+  final bool fromMe;
+
+  /// Who answered, for a name on the row.
+  final String? authorName;
+  final DateTime at;
+
+  static NestPastConversation? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final id = _str(raw['id']);
+    if (id == null) return null;
+    return NestPastConversation(
+      id: id,
+      closed: raw['closed'] == true,
+      preview: _str(raw['preview']) ?? '',
+      fromMe: _str(raw['from']) == 'visitor',
+      authorName: _str(raw['authorName']),
+      at: DateTime.tryParse(_str(raw['at']) ?? '')?.toLocal() ?? DateTime.now(),
     );
   }
 }
@@ -386,9 +563,15 @@ class NestConfig {
     required this.appearance,
     required this.online,
     this.team = const [],
+    this.teamTotal = 0,
+    this.home,
   });
 
   final NestAppearance appearance;
+
+  /// The front door, when the business has turned one on. Null means go straight
+  /// to the conversation, which is the default and the common case.
+  final NestHome? home;
 
   /// Whether anybody is actually there. Drives which of the two subtitles the
   /// header shows, and it is the difference between a promise we keep and one
@@ -396,10 +579,14 @@ class NestConfig {
   final bool online;
   final List<NestTeamMate> team;
 
+  /// Everybody who could answer, of whom [team] is the few shown. The rest are
+  /// the "+2" at the end of the stack.
+  final int teamTotal;
+
   static NestConfig parse(Object? raw, {String? baseUrl}) {
     final map = raw is Map ? raw : const <String, Object?>{};
     return NestConfig(
-      appearance: NestAppearance.parse(map['appearance']),
+      appearance: NestAppearance.parse(map['appearance'], baseUrl: baseUrl),
       online: map['online'] == true,
       // `faces`, which is what the server sends. This read `members` for its
       // whole life, so the list was always empty and the header never showed
@@ -409,6 +596,10 @@ class NestConfig {
           .map((f) => NestTeamMate.tryParse(f, baseUrl: baseUrl))
           .whereType<NestTeamMate>()
           .toList(growable: false),
+      teamTotal: ((map['team'] as Map?)?['total'] as num?)?.toInt() ?? 0,
+      // Sent only when the business enabled it — the server leaves the key out
+      // otherwise, which is the same answer as "go straight to the chat".
+      home: NestHome.tryParse(map['home']),
     );
   }
 }

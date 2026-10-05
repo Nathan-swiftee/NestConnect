@@ -14,6 +14,9 @@ Future<void> showNestMessenger(
   BuildContext context, {
   required NestConnect chat,
   NestFilePicker? onPickFile,
+  /// What to do when a home card is tapped. Omit it and the link goes to the
+  /// phone — a help centre to the browser, a `tel:` to the dialler.
+  ValueChanged<NestHomeCard>? onOpenLink,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -24,16 +27,24 @@ Future<void> showNestMessenger(
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withValues(alpha: 0.45),
-    builder: (sheetContext) => Padding(
-      // The sheet itself moves with the keyboard rather than being resized by
-      // it, so the composer stays put and the thread scrolls under it.
-      padding: EdgeInsets.only(top: MediaQuery.of(sheetContext).size.height * 0.08),
-      child: NestMessenger(
-        chat: chat,
-        onPickFile: onPickFile,
-        onClose: () => Navigator.of(sheetContext).pop(),
-      ),
-    ),
+    builder: (sheetContext) {
+      final media = MediaQuery.of(sheetContext);
+      return Padding(
+        // The strip of app above the sheet, which is what says this is a layer
+        // rather than a screen — and which goes the moment the keyboard is up.
+        // With a keyboard taking half the screen those pixels are the
+        // difference between a thread you can read and two lines of one.
+        padding: EdgeInsets.only(
+          top: media.viewInsets.bottom > 0 ? 0 : media.size.height * 0.08,
+        ),
+        child: NestMessenger(
+          chat: chat,
+          onPickFile: onPickFile,
+          onOpenLink: onOpenLink,
+          onClose: () => Navigator.of(sheetContext).pop(),
+        ),
+      );
+    },
   );
 }
 
@@ -46,11 +57,13 @@ class NestLauncher extends StatelessWidget {
     super.key,
     required this.chat,
     this.onPickFile,
+    this.onOpenLink,
     this.icon = Icons.chat_bubble_rounded,
   });
 
   final NestConnect chat;
   final NestFilePicker? onPickFile;
+  final ValueChanged<NestHomeCard>? onOpenLink;
   final IconData icon;
 
   @override
@@ -72,7 +85,12 @@ class NestLauncher extends StatelessWidget {
               heroTag: 'nestconnect-launcher',
               backgroundColor: theme.accent,
               foregroundColor: theme.onAccent,
-              onPressed: () => showNestMessenger(context, chat: chat, onPickFile: onPickFile),
+              onPressed: () => showNestMessenger(
+                context,
+                chat: chat,
+                onPickFile: onPickFile,
+                onOpenLink: onOpenLink,
+              ),
               child: Icon(icon),
             ),
             if (unread > 0)

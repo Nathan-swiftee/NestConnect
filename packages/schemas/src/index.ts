@@ -1697,6 +1697,46 @@ export const nestchatHomeSchema = z.object({
 export type NestChatHome = z.infer<typeof nestchatHomeSchema>;
 export const DEFAULT_NESTCHAT_HOME: NestChatHome = nestchatHomeSchema.parse({});
 
+/**
+ * How many past conversations a visitor is offered.
+ *
+ * A cap rather than a page, because this is a person's own history with one
+ * business: somebody with forty threads wants the recent ones, and a "load
+ * more" at the bottom of their own chat list is a feature for nobody. It also
+ * bounds the work — each row's preview is the last message the visitor is
+ * allowed to see, which is a read per thread.
+ */
+export const NESTCHAT_MAX_PAST_CONVERSATIONS = 20;
+
+/**
+ * One of the visitor's own earlier conversations, as a card on the home screen.
+ *
+ * Deliberately not a `Conversation`. That carries assignment, labels, SLA,
+ * priority and the internal notes' thread — none of which is theirs to see, and
+ * all of which would arrive by default if this reused the agents' shape. What is
+ * here is what a chat list row needs: what was last said, by whom, when, and
+ * whether the thread is still open.
+ */
+export const nestchatPastConversationSchema = z.object({
+  id: z.string(),
+  /** Closed threads are readable and not writable; a new message starts a new
+   *  conversation rather than reopening somebody's resolved ticket. */
+  closed: z.boolean(),
+  /** The last thing said that the visitor may see — never an internal note. */
+  preview: z.string().default(""),
+  /** Who said it, so the row can read "You: …". */
+  from: z.enum(["visitor", "agent"]).optional(),
+  /** Whose reply it was, for the face on the card. */
+  authorName: z.string().optional(),
+  at: z.string(),
+});
+export type NestChatPastConversation = z.infer<typeof nestchatPastConversationSchema>;
+
+export const nestchatConversationsSchema = z.object({
+  conversations: z.array(nestchatPastConversationSchema),
+});
+export type NestChatConversations = z.infer<typeof nestchatConversationsSchema>;
+
 /* ---- the header's fill ---- */
 
 /** A validated `#rgb`/`#rrggbb` as its three channels. */
