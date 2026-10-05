@@ -118,6 +118,14 @@ class _NestMessengerState extends State<NestMessenger> with WidgetsBindingObserv
   /// Home → chat would be undone by the next config rebuild.
   bool _landed = false;
 
+  /// A reply was waiting when the chat opened — so it opens on the reply.
+  ///
+  /// Taken before the chat is marked read, which zeroes the count. An app that
+  /// opens the messenger from a notification tap with plain [showNestMessenger]
+  /// lands here too: the badge says why the customer came, so the home screen
+  /// would be one tap in the way.
+  bool _replyWaiting = false;
+
   /// The customer's own earlier conversations, for the home screen.
   List<NestPastConversation> _history = const [];
   bool _loadingHistory = false;
@@ -145,7 +153,13 @@ class _NestMessengerState extends State<NestMessenger> with WidgetsBindingObserv
     });
     // On screen: zeroes the badge, and turns the agent's ticks from delivered
     // to read — a different claim, and the only one worth showing them as read.
+    _replyWaiting = widget.chat.unread > 0;
     unawaited(widget.chat.setViewing(true));
+    // And brought up to date: the live stream does not carry what arrived while
+    // it was down, and a phone drops it whenever the app sleeps — so a chat
+    // opened from a notification would otherwise be missing the very reply the
+    // notification was about.
+    unawaited(widget.chat.refresh());
     // Open is not the same as on screen. A chat left open when the phone is
     // put down is still mounted, and if it went on telling the server it was
     // being read, no reply would ring the phone until the app was killed.
@@ -182,7 +196,7 @@ class _NestMessengerState extends State<NestMessenger> with WidgetsBindingObserv
     }
     if (!mounted || _landed) return;
     _landed = true;
-    if (widget.chat.config?.home == null || widget.startOnConversation) return;
+    if (widget.chat.config?.home == null || widget.startOnConversation || _replyWaiting) return;
     setState(() => _view = NestView.home);
     await _loadHistory();
   }

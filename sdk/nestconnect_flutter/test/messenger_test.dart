@@ -879,6 +879,30 @@ void main() {
       expect(find.text('Send us a message'), findsNothing);
     });
 
+    chatTest('a waiting reply opens the chat on it, even from showNestMessenger', (tester) async {
+      server.home = true;
+      await tester.runAsync(() => chat.login(userId: 'u_1', name: 'Marta Nowak'));
+      await settle(tester, 250);
+      await settle(tester, 250);
+      server.agentSays('msg_w', 'Your refund has gone through');
+      await settle(tester, 300);
+      expect(chat.unread, 1);
+
+      late BuildContext app;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        app = context;
+        return const SizedBox.expand();
+      })));
+      // What an app wired before openNestNotification existed does on a tap.
+      unawaited(showNestMessenger(app, chat: chat));
+      await sheetArrives(tester);
+      await settle(tester, 400);
+
+      expect(find.text('Your refund has gone through'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('Send us a message'), findsNothing);
+    });
+
     chatTest('is where the chat opens, when the business has one', (tester) async {
       await openHome(tester);
 
