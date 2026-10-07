@@ -29,6 +29,64 @@ export function embedSnippet(
   // customer's own domain rather than ours. A settings object is code, so it
   // survives; and it carries `host`, so the widget never has to guess where we
   // are. The host is also why the two tags can't be collapsed into one.
+  return scriptSnippet(settings, appearance, []);
+}
+
+/**
+ * The same snippet for a site with signed-in users: the bubble, plus who is
+ * signed in, for the website's templates to fill in on every page.
+ *
+ * `hash` is the one line that has to come from the website's server — the
+ * signing secret must never reach a browser — so it is the one placeholder
+ * spelled out as such rather than shown with an example value.
+ */
+export function signedInSnippet(
+  settings: Pick<NestChatSettings, "widgetKey" | "embedUrl" | "scriptUrl">,
+  appearance: NestChatAppearance,
+): string {
+  return scriptSnippet(settings, appearance, [
+    `    // the signed-in user — leave out for visitors`,
+    `    user: {`,
+    `      id: "123",`,
+    `      hash: "SIGNED_ON_YOUR_SERVER", // step 2`,
+    `      name: "Marta Nowak",`,
+    `      email: "marta@example.com"`,
+    `    },`,
+    `    fields: { order_id: "DG-88412" } // optional`,
+  ]);
+}
+
+/** Making `hash` on the website's server, in the languages sites are built in.
+ *  The secret goes in the server's environment, never in the page. */
+export const SIGNING_EXAMPLES: ReadonlyArray<{ label: string; code: string }> = [
+  {
+    label: "Node.js",
+    code: `const hash = require("crypto")\n  .createHmac("sha256", process.env.NESTCHAT_SECRET)\n  .update(String(user.id))\n  .digest("hex");`,
+  },
+  {
+    label: "PHP",
+    code: `$hash = hash_hmac('sha256', (string) $user->id, getenv('NESTCHAT_SECRET'));`,
+  },
+  {
+    label: "Python",
+    code: `hash = hmac.new(os.environ["NESTCHAT_SECRET"].encode(),\n                str(user.id).encode(), hashlib.sha256).hexdigest()`,
+  },
+];
+
+/** For a site where people sign in and out without a page load. */
+export const SPA_EXAMPLE = [
+  `// after sign-in (hash from your server, as above)`,
+  `NestChat.identify({ id: "123", hash: "…", name: "Marta Nowak", email: "marta@example.com" });`,
+  ``,
+  `// on sign-out — the next person on this browser starts fresh`,
+  `NestChat.logout();`,
+].join("\n");
+
+function scriptSnippet(
+  settings: Pick<NestChatSettings, "widgetKey" | "embedUrl" | "scriptUrl">,
+  appearance: NestChatAppearance,
+  extra: string[],
+): string {
   const host = originOf(settings.scriptUrl);
   return [
     `<script>`,
@@ -37,7 +95,8 @@ export function embedSnippet(
     `    host: ${js(host)},`,
     `    position: ${js(appearance.position)},`,
     `    accent: ${js(appearance.accent)},`,
-    `    label: ${js(appearance.launcherLabel)}`,
+    `    label: ${js(appearance.launcherLabel)}${extra.length ? "," : ""}`,
+    ...extra,
     `  };`,
     `</script>`,
     `<script src="${settings.scriptUrl}" defer></script>`,

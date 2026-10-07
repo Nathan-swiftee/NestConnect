@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type {
   AssignConversationInput,
   Conversation,
+  ConversationFilterCounts,
   ConversationPage,
   ConversationWithMessages,
   ForwardResult,
@@ -79,6 +80,15 @@ export class ConversationsService {
     opts?: { cursor?: string; limit?: number; field?: { key: string; value?: string } },
   ): Promise<ConversationPage> {
     return this.store.listConversations(view, userId, opts);
+  }
+
+  /** How many conversations each of the list's filter chips holds. */
+  counts(
+    view: string,
+    userId: string,
+    opts?: { field?: { key: string; value?: string } },
+  ): Promise<ConversationFilterCounts> {
+    return this.store.conversationFilterCounts(view, userId, opts);
   }
 
   /** Search across conversations (contact, subject, preview, body). Scoped to

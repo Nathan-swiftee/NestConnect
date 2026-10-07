@@ -3,6 +3,7 @@ import type {
   NestChatIdentifyResult,
   NestChatMessage,
   NestChatSession,
+  NestChatSessionInput,
   NestChatStartInput,
   NestChatStartResult,
   NestChatUploadResult,
@@ -30,10 +31,7 @@ export function fetchConfig(widgetKey: string): Promise<NestChatConfig> {
   return fetch(`${base}/${encodeURIComponent(widgetKey)}/config`).then(json<NestChatConfig>);
 }
 
-export function openSession(
-  widgetKey: string,
-  input: { visitorId?: string; name?: string; email?: string },
-): Promise<NestChatSession> {
+export function openSession(widgetKey: string, input: NestChatSessionInput): Promise<NestChatSession> {
   return fetch(`${base}/${encodeURIComponent(widgetKey)}/session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

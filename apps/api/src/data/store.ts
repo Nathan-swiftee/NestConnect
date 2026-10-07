@@ -1,4 +1,5 @@
 import type {
+  ConversationFilterCounts,
   CreateCustomFieldInput,
   CustomField,
   CustomFieldEntity,
@@ -558,6 +559,12 @@ export abstract class Store {
       field?: { key: string; value?: string };
     },
   ): Promise<ConversationPage>;
+  /** Per-filter totals for a view (and field filter) — the list's chips. */
+  abstract conversationFilterCounts(
+    view: string,
+    userId: string,
+    opts?: { field?: { key: string; value?: string } },
+  ): Promise<ConversationFilterCounts>;
   /** A cursor page of search results (contact, subject, preview, message body). */
   abstract searchConversations(
     query: string,

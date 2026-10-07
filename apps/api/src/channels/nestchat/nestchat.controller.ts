@@ -241,6 +241,20 @@ export class NestChatController {
     @Body(new ZodValidationPipe(nestchatSessionInputSchema)) body: NestChatSessionInput,
   ): Promise<NestChatSession> {
     const inbox = await this.nestchat.inboxForWidgetKey(widgetKey);
+
+    // A website that knows who is signed in, and signed it. The same rule as an
+    // app: the user's id under the channel's secret, checked here, or nothing
+    // they sent is believed. There is no "trust it anyway" setting for a
+    // website — a browser can be made to say anything, and an email is what
+    // joins a chat onto a customer's history.
+    const externalId = body.externalId?.trim();
+    if (externalId) {
+      if (await this.nestchat.verifyUserHash(inbox.id, externalId, body.userHash ?? "")) {
+        return this.signedInWebSession(inbox, externalId, body);
+      }
+      await this.nestchat.reportUnverifiedIdentity(inbox, externalId, "website");
+    }
+
     const visitorId = body.visitorId?.trim() || randomBytes(16).toString("hex");
 
     const contact = await this.store.upsertContactByIdentity({
@@ -261,6 +275,14 @@ export class NestChatController {
       (c) => c.inboxId === inbox.id && c.status !== "closed",
     )?.id;
 
+    // What the page is about — `fields` in its settings. Conversation fields
+    // only, so a visitor can describe their chat but never rewrite a record.
+    const { values, unknown } = await this.nestchat.validateFields(inbox.id, body.fields ?? {});
+    const hasFields = Object.keys(values).length > 0;
+    if (conversationId && hasFields) {
+      await this.store.setCustomFieldValues(inbox.orgId, "conversation", conversationId, values);
+    }
+
     const token = conversationId
       ? this.nestchat.signVisitorToken({ visitorId, inboxId: inbox.id, contactId: contact.id, conversationId })
       : // No thread yet: the token names the contact, and the first message
@@ -270,6 +292,7 @@ export class NestChatController {
           inboxId: inbox.id,
           contactId: contact.id,
           conversationId: "",
+          ...(hasFields ? { fields: values } : {}),
         });
 
     return {
@@ -277,6 +300,55 @@ export class NestChatController {
       token,
       hasConversation: Boolean(conversationId),
       messages: conversationId ? await this.nestchat.visitorHistory(conversationId) : [],
+      ...(externalId ? { identified: false } : {}),
+      ...(unknown.length ? { unknownFields: unknown } : {}),
+    };
+  }
+
+  /**
+   * A website's signed-in user, verified.
+   *
+   * Keyed exactly as an app user is — the channel and the site's own id — so a
+   * customer who chats on the website and later in the app is one person with
+   * one history, on whichever browser or phone they pick up.
+   */
+  private async signedInWebSession(
+    inbox: Inbox,
+    externalId: string,
+    body: NestChatSessionInput,
+  ): Promise<NestChatSession> {
+    const app = await this.nestchat.appFor(inbox.id);
+    const visitorId = externalIdentity(inbox.id, externalId);
+    const contact = await this.store.upsertContactByIdentity({
+      orgId: inbox.orgId,
+      kind: "external",
+      value: visitorId,
+      displayName: body.name?.trim() || `Visitor ${visitorId.slice(-6)}`,
+    });
+    await this.nestchat.identifyVisitor(
+      { visitorId, inboxId: inbox.id, contactId: contact.id, conversationId: "" },
+      { name: body.name, email: body.email, phone: body.phone },
+    );
+
+    const { values, unknown } = await this.nestchat.validateFields(inbox.id, body.fields ?? {});
+    const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values);
+    if (conversationId && Object.keys(values).length) {
+      await this.store.setCustomFieldValues(inbox.orgId, "conversation", conversationId, values);
+    }
+
+    return {
+      visitorId,
+      token: this.nestchat.signVisitorToken({
+        visitorId,
+        inboxId: inbox.id,
+        contactId: contact.id,
+        conversationId: conversationId ?? "",
+        ...(conversationId ? {} : { fields: values }),
+      }),
+      hasConversation: Boolean(conversationId),
+      messages: conversationId ? await this.nestchat.visitorHistory(conversationId) : [],
+      identified: true,
+      unknownFields: unknown,
     };
   }
 

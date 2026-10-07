@@ -127,6 +127,10 @@ jobs:
       # time. Accepting any well-formed hash fails four of these.
       - name: App identity and thread resolution
         run: pnpm check:app-identity
+      - name: Signed-in users on a website
+        run: pnpm check:website-identity
+      - name: Conversation list filter counts
+        run: pnpm check:conversation-counts
 
       # Files from people who have not signed in to anything, stored by us and
       # served back from our own domain. The allowlist is the point: the

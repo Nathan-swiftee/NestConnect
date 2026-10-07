@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useConversations, useCustomFields, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
+import { useConversationCounts, useConversations, useCustomFields, useSearchConversations, useRefresh, useSession, useTeams } from "../hooks";
 import { filterChipFields } from "@ding/schemas";
 import { listTime, slaCountdown, timeUntil } from "../lib/format";
 import { Avatar } from "./Avatar";
@@ -55,7 +55,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   // Inbound", is a result you can neither place nor act on.
   const searching = query.length > 0;
   const search = useSearchConversations(query, searching, view);
-  const hasGroups = (data ?? []).some((c) => c.channel === "whatsapp_group");
+  const hasLoadedGroups = (data ?? []).some((c) => c.channel === "whatsapp_group");
   const shown = searching
     ? search.data ?? []
     : (data ?? []).filter((c) => {
@@ -77,10 +77,23 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
   const showMine = view.startsWith("team:") || view.startsWith("inbox:");
   // A team inbox already scopes to one team, so the per-card team label is redundant there.
   const showTeamTag = !view.startsWith("team:");
-  // Per-filter counts (WhatsApp-style) — computed from the view's data, ignoring search.
+  // Per-filter counts (WhatsApp-style), from the server over the whole view.
+  // Counting the loaded rows instead is what made every chip read low until
+  // the list had been scrolled to its end — it is paged, thirty at a time.
+  // Fetched again whenever the list is, so they move with it.
+  const serverCounts = useConversationCounts(
+    view,
+    fieldKey ? { key: fieldKey } : undefined,
+    listQuery.dataUpdatedAt,
+  ).data;
+  // A group thread three pages down still earns the chip.
+  const hasGroups = hasLoadedGroups || (serverCounts?.groups ?? 0) > 0;
+  // The loaded rows stand in only until the server has answered once.
   const active = (data ?? []).filter((c) => c.status !== "closed");
   const countFor = (key: Filter): number =>
-    key === "all"
+    serverCounts
+      ? serverCounts[key]
+      : key === "all"
       ? active.length
       : key === "unread"
         ? active.filter((c) => c.unread).length

@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type ChangeEvent, type ComponentType, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { embedSnippet, type EmbedKind } from "../lib/nestchat-embed";
+import {
+  embedSnippet,
+  signedInSnippet,
+  SIGNING_EXAMPLES,
+  SPA_EXAMPLE,
+  type EmbedKind,
+} from "../lib/nestchat-embed";
 import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
 import type {
@@ -2078,16 +2084,6 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
   const [tab, setTab] = useState<SettingsSection>("brand");
   const logoRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  /**
-   * The signing secret, held only until this screen goes away.
-   *
-   * Deliberately component state and nothing else: it is returned once, by the
-   * call that mints it, and is never readable again. Putting it anywhere more
-   * durable — a query cache, storage — would be re-inventing the thing that
-   * showing it once is meant to avoid.
-   */
-  const [mintedSecret, setMintedSecret] = useState<string | null>(null);
-  const [rotating, setRotating] = useState(false);
   /** The pasted service-account JSON. Held only while it is being saved — it is
    *  write-only at the other end, so there is nothing to read back into it. */
   const [serviceAccount, setServiceAccount] = useState("");
@@ -2282,6 +2278,17 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
         setTimeout(() => setCopied(false), 1600);
       },
       () => onToast("Couldn’t copy — select the snippet and copy it by hand"),
+    );
+  };
+
+  // The same snippet for a website with signed-in users, and the server line
+  // that signs them — shown in whichever language the site is written in.
+  const userSnippet = settings.data && draft ? signedInSnippet(settings.data, draft.appearance) : "";
+  const [signLang, setSignLang] = useState(0);
+  const copyText = (text: string, what: string) => {
+    void navigator.clipboard.writeText(text).then(
+      () => onToast(`${what} copied`),
+      () => onToast("Couldn’t copy — select it and copy it by hand"),
     );
   };
 
@@ -2701,76 +2708,12 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                     </em>
                   </label>
 
-                  <div className="field">
-                    <span>Signing secret</span>
-                    <div className="keyrow">
-                      <input
-                        readOnly
-                        value={
-                          mintedSecret ??
-                          (settings.data?.hasIdentitySecret ? "•".repeat(32) : "Not set up yet")
-                        }
-                        onFocus={(e) => e.target.select()}
-                      />
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        disabled={rotating}
-                        onClick={() => {
-                          if (
-                            settings.data?.hasIdentitySecret &&
-                            !window.confirm(
-                              "Replace the signing secret?\n\nEvery signature made with the old one stops working, so your backend has to be updated at the same moment.",
-                            )
-                          ) {
-                            return;
-                          }
-                          setRotating(true);
-                          api
-                            .rotateNestchatSecret(inboxId!)
-                            .then((r) => {
-                              setMintedSecret(r.secret);
-                              void settings.refetch();
-                              onToast("Copy it now — it isn't shown again");
-                            })
-                            .catch((err: unknown) =>
-                              onToast(
-                                (err instanceof Error && err.message) || "Couldn’t mint a secret",
-                              ),
-                            )
-                            .finally(() => setRotating(false));
-                        }}
-                      >
-                        {settings.data?.hasIdentitySecret ? "Replace" : "Create"}
-                      </button>
-                      {mintedSecret && (
-                        <button
-                          type="button"
-                          className="btn-ghost"
-                          onClick={() => {
-                            void navigator.clipboard?.writeText(mintedSecret);
-                            onToast("Signing secret copied");
-                          }}
-                        >
-                          Copy
-                        </button>
-                      )}
-                    </div>
-                    <em className="fieldhint">
-                      {mintedSecret ? (
-                        <b>
-                          This is the only time it is shown. Put it in your backend’s environment
-                          now — it cannot be read back.
-                        </b>
-                      ) : (
-                        <>
-                          Your backend signs each user id with this, and we check the signature.
-                          Never ship it inside the app: anything in a binary can be pulled out of
-                          one, and whoever holds this can claim to be any of your customers.
-                        </>
-                      )}
-                    </em>
-                  </div>
+                  <SigningSecretField
+                    inboxId={inboxId!}
+                    hasSecret={Boolean(settings.data?.hasIdentitySecret)}
+                    onChanged={() => void settings.refetch()}
+                    onToast={onToast}
+                  />
                 </>
               )}
 
@@ -3317,10 +3260,177 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                 Widget key <code>{settings.data?.widgetKey}</code> — public by design; it identifies
                 this channel and nothing more.
               </p>
+
+              <h3>Signed-in users</h3>
+              <p className="fieldhint">
+                If people log in to your website, tell the chat who they are. Their name and email
+                go onto their contact, agents see who they are talking to, and the chat follows them
+                to any browser — and to your app, if it uses the same user ids. Your server signs
+                each user’s id; without a valid signature the chat opens as an ordinary visitor, so
+                nobody can pose as one of your customers from their browser.
+              </p>
+              {embed === "iframe" ? (
+                <p className="fieldhint">
+                  Signed-in users need the <b>Floating bubble</b> snippet — switch above.
+                </p>
+              ) : (
+                <>
+                  <p className="fieldhint">
+                    <b>1.</b> Create the signing secret and put it in your server’s environment as{" "}
+                    <code>NESTCHAT_SECRET</code>. It never goes in a page.
+                  </p>
+                  {inboxId && (
+                    <SigningSecretField
+                      inboxId={inboxId}
+                      hasSecret={Boolean(settings.data?.hasIdentitySecret)}
+                      onChanged={() => void settings.refetch()}
+                      onToast={onToast}
+                    />
+                  )}
+
+                  <p className="fieldhint">
+                    <b>2.</b> On your server, sign the signed-in user’s id on every page:
+                  </p>
+                  <div className="ncw__tabs" role="group" aria-label="Server language">
+                    {SIGNING_EXAMPLES.map((ex, i) => (
+                      <button
+                        key={ex.label}
+                        type="button"
+                        className={"setfilterchip" + (signLang === i ? " on" : "")}
+                        onClick={() => setSignLang(i)}
+                      >
+                        {ex.label}
+                      </button>
+                    ))}
+                  </div>
+                  <pre className="ncw__snippet">{SIGNING_EXAMPLES[signLang]?.code}</pre>
+
+                  <p className="fieldhint">
+                    <b>3.</b> Use this instead of the snippet above, with your page filling in the
+                    user and the <code>hash</code> from step 2. Leave <code>user</code> out for
+                    visitors who aren’t signed in.
+                  </p>
+                  <pre className="ncw__snippet">{userSnippet}</pre>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => copyText(userSnippet, "Signed-in snippet")}
+                  >
+                    Copy snippet
+                  </button>
+                  <p className="fieldhint">
+                    <code>fields</code> is optional — any <b>conversation</b> custom field from
+                    Settings › Custom fields, like an order number. Agents see it on the chat, and it
+                    arrives on push notifications.
+                  </p>
+
+                  <p className="fieldhint">
+                    <b>Single-page app?</b> If people sign in or out without the page reloading:
+                  </p>
+                  <pre className="ncw__snippet">{SPA_EXAMPLE}</pre>
+                </>
+              )}
             </section>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * The channel's signing secret: what a website's or an app's server signs its
+ * user ids with, so we can believe who is signed in.
+ *
+ * Its own component because it is offered in two places — the Install section,
+ * for websites, and In-app SDK — and both are the same one secret. The minted
+ * value is component state and nothing else: it is returned once, by the call
+ * that mints it, and is never readable again. Putting it anywhere more durable
+ * would re-invent the thing that showing it once is meant to avoid.
+ */
+function SigningSecretField({
+  inboxId,
+  hasSecret,
+  onChanged,
+  onToast,
+}: {
+  inboxId: string;
+  hasSecret: boolean;
+  onChanged: () => void;
+  onToast: (message: string) => void;
+}) {
+  const [mintedSecret, setMintedSecret] = useState<string | null>(null);
+  const [rotating, setRotating] = useState(false);
+  return (
+    <div className="field">
+      <span>Signing secret</span>
+      <div className="keyrow">
+        <input
+          readOnly
+          value={
+            mintedSecret ??
+            (hasSecret ? "•".repeat(32) : "Not set up yet")
+          }
+          onFocus={(e) => e.target.select()}
+        />
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={rotating}
+          onClick={() => {
+            if (
+              hasSecret &&
+              !window.confirm(
+                "Replace the signing secret?\n\nEvery signature made with the old one stops working, so your backend has to be updated at the same moment.",
+              )
+            ) {
+              return;
+            }
+            setRotating(true);
+            api
+              .rotateNestchatSecret(inboxId)
+              .then((r) => {
+                setMintedSecret(r.secret);
+                onChanged();
+                onToast("Copy it now — it isn't shown again");
+              })
+              .catch((err: unknown) =>
+                onToast(
+                  (err instanceof Error && err.message) || "Couldn’t mint a secret",
+                ),
+              )
+              .finally(() => setRotating(false));
+          }}
+        >
+          {hasSecret ? "Replace" : "Create"}
+        </button>
+        {mintedSecret && (
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => {
+              void navigator.clipboard?.writeText(mintedSecret);
+              onToast("Signing secret copied");
+            }}
+          >
+            Copy
+          </button>
+        )}
+      </div>
+      <em className="fieldhint">
+        {mintedSecret ? (
+          <b>
+            This is the only time it is shown. Put it in your backend’s environment
+            now — it cannot be read back.
+          </b>
+        ) : (
+          <>
+            Your server signs each user id with this, and we check the signature. Never put it
+            in a web page or inside an app — anything sent to a browser or shipped in a binary
+            can be read, and whoever holds this can claim to be any of your customers.
+          </>
+        )}
+      </em>
     </div>
   );
 }

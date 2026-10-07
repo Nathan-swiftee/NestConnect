@@ -320,7 +320,11 @@ export class NestChatService {
    * session forever. The point is that somebody sees it at all, not that every
    * instance is counted.
    */
-  async reportUnverifiedIdentity(inbox: Inbox, externalId: string): Promise<void> {
+  async reportUnverifiedIdentity(
+    inbox: Inbox,
+    externalId: string,
+    source: "app" | "website" = "app",
+  ): Promise<void> {
     const last = NestChatService.unverifiedReports.get(inbox.id) ?? 0;
     if (Date.now() - last < UNVERIFIED_REPORT_EVERY_MS) return;
     NestChatService.unverifiedReports.set(inbox.id, Date.now());
@@ -328,25 +332,27 @@ export class NestChatService {
     // side, the other is somebody signing wrong on theirs, and they are fixed
     // by different people.
     const hasSecret = await this.hasIdentitySecret(inbox.id);
+    const who = source === "website" ? "A website sign-in" : "An app session";
     try {
       await this.store.recordWebhookDiagnostic({
         channel: "nestchat",
         kind: hasSecret ? "app_identity_signature_mismatch" : "app_identity_no_secret",
         reference: inbox.name,
         detail: hasSecret
-          ? `An app session for "${externalId}" arrived with a signature that did not verify. ` +
+          ? `${who} for "${externalId}" arrived with a signature that did not verify. ` +
             "Its name, email and phone were discarded and the chat opened anonymously. " +
             "Check the backend is signing HMAC-SHA256 of the user id, hex, under this channel's current signing secret."
-          : `An app session for "${externalId}" arrived but this channel has no signing secret, ` +
+          : `${who} for "${externalId}" arrived but this channel has no signing secret, ` +
             "so nothing can be verified and every chat opens anonymously. " +
-            "Create one under Settings › NestChat widget › In-app SDK and give it to the app's backend.",
+            `Create one under Settings › NestChat widget › ${source === "website" ? "Install" : "In-app SDK"} ` +
+            `and give it to the ${source === "website" ? "website's server" : "app's backend"}.`,
       });
     } catch {
       // A diagnostic that cannot be written must not fail the session it is
       // describing. The customer still gets their chat.
     }
     this.logger.warn(
-      `Unverified app identity on "${inbox.name}" (${hasSecret ? "signature mismatch" : "no signing secret"}) — details discarded`,
+      `Unverified ${source} identity on "${inbox.name}" (${hasSecret ? "signature mismatch" : "no signing secret"}) — details discarded`,
     );
   }
 

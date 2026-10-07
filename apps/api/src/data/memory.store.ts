@@ -17,6 +17,7 @@ import type {
   ContactIdentityKind,
   ContactWithConversations,
   Conversation,
+  ConversationFilterCounts,
   ConversationPage,
   ConversationStatus,
   ConversationWithMessages,
@@ -978,22 +979,44 @@ export class MemoryStore extends Store {
     userId: string,
     opts?: { cursor?: string; limit?: number; field?: { key: string; value?: string } },
   ): Promise<ConversationPage> {
+    const sorted = (await this.viewRows(view, userId, opts?.field)).sort(byRecencyDesc);
+    return this.pageConversations(sorted, opts);
+  }
+
+  /** Every conversation a view (and field filter) holds — the list, unpaged. */
+  private async viewRows(
+    view: string,
+    userId: string,
+    field?: { key: string; value?: string },
+  ): Promise<ConversationRecord[]> {
     const userTeams = this.membership[userId] ?? [];
     let matchesField: (r: ConversationRecord) => boolean = () => true;
-    if (opts?.field) {
-      const { conversationIds, contactIds } = await this.findByCustomField(
-        "",
-        opts.field.key,
-        opts.field.value,
-      );
+    if (field) {
+      const { conversationIds, contactIds } = await this.findByCustomField("", field.key, field.value);
       const convs = new Set(conversationIds);
       const contacts = new Set(contactIds);
       matchesField = (r) => convs.has(r.id) || contacts.has(r.contact.id);
     }
-    const sorted = this.conversations
-      .filter((r) => this.matchesView(r, view, userId, userTeams) && matchesField(r))
-      .sort(byRecencyDesc);
-    return this.pageConversations(sorted, opts);
+    return this.conversations.filter(
+      (r) => this.matchesView(r, view, userId, userTeams) && matchesField(r),
+    );
+  }
+
+  async conversationFilterCounts(
+    view: string,
+    userId: string,
+    opts?: { field?: { key: string; value?: string } },
+  ): Promise<ConversationFilterCounts> {
+    const rows = await this.viewRows(view, userId, opts?.field);
+    const live = rows.filter((r) => r.status !== "closed");
+    return {
+      all: live.length,
+      unread: live.filter((r) => r.unread || (r.unreadCount ?? 0) > 0).length,
+      mine: live.filter((r) => r.assigneeUserId === userId).length,
+      unassigned: live.filter((r) => !r.assigneeUserId).length,
+      groups: live.filter((r) => r.channel === "whatsapp_group").length,
+      closed: rows.length - live.length,
+    };
   }
 
   async searchConversations(

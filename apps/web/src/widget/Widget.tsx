@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type {
+  NestChatSession,
   NestChatAppearance,
   NestChatConfig,
   NestChatCardIcon,
@@ -30,6 +31,7 @@ import {
   uploadVoice,
 } from "./api";
 import { gateFor } from "./prechat";
+import { HOST_WAIT_MS, listenToHost, sameIdentity, sessionInputFor, type HostIdentity } from "./host";
 import { MessageRow, describeQuote } from "./MessageRow";
 import { VoiceNote } from "./VoiceNote";
 import { VoiceRecorder } from "./VoiceRecorder";
@@ -245,7 +247,14 @@ function useOnScreen(ref: RefObject<HTMLElement>): boolean {
 
 type Phase = "loading" | "ready" | "unavailable";
 
-export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
+export function Widget({
+  widgetKey,
+  hostSpeaks = false,
+}: {
+  widgetKey: string;
+  /** The page will say who is signed in (`hs=1`), so wait to hear it. */
+  hostSpeaks?: boolean;
+}): JSX.Element {
   const [phase, setPhase] = useState<Phase>("loading");
   const [appearance, setAppearance] = useState<NestChatAppearance>();
   const [online, setOnline] = useState(false);
@@ -298,6 +307,9 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
   const [closed, setClosed] = useState(false);
   /** What we told them we saved — the confirmation that used to be missing. */
   const [detailsSaved, setDetailsSaved] = useState<{ linked: boolean } | null>(null);
+  /** Signed in on the website, and believed. Who they are is the website's to
+   *  say: nothing to ask for, and no "not you?" to offer. */
+  const [signedIn, setSignedIn] = useState(false);
   const [detailsError, setDetailsError] = useState(false);
   /** When an agent last read this thread — the "Seen" under our own messages. */
   const [seenAt, setSeenAt] = useState<string>();
@@ -323,10 +335,82 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
    *  and dropped when the server's copy replaces it. */
   const localVoice = useRef(new Map<string, string>());
 
+  /* ---- who the page says is signed in ---- */
+
+  /** The page's last word on who is signed in. */
+  const hostRef = useRef<HostIdentity | null>(null);
+  /** Re-opens the session when the page signs somebody in or out later. Kept
+   *  in a ref so the message listener, set up once at boot, calls the current
+   *  one. */
+  const laterIdentity = useRef<(who: HostIdentity) => void>(() => {});
+
+  /**
+   * Take on a session: a signed-in user is known already, so the pre-chat
+   * form and the "leave your details" card have nothing to ask — and their
+   * session is not this browser's to remember. A visitor's is.
+   */
+  const adopt = useCallback(
+    (session: NestChatSession, who: HostIdentity | null) => {
+      setSignedIn(Boolean(session.identified));
+      if (session.identified) {
+        setIdentified(true);
+        if (who?.user?.name) setVisitorName(who.user.name);
+      } else {
+        writeLocal(widgetKey, "visitor", session.visitorId);
+      }
+      setToken(session.token);
+      setLive(session.hasConversation);
+      setMessages(session.messages);
+    },
+    [widgetKey],
+  );
+
+  laterIdentity.current = (who: HostIdentity) => {
+    if (sameIdentity(hostRef.current, who)) {
+      hostRef.current = who;
+      return;
+    }
+    const wasSignedIn = Boolean(hostRef.current?.user);
+    hostRef.current = who;
+    // Signed out, or somebody else signed in: whatever this browser remembered
+    // was theirs, and the next person must not start inside it.
+    if (wasSignedIn) for (const slot of ["visitor", "name", "identified"] as const) clearLocal(widgetKey, slot);
+    setVisitorName(readLocal(widgetKey, "name"));
+    setIdentified(readLocal(widgetKey, "identified") === "1");
+    setDetailsSaved(null);
+    setStartDone(false);
+    setChosen(undefined);
+    setOptionId(undefined);
+    setMessages([]);
+    setLive(false);
+    void openSession(widgetKey, sessionInputFor(who, readLocal(widgetKey, "visitor")))
+      .then((session) => adopt(session, who))
+      .catch(() => setPhase("unavailable"));
+  };
+
   /* ---- boot: appearance, then session ---- */
 
   useEffect(() => {
     let alive = true;
+    // Listening before anything else, so an answer that arrives while the
+    // config is still loading is not missed.
+    let answered = false;
+    let firstAnswer: (who: HostIdentity | null) => void = () => {};
+    const heard = new Promise<HostIdentity | null>((resolve) => {
+      firstAnswer = resolve;
+    });
+    const stopListening = hostSpeaks
+      ? listenToHost((who) => {
+          if (!answered) {
+            answered = true;
+            firstAnswer(who);
+          } else laterIdentity.current(who);
+        })
+      : undefined;
+    const giveUp = setTimeout(() => {
+      answered = true;
+      firstAnswer(null);
+    }, hostSpeaks ? HOST_WAIT_MS : 0);
     (async () => {
       try {
         const config = await fetchConfig(widgetKey);
@@ -339,12 +423,14 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         setRouting(config.routing);
         setHome(config.home);
 
-        const session = await openSession(widgetKey, { visitorId: readLocal(widgetKey, "visitor") });
+        const who = await heard;
+        hostRef.current = who;
+        const session = await openSession(
+          widgetKey,
+          sessionInputFor(who, readLocal(widgetKey, "visitor")),
+        );
         if (!alive) return;
-        writeLocal(widgetKey, "visitor", session.visitorId);
-        setToken(session.token);
-        setLive(session.hasConversation);
-        setMessages(session.messages);
+        adopt(session, who);
         // Somebody with a conversation already open is dropped straight into
         // it: they came back to read a reply, not to be shown the front door
         // again.
@@ -359,8 +445,10 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     })();
     return () => {
       alive = false;
+      clearTimeout(giveUp);
+      stopListening?.();
     };
-  }, [widgetKey]);
+  }, [widgetKey, hostSpeaks, adopt]);
 
   /* ---- live: agent replies pushed over SSE ---- */
 
@@ -863,6 +951,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
     !preChat &&
     (appearance.askEmail || appearance.askPhone) &&
     !detailsSaved &&
+    !signedIn &&
     messages.length > 0;
 
   // The last thing the visitor themselves said — the only bubble a "Seen"
@@ -1043,7 +1132,7 @@ export function Widget({ widgetKey }: { widgetKey: string }): JSX.Element {
         {/* Who we think they are, while it can still be corrected. Offered only
             before the first message: after that there is a thread on this
             person's record, and "not you?" would be an offer to abandon it. */}
-        {visitorName && !hasThread ? (
+        {visitorName && !hasThread && !signedIn ? (
           <div className="nc__asme">
             Chatting as {visitorName.split(/\s+/)[0]}
             <button type="button" onClick={() => void forgetMe()}>

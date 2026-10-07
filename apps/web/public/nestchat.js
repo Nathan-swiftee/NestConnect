@@ -4,6 +4,10 @@
  *   <script>window.NestChatSettings = { key: "nc_...", host: "https://your-app" };</script>
  *   <script src="https://your-app/nestchat.js" defer></script>
  *
+ * A site with signed-in users adds `user: { id, hash, name, email }` (and,
+ * optionally, `fields: { order_id: "…" }`) to the settings; the Install section
+ * of Settings › NestChat widget shows the server side.
+ *
  * Plain ES5-ish JavaScript with no build step and no dependencies, because this
  * runs on somebody else's website: it must not assume a bundler, a framework, or
  * a modern-only browser, and it must not leave anything behind in the global
@@ -100,13 +104,68 @@
 
   var side = position === "left" ? "left" : "right";
 
+  /*
+   * Who is signed in to the website, if anyone — `user: { id, hash, name,
+   * email, phone }` in the settings, or NestChat.identify() later. `hash` is
+   * HMAC-SHA256 of the id under the channel's signing secret, made by the
+   * website's own server; without a valid one the chat stays anonymous.
+   *
+   * Handed to the chat by postMessage once it says it is listening, never in
+   * the frame's URL: a URL is written into server logs and browser history,
+   * and an email address does not belong in either.
+   */
+  var user = cleanUser(settings.user);
+  var fields = cleanFields(settings.fields);
+  var frameReady = false;
+
+  function cleanUser(raw) {
+    if (!raw || typeof raw !== "object" || raw.id == null || raw.id === "") return null;
+    var out = { id: String(raw.id) };
+    var keys = ["hash", "name", "email", "phone"];
+    for (var i = 0; i < keys.length; i++) {
+      if (raw[keys[i]] != null && raw[keys[i]] !== "") out[keys[i]] = String(raw[keys[i]]);
+    }
+    if (!out.hash) {
+      warn(
+        "user.hash is missing, so the chat will open as an anonymous visitor. Your server " +
+          "signs the user id with the channel's signing secret (Settings › NestChat widget › Install).",
+      );
+    }
+    return out;
+  }
+
+  function cleanFields(raw) {
+    if (!raw || typeof raw !== "object") return null;
+    var out = {};
+    for (var k in raw) {
+      if (Object.prototype.hasOwnProperty.call(raw, k) && raw[k] != null) out[k] = String(raw[k]);
+    }
+    return out;
+  }
+
+  function tellFrame() {
+    if (!frameReady || !frame.contentWindow) return;
+    frame.contentWindow.postMessage({ type: "nestchat:user", user: user, fields: fields }, origin);
+  }
+
+  window.addEventListener("message", function (event) {
+    // Only our own frame, from our own origin, asking who is signed in.
+    if (event.origin !== origin || event.source !== frame.contentWindow) return;
+    if (event.data && event.data.type === "nestchat:ready") {
+      frameReady = true;
+      tellFrame();
+    }
+  });
+
   var frame = document.createElement("iframe");
   // Stable ids on both elements. A customer's own stylesheet is written against
   // their page, not ours, and a bare `button {}` rule is common enough that the
   // launcher needs something to be addressed by — for them to override, and for
   // us to point at when someone asks why it's sitting behind their footer.
   frame.id = "nestchat-frame";
-  frame.src = origin + "/widget.html?key=" + encodeURIComponent(key);
+  // `hs=1`: this page will say who is signed in, so the chat waits to hear
+  // before opening a session rather than opening one as a stranger first.
+  frame.src = origin + "/widget.html?key=" + encodeURIComponent(key) + "&hs=1";
   frame.title = label;
   frame.setAttribute("aria-hidden", "true");
   // The iframe is same-origin with our API but cross-origin to the host page,
@@ -210,6 +269,20 @@
     },
     toggle: function () {
       setOpen(!open);
+    },
+    /** Somebody signed in after the page loaded — a single-page app. Same
+     *  shape as `NestChatSettings.user`, and the same signature rule. */
+    identify: function (next, nextFields) {
+      user = cleanUser(next);
+      if (nextFields !== undefined) fields = cleanFields(nextFields);
+      tellFrame();
+    },
+    /** Signed out: the chat forgets them, so the next person on this browser
+     *  starts as a stranger rather than inside somebody else's conversation. */
+    logout: function () {
+      user = null;
+      fields = null;
+      tellFrame();
     },
   };
 })();

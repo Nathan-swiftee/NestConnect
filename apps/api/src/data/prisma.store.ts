@@ -19,6 +19,7 @@ import type {
   ContactIdentityKind,
   ContactWithConversations,
   Conversation,
+  ConversationFilterCounts,
   ConversationPage,
   ConversationStatus,
   ConversationWithMessages,
@@ -1033,6 +1034,47 @@ export class PrismaStore extends Store {
     if (cur) parts.push(keysetBefore(cur));
     const where: Prisma.ConversationWhereInput = parts.length === 1 ? parts[0]! : { AND: parts };
     return this.pageConversations(where, limit);
+  }
+
+  async conversationFilterCounts(
+    view: string,
+    userId: string,
+    opts?: { field?: { key: string; value?: string } },
+  ): Promise<ConversationFilterCounts> {
+    // The list's own scope — the same view and field filter, built the same
+    // way — so a chip can never count something its list would not show.
+    const parts: Prisma.ConversationWhereInput[] = [
+      this.buildWhere(view, userId, await this.teamsForUser(userId), await this.mentionToken(userId)),
+    ];
+    if (opts?.field) {
+      const { conversationIds, contactIds } = await this.findByCustomField(
+        ORG_ID,
+        opts.field.key,
+        opts.field.value,
+      );
+      parts.push(
+        conversationIds.length || contactIds.length
+          ? {
+              OR: [
+                ...(conversationIds.length ? [{ id: { in: conversationIds } }] : []),
+                ...(contactIds.length ? [{ contactId: { in: contactIds } }] : []),
+              ],
+            }
+          : { id: { in: [] } },
+      );
+    }
+    const count = (extra: Prisma.ConversationWhereInput) =>
+      this.prisma.conversation.count({ where: { AND: [...parts, extra] } });
+    const live: Prisma.ConversationWhereInput = { status: { not: "closed" } };
+    const [all, unread, mine, unassigned, groups, closed] = await Promise.all([
+      count(live),
+      count({ ...live, OR: [{ unread: true }, { unreadCount: { gt: 0 } }] }),
+      count({ ...live, assigneeUserId: userId }),
+      count({ ...live, assigneeUserId: null }),
+      count({ ...live, channel: "whatsapp_group" }),
+      count({ status: "closed" }),
+    ]);
+    return { all, unread, mine, unassigned, groups, closed };
   }
 
   async searchConversations(
