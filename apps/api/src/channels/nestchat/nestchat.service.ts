@@ -126,6 +126,24 @@ const TOKEN_TTL = "7d";
 /** At most one "we could not verify this app" row per channel per window. */
 const UNVERIFIED_REPORT_EVERY_MS = 15 * 60_000;
 
+/**
+ * Who started a NestChat conversation: one browser (an anonymous visitor's
+ * id) or one signed-in user (their `externalIdentity`). Kept on the
+ * conversation's `channelRef`.
+ *
+ * It exists because "the same contact" is not "the same person". Typing an
+ * email into the pre-chat form merges a visitor onto the customer who owns that
+ * address — which is right for the agents, who see the chat on the customer's
+ * record — and before this the visitor's browser then *was* that customer:
+ * their earlier chats listed and readable, and their open chat joined by the
+ * visitor's next message. Everything a visitor is shown, or writes into, is now
+ * matched on this mark, so a merge still links the record without ever handing
+ * one person's conversations to another.
+ */
+export function visitorStamp(visitorId: string): string {
+  return `visitor:${visitorId}`;
+}
+
 @Injectable()
 export class NestChatService {
   /** inboxId → when we last reported an unverifiable session for it. Static so
@@ -392,10 +410,13 @@ export class NestChatService {
     contactId: string,
     app: NestChatApp,
     fields: Record<string, string>,
+    visitorId: string,
   ): Promise<string | undefined> {
     const withConvs = await this.store.getContactWithConversations(contactId);
+    // Only threads this person started — see `visitorStamp`.
     const open = (withConvs?.conversations ?? []).filter(
-      (c) => c.inboxId === inbox.id && c.status !== "closed",
+      (c) =>
+        c.inboxId === inbox.id && c.status !== "closed" && c.channelRef === visitorStamp(visitorId),
     );
     if (!open.length) return undefined;
     if (!app.threadFieldKey) return open[0]?.id;
@@ -806,7 +827,10 @@ export class NestChatService {
   async visitorConversations(claims: VisitorClaims): Promise<NestChatPastConversation[]> {
     const withConvs = await this.store.getContactWithConversations(claims.contactId);
     const mine = (withConvs?.conversations ?? [])
-      .filter((c) => c.inboxId === claims.inboxId)
+      // Started by this browser or this signed-in user, not merely filed under
+      // the same contact: a detail typed into a form can merge a visitor onto
+      // a customer, and their history is not the visitor's to read.
+      .filter((c) => c.inboxId === claims.inboxId && c.channelRef === visitorStamp(claims.visitorId))
       // Newest first, and an open conversation ahead of a closed one when the
       // two were last touched in the same instant. Without the second rule the
       // order of a tie was whatever the store happened to return — which is how
@@ -854,7 +878,12 @@ export class NestChatService {
     conversationId: string,
   ): Promise<NestChatMessage[] | undefined> {
     const conv = await this.store.getConversation(conversationId);
-    if (!conv || conv.contact.id !== claims.contactId || conv.inboxId !== claims.inboxId) {
+    if (
+      !conv ||
+      conv.contact.id !== claims.contactId ||
+      conv.inboxId !== claims.inboxId ||
+      conv.channelRef !== visitorStamp(claims.visitorId)
+    ) {
       return undefined;
     }
     return this.visitorHistory(conversationId);

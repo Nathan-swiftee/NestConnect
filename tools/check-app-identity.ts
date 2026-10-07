@@ -27,7 +27,7 @@ import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
 import { mapContact } from "../apps/api/src/data/mappers";
 import { NestChatController } from "../apps/api/src/channels/nestchat/nestchat.controller";
-import { NestChatService } from "../apps/api/src/channels/nestchat/nestchat.service";
+import { NestChatService, visitorStamp } from "../apps/api/src/channels/nestchat/nestchat.service";
 import { VisitorBus } from "../apps/api/src/channels/nestchat/visitor-bus";
 import { DEFAULT_NESTCHAT_APP, externalIdentity } from "../packages/schemas/src/index";
 
@@ -99,42 +99,42 @@ async function main(): Promise<void> {
   const app = await nestchat.appFor(inbox.id);
   ok(
     "nothing to resume before they have written",
-    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "DG-88412" })) === undefined,
+    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "DG-88412" }, a)) === undefined,
   );
 
   const { conversation: first } = await store.findOrCreateOpenConversation({
-    orgId: ORG_ID, inboxId: inbox.id, contact, channel: "nestchat",
+    orgId: ORG_ID, inboxId: inbox.id, contact, channel: "nestchat", startedBy: visitorStamp(a),
   });
   await store.setCustomFieldValues(ORG_ID, "conversation", first.id, { order_id: "DG-88412" });
   ok(
     "the same order resumes its own thread",
-    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "DG-88412" })) === first.id,
+    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "DG-88412" }, a)) === first.id,
   );
   ok(
     "typed differently, still the same order",
-    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "dg 88412" })) === first.id,
+    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "dg 88412" }, a)) === first.id,
   );
   // A prefix is a different order. Resuming on one would file tonight's
   // complaint under last week's.
   ok(
     "a shorter reference is a different order",
-    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "DG-8841" })) === undefined,
+    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "DG-8841" }, a)) === undefined,
   );
   ok(
     "and so is another order entirely",
-    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "DG-99999" })) === undefined,
+    (await nestchat.threadFor(inbox, contact.id, app, { order_id: "DG-99999" }, a)) === undefined,
   );
   // Sending no order at all must not join whichever thread happened to be open.
   ok(
     "no order named starts something new",
-    (await nestchat.threadFor(inbox, contact.id, app, {})) === undefined,
+    (await nestchat.threadFor(inbox, contact.id, app, {}, a)) === undefined,
   );
 
   console.log("\nWith no thread key, one ongoing conversation\n");
   const ongoing = { ...app, threadFieldKey: "" };
   ok(
     "everything continues the same thread",
-    (await nestchat.threadFor(inbox, contact.id, ongoing, { order_id: "DG-99999" })) === first.id,
+    (await nestchat.threadFor(inbox, contact.id, ongoing, { order_id: "DG-99999" }, a)) === first.id,
   );
 
   console.log("\nFields an integration got wrong\n");

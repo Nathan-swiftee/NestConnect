@@ -1724,6 +1724,7 @@ export class MemoryStore extends Store {
     subject?: string;
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
+    startedBy?: string;
   }): Promise<{ conversation: Conversation; created: boolean }> {
     // One live conversation per contact PER INBOX (channel endpoint): a different
     // inbox — another number, email address, or channel — starts a separate
@@ -1748,7 +1749,8 @@ export class MemoryStore extends Store {
           c.inboxId === params.inboxId &&
           c.contact.id === params.contact.id &&
           (THREADABLE_STATUSES as readonly string[]).includes(c.status) &&
-          threadsTogether(params.channel, params.subject, c.subject),
+          threadsTogether(params.channel, params.subject, c.subject) &&
+          (params.startedBy === undefined || c.channelRef === params.startedBy),
       );
     if (open) return { conversation: this.summary(open), created: false };
 
@@ -1767,6 +1769,7 @@ export class MemoryStore extends Store {
       labels: [],
       unread: true,
       slaDueAt: null,
+      ...(params.startedBy !== undefined ? { channelRef: params.startedBy } : {}),
       lastActivityAt: now,
       seq: 0,
       preview: "",

@@ -951,6 +951,15 @@ export abstract class Store {
     subject?: string;
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
+    /**
+     * Who started it, for a chat that belongs to one browser or one signed-in
+     * user rather than to the whole contact. Only an open conversation carrying
+     * the same mark is joined, and a new one is created with it. See
+     * `visitorStamp`: a contact can be merged onto a customer by a detail
+     * typed into a form, and without this the next message from that browser
+     * landed in the customer's own live chat.
+     */
+    startedBy?: string;
   }): Promise<{ conversation: Conversation; created: boolean }>;
 
   abstract appendInboundMessage(

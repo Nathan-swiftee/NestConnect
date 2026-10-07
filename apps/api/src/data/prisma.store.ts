@@ -2018,6 +2018,7 @@ export class PrismaStore extends Store {
     subject?: string;
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
+    startedBy?: string;
   }): Promise<{ conversation: Conversation; created: boolean }> {
     // One open conversation per contact PER INBOX (channel endpoint): an inbound
     // to this inbox threads into the customer's open thread here; a different inbox
@@ -2047,6 +2048,7 @@ export class PrismaStore extends Store {
         inboxId: params.inboxId,
         contactId: params.contact.id,
         status: { in: [...THREADABLE_STATUSES] },
+        ...(params.startedBy !== undefined ? { channelRef: params.startedBy } : {}),
       },
       include: convInclude,
       orderBy: { lastActivityAt: "desc" },
@@ -2069,6 +2071,7 @@ export class PrismaStore extends Store {
         unread: true,
         seq: 0,
         preview: "",
+        ...(params.startedBy !== undefined ? { channelRef: params.startedBy } : {}),
       },
       include: convInclude,
     });
