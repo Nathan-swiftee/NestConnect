@@ -2708,6 +2708,9 @@ export const loginInputSchema = z.object({
    *  background push registration. Browsers omit this and keep the httpOnly
    *  cookie, which is a real defence there and doesn't change. */
   tokenAuth: z.boolean().optional(),
+  /** A remembered device's pass, from an earlier `rememberDevice` sign-in.
+   *  Browsers send it as a cookie instead. Skips the code, never the password. */
+  trustedDeviceToken: z.string().max(2000).optional(),
 });
 export type LoginInput = z.infer<typeof loginInputSchema>;
 
@@ -2717,6 +2720,9 @@ export interface SessionGrant {
   token?: string;
   /** Seconds until the token expires, so a client can refresh ahead of it. */
   expiresIn?: number;
+  /** For a token client that asked to be remembered: send it with the next
+   *  login and the second factor is skipped for 30 days. */
+  trustedDeviceToken?: string;
 }
 
 /** A signed-in device/browser shown in "Where you're signed in" (personal
@@ -2830,6 +2836,8 @@ export const twoFactorCodeInputSchema = z.object({
    *  cookie to carry it. */
   pendingToken: z.string().optional(),
   tokenAuth: z.boolean().optional(),
+  /** Don't ask this device for a code again for 30 days. */
+  rememberDevice: z.boolean().optional(),
 });
 export type TwoFactorCodeInput = z.infer<typeof twoFactorCodeInputSchema>;
 

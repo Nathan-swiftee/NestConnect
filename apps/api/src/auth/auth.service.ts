@@ -1,9 +1,13 @@
 import { HttpException, HttpStatus, Injectable } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import type { User } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
+
+/** How long "remember this device" skips the second factor at sign-in. */
+export const TRUSTED_DEVICE_TTL_S = 30 * 24 * 60 * 60;
 
 /** Failed logins allowed per account before a cooldown kicks in, and the window. */
 const MAX_FAILURES = 8;
@@ -75,9 +79,15 @@ export class AuthService {
 
   verify(token: string): { userId: string; sessionId?: string } | undefined {
     try {
-      const p = jwt.verify(token, env.auth.jwtSecret) as { sub?: string; jti?: string; twofa?: string };
-      // A half-authenticated "2FA pending" token is never a full session.
-      if (!p.sub || p.twofa) return undefined;
+      const p = jwt.verify(token, env.auth.jwtSecret) as {
+        sub?: string;
+        jti?: string;
+        twofa?: string;
+        trust?: string;
+      };
+      // A half-authenticated "2FA pending" token is never a full session, and
+      // nor is a remembered device — that one skips a code, not a password.
+      if (!p.sub || p.twofa || p.trust) return undefined;
       return { userId: p.sub, sessionId: p.jti };
     } catch {
       return undefined;
@@ -96,6 +106,46 @@ export class AuthService {
       return p.twofa === "pending" ? p.sub : undefined;
     } catch {
       return undefined;
+    }
+  }
+
+  /**
+   * What a remembered device is remembered against: this account's password and
+   * second factor, as they are now.
+   *
+   * Carried inside the device's token and compared at every sign-in, so
+   * changing either one forgets every device at once — the move somebody makes
+   * when they think a laptop or a password is in the wrong hands — with no list
+   * of devices to keep and nothing to migrate. A hash of the hashes: nothing
+   * about the password or the secret can be read back out of it.
+   */
+  private async deviceStamp(userId: string): Promise<string> {
+    const hash = (await this.store.getPasswordHash(userId)) ?? "";
+    const tf = await this.store.getTwoFactor(userId);
+    return createHash("sha256")
+      .update([hash, tf?.enabled ? "on" : "off", tf?.method ?? "", tf?.totpSecret ?? ""].join("|"))
+      .digest("base64url")
+      .slice(0, 22);
+  }
+
+  /** A device that has passed the second factor, for the next 30 days. It
+   *  skips the code at sign-in and nothing else: the password is still asked
+   *  for, and `verify` refuses it as a session. */
+  async signTrustedDevice(userId: string): Promise<string> {
+    return jwt.sign({ sub: userId, trust: await this.deviceStamp(userId) }, env.auth.jwtSecret, {
+      expiresIn: TRUSTED_DEVICE_TTL_S,
+    });
+  }
+
+  /** Whether this device was remembered by this account, since its password
+   *  and second factor last changed. */
+  async isTrustedDevice(token: string | undefined, userId: string): Promise<boolean> {
+    if (!token) return false;
+    try {
+      const p = jwt.verify(token, env.auth.jwtSecret) as { sub?: string; trust?: string };
+      return p.sub === userId && !!p.trust && p.trust === (await this.deviceStamp(userId));
+    } catch {
+      return false;
     }
   }
 

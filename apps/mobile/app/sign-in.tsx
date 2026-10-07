@@ -11,7 +11,7 @@ import { Field } from "../src/components/Field";
 import { BRAND } from "@ding/design/logo";
 import { AuthGlow, NestMark } from "../src/components/NestMark";
 import { rowIn } from "../src/motion";
-import { saveSession } from "../src/session";
+import { loadTrustedDevice, saveSession, saveTrustedDevice } from "../src/session";
 import { useTheme } from "../src/theme";
 import { useInsets } from "../src/insets";
 
@@ -44,8 +44,9 @@ export default function SignIn() {
   const [resent, setResent] = useState(false);
 
   /** Store the token, seed the identity, and go. Order matters — see above. */
-  async function land(result: MeResponse & { token?: string }) {
+  async function land(result: MeResponse & { token?: string; trustedDeviceToken?: string }) {
     if (result.token) await saveSession(result.token);
+    if (result.trustedDeviceToken) await saveTrustedDevice(result.trustedDeviceToken);
     // Both identity caches, not just the session one. `["me"]` has already
     // failed and given up by the time anyone gets here — it fires and 401s
     // while this screen is still on top — and an errored query with no observer
@@ -69,7 +70,8 @@ export default function SignIn() {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.login(email.trim(), password);
+      // A phone that passed the code in the last 30 days skips it.
+      const result = await api.login(email.trim(), password, await loadTrustedDevice());
       if ("twoFactorRequired" in result) {
         setChallenge(result);
         // Give the keyboard something to do rather than making them tap again.
@@ -88,7 +90,9 @@ export default function SignIn() {
     setBusy(true);
     setError(null);
     try {
-      await land(await api.loginTwoFactor(code.trim(), challenge?.pendingToken));
+      // Always remembered on a phone: it is one person's, and the pass lives
+      // in the Keychain on this device only.
+      await land(await api.loginTwoFactor(code.trim(), challenge?.pendingToken, true));
     } catch (err) {
       setError(err instanceof Error ? err.message : "That code isn't right.");
       setCode("");

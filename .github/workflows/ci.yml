@@ -196,6 +196,8 @@ jobs:
       # too long and the hole is quietly back for whichever route was added.
       - name: Two-factor enrolment gate
         run: pnpm check:2fa-gate
+      - name: Remembered devices at sign-in
+        run: pnpm check:trusted-device
 
       # Hooks called below an early return. React throws #310 and unmounts the
       # whole tree, so the symptom is a white page with nothing in the console
