@@ -85,6 +85,9 @@ class NestConnect {
   /// notifications moved onto it, and nothing on screen to say so.
   ({String id, String? hash, String? email, String? phone})? _identity;
 
+  /// What the last sign-in came back as, for a repeat of it to answer with.
+  NestIdentity? _lastIdentity;
+
   /// Repeats "the chat is on screen" while it is, so the server's belief in
   /// it expires on its own if this app is killed without saying otherwise.
   Timer? _viewingBeat;
@@ -163,9 +166,30 @@ class NestConnect {
     String? phone,
     Map<String, String>? fields,
   }) async {
-    await _endSession();
-    _identity = (id: userId, hash: userHash, email: email, phone: phone);
-    return _session(
+    final who = (id: userId, hash: userHash, email: email, phone: phone);
+    // The same person again, saying nothing new — what an app does each time
+    // its home page loads. Not a reason to take down the conversation they are
+    // in the middle of: tearing it down and back up dropped the live stream,
+    // and the minimised chat, seeing no chat for that moment, put itself away.
+    final last = _lastIdentity;
+    if (_token != null && _identity == who && (fields == null || fields.isEmpty) && last != null) {
+      if (name != null && name.trim().isNotEmpty) _visitorName = name.trim();
+      // The channel's look is still fetched again, as a sign-in always did —
+      // an app relaunched to the home page picks up a change made in Settings.
+      unawaited(_loadConfig());
+      return last;
+    }
+    // Somebody else is a different matter: they must not inherit the thread.
+    // The same person with something new keeps their stored session but not
+    // the live stream, which may be about a different conversation from the
+    // one the new details lead to.
+    if (_identity?.id != userId) {
+      await _endSession();
+    } else {
+      _dropStream();
+    }
+    _identity = who;
+    return _lastIdentity = await _session(
       externalId: userId,
       userHash: userHash,
       name: name,
@@ -832,7 +856,8 @@ class NestConnect {
     _reconnect = Timer(wait, _listen);
   }
 
-  Future<void> _endSession() async {
+  /// Let go of the live stream, and anything still waiting to reopen it.
+  void _dropStream() {
     _reconnect?.cancel();
     _setAgentTyping(false);
     // Not awaited — see `_generation`. The stream is already disowned by the
@@ -841,6 +866,10 @@ class NestConnect {
     _generation++;
     unawaited(_streamSub?.cancel());
     _streamSub = null;
+  }
+
+  Future<void> _endSession() async {
+    _dropStream();
     _token = null;
     _attempt = 0;
     _missed = false;
@@ -849,6 +878,7 @@ class NestConnect {
     // The next person to open this chat is not the last one.
     _visitorName = null;
     _identity = null;
+    _lastIdentity = null;
     await _store.delete(_tokenKey());
   }
 

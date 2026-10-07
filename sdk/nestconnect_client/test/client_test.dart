@@ -522,6 +522,29 @@ void main() {
     expect(again['email'], 'marta@example.com');
   });
 
+  test('the same person signing in again keeps the conversation they are in', () async {
+    await chat.login(userId: 'u_9182', userHash: 'deadbeef', name: 'Marta');
+    final token = chat.isOpen;
+
+    // What an app does every time its home page loads. It used to throw the
+    // session away and open another, dropping the live stream for that moment
+    // and taking the minimised chat with it.
+    expect(await chat.login(userId: 'u_9182', userHash: 'deadbeef', name: 'Marta'), NestIdentity.verified);
+    expect(server.sessionBodies, hasLength(1));
+    expect(chat.isOpen, token);
+
+    // Something new to say — an order to file the chat under — is a new
+    // session, for the same person.
+    await chat.login(userId: 'u_9182', userHash: 'deadbeef', fields: {'order_id': 'DG-1'});
+    expect(server.sessionBodies, hasLength(2));
+    expect(server.sessionBodies.last['fields'], {'order_id': 'DG-1'});
+
+    // And somebody else is always a fresh start.
+    await chat.login(userId: 'u_other', userHash: 'beef');
+    expect(server.sessionBodies, hasLength(3));
+    expect(server.sessionBodies.last['externalId'], 'u_other');
+  });
+
   test('and signing out forgets it, so the next person is not them', () async {
     await chat.login(userId: 'u_9182', userHash: 'deadbeef');
     await chat.logout();

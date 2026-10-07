@@ -134,11 +134,18 @@ class _NestMinimisedChatState extends State<NestMinimisedChat> {
   @override
   Widget build(BuildContext context) {
     final chat = widget.chat;
-    // Signed out, or started over, underneath it: nothing left to come back to.
-    if (!chat.isOpen || chat.messages.isEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => widget.onDismiss());
-      return const SizedBox.shrink();
+    // No conversation to show — signed out, or a session between one token and
+    // the next. Drawn as nothing, but not put away: this used to dismiss
+    // itself for good, so an app that signed the customer in again as its home
+    // page loaded lost the bar for that whole moment's worth of nothing. The
+    // launcher is given back meanwhile, so the chat is never unreachable.
+    final showing = chat.isOpen && chat.messages.isNotEmpty;
+    if (nestMinimisedShowing.value != showing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) nestMinimisedShowing.value = showing;
+      });
     }
+    if (!showing) return const SizedBox.shrink();
 
     final config = chat.config;
     final appearance = config?.appearance ?? NestAppearance.fallback;
