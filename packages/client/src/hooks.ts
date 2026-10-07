@@ -717,6 +717,27 @@ export const useConversations = (view: string, field?: { key: string; value?: st
     select: (d) => d.pages.flatMap((p) => p.items),
   });
 
+/**
+ * The filter chips' numbers, counted by the server over the whole view.
+ *
+ * Not derived from `useConversations`: that holds only the pages scrolled
+ * through so far, so every chip read low until the list reached its end. Pass
+ * the list's `dataUpdatedAt` as `stamp` so the counts are fetched again
+ * whenever the list is — after a new message, an assignment, a close —
+ * without every mutation having to know this query exists.
+ */
+export const useConversationCounts = (
+  view: string,
+  field?: { key: string; value?: string },
+  stamp?: number,
+) =>
+  useQuery({
+    queryKey: ["conversationCounts", view, field?.key ?? "", field?.value ?? "", stamp ?? 0],
+    queryFn: () => api.conversationCounts(view, field),
+    placeholderData: keepPreviousData,
+    staleTime: 2000,
+  });
+
 /** Global conversation search (contact, subject, preview, message body), paginated. */
 /** Search, scoped to `view` when one is given — the field sits inside an inbox,
  *  so results that inbox wouldn't show you aren't results you can act on. */

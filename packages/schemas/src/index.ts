@@ -2745,6 +2745,23 @@ export interface SessionGrant {
   trustedDeviceToken?: string;
 }
 
+/**
+ * How many conversations each list filter holds, across the whole view.
+ *
+ * Counted by the server because the list is paged: counting the rows a client
+ * happens to have loaded made every chip read low until somebody scrolled to
+ * the bottom. Everything but `closed` counts live (not closed) conversations,
+ * the same rule the chips filter by.
+ */
+export interface ConversationFilterCounts {
+  all: number;
+  unread: number;
+  mine: number;
+  unassigned: number;
+  groups: number;
+  closed: number;
+}
+
 /** A signed-in device/browser shown in "Where you're signed in" (personal
  *  settings). `current` marks the session making the request. */
 export interface SessionInfo {

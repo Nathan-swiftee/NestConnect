@@ -1,4 +1,5 @@
 import type {
+  ConversationFilterCounts,
   Attachment,
   ChannelType,
   Contact,
@@ -342,6 +343,14 @@ export const api = {
     get<ConversationPage>(
       `/conversations?view=${encodeURIComponent(view)}` +
         (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "") +
+        (field?.key ? `&fieldKey=${encodeURIComponent(field.key)}` : "") +
+        (field?.key && field.value ? `&fieldValue=${encodeURIComponent(field.value)}` : ""),
+    ),
+  // How many conversations each filter chip holds, over the whole view — not
+  // just the pages loaded so far.
+  conversationCounts: (view: string, field?: { key: string; value?: string }) =>
+    get<ConversationFilterCounts>(
+      `/conversations/counts?view=${encodeURIComponent(view)}` +
         (field?.key ? `&fieldKey=${encodeURIComponent(field.key)}` : "") +
         (field?.key && field.value ? `&fieldValue=${encodeURIComponent(field.value)}` : ""),
     ),

@@ -13,6 +13,7 @@ import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanima
 import { router } from "expo-router";
 import {
   listTime,
+  useConversationCounts,
   useConversations,
   useCustomFields,
   useMarkRead,
@@ -296,6 +297,14 @@ export default function Inbox() {
   const views = useViews();
   const teams = useTeams();
   const list = useConversations(view, fieldKey ? { key: fieldKey } : undefined);
+  // The chips' numbers, counted by the server over the whole inbox. Counting
+  // the loaded rows made every chip read low until the list was scrolled to
+  // its end, because it arrives thirty at a time.
+  const counts = useConversationCounts(
+    view,
+    fieldKey ? { key: fieldKey } : undefined,
+    list.dataUpdatedAt,
+  ).data;
   // Scoped to the inbox the field is sitting in, as on the web.
   const found = useSearchConversations(search, searching, view);
   const fields = useCustomFields();
@@ -385,17 +394,17 @@ export default function Inbox() {
    * The filter row, and the number on each chip.
    *
    * The counts are the point — without them the chips are guesses, and you tap
-   * through all of them to find out which one has anything in it. They're
-   * computed from the view's loaded rows rather than asked of the server, which
-   * is honest as far as it goes: it's the same data the list is showing, so the
-   * number always matches what tapping the chip produces.
+   * through all of them to find out which one has anything in it. They come
+   * from the server, over the whole inbox: counting the loaded rows instead
+   * only ever counted the first page or two, so every chip read low until the
+   * list had been scrolled to its end.
    */
   const filters = useMemo(() => {
     const all = list.data ?? [];
     // Everything except Closed counts live conversations only, matching what
     // the filters actually return.
     const live = all.filter((x) => x.status !== "closed");
-    const hasGroups = live.some((x) => x.channel === "whatsapp_group");
+    const hasGroups = live.some((x) => x.channel === "whatsapp_group") || (counts?.groups ?? 0) > 0;
     const showMine = view.startsWith("team:") || view.startsWith("inbox:");
     const showUnassigned = view !== "mine" && view !== "grabs";
 
@@ -411,9 +420,12 @@ export default function Inbox() {
       .filter((d) => d.on)
       .map((d) => ({
         ...d,
-        count: (d.key === "closed" ? all : live).filter((x) => matchesFilter(x, d.key, myId)).length,
+        // The loaded rows stand in only until the server has answered once.
+        count:
+          counts?.[d.key] ??
+          (d.key === "closed" ? all : live).filter((x) => matchesFilter(x, d.key, myId)).length,
       }));
-  }, [list.data, view, myId]);
+  }, [list.data, counts, view, myId]);
 
   // A filter that's just disappeared — the last group closed, or you switched to
   // a view where "Yours" is meaningless — would otherwise leave the list stuck

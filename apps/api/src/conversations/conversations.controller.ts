@@ -52,6 +52,24 @@ export class ConversationsController {
     });
   }
 
+  /**
+   * Per-filter totals for the list's chips (declared before :id so it
+   * matches). Counted over the whole view rather than left to the client,
+   * which only ever has the pages it has scrolled through.
+   */
+  @Get("counts")
+  counts(
+    @CurrentUserId() userId: string,
+    @Query("view") view?: string,
+    @Query("fieldKey") fieldKey?: string,
+    @Query("fieldValue") fieldValue?: string,
+  ) {
+    const key = fieldKey?.trim();
+    return this.conversations.counts(view ?? "inbound", userId, {
+      ...(key ? { field: { key, value: fieldValue?.trim() || undefined } } : {}),
+    });
+  }
+
   /** Search (declared before :id so it matches). Pass `view` to scope it to the
    *  inbox the search field is sitting in; omit it to search everything. */
   @Get("search")

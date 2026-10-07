@@ -23,6 +23,7 @@
     "check:app-surface": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-surface.ts",
     "check:app-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-identity.ts",
     "check:website-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-website-identity.ts",
+    "check:conversation-counts": "tsx --tsconfig apps/api/tsconfig.json tools/check-conversation-counts.ts",
     "check:visitor-uploads": "tsx --tsconfig apps/api/tsconfig.json tools/check-visitor-uploads.ts",
     "check:customer-push": "tsx --tsconfig apps/api/tsconfig.json tools/check-customer-push.ts",
     "check:field-filter": "tsx --tsconfig apps/api/tsconfig.json tools/check-field-filter.ts",
