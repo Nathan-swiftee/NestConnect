@@ -2208,6 +2208,22 @@ export type NestChatMessage = z.infer<typeof nestchatMessageSchema>;
 export const nestchatSessionInputSchema = z.object({
   visitorId: z.string().min(8).max(64).optional(),
   name: z.string().max(80).optional(),
+  /**
+   * The website's own id for a signed-in user, from `NestChatSettings.user`.
+   *
+   * Believed only with `userHash` — HMAC-SHA256 of this id under the channel's
+   * signing secret, made by the website's server. Then the chat belongs to that
+   * user on every browser, and the name, email and phone below are written onto
+   * their record. Without a valid one, all of it is dropped and the chat opens
+   * as an anonymous visitor: a browser can say anything, and an email is what
+   * joins a chat onto a customer's history.
+   */
+  externalId: z.string().min(1).max(120).optional(),
+  userHash: z.string().max(200).optional(),
+  email: z.string().email().max(200).optional(),
+  phone: z.string().max(40).optional(),
+  /** Conversation field values, by key — `{ order_id: "DG-88412" }`. */
+  fields: z.record(z.string().max(500)).optional(),
 });
 export type NestChatSessionInput = z.infer<typeof nestchatSessionInputSchema>;
 
@@ -2269,6 +2285,10 @@ export const nestchatSessionSchema = z.object({
    *  a widget that opens one anyway reconnects against a 400 forever. */
   hasConversation: z.boolean(),
   messages: z.array(nestchatMessageSchema),
+  /** A signed-in user whose signature checked out. Absent for a visitor. */
+  identified: z.boolean().optional(),
+  /** Field keys this channel has never heard of. */
+  unknownFields: z.array(z.string()).optional(),
 });
 export type NestChatSession = z.infer<typeof nestchatSessionSchema>;
 

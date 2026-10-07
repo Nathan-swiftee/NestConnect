@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_NESTCHAT_APPEARANCE, nestchatAppearanceSchema } from "@ding/schemas";
-import { embedSnippet } from "./nestchat-embed";
+import { embedSnippet, signedInSnippet } from "./nestchat-embed";
 
 const settings = {
   widgetKey: "nc_0123456789abcdef0123456789abcdef",
@@ -79,6 +79,34 @@ describe("embedSnippet", () => {
     );
     expect(out).toContain('label: "Two\\nlines"');
     expect(out.split("\n")).toHaveLength(10);
+  });
+});
+
+describe("signedInSnippet", () => {
+  /** The settings object out of the first tag, run as the page would run it. */
+  function settingsFrom(snippet: string): Record<string, unknown> {
+    const body = snippet.split("<script>")[1]!.split("</script>")[0]!;
+    const win: Record<string, unknown> = {};
+    new Function("window", body)(win);
+    return win.NestChatSettings as Record<string, unknown>;
+  }
+
+  it("is a working page snippet with the signed-in user in it", () => {
+    const out = settingsFrom(signedInSnippet(settings, DEFAULT_NESTCHAT_APPEARANCE));
+    expect(out.key).toBe(settings.widgetKey);
+    expect(out.user).toMatchObject({ id: "123", name: "Marta Nowak", email: "marta@example.com" });
+    expect(out.fields).toEqual({ order_id: "DG-88412" });
+  });
+
+  it("marks the hash as the one thing that has to come from the server", () => {
+    const out = settingsFrom(signedInSnippet(settings, DEFAULT_NESTCHAT_APPEARANCE));
+    expect((out.user as { hash: string }).hash).toBe("SIGNED_ON_YOUR_SERVER");
+  });
+
+  it("leaves the plain snippet exactly as it was", () => {
+    const plain = embedSnippet("script", settings, DEFAULT_NESTCHAT_APPEARANCE);
+    expect(plain).not.toContain("user:");
+    expect(settingsFrom(plain).label).toBe(DEFAULT_NESTCHAT_APPEARANCE.launcherLabel);
   });
 });
 

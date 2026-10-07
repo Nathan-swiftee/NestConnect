@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { Widget } from "./Widget";
+import { hostWillSpeak } from "./host";
 import "./widget.css";
 
 /**
@@ -17,7 +18,7 @@ const root = ReactDOM.createRoot(document.getElementById("widget") as HTMLElemen
 root.render(
   <React.StrictMode>
     {widgetKey ? (
-      <Widget widgetKey={widgetKey} />
+      <Widget widgetKey={widgetKey} hostSpeaks={hostWillSpeak(window.location.search)} />
     ) : (
       <div className="nc__state">This chat isn’t configured yet.</div>
     )}
