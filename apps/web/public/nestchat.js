@@ -170,7 +170,10 @@
   frame.setAttribute("aria-hidden", "true");
   // The iframe is same-origin with our API but cross-origin to the host page,
   // so the host page cannot read the conversation and we cannot read the host.
-  frame.allow = "clipboard-write";
+  // A cross-origin frame gets no microphone unless the page delegates it — and
+  // without it voice messages fail before the browser has even asked. The
+  // visitor is still asked, by the browser, the first time they hold the mic.
+  frame.allow = "microphone; clipboard-write";
   frame.style.cssText = [
     "position:fixed",
     "bottom:88px",

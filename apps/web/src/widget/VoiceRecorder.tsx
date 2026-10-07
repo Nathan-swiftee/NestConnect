@@ -29,6 +29,11 @@ export function VoiceRecorder({
   disabled?: boolean;
 }): JSX.Element {
   const recorder = useRef<Recorder | null>(null);
+  /** The finger is still down. Asking for the microphone can take as long as
+   *  the person takes to answer the browser's prompt, and they will usually
+   *  have let go by then — so a recorder that arrives after the hold has
+   *  ended is stopped on arrival rather than left running. */
+  const held = useRef(false);
   const startX = useRef(0);
   const [armed, setArmed] = useState(false);
   const [bars, setBars] = useState<number[]>([]);
@@ -47,8 +52,13 @@ export function VoiceRecorder({
 
   const finish = useCallback(
     async (keep: boolean) => {
+      held.current = false;
       const rec = recorder.current;
-      if (!rec) return;
+      if (!rec) {
+        // Let go before the microphone was ready: nothing was recorded.
+        reset();
+        return;
+      }
       recorder.current = null;
       if (!keep) {
         rec.cancel();
@@ -67,11 +77,15 @@ export function VoiceRecorder({
 
   const begin = useCallback(
     async (clientX: number) => {
-      if (disabled || recorder.current) return;
+      if (disabled || recorder.current || held.current) return;
+      held.current = true;
       startX.current = clientX;
       setArmed(true);
+      // Whether the browser is about to ask. The first press is spent on the
+      // prompt, and saying so afterwards is kinder than a note that never was.
+      const asking = (await microphonePermission()) !== "granted";
       try {
-        recorder.current = await startRecording({
+        const rec = await startRecording({
           onTick: (live, ms) => {
             setBars(live);
             setElapsed(ms);
@@ -79,7 +93,22 @@ export function VoiceRecorder({
           maxMs: NESTCHAT_VOICE_MAX_MS,
           onMaxReached: () => void finish(true),
         });
+        if (!held.current) {
+          // Released while the prompt was up. Allowed now, so the next hold
+          // records straight away — tell them that rather than recording a
+          // room nobody is holding a button in.
+          rec.cancel();
+          reset();
+          onError(
+            asking
+              ? "Microphone on. Hold the button to record a voice message."
+              : "Hold the button to record a voice message.",
+          );
+          return;
+        }
+        recorder.current = rec;
       } catch {
+        held.current = false;
         reset();
         // One sentence, and it names the fix. "NotAllowedError" is the
         // browser's word for it and means nothing to the person reading.
@@ -153,6 +182,17 @@ export function VoiceRecorder({
       ) : null}
     </>
   );
+}
+
+/** What the browser will say to a request for the microphone, where it will
+ *  tell us. Safari before 16 cannot be asked, which reads as "will prompt". */
+async function microphonePermission(): Promise<PermissionState | "unknown"> {
+  try {
+    const status = await navigator.permissions?.query({ name: "microphone" as PermissionName });
+    return status?.state ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 function MicIcon(): JSX.Element {
