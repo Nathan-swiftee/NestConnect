@@ -50,7 +50,8 @@ export function signedInSnippet(
     `      id: "123",`,
     `      hash: "SIGNED_ON_YOUR_SERVER", // step 2`,
     `      name: "Marta Nowak",`,
-    `      email: "marta@example.com"`,
+    `      email: "marta@example.com",`,
+    `      phone: "+447700900123"`,
     `    },`,
     `    fields: { order_id: "DG-88412" } // optional`,
   ]);
@@ -76,7 +77,10 @@ export const SIGNING_EXAMPLES: ReadonlyArray<{ label: string; code: string }> = 
 /** For a site where people sign in and out without a page load. */
 export const SPA_EXAMPLE = [
   `// after sign-in (hash from your server, as above)`,
-  `NestChat.identify({ id: "123", hash: "…", name: "Marta Nowak", email: "marta@example.com" });`,
+  `NestChat.identify({`,
+  `  id: "123", hash: "…",`,
+  `  name: "Marta Nowak", email: "marta@example.com", phone: "+447700900123"`,
+  `});`,
   ``,
   `// on sign-out — the next person on this browser starts fresh`,
   `NestChat.logout();`,

@@ -3307,8 +3307,9 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
 
                   <p className="fieldhint">
                     <b>3.</b> Use this instead of the snippet above, with your page filling in the
-                    user and the <code>hash</code> from step 2. Leave <code>user</code> out for
-                    visitors who aren’t signed in.
+                    user and the <code>hash</code> from step 2. <code>name</code>,{" "}
+                    <code>email</code> and <code>phone</code> (international format, +44…) are each
+                    optional. Leave <code>user</code> out for visitors who aren’t signed in.
                   </p>
                   <pre className="ncw__snippet">{userSnippet}</pre>
                   <button
