@@ -103,6 +103,11 @@ if (initial != null) {
 
 `navigatorKey` is the `GlobalKey<NavigatorState>` given to your `MaterialApp`.
 
+The data carries `source`, `conversationId`, `inboxId`, and every conversation
+field the chat has, under its own key. A chat opened with
+`fields: {'order_id': 'DG-88412'}` arrives with `data['order_id'] == 'DG-88412'`,
+so the app can open that order's screen without reading the message text.
+
 On Android, create a notification channel with id `nest_messages` — without it
 Android 8+ drops the notification silently.
 
@@ -131,6 +136,14 @@ showNestMessenger(
   chat: chat,
   onOpenLink: (card) => myInAppBrowser.open(card.href),
 );
+```
+
+The home screen is for a general "Help" button. Where the app opens the chat
+about one thing — an order, a booking — go straight to that conversation:
+
+```dart
+await chat.open(fields: {'order_id': order.id});
+showNestMessenger(context, chat: chat, startOnConversation: true);
 ```
 
 If you have built your own UI on `NestConnect`, `config?.home` is the cards,

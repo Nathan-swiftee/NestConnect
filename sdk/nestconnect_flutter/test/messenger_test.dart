@@ -590,6 +590,59 @@ void main() {
       expect(chat.unread, 0);
     });
 
+    /// Minimised mid-conversation, from an app with pages to go to.
+    Future<BuildContext> minimiseFromApp(WidgetTester tester) async {
+      late BuildContext app;
+      await tester.pumpWidget(host(Builder(builder: (context) {
+        app = context;
+        return const SizedBox.expand();
+      })));
+      unawaited(showNestMessenger(app, chat: chat));
+      await sheetArrives(tester);
+      await settle(tester);
+      server.agentSays('msg_a', 'Your order is on its way');
+      await settle(tester, 400);
+      await tester.tap(find.byTooltip('Minimise'));
+      await settle(tester, 400);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(NestMinimisedChat), findsOneWidget);
+      return app;
+    }
+
+    chatTest('the bar stays on top as the app goes to another page', (tester) async {
+      final app = await minimiseFromApp(tester);
+
+      // The app's Home tab, pushed as a page. Pages are drawn in the same stack
+      // as the bar, and a new one went on top of it — the bar was there, just
+      // underneath, until the customer came back.
+      // "Go home" — the whole stack replaced, the way a router's `go` does it.
+      unawaited(Navigator.of(app).pushAndRemoveUntil(
+        MaterialPageRoute<void>(
+          builder: (_) => const Scaffold(body: Center(child: Text('Ding home'))),
+        ),
+        (_) => false,
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ding home'), findsOneWidget);
+      expect(find.byType(NestMinimisedChat), findsOneWidget);
+      // Drawn and tappable, not merely somewhere in the tree.
+      expect(find.text('Your order is on its way').hitTestable(), findsOneWidget);
+    });
+
+    chatTest('and through the app signing the customer in again', (tester) async {
+      await minimiseFromApp(tester);
+
+      // What an app's home page does when it loads: says who is signed in.
+      // The session came down and back up, and the bar — seeing no chat for a
+      // moment — took itself away for good.
+      await tester.runAsync(() => chat.login(userId: 'u_1', name: 'Marta Nowak'));
+      await settle(tester, 400);
+      await settle(tester, 400);
+
+      expect(find.byType(NestMinimisedChat), findsOneWidget);
+    });
+
     chatTest('a chat with nothing said in it just closes', (tester) async {
       await openFromApp(tester);
       expect(find.byTooltip('Minimise'), findsNothing);

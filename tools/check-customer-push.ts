@@ -25,6 +25,7 @@ import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
 import {
   CustomerPushService,
+  fieldData,
   explainFcmError,
   preview,
 } from "../apps/api/src/channels/nestchat/customer-push.service";
@@ -163,6 +164,32 @@ async function main(): Promise<void> {
     // FCM rejects the whole send if one is a number — a 400 for the message,
     // not a warning about the field.
     Object.values(sent?.data ?? {}).every((v) => typeof v === "string"),
+  );
+  ok("carrying no fields the chat has not got", sent?.data?.order_id === undefined);
+
+  // What the chat is about, so the app can open that screen from the
+  // notification alone rather than by reading the first message's wording.
+  await store.createCustomField(ORG_ID, {
+    key: "order_id", label: "Order", type: "text", entity: "conversation",
+    options: [], inboxIds: [], filterable: false,
+  });
+  // Its own conversation, so this send does not count against conv_1's burst
+  // limit, which the checks below rely on.
+  const orderChat = { ...conversation, id: "conv_order" } as Conversation;
+  await store.setCustomFieldValues(ORG_ID, "conversation", "conv_order", { order_id: "DG-88412" });
+  await push.notifyAndWait({ ...reply, conversation: orderChat });
+  const withOrder = push.fake.sent.at(-1);
+  ok("carrying the conversation's fields — order_id", withOrder?.data?.order_id === "DG-88412");
+  ok(
+    "never over our own keys",
+    fieldData([{ key: "conversationId", value: "x" }, { key: "source", value: "x" }])
+      .conversationId === undefined &&
+      fieldData([{ key: "google.c.a", value: "x" }])["google.c.a"] === undefined,
+  );
+  ok(
+    "and never past what FCM will carry",
+    Object.keys(fieldData(Array.from({ length: 20 }, (_, i) => ({ key: `f${i}`, value: "x".repeat(400) }))))
+      .length < 20,
   );
   ok(
     "collapsing on the conversation",
