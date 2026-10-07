@@ -447,9 +447,15 @@ class _NestMessengerState extends State<NestMessenger> with WidgetsBindingObserv
           ),
         );
 
-    // The channel's look has not arrived yet. The shape of the screen rather
-    // than a spinner, so nothing jumps when it does.
-    if (config == null) {
+    // The channel's look has not arrived yet — or it has, and says this opens
+    // on the home screen, which the next tick will switch to. The shape of the
+    // screen rather than a spinner, and rather than a glimpse of the thread
+    // that is then taken away: nothing jumps when the real screen arrives.
+    final goingHome = !_landed &&
+        config?.home != null &&
+        !widget.startOnConversation &&
+        !_replyWaiting;
+    if (config == null || goingHome) {
       return shell([
         Expanded(
           child: ColoredBox(

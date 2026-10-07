@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { Conversation } from "@ding/schemas";
+import { ORG_ID } from "../../data/fixtures";
 import { Store } from "../../data/store";
 import {
   FCM_SERVICE_ACCOUNT_FIELD,
@@ -9,6 +10,45 @@ import {
   type FcmCredential,
 } from "./fcm";
 import { VisitorBus } from "./visitor-bus";
+
+/**
+ * Data keys a conversation field may not take: ours, which the app reads to
+ * open the thread, and the ones FCM reserves for itself and rejects a send for.
+ */
+const RESERVED_DATA_KEYS = new Set([
+  "source",
+  "conversationId",
+  "inboxId",
+  "from",
+  "notification",
+  "message_type",
+  "collapse_key",
+]);
+
+/** FCM allows 4KB of payload in all; the title and body need their share. */
+const FIELD_DATA_BUDGET = 2_000;
+
+/**
+ * The conversation's own fields, for the push's data — `order_id`, say.
+ *
+ * So the app can open the screen the chat is about from the notification
+ * alone. Without them the only clue was the text of the first message
+ * ("Regarding order #…"), which an app had to parse, and which is wrong the
+ * day that message fails to send or somebody rewords it.
+ */
+export function fieldData(values: { key: string; value: string }[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  let used = 0;
+  for (const { key, value } of values) {
+    if (!value || RESERVED_DATA_KEYS.has(key) || key.startsWith("google.") || key.startsWith("gcm.")) {
+      continue;
+    }
+    used += key.length + value.length;
+    if (used > FIELD_DATA_BUDGET) break;
+    out[key] = value;
+  }
+  return out;
+}
 
 /** The Android notification channel the host app is expected to create. */
 const ANDROID_CHANNEL = "nest_messages";
@@ -236,6 +276,15 @@ export class CustomerPushService {
     // all on a phone that has several of these apps on it.
     const title = req.authorName?.trim() || (await this.channelName(conversation.inboxId));
     const body = preview(req.body, req.attachmentCount ?? 0);
+    // A field that cannot be read is a notification without it, not no
+    // notification: the conversation id alone still opens the chat.
+    const fields = fieldData(
+      (
+        await this.store
+          .customFieldValues(ORG_ID, "conversation", [conversation.id])
+          .catch(() => new Map<string, { key: string; value: string }[]>())
+      ).get(conversation.id) ?? [],
+    );
 
     let sent = 0;
     let failed = 0;
@@ -248,6 +297,7 @@ export class CustomerPushService {
           // Everything the host app needs to open the right thread on tap.
           // FCM insists on string values, so nothing here may be a number.
           data: {
+            ...fields,
             source: "nestconnect",
             conversationId: conversation.id,
             inboxId: conversation.inboxId,
