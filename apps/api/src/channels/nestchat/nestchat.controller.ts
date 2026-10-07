@@ -61,7 +61,7 @@ import { Store } from "../../data/store";
 import { MediaService } from "../../storage/media.service";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { IngestService } from "../ingest.service";
-import { NestChatService } from "./nestchat.service";
+import { NestChatService, visitorStamp } from "./nestchat.service";
 import { VisitorBus } from "./visitor-bus";
 
 /** The subset of a multer file we rely on (avoids an Express.Multer.File dep). */
@@ -270,9 +270,11 @@ export class NestChatController {
     // here — a conversation is opened by the first message. That is deliberate:
     // an agent shouldn't see a queue item for someone who opened the widget and
     // thought better of it.
+    // Only a thread this browser started: the contact may since have been
+    // merged onto a customer whose own open chat is not the visitor's to join.
     const withConvs = await this.store.getContactWithConversations(contact.id);
     const conversationId = withConvs?.conversations.find(
-      (c) => c.inboxId === inbox.id && c.status !== "closed",
+      (c) => c.inboxId === inbox.id && c.status !== "closed" && c.channelRef === visitorStamp(visitorId),
     )?.id;
 
     // What the page is about — `fields` in its settings. Conversation fields
@@ -331,7 +333,7 @@ export class NestChatController {
     );
 
     const { values, unknown } = await this.nestchat.validateFields(inbox.id, body.fields ?? {});
-    const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values);
+    const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values, visitorId);
     if (conversationId && Object.keys(values).length) {
       await this.store.setCustomFieldValues(inbox.orgId, "conversation", conversationId, values);
     }
@@ -432,7 +434,7 @@ export class NestChatController {
     await this.nestchat.applyContactTag(contact.id, app.contactTag);
 
     const { values, unknown } = await this.nestchat.validateFields(inbox.id, body.fields ?? {});
-    const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values);
+    const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values, visitorId);
     // Written straight onto an existing thread; carried in the token otherwise,
     // because there is nothing to write them on until the first message creates
     // a conversation.
@@ -556,6 +558,7 @@ export class NestChatController {
       option: chosen ? { label: chosen.option.label, teamId: chosen.teamId } : undefined,
       attachments,
       quotedMsgId: body.quotedMsgId,
+      startedBy: visitorStamp(claims.visitorId),
     });
     // Blocked contact: accepted and dropped. Telling them they're blocked only
     // teaches them to come back with a fresh visitor id.

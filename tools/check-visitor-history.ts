@@ -20,7 +20,7 @@
  *     pnpm check:visitor-history
  */
 import { MemoryStore } from "../apps/api/src/data/memory.store";
-import { NestChatService } from "../apps/api/src/channels/nestchat/nestchat.service";
+import { NestChatService, visitorStamp } from "../apps/api/src/channels/nestchat/nestchat.service";
 import { VisitorBus } from "../apps/api/src/channels/nestchat/visitor-bus";
 import type { Contact, Inbox, User } from "../packages/schemas/src/index";
 
@@ -77,6 +77,8 @@ async function main(): Promise<void> {
       inboxId: inbox.id,
       contact,
       channel: inbox.type,
+      // Started from that contact's own browser, as a real chat is.
+      startedBy: visitorStamp(contact.id === marta.id ? "visitor_marta" : "visitor_other"),
     });
     await store.appendInboundMessage(conversation.id, {
       authorName: contact.displayName,
@@ -188,6 +190,56 @@ async function main(): Promise<void> {
   ok(
     "and an id that is nothing at all",
     (await nestchat.visitorConversation(claims, "conv_made_up")) === undefined,
+  );
+
+  console.log("\nsomebody typing her email into a form\n");
+  /*
+   * A detail typed into the pre-chat form, or the card in the thread, merges
+   * the visitor onto the customer who owns it — right for the agents, who see
+   * the chat on her record. It used to make the stranger's browser *her*:
+   * her past chats listed and readable, and their next message dropped into
+   * her live one. Nothing proves an email in a form belongs to whoever typed it.
+   */
+  await store.updateContact(marta.id, { email: "marta@example.com" });
+  const stranger = await store.upsertContactByIdentity({
+    orgId: ORG,
+    kind: "nestchat",
+    value: "visitor_stranger",
+    displayName: "Visitor 7c1e2a",
+  });
+  const typed = await nestchat.identifyVisitor(
+    { visitorId: "visitor_stranger", inboxId: chat.id, contactId: stranger.id, conversationId: "" },
+    { email: "marta@example.com" },
+  );
+  ok("the agents still get the link to her record", typed.linked && typed.contactId === marta.id);
+  const strangerClaims = {
+    visitorId: "visitor_stranger",
+    inboxId: chat.id,
+    contactId: typed.contactId,
+    conversationId: "",
+  };
+  const seen = await nestchat.visitorConversations(strangerClaims);
+  ok("but none of her chats are listed to the stranger", seen.length === 0, `${seen.length} listed`);
+  ok("nor readable by id", (await nestchat.visitorConversation(strangerClaims, first)) === undefined);
+  ok(
+    "nor her live one",
+    (await nestchat.visitorConversation(strangerClaims, live)) === undefined,
+  );
+  const next = await store.findOrCreateOpenConversation({
+    orgId: ORG,
+    inboxId: chat.id,
+    contact: (await store.getContact(marta.id))!,
+    channel: "nestchat",
+    startedBy: visitorStamp("visitor_stranger"),
+  });
+  ok(
+    "and their next message starts a chat of its own rather than joining hers",
+    next.created && next.conversation.id !== live,
+  );
+  ok(
+    "while she still sees everything that is hers",
+    (await nestchat.visitorConversations(claims)).length >= 2 &&
+      (await nestchat.visitorConversation(claims, first)) !== undefined,
   );
 
   console.log(failed ? `\n${failed} failed\n` : "\nAll good\n");

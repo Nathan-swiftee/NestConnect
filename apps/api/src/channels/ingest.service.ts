@@ -295,6 +295,9 @@ export class IngestService {
     /** The message they swiped to reply to. Checked against the thread here
      *  rather than trusted — see below. */
     quotedMsgId?: string;
+    /** Who is writing — `visitorStamp` of their visitor id. Only a thread they
+     *  started is joined; otherwise a new one is opened under the contact. */
+    startedBy?: string;
   }): Promise<{ conversationId: string; created: boolean; message?: Message } | undefined> {
     if (input.contact.blocked) {
       this.logger.log(`Dropped inbound NestChat from blocked contact ${input.contact.id}`);
@@ -310,6 +313,7 @@ export class IngestService {
       // header has room for about one of them, so the half a visitor chose
       // deliberately goes first and the URL takes the ellipsis.
       subject: [input.option?.label, input.pageUrl].filter(Boolean).join(" · ") || undefined,
+      startedBy: input.startedBy,
     });
     const conversationId = res.conversation.id;
     if (res.created) {
