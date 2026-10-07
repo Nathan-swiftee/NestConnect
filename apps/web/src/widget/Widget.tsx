@@ -28,6 +28,7 @@ import {
   sendMessage,
   start,
   streamUrl,
+  uploadFile,
   uploadVoice,
 } from "./api";
 import { gateFor } from "./prechat";
@@ -35,7 +36,8 @@ import { HOST_WAIT_MS, listenToHost, sameIdentity, sessionInputFor, type HostIde
 import { MessageRow, describeQuote } from "./MessageRow";
 import { VoiceNote } from "./VoiceNote";
 import { VoiceRecorder } from "./VoiceRecorder";
-import type { VoiceNote as RecordedNote } from "./voice";
+import { microphoneAvailable, type VoiceNote as RecordedNote } from "./voice";
+import { ATTACH_ACCEPT, admit, fileSize, isPicture, optimisticAttachment, type StagedFile } from "./attach";
 
 /**
  * What this browser remembers between visits, per widget key — so two
@@ -317,9 +319,15 @@ export function Widget({
   const [replyTo, setReplyTo] = useState<NestChatMessage>();
   /** Flashing, because a quote above was tapped and this is what it pointed at. */
   const [flash, setFlash] = useState<string>();
-  /** Something the browser refused — no microphone, permission declined. Shown
-   *  above the composer and cleared by the next thing they do. */
-  const [micError, setMicError] = useState<string>();
+  /** Something that did not go — no microphone, permission declined, a file
+   *  that cannot be attached. Shown above the composer and cleared by the next
+   *  thing they do. */
+  const [notice, setNotice] = useState<string>();
+  /** Files under the message box, uploading or ready, sent with the next
+   *  message. */
+  const [staged, setStaged] = useState<StagedFile[]>([]);
+  /** Dragging a file over the chat. */
+  const [dropping, setDropping] = useState(false);
 
   const threadRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -334,6 +342,10 @@ export function Widget({
    *  it is recorded rather than after a round trip. Keyed by the optimistic id
    *  and dropped when the server's copy replaces it. */
   const localVoice = useRef(new Map<string, string>());
+  /** The same for pictures just sent, keyed by the optimistic attachment id. */
+  const localFiles = useRef(new Map<string, string>());
+  const fileInput = useRef<HTMLInputElement>(null);
+  const micAllowed = useRef(microphoneAvailable()).current;
 
   /* ---- who the page says is signed in ---- */
 
@@ -382,6 +394,8 @@ export function Widget({
     setChosen(undefined);
     setOptionId(undefined);
     setMessages([]);
+    // Tickets are signed for the person they were uploaded as.
+    setStaged([]);
     setLive(false);
     void openSession(widgetKey, sessionInputFor(who, readLocal(widgetKey, "visitor")))
       .then((session) => adopt(session, who))
@@ -583,10 +597,17 @@ export function Widget({
 
   const send = useCallback(async () => {
     const body = draft.trim();
-    if (!body || !token || sending) return;
+    // Only what uploaded goes. A file still on its way holds the send button;
+    // one that failed has already said so on its chip, and is left behind.
+    const files = staged.filter((f) => f.ticket);
+    if ((!body && !files.length) || !token || sending) return;
+    if (staged.some((f) => !f.ticket && !f.failed)) return;
     const answering = replyTo;
+    const left = staged;
     setSending(true);
     setDraft("");
+    setStaged([]);
+    setNotice(undefined);
     // The quote chip goes the moment they send, not when the reply lands. It
     // describes an intention, and the intention has been carried out.
     setReplyTo(undefined);
@@ -606,6 +627,17 @@ export function Widget({
       body,
       at: new Date().toISOString(),
       reactions: [],
+      ...(files.length
+        ? {
+            attachments: files.map((f, i) => {
+              const id = `local:${Date.now()}:${i}`;
+              // The picture they just picked, shown from memory — not a blank
+              // box until it has been fetched back from the server.
+              if (f.preview) localFiles.current.set(id, f.preview);
+              return optimisticAttachment(f, id);
+            }),
+          }
+        : {}),
       // Drawn from what is on screen rather than waiting for the server's
       // copy. The quote is the reason they are typing at all, and a reply
       // that appears without it for half a second reads as the wrong reply.
@@ -614,6 +646,7 @@ export function Widget({
     setMessages((prev) => [...prev, optimistic]);
     try {
       const res = await sendMessage(token, body, window.location.href, {
+        attachments: files.map((f) => f.ticket!),
         quotedMsgId: answering?.id,
       });
       if (res.token) setToken(res.token);
@@ -621,6 +654,18 @@ export function Widget({
       setMessages((prev) =>
         prev.map((m) => (m.id === optimistic.id && res.message ? res.message : m)),
       );
+      // The server's copy has its own address for each picture; the ones in
+      // memory go once nothing on screen could still be drawing them.
+      const shown = optimistic.attachments ?? [];
+      if (shown.length) {
+        setTimeout(() => {
+          for (const a of shown) {
+            const url = localFiles.current.get(a.id);
+            localFiles.current.delete(a.id);
+            if (url) URL.revokeObjectURL(url);
+          }
+        }, 60_000);
+      }
     } catch {
       // Put it back in the box rather than losing what they wrote.
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
@@ -628,11 +673,55 @@ export function Widget({
       // And so does the quote, for the same reason: they are about to press
       // send again, and it should still be answering what it was answering.
       setReplyTo(answering);
+      // And the files. The tickets are still good, so nothing re-uploads.
+      setStaged(left);
+      if (files.length) setNotice("That didn’t send. Try again?");
     } finally {
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [draft, token, sending, replyTo]);
+  }, [draft, token, sending, replyTo, staged]);
+
+  /**
+   * Files picked, pasted or dropped: checked, put under the box, and uploaded
+   * straight away — so by the time they have typed a caption, it has gone.
+   */
+  const attach = useCallback(
+    (picked: File[]) => {
+      if (!token || !picked.length) return;
+      const { take, notice: why } = admit(picked, staged.length);
+      setNotice(why);
+      if (!take.length) return;
+      const added: (StagedFile & { file: File })[] = take.map((file, i) => ({
+        key: `${Date.now()}:${i}:${file.name}`,
+        file,
+        name: file.name || "file",
+        mime: file.type,
+        size: file.size,
+        ...(isPicture({ mime: file.type }) ? { preview: URL.createObjectURL(file) } : {}),
+      }));
+      setStaged((prev) => [...prev, ...added.map(({ file: _file, ...rest }) => rest)]);
+      for (const a of added) {
+        uploadFile(token, a.file).then(
+          (up) =>
+            setStaged((prev) => prev.map((f) => (f.key === a.key ? { ...f, ticket: up.ticket } : f))),
+          (err: unknown) => {
+            const said = err instanceof Error && !/^\d+$/.test(err.message) ? err.message : "Couldn’t upload";
+            setStaged((prev) => prev.map((f) => (f.key === a.key ? { ...f, failed: said } : f)));
+          },
+        );
+      }
+    },
+    [token, staged.length],
+  );
+
+  const unstage = useCallback((key: string) => {
+    setStaged((prev) => {
+      const gone = prev.find((f) => f.key === key);
+      if (gone?.preview) URL.revokeObjectURL(gone.preview);
+      return prev.filter((f) => f.key !== key);
+    });
+  }, []);
 
   /**
    * A finished recording, uploaded and sent as its own message.
@@ -646,7 +735,7 @@ export function Widget({
       if (!token) return;
       const answering = replyTo;
       setReplyTo(undefined);
-      setMicError(undefined);
+      setNotice(undefined);
       const localId = `local:${Date.now()}`;
       // Playable immediately, from the blob in memory — there is no round trip
       // between recording something and being able to hear it back.
@@ -684,7 +773,7 @@ export function Widget({
         setMessages((prev) => prev.map((m) => (m.id === localId && res.message ? res.message : m)));
       } catch {
         setMessages((prev) => prev.filter((m) => m.id !== localId));
-        setMicError("That voice message didn’t send. Try again?");
+        setNotice("That voice message didn’t send. Try again?");
       } finally {
         // Only once the bubble holding it is gone or replaced. Revoking while
         // it is still on screen is a player that silently refuses to play.
@@ -893,6 +982,7 @@ export function Widget({
     setOptionId(undefined);
     setForm({ name: "", email: "", phone: "" });
     setMessages([]);
+    setStaged([]);
     setLive(false);
     setStartError(undefined);
     try {
@@ -959,8 +1049,30 @@ export function Widget({
   const lastOwn = [...messages].reverse().find((m) => m.from === "visitor");
   const showSeen = Boolean(seenAt && lastOwn);
 
+  /** Somewhere to put a file: a chat that is open and has a box to type in. */
+  const canAttach = Boolean(token) && !gated && !closed && !(view === "home" && home);
+
   return (
-    <div className="nc" ref={rootRef}>
+    <div
+      className={dropping ? "nc nc--dropping" : "nc"}
+      ref={rootRef}
+      onDragOver={(e) => {
+        if (!canAttach || !e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        setDropping(true);
+      }}
+      onDragLeave={(e) => {
+        // Leaving a child for another child is not leaving the chat.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+      }}
+      onDrop={(e) => {
+        setDropping(false);
+        if (!canAttach || !e.dataTransfer.files.length) return;
+        e.preventDefault();
+        attach(Array.from(e.dataTransfer.files));
+      }}
+    >
       {/* Stacked rather than side by side: the faces get a line of their own,
           the title sits under them at a size worth reading, and the header has
           the height a gradient needs to actually travel across. It is the shape
@@ -1301,21 +1413,48 @@ export function Widget({
                     }
                   />
                 ) : (
-                  <div className="nc__bubble">
+                  <div className={m.body ? "nc__bubble" : "nc__bubble nc__bubble--files"}>
+                    {others.some(isPicture) ? (
+                      <div className="nc__pics">
+                        {others.filter(isPicture).map((a) => {
+                          // Just sent: drawn from the file they picked. Otherwise
+                          // from the server, which names it as a download — an
+                          // <img> pays that no mind, a click opens it in a tab.
+                          const src = a.id.startsWith("local:")
+                            ? localFiles.current.get(a.id)
+                            : token
+                              ? attachmentUrl(token, a.id)
+                              : undefined;
+                          return (
+                            <a
+                              key={a.id}
+                              className="nc__pic"
+                              href={a.id.startsWith("local:") ? undefined : src}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {src ? <img src={src} alt={a.filename} loading="lazy" /> : null}
+                            </a>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                     {m.body}
-                    {others.length ? (
+                    {others.some((a) => !isPicture(a)) ? (
                       <div className="nc__files">
-                        {others.map((a) => (
-                          <a
-                            key={a.id}
-                            className="nc__file"
-                            href={token ? attachmentUrl(token, a.id) : undefined}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            📎 {a.filename}
-                          </a>
-                        ))}
+                        {others
+                          .filter((a) => !isPicture(a))
+                          .map((a) => (
+                            <a
+                              key={a.id}
+                              className="nc__file"
+                              href={token && !a.id.startsWith("local:") ? attachmentUrl(token, a.id) : undefined}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              📎 {a.filename}
+                            </a>
+                          ))}
                       </div>
                     ) : null}
                   </div>
@@ -1446,13 +1585,70 @@ export function Widget({
         </div>
       ) : null}
 
-      {micError ? (
+      {notice ? (
         <div className="nc__micerror" role="status">
-          {micError}
+          {notice}
+        </div>
+      ) : null}
+
+      {staged.length ? (
+        <div className="nc__staged">
+          {staged.map((f) => (
+            <div
+              key={f.key}
+              className={`nc__chip${f.failed ? " nc__chip--failed" : ""}${!f.ticket && !f.failed ? " nc__chip--busy" : ""}`}
+              title={f.failed ?? f.name}
+            >
+              {f.preview ? (
+                <img className="nc__chip-thumb" src={f.preview} alt="" />
+              ) : (
+                <span className="nc__chip-thumb nc__chip-thumb--file" aria-hidden="true">
+                  <FileIcon />
+                </span>
+              )}
+              <span className="nc__chip-text">
+                <span className="nc__chip-name">{f.name}</span>
+                <span className="nc__chip-meta">
+                  {f.failed ?? (f.ticket ? fileSize(f.size) : "Uploading…")}
+                </span>
+              </span>
+              <button
+                type="button"
+                className="nc__chip-x"
+                onClick={() => unstage(f.key)}
+                aria-label={`Remove ${f.name}`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
         </div>
       ) : null}
 
       <div className="nc__composer">
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          accept={ATTACH_ACCEPT}
+          hidden
+          onChange={(e) => {
+            attach(Array.from(e.target.files ?? []));
+            // Cleared, so picking the same file again after removing it still
+            // counts as a change.
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          className="nc__attach"
+          disabled={!token || sending}
+          onClick={() => fileInput.current?.click()}
+          aria-label="Attach a file"
+          title="Attach a file"
+        >
+          <ClipIcon />
+        </button>
         <textarea
           ref={inputRef}
           className="nc__input"
@@ -1461,6 +1657,15 @@ export function Widget({
           placeholder={appearance.placeholder}
           aria-label={appearance.placeholder}
           onChange={(e) => onDraft(e.target.value)}
+          onPaste={(e) => {
+            // A screenshot pasted into the box is a screenshot to send, not
+            // nothing. Text pastes as text, as it always did.
+            const files = Array.from(e.clipboardData.files);
+            if (files.length) {
+              e.preventDefault();
+              attach(files);
+            }
+          }}
           onKeyDown={(e) => {
             // Enter sends, Shift+Enter breaks the line — what a chat box does.
             if (e.key === "Enter" && !e.shiftKey) {
@@ -1472,11 +1677,15 @@ export function Widget({
         {/* The mic gives way to send the moment there is anything to send.
             Two buttons side by side would make the commonest action — sending
             what you just typed — a target choice. */}
-        {draft.trim() ? (
+        {draft.trim() || staged.length || !micAllowed ? (
           <button
             type="button"
             className="nc__send"
-            disabled={sending}
+            disabled={
+              sending ||
+              (!draft.trim() && !staged.some((f) => f.ticket)) ||
+              staged.some((f) => !f.ticket && !f.failed)
+            }
             onClick={() => void send()}
             aria-label="Send"
           >
@@ -1488,7 +1697,7 @@ export function Widget({
           <VoiceRecorder
             disabled={sending || !token}
             onRecorded={(note) => void sendVoice(note)}
-            onError={setMicError}
+            onError={setNotice}
           />
         )}
       </div>
@@ -1507,5 +1716,34 @@ export function Widget({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ClipIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path
+        d="M16.5 6.5 8.4 14.6a1.75 1.75 0 0 0 2.5 2.5l8.3-8.3a3.5 3.5 0 0 0-5-5L5.9 12.1a5.25 5.25 0 0 0 7.4 7.4l6.2-6.2"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function FileIcon(): JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z M14 3v5h5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

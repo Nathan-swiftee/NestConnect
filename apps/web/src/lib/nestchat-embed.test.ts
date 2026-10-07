@@ -46,6 +46,13 @@ describe("embedSnippet", () => {
     expect(out).toContain("</iframe>");
   });
 
+  it("lets the iframe ask for the microphone, for voice messages", () => {
+    // Without it a frame on somebody else's site is refused before the
+    // browser has even asked the visitor.
+    const out = embedSnippet("iframe", settings, DEFAULT_NESTCHAT_APPEARANCE);
+    expect(out).toMatch(/allow="[^"]*\bmicrophone\b/);
+  });
+
   it("escapes a quote in the business's own words instead of breaking the literal", () => {
     // A launcher label like `Say "hi"` is ordinary copy, and an unescaped quote
     // would end the string early and leave a syntax error on the customer's page.

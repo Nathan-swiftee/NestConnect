@@ -124,6 +124,26 @@ export interface Recorder {
 }
 
 /**
+ * Whether this page may ask for the microphone at all.
+ *
+ * Inside an iframe the answer belongs to the page around it: a frame without
+ * `allow="microphone"` is refused before any prompt is shown, so the button
+ * would be one that only ever fails. Our loader asks for it; an older inline
+ * `<iframe>` snippet pasted before it did may not. No microphone API at all —
+ * an `http:` page, an old browser — is the same answer.
+ */
+export function microphoneAvailable(
+  doc: { permissionsPolicy?: { allowsFeature(f: string): boolean }; featurePolicy?: { allowsFeature(f: string): boolean } } = document as never,
+  nav: { mediaDevices?: { getUserMedia?: unknown } } = navigator,
+  hasRecorder: boolean = typeof MediaRecorder !== "undefined",
+): boolean {
+  if (!nav.mediaDevices?.getUserMedia || !hasRecorder) return false;
+  const policy = doc.permissionsPolicy ?? doc.featurePolicy;
+  // Firefox and Safari expose neither; they will prompt, or refuse, on press.
+  return policy ? policy.allowsFeature("microphone") : true;
+}
+
+/**
  * Ask for the microphone and start recording.
  *
  * Throws if permission is refused or there is no microphone, which the caller

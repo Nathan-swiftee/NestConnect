@@ -77,11 +77,32 @@ export function uploadVoice(
   form.append("file", blob, `voice.${blob.type.includes("mp4") ? "m4a" : "webm"}`);
   form.append("durationMs", String(Math.round(meta.durationMs)));
   form.append("waveform", JSON.stringify(meta.waveform));
-  return fetch(`${base}/upload`, {
+  return upload(token, form);
+}
+
+/**
+ * Put a file the visitor attached somewhere, and get back its ticket.
+ *
+ * A refusal carries the server's own sentence ("too large", "can't be attached
+ * here") as the error's message, because it is written for the visitor.
+ */
+export function uploadFile(token: string, file: File): Promise<NestChatUploadResult> {
+  const form = new FormData();
+  form.append("file", file, file.name || "file");
+  return upload(token, form);
+}
+
+async function upload(token: string, form: FormData): Promise<NestChatUploadResult> {
+  const res = await fetch(`${base}/upload`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
-  }).then(json<NestChatUploadResult>);
+  });
+  if (res.status === 400) {
+    const said = (await res.json().catch(() => null)) as { message?: unknown } | null;
+    if (typeof said?.message === "string") throw new Error(said.message);
+  }
+  return json<NestChatUploadResult>(res);
 }
 
 /**

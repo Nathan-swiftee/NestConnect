@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockDuration, levelOf, normalise, pickMimeType, toBars } from "./voice";
+import { clockDuration, levelOf, microphoneAvailable, normalise, pickMimeType, toBars } from "./voice";
 
 describe("drawing a voice note", () => {
   it("keeps the syllables rather than averaging them away", () => {
@@ -68,3 +68,26 @@ describe("drawing a voice note", () => {
     expect(clockDuration(-5)).toBe("0:00");
   });
 });
+
+describe("whether the mic button is worth showing", () => {
+  const mic = { mediaDevices: { getUserMedia: () => undefined } };
+  const policy = (allowed: boolean) => ({ permissionsPolicy: { allowsFeature: () => allowed } });
+
+  it("is shown when the page around the chat lets it ask", () => {
+    expect(microphoneAvailable(policy(true), mic, true)).toBe(true);
+    // Firefox and Safari do not say; they ask, or refuse, on press.
+    expect(microphoneAvailable({}, mic, true)).toBe(true);
+  });
+
+  it("is hidden in a frame the page gave no microphone", () => {
+    // An inline <iframe> pasted before the snippet carried allow="microphone".
+    // The browser refuses before anybody is asked: a button that only fails.
+    expect(microphoneAvailable(policy(false), mic, true)).toBe(false);
+  });
+
+  it("is hidden where there is nothing to record with", () => {
+    expect(microphoneAvailable({}, {}, true)).toBe(false);
+    expect(microphoneAvailable({}, mic, false)).toBe(false);
+  });
+});
+

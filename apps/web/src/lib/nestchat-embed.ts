@@ -19,6 +19,9 @@ export function embedSnippet(
     return [
       `<iframe src="${settings.embedUrl}"`,
       `        title="${attr(appearance.title)}"`,
+      // Voice messages: a frame on another site has no microphone unless the
+      // page hands it one. The visitor is still asked before it is used.
+      `        allow="microphone; clipboard-write"`,
       `        style="border:0;width:100%;height:600px"></iframe>`,
     ].join("\n");
   }
