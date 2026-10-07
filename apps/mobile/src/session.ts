@@ -73,3 +73,37 @@ export async function clearSession(): Promise<void> {
   loaded = true;
   await store.remove().catch(() => {});
 }
+
+/**
+ * This phone's remembered-device pass: proof it passed the second factor, so
+ * the next sign-in within 30 days asks for the password and not a code.
+ *
+ * Its own key, and kept through sign-out — forgetting it there would bring the
+ * code straight back, which is the thing it exists to stop. It opens nothing on
+ * its own: the server still wants the password, refuses it as a session, and
+ * forgets it when the password or the second factor changes.
+ */
+const TRUST_KEY = "nest.trusted.device";
+
+export async function loadTrustedDevice(): Promise<string | undefined> {
+  try {
+    const value =
+      Platform.OS === "web"
+        ? globalThis.localStorage?.getItem(TRUST_KEY)
+        : await SecureStore.getItemAsync(TRUST_KEY);
+    return value ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function saveTrustedDevice(token: string): Promise<void> {
+  try {
+    if (Platform.OS === "web") return void globalThis.localStorage?.setItem(TRUST_KEY, token);
+    await SecureStore.setItemAsync(TRUST_KEY, token, {
+      keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    });
+  } catch {
+    // Not remembered is a code next time, not a failed sign-in.
+  }
+}

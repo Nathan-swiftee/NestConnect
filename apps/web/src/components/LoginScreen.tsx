@@ -15,6 +15,9 @@ export function LoginScreen() {
   const [resetSent, setResetSent] = useState(false);
   const [sending, setSending] = useState(false);
   const [code, setCode] = useState("");
+  // On by default: the ask was to stop being asked for a code at every sign-in
+  // on the same computer. Untick it on a shared or borrowed one.
+  const [remember, setRemember] = useState(true);
 
   // Set once the password step returns a 2FA challenge; cleared by login.reset().
   const challenge = login.data && "twoFactorRequired" in login.data ? login.data : null;
@@ -22,7 +25,7 @@ export function LoginScreen() {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (challenge) {
-      if (code.trim()) verify.mutate(code.trim());
+      if (code.trim()) verify.mutate({ code: code.trim(), rememberDevice: remember });
       return;
     }
     login.mutate({ email: emailAddr, password });
@@ -155,6 +158,15 @@ export function LoginScreen() {
                   placeholder="123456"
                   required
                 />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 accent-[var(--brand)] cursor-pointer"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                />
+                Remember this device for 30 days
               </label>
               {verify.isError && (
                 <div className="text-danger text-xs font-semibold bg-danger-tint py-2 px-3 rounded-8">

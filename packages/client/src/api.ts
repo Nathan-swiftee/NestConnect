@@ -157,11 +157,24 @@ export const api = {
   // it: a browser gets its httpOnly cookie, a phone gets the token in the body.
   // The 2FA leg is the same story — the half-authenticated token comes back on
   // the challenge for token clients and is posted back with the code.
-  login: (email: string, password: string) =>
-    post<(MeResponse & SessionGrant) | TwoFactorChallenge>("/auth/login", { email, password, ...tokenAuth() }),
+  // A remembered device skips the code: a browser's pass rides as a cookie,
+  // a phone passes the one it was handed (`trustedDeviceToken`) back here.
+  login: (email: string, password: string, trustedDeviceToken?: string) =>
+    post<(MeResponse & SessionGrant) | TwoFactorChallenge>("/auth/login", {
+      email,
+      password,
+      ...tokenAuth(),
+      ...(trustedDeviceToken ? { trustedDeviceToken } : {}),
+    }),
   // Second login step: submit the 2FA (or recovery) code → a session.
-  loginTwoFactor: (code: string, pendingToken?: string) =>
-    post<MeResponse & SessionGrant>("/auth/login/2fa", { code, ...tokenAuth(), ...(pendingToken ? { pendingToken } : {}) }),
+  // `rememberDevice` skips the code on this device for the next 30 days.
+  loginTwoFactor: (code: string, pendingToken?: string, rememberDevice?: boolean) =>
+    post<MeResponse & SessionGrant>("/auth/login/2fa", {
+      code,
+      ...tokenAuth(),
+      ...(pendingToken ? { pendingToken } : {}),
+      ...(rememberDevice ? { rememberDevice: true } : {}),
+    }),
   resendLoginCode: (pendingToken?: string) =>
     post<{ ok: boolean }>("/auth/login/2fa/resend", pendingToken ? { pendingToken } : {}),
   // Native only: roll this device's token forward on the same session.

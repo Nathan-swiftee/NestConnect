@@ -30,7 +30,7 @@ import {
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { Store } from "../data/store";
 import { env } from "../config/env";
-import { AuthService } from "./auth.service";
+import { AuthService, TRUSTED_DEVICE_TTL_S } from "./auth.service";
 import { SessionService } from "./session.service";
 import { TwoFactorService } from "./two-factor.service";
 import { Mailer } from "../mail/mailer.service";
@@ -41,6 +41,10 @@ import { CurrentUserId, CurrentSessionId } from "./current-user.decorator";
 /** Cookie carrying the half-authenticated "2FA pending" token (password OK,
  *  awaiting a code). Distinct from the real session cookie. */
 const PENDING_COOKIE = `${env.auth.cookieName}_2fa`;
+
+/** Cookie remembering that this browser passed the second factor, so sign-in
+ *  skips the code for 30 days. Kept through sign-out — that is the point. */
+const TRUSTED_COOKIE = `${env.auth.cookieName}_trusted`;
 
 /** Session cookie options — shared by login and set-password. */
 function cookieOptions() {
@@ -158,8 +162,16 @@ export class AuthController {
     const user = await this.auth.validate(body.email, body.password);
     if (!user) throw new UnauthorizedException("Invalid email or password");
 
-    // 2FA on → stop at a half-authenticated state; the client posts the code next.
-    if (user.twoFactorEnabled) return this.challenge(user, res, body.tokenAuth);
+    // 2FA on → stop at a half-authenticated state; the client posts the code
+    // next. Unless this device passed it within the last 30 days and asked to
+    // be remembered: then the password is the whole of today's sign-in.
+    if (user.twoFactorEnabled) {
+      const remembered = body.trustedDeviceToken ?? readCookie(req, TRUSTED_COOKIE);
+      if (await this.auth.isTrustedDevice(remembered, user.id)) {
+        return this.grantSession(user.id, req, res, body.tokenAuth);
+      }
+      return this.challenge(user, res, body.tokenAuth);
+    }
     // 2FA required but never set up: this is a real session, and the guard
     // holds it at the enrolment routes until they have one.
     return this.grantSession(user.id, req, res, body.tokenAuth);
@@ -179,7 +191,14 @@ export class AuthController {
       throw new UnauthorizedException("That code isn't right.");
     }
     res.clearCookie(PENDING_COOKIE, { path: "/" });
-    return this.grantSession(userId, req, res, body.tokenAuth);
+    const granted = await this.grantSession(userId, req, res, body.tokenAuth);
+    if (!body.rememberDevice) return granted;
+    const trusted = await this.auth.signTrustedDevice(userId);
+    // A phone keeps it in its keystore and sends it with the next login; a
+    // browser gets it as a cookie that script on the page cannot read.
+    if (body.tokenAuth) return { ...granted, trustedDeviceToken: trusted };
+    res.cookie(TRUSTED_COOKIE, trusted, { ...cookieOptions(), maxAge: TRUSTED_DEVICE_TTL_S * 1000 });
+    return granted;
   }
 
   /** Email-method only: resend the code during the login challenge. */

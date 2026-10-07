@@ -109,8 +109,10 @@ export function seedIdentity(qc: QueryClient, data: MeResponse) {
 export function useLoginTwoFactor() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: string | { code: string; pendingToken?: string }) =>
-      typeof v === "string" ? api.loginTwoFactor(v) : api.loginTwoFactor(v.code, v.pendingToken),
+    mutationFn: (v: string | { code: string; pendingToken?: string; rememberDevice?: boolean }) =>
+      typeof v === "string"
+        ? api.loginTwoFactor(v)
+        : api.loginTwoFactor(v.code, v.pendingToken, v.rememberDevice),
     onSuccess: (data) => {
       seedIdentity(qc, data);
       qc.invalidateQueries();
