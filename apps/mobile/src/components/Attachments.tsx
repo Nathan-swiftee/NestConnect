@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { Image } from "expo-image";
 import type { Attachment } from "@ding/schemas";
@@ -51,18 +51,7 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
               accessibilityLabel={`${a.filename || "Photo"}, tap to open`}
               className=""
             >
-              <Image
-                source={mediaSource(a.url)}
-                style={{ width: MAX_W, height: MAX_W / ratio, borderRadius: 12, backgroundColor: c.surface2 }}
-                contentFit="cover"
-                // React Native's own <Image> has no disk cache worth the name,
-                // so every scroll back past a photo in a long thread was a
-                // fresh download and decode, landing as a hard pop-in. This
-                // caches, and fades the image in over the placeholder tint
-                // instead of swapping it.
-                cachePolicy="memory-disk"
-                transition={180}
-              />
+              <ThreadPhoto attachment={a} width={MAX_W} height={MAX_W / ratio} tint={c.surface2} />
             </Touchable>
           );
         }
@@ -148,3 +137,59 @@ export function Attachments({ items, mine }: { items: Attachment[]; mine?: boole
     </View>
   );
 }
+
+/** How many times a photo that failed to load is asked for again. */
+const PHOTO_RETRIES = 2;
+
+/**
+ * A photo in a bubble.
+ *
+ * Cached on disk: React Native's own <Image> has no disk cache worth the name,
+ * so every scroll back past a photo in a long thread was a fresh download and
+ * decode.
+ *
+ * No fade-in. A photo that finished downloading while its row was still
+ * sliding into the thread could have its fade cut short and stay invisible:
+ * the bytes had arrived, the box stayed empty, and only leaving and opening
+ * the chat again drew it — from the cache, with no second download. A plain
+ * swap always lands.
+ *
+ * And a load that fails is tried again, a moment later, rather than leaving an
+ * empty box for good. The address is our own and redirects to a short-lived
+ * storage link, so a second ask gets a fresh one; a photo that has only just
+ * been sent is also the likeliest to meet a hiccup on the way.
+ */
+function ThreadPhoto({
+  attachment,
+  width,
+  height,
+  tint,
+}: {
+  attachment: Attachment;
+  width: number;
+  height: number;
+  tint: string;
+}) {
+  const [attempt, setAttempt] = useState(0);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  return (
+    <Image
+      // A new key is a new native view, which is what asks again — the same
+      // view handed the same source decides it already has its answer.
+      key={`${attachment.id}:${attempt}`}
+      source={mediaSource(attachment.url)}
+      style={{ width, height, borderRadius: 12, backgroundColor: tint }}
+      contentFit="cover"
+      cachePolicy="memory-disk"
+      recyclingKey={attachment.id}
+      onError={() => {
+        if (attempt >= PHOTO_RETRIES) return;
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => setAttempt((n) => n + 1), 800 * (attempt + 1));
+      }}
+    />
+  );
+}
+
