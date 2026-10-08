@@ -15,6 +15,37 @@ certification, a hosting region, or a retention period.
 
 ---
 
+## Remaining owner approval — priorities
+
+The owner confirmed only `controllerName` = `Nest Partners Ltd`,
+`postalAddress` = `14 grosvenor way e59nd` (preserved exactly), and
+`contactEmail` = `info@swiftee.co.uk` for privacy/support correspondence
+([owner confirmation on PR #53](https://github.com/Nathan-swiftee/NestConnect/pull/53)).
+These are recorded in `OWNER_FIELDS`; every other field remains `null`.
+This is not approval to publish. The detailed checklist below remains the
+review inventory; this Markdown review copy retains its draft markers.
+
+Prioritise decisions and private operational facts that cannot be retrieved
+from public sources or inferred from code:
+
+- [ ] Owner/legal adviser: approve the data role, legal bases, regional rights,
+  transfer safeguards and children/minimum-age position. Do not substitute
+  generic legal text.
+- [ ] Owner/operations: confirm actual retention by data category (including
+  request logs), deletion handling and the existing deletion limitations;
+  confirm whether backups exist, their locations and retention periods.
+- [ ] Owner/operations: confirm deployed hosting provider/regions and every
+  production boolean below, including actual mobile build configuration.
+  Code defaults and deployment docs are not production evidence; supply
+  confirmations, not credentials or secret values.
+- [ ] Owner: confirm company number/place of registration for this exact
+  operator (a public lookup is evidence, not owner approval); confirm the
+  privacy/support mailbox is monitored and settle the other decisions below.
+- [ ] Owner: review the completed policy, explicitly approve publication and
+  choose its effective date. Keep `effectiveDate` unresolved until then;
+  filling all fields makes the existing resolver publishable, so do not
+  complete the publication gate before approval.
+
 ## Owner-approval checklist
 
 Fill these in `OWNER_FIELDS` in `apps/web/src/privacy/policy.ts`. Every one is
@@ -25,10 +56,10 @@ on) also keeps it there.
 
 **Operator facts**
 
-- [ ] `controllerName`: the legal entity that operates NestConnect.
+- [x] `controllerName`: `Nest Partners Ltd` (owner-confirmed legal operator).
 - [ ] `companyDetails`: the company number and place of registration, as you want them shown.
-- [ ] `postalAddress`: the registered or postal address for privacy correspondence.
-- [ ] `contactEmail`: the mailbox for privacy requests. It must be monitored.
+- [x] `postalAddress`: `14 grosvenor way e59nd` (owner-confirmed; preserved exactly).
+- [x] `contactEmail`: `info@swiftee.co.uk` (owner-confirmed privacy/support address; monitoring still needs confirmation).
 - [ ] `effectiveDate`: the date the policy takes effect (`YYYY-MM-DD`).
 
 **Legal positions** (take legal advice)
