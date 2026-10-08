@@ -285,6 +285,37 @@ void main() {
     expect((sent['fields']! as Map)['order_id'], 'DG-88412');
   });
 
+  test('open with fields after login stays the signed-in person', () async {
+    // The README's own order: sign in, then open the chat about something.
+    await chat.login(userId: 'u_9182', userHash: 'deadbeef', name: 'Marta', email: 'marta@example.com');
+    await chat.open(fields: {'application_id': 'APP-1'});
+
+    // This second session used to go out anonymous — the fields then landed
+    // on a stranger's thread and never on the customer's own.
+    expect(server.sessionBodies, hasLength(2));
+    final opened = server.sessionBodies.last;
+    expect(opened['externalId'], 'u_9182');
+    expect(opened['userHash'], 'deadbeef');
+    expect(opened['name'], 'Marta');
+    expect(opened['email'], 'marta@example.com');
+    expect((opened['fields']! as Map)['application_id'], 'APP-1');
+  });
+
+  test('a bare open after login keeps the session it has', () async {
+    await chat.login(userId: 'u_9182', userHash: 'deadbeef');
+    await chat.open();
+    // Nothing new to say, so nothing to re-open — and certainly not as nobody.
+    expect(server.sessionBodies, hasLength(1));
+    expect(chat.isOpen, isTrue);
+  });
+
+  test('open without a login is anonymous', () async {
+    await chat.open(fields: {'application_id': 'APP-2'});
+    final opened = server.sessionBodies.single;
+    expect(opened.containsKey('externalId'), isFalse);
+    expect((opened['fields']! as Map)['application_id'], 'APP-2');
+  });
+
   test('an unverified session says so rather than pretending', () async {
     server.session = {...server.session, 'identified': false};
     expect(await chat.open(), NestIdentity.anonymous);

@@ -199,9 +199,28 @@ class NestConnect {
     );
   }
 
-  /// Open a chat without saying who it is. Anonymous, and the thread belongs to
-  /// this install alone.
-  Future<NestIdentity> open({Map<String, String>? fields}) => _session(fields: fields);
+  /// Open the chat — optionally about something, with [fields].
+  ///
+  /// As whoever [login] said this is, when somebody is signed in; anonymous,
+  /// with the thread belonging to this install alone, when nobody is.
+  ///
+  /// It used to be anonymous always. The README's own example is `login`
+  /// followed by `open(fields: …)`, so an app doing exactly what it was told
+  /// replaced the signed-in session with a stranger's: the fields landed on an
+  /// anonymous visitor's thread (or nowhere, on a channel that requires
+  /// signing in), and the customer's own chat never saw them.
+  Future<NestIdentity> open({Map<String, String>? fields}) {
+    final who = _identity;
+    if (who == null) return _session(fields: fields);
+    return login(
+      userId: who.id,
+      userHash: who.hash,
+      name: _visitorName,
+      email: who.email,
+      phone: who.phone,
+      fields: fields,
+    );
+  }
 
   /// Forget this session. Called when somebody signs out of the host app: the
   /// next person to open the chat must not find the last one's conversation.
