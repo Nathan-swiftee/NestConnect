@@ -86,37 +86,52 @@ export interface PrivacyOwnerFields {
 export type ResolvedOwnerFields = { [K in keyof PrivacyOwnerFields]: NonNullable<PrivacyOwnerFields[K]> };
 
 /**
- * THE owner fields. Only owner-confirmed facts are populated; never guess the
- * remaining values. Recording these facts does not approve publication: all
- * remaining fields and the final policy still need owner approval — see
- * docs/privacy-policy-draft.md.
+ * THE owner fields. All are resolved and the owner approved publication on
+ * 2026-10-08, so the public /privacy page renders the full policy. Change any
+ * value only with the owner's approval — see docs/privacy-policy-draft.md.
  */
 export const OWNER_FIELDS: PrivacyOwnerFields = {
-  controllerName: "Nest Partners Ltd",
-  companyDetails: null,
-  postalAddress: "14 grosvenor way e59nd",
+  // Operator facts: owner-confirmed; company number and registered office
+  // checked against Companies House (17089989, active).
+  controllerName: "Nest Partners Limited",
+  companyDetails: "a private limited company registered in England and Wales, company number 17089989",
+  postalAddress: "14 Grosvenor Way, London, E5 9ND, United Kingdom",
   contactEmail: "info@swiftee.co.uk",
-  effectiveDate: null,
-  endCustomerDataRole: null,
-  hostingProvider: null,
-  hostingRegion: null,
-  internationalTransfersStatement: null,
-  retentionStatement: null,
-  backupStatement: null,
-  legalBasesStatement: null,
-  jurisdictionalRightsStatement: null,
-  childrenStatement: null,
-  secretEncryptionEnabledInProduction: null,
-  sentryEnabledInProduction: null,
-  cloudflareInFrontOfDomain: null,
-  r2StorageInProduction: null,
-  whatsappCloudApiInUse: null,
-  gmailIntegrationInUse: null,
-  postmarkInUse: null,
-  resendInUse: null,
-  smtpInUse: null,
-  anthropicPolishAvailable: null,
-  sdkCustomerPushInUse: null,
+  effectiveDate: "2026-10-08",
+  // Legal positions and retention: drafted for and approved by the owner.
+  endCustomerDataRole: "processor",
+  // Infrastructure: read from the live Railway project (service region
+  // "US West (California, USA)"; no scheduled backups on the current plan).
+  hostingProvider: "Railway",
+  hostingRegion: "United States (US West, California)",
+  internationalTransfersStatement:
+    "We are based in the United Kingdom. Our servers and database are hosted in the United States, and several of our service providers (including Railway, Cloudflare, Google, Meta, Resend, Expo and Anthropic) process personal information in the United States or other countries outside the UK and the European Economic Area. When we transfer personal information out of the UK or the EEA, we rely on adequacy regulations or decisions where they apply (such as the UK-US data bridge or the EU-US Data Privacy Framework for certified recipients), or on appropriate safeguards such as the UK International Data Transfer Addendum or the EU Standard Contractual Clauses.",
+  retentionStatement:
+    "We keep a workspace's information for as long as the business's account is active. When a business closes its account, we delete its information within 90 days, unless we need to keep some of it for longer to comply with the law, resolve disputes or enforce our agreements.",
+  backupStatement:
+    "We do not currently run scheduled database backups. Our hosting provider has occasionally taken a backup of the database (for example before platform maintenance); such a backup can contain the information described in this policy and is stored with the hosting provider in the same region.",
+  legalBasesStatement:
+    "Where data protection law (such as the UK GDPR or the EU GDPR) requires a legal basis, we rely on: performing our contract with the business that uses NestConnect, and with its workspace users, to provide the service; our legitimate interests in operating, securing and improving the service and preventing abuse; complying with our legal obligations; and your consent where we ask for it, such as for push notifications or access to your camera, photos or microphone, which you can withdraw at any time in your device settings. Where we process customers' information on a business's behalf, that business is responsible for having a legal basis for the processing.",
+  jurisdictionalRightsStatement:
+    "If you are in the UK, you can complain to the Information Commissioner's Office (ico.org.uk). If you are in the European Economic Area, you can complain to the data protection authority in your country. We would appreciate the chance to deal with your concerns first, so please contact us before you do.",
+  childrenStatement:
+    "NestConnect accounts are for people aged 18 and over who use it for work. We do not knowingly collect personal information from children for our own purposes. If you believe a child has given us personal information, contact us and we will delete it.",
+  // Production configuration, read from the live service: Settings ->
+  // Integrations (storage, Meta, Google, SMTP, Resend, Anthropic, push all
+  // configured), Railway variables (SECRET_ENCRYPTION_KEY set, no
+  // POSTMARK_TOKEN), EAS environment (no EXPO_PUBLIC_SENTRY_DSN), and
+  // nestconnect.io response headers (served through Cloudflare).
+  secretEncryptionEnabledInProduction: true,
+  sentryEnabledInProduction: false,
+  cloudflareInFrontOfDomain: true,
+  r2StorageInProduction: true,
+  whatsappCloudApiInUse: true,
+  gmailIntegrationInUse: true,
+  postmarkInUse: false,
+  resendInUse: true,
+  smtpInUse: true,
+  anthropicPolishAvailable: true,
+  sdkCustomerPushInUse: true,
 };
 
 /** Every owner field name, in checklist order. */

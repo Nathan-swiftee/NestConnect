@@ -53,23 +53,19 @@ const html = (fields?: PrivacyOwnerFields) => renderToStaticMarkup(<PrivacyPage 
 const visibleText = (markup: string) => markup.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 
 describe("privacy policy — unresolved owner fields (fail closed)", () => {
-  it("records only the three owner-confirmed facts and keeps the shipped page pending", () => {
-    const confirmed = {
-      controllerName: "Nest Partners Ltd",
-      postalAddress: "14 grosvenor way e59nd",
-      contactEmail: "info@swiftee.co.uk",
-    };
-    expect(OWNER_FIELDS).toEqual({ ...ALL_UNRESOLVED, ...confirmed });
-    expect(unresolvedOwnerFields(OWNER_FIELDS)).toEqual(
-      OWNER_FIELD_NAMES.filter((name) => !(name in confirmed)),
-    );
-    expect(resolvePolicy()).toEqual({ status: "pending" });
+  it("ships the owner-approved policy: every field resolved and the page published", () => {
+    expect(unresolvedOwnerFields(OWNER_FIELDS)).toEqual([]);
+    const resolved = resolvePolicy();
+    expect(resolved.status).toBe("ready");
     const out = html();
-    expect(out).toContain('data-testid="privacy-pending"');
-    expect(out).not.toContain('data-testid="privacy-policy"');
+    expect(out).toContain('data-testid="privacy-policy"');
+    expect(out).not.toContain('data-testid="privacy-pending"');
     const text = visibleText(out);
-    for (const value of Object.values(confirmed)) expect(text).not.toContain(value);
-    for (const section of buildPolicy(FILLED).sections) expect(text).not.toContain(section.title);
+    expect(containsPlaceholderMarker(text)).toBe(false);
+    for (const fact of ["Nest Partners Limited", "17089989", "14 Grosvenor Way, London, E5 9ND", "info@swiftee.co.uk", "8 October 2026", "Railway"])
+      expect(text).toContain(fact);
+    // Production configuration as verified: Postmark and Sentry are off.
+    expect(text).not.toMatch(/Postmark|Sentry/);
   });
 
   it("shows only the neutral 'being finalised' state", () => {
