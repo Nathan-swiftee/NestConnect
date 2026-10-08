@@ -223,11 +223,9 @@ Set on the EAS project (`eas secret:create`), not in the repo:
 | `EXPO_PUBLIC_SENTRY_DSN` | Turns crash reporting on. Absent → Sentry never initialises, which is the intended default. |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Let the Expo plugin upload source maps. Without them a native stack trace arrives minified and unreadable. |
 
-The Apple submit credentials are **repository** secrets rather than EAS ones,
-because the workflow passes them into the runner's environment where eas-cli
-reads them. See 3.5 for the four of them. If a submission ever reports a
-missing credential, setting the same values with `eas secret:create` as well is
-the other place they are looked for — that path has not been exercised here.
+Store submission credentials must be configured on Expo/EAS, not committed or
+passed as key files by this workflow. The runner uses the repository's
+`EXPO_TOKEN`; EAS uses its stored App Store Connect / Play credentials. See 3.5.
 
 ### 3.4 Everyday builds — from GitHub, no terminal
 
@@ -240,7 +238,7 @@ could be committed, verified, deployed to the web and reported as done while the
 phone in your hand still ran the old code, with nothing anywhere saying so.
 
 **Native builds stay manual**, because one costs a credit and ~20 minutes of
-queue. <https://github.com/Nathan-swiftee/Chat/actions/workflows/mobile.yml> →
+queue. <https://github.com/Nathan-swiftee/NestConnect/actions/workflows/mobile.yml> →
 **Run workflow**. Pick the branch, then:
 
 | Option | What to pick |
@@ -265,7 +263,7 @@ Reckon on 15–25 minutes including queue time.
 **One secret makes this work.** Create a robot token at
 <https://expo.dev/accounts/swiftee/settings/access-tokens> and add it as
 `EXPO_TOKEN` under
-<https://github.com/Nathan-swiftee/Chat/settings/secrets/actions>. A robot token
+<https://github.com/Nathan-swiftee/NestConnect/settings/secrets/actions>. A robot token
 rather than a personal login: it isn't tied to anyone's 2FA, it survives a
 password change, and it can be revoked on its own.
 
@@ -312,33 +310,56 @@ now runs on push; only the build still waits to be asked.
 
 ### 3.5 Submitting to the stores
 
-Building is 3.4. Submitting can now happen in the same run: tick **submit** on a
-`production` dispatch and the finished binary goes straight on — iOS to
-TestFlight, Android to the Play `internal` track as a draft.
+Building is 3.4. The default is unchanged: tick **submit** on a `production`
+build dispatch and iOS goes to TestFlight; Android goes to Play **internal as a
+draft**. `submit` is ignored for preview builds. Pushes still publish only
+preview OTA updates: they never build or submit a store release.
 
-This used to be terminal-only, on the argument that a store submission cannot be
-taken back. That argument holds for a public release and does not describe
-either of these. TestFlight is a build in front of invited testers, and the Play
-side has always landed as a **draft** for exactly that reason — neither is one
-command away from being live, which was the property the rule was protecting.
-What the rule cost was real: a 25-minute build followed by a trip to a laptop,
-and the trip is what did not happen.
+**Public Android is an explicit manual choice.** Set `platform=android`,
+`profile=production`, and `android_release=public-production`. Then either:
 
-The ticked box is ignored on a `preview` profile. An internal-distribution
-artifact is not something a store will take, and finding that out after paying
-for the build is a poor place to learn it.
+- `mode=build`, `submit=true`: build a new production AAB and auto-submit that
+  exact result using `--auto-submit-with-profile play-production`.
+- `mode=submit`, `android_build_id=<exact EAS build UUID>`: reuse an existing
+  binary without rebuilding. The workflow first looks up that exact ID and
+  rejects unfinished builds, other projects/packages, iOS, preview/internal
+  builds, and non-AAB artifacts. It submits with `--id`, **never Android
+  `--latest`**, and waits for submission completion. Use a binary/version code
+  eligible for the intended Play release; resubmitting an already uploaded
+  version can be rejected. Promoting an existing internal release in Play
+  Console does not require rebuilding or re-uploading it.
 
-Two other ways in:
+`public-production` is rejected with iOS/all, preview, update mode, or a build
+without submission enabled. Leave `android_release=internal-draft` for the safe
+default. Android submit-only also requires a production build UUID when
+`platform=all`; iOS retains its existing latest-build/TestFlight behavior.
 
-- **mode: submit** — sends the *last finished* build without making a new one.
-  For when the build survived and the upload didn't: a wrong secret, an App
-  Store Connect hiccup.
-- **A terminal**, unchanged, if you'd rather:
+The new `submit.play-production` profile requests Play `track=production`,
+`releaseStatus=completed`, and `changesNotSentForReview=false`. This is **not a
+claim that the app is live**. Complete the Play listing, app content/data-safety
+and access declarations, and any production eligibility requirements first.
+For a worldwide launch, configure the intended countries/regions in Play
+Console: this workflow does not change country availability. Play review and
+managed publishing can delay or block availability even after EAS submission
+succeeds. Reviewer access must not expose actual customer data; configure and
+verify that separately before requesting review.
+
+From a terminal after `pnpm install --frozen-lockfile` (run in `apps/mobile`):
 
 ```sh
-pnpm exec eas submit --profile production --platform ios       # → TestFlight
-pnpm exec eas submit --profile production --platform android   # → Play internal, as a draft
+pnpm exec eas submit --profile production --platform ios --latest --non-interactive
+# Validated Android path, same checks as the workflow; choose a real eligible UUID:
+MOBILE_MODE=submit MOBILE_PLATFORM=android MOBILE_PROFILE=production \
+  MOBILE_ANDROID_RELEASE=internal-draft MOBILE_ANDROID_BUILD_ID='<build-uuid>' \
+  node ../../tools/mobile-release.mjs submit-android
+# For an explicitly authorized public release, change only
+# MOBILE_ANDROID_RELEASE=public-production. Do not use --latest for Android.
 ```
+
+The CLI comes from the existing lockfile dependency (`eas-cli`), not a global
+`latest` installation. Local wiring tests: `node --test tools/mobile-release.test.mjs`.
+These validate configuration/command selection, not Play credentials or an
+actual store upload.
 
 An iOS submit needs **no repository secrets at all**. Authentication is the
 **App Store Connect API key** held on the Expo account, not an Apple ID — so
@@ -366,7 +387,11 @@ uses the Google service account key held on the project. Upload it once, on
 expo.dev under **Project → Credentials → Android → Google Service Account Key
 for Play Store submissions**. The account behind it needs the *Google Play
 Android Developer API* enabled in Google Cloud, and to be invited in the Play
-Console (Users & permissions) with permission to release to testing tracks.
+Console (Users & permissions) with app-scoped permission to release to testing
+tracks, and **Release to production, exclude devices, and use Play App Signing**
+for public production. The stored EAS Submit key must belong to that authorized
+service account; an FCM push key alone does not establish Play submission access.
+No private key belongs in the repository or this workflow.
 
 **Before the first Android submit, once.** Google will not accept an app's
 first build through its API. Build it (`production`, submit unticked),

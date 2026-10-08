@@ -433,8 +433,11 @@ Play internal testing. The store credentials live on the Expo project rather
 than in `eas.json` — an App Store Connect API key for iOS, a Google service
 account key for Play — because `--auto-submit` reads `eas.json` on EAS's
 servers, where a `$VARIABLE` from the runner arrives as literal text. See
-`docs/10-release.md` §3.5. Android goes to the `internal` track as a `draft`
-release, so a submission is never one command away from being live.
+`docs/10-release.md` §3.5. Android defaults to the `internal` track as a `draft`.
+An explicitly selected `public-production` manual Android submission uses the
+separate `play-production` submit profile. Play review/declarations and country
+availability still govern public release. Android submit-only requires a
+validated exact production AAB build ID; it never selects the latest preview APK.
 
 *Device E2E.* `apps/mobile/.maestro/smoke.yaml` — sign in, inbox loads with
 conversations (asserted against the empty *and* error states, either of which
