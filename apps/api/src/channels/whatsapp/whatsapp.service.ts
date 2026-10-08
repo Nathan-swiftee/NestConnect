@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { AttachmentKind, MessageStatus, MessageType } from "@ding/schemas";
 import { env } from "../../config/env";
+import { resolveWhatsAppCreds } from "./whatsapp-creds";
 import { Store, type AttachmentInput } from "../../data/store";
 import { runInTenant } from "../../tenancy/tenant-scope";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
@@ -279,11 +280,9 @@ export class WhatsAppService {
   /** The receiving number's access token (per-inbox, else the global env one). */
   private async tokenFor(phoneNumberId: string): Promise<string | null> {
     const inbox = await this.store.getInboxByWhatsAppPhoneId(phoneNumberId);
-    if (inbox) {
-      const cfg = await this.store.getInboxConfig(inbox.id);
-      if (cfg?.accessToken) return cfg.accessToken;
-    }
-    return env.whatsapp.token || null;
+    if (!inbox) return null;
+    const creds = await resolveWhatsAppCreds(this.store, inbox.id);
+    return creds?.phoneNumberId === phoneNumberId ? creds.accessToken : null;
   }
 
   private mapStatus(s?: string): MessageStatus | undefined {
