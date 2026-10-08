@@ -224,6 +224,8 @@ async function main(): Promise<void> {
     await attempt(() => store.updateTemplate(a.template.id, { body: "hijacked" } as never));
     await attempt(() => store.deleteTemplate(a.template.id));
     await attempt(() => store.deleteCustomField(a.field.id));
+    await attempt(() => store.changeCustomFieldEntity(a.field.id, "contact"));
+    ok("B can't count A's recorded values", (await store.countCustomFieldValues(a.field.id)) === 0);
     await attempt(() => store.setCustomFieldValues(B, "conversation", a.conversation.id, { b_order: "x" }));
     await attempt(() => store.revokeSession(a.user.id, a.session.id));
     await attempt(() => store.revokeOtherSessions(a.user.id, ""));
@@ -271,7 +273,8 @@ async function main(): Promise<void> {
     ok("A's label intact", (await store.listLabels(A)).some((l) => l.id === a.label.id && l.name === "a VIP"));
     ok("A's thread carries only A's label", JSON.stringify(conv?.labels.map((l) => l.id)) === JSON.stringify([a.label.id]));
     ok("A's template intact", (await store.getTemplate(a.template.id))?.body === "Hi from a");
-    ok("A's custom field intact", (await store.listCustomFields(A)).some((f) => f.id === a.field.id));
+    ok("A's custom field intact", (await store.listCustomFields(A)).some((f) => f.id === a.field.id && f.entity === "conversation"));
+    ok("A's recorded value intact", (await store.countCustomFieldValues(a.field.id)) === 1);
     ok("A's session not revoked", !(await store.getSession(a.session.id))?.revokedAt);
     ok("A's notifications still unread", (await store.listNotifications(a.user.id)).some((n) => !n.read));
     const staged = await store.getAttachmentAccess(a.staged.id);

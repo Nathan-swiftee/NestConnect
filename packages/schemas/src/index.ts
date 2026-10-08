@@ -480,15 +480,22 @@ export type CreateCustomFieldInput = z.infer<typeof createCustomFieldInputSchema
 /**
  * An edit.
  *
- * `key` and `entity` are absent on purpose. The key is what an integration
- * sends and what every recorded value is filed under, so renaming it would
- * silently orphan the lot; the entity decides which records a value can even
- * hang off, so changing it would leave values attached to rows of the wrong
- * kind. Either one is a new field and a deliberate migration of the old one.
+ * `key` is absent on purpose: it is what an integration sends and what every
+ * recorded value is filed under, so renaming it would silently orphan the lot.
+ *
+ * `entity` can change, because picking the wrong one is an easy mistake with a
+ * quiet symptom: an app sends a field that belongs to the *contact*, the chat
+ * only takes conversation fields from a client, and the value is dropped. What
+ * can't come along is the values already recorded — they hang off records of
+ * the old kind, and there is no saying which conversation a customer's value
+ * belonged to. So a switch on a field that has any is refused unless
+ * `discardValues` says to clear them.
  */
 export const updateCustomFieldInputSchema = z.object({
   label: z.string().min(1).max(60).optional(),
   type: customFieldTypeSchema.optional(),
+  entity: customFieldEntitySchema.optional(),
+  discardValues: z.boolean().optional(),
   options: z.array(z.string().max(80)).max(50).optional(),
   inboxIds: z.array(z.string()).optional(),
   position: z.number().int().nonnegative().optional(),

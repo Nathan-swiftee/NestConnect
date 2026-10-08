@@ -20,12 +20,20 @@
  *   5. Exact beats partial, so the order being read out is not buried under
  *      every order that contains those digits.
  *   6. Archiving keeps the values; deleting is the one that destroys them.
+ *   7. What a field belongs to can be corrected. Set up on the customer when an
+ *      app needs it on the conversation, the chat drops it without a word —
+ *      so the setting must be changeable, and changing it must not strand the
+ *      values already recorded: it stops and asks, then clears them.
  *
  *     pnpm check:custom-fields
  */
 import { MemoryStore } from "../apps/api/src/data/memory.store";
-import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { ORG_ID, DEMO_USER_ID } from "../apps/api/src/data/fixtures";
 import { normalizeCustomFieldValue } from "../packages/schemas/src/index";
+import { CustomFieldsController } from "../apps/api/src/custom-fields/custom-fields.controller";
+import { NestChatService } from "../apps/api/src/channels/nestchat/nestchat.service";
+import type { VisitorBus } from "../apps/api/src/channels/nestchat/visitor-bus";
+import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -133,8 +141,69 @@ async function main(): Promise<void> {
   // The destructive one, and the reason the screen that calls it asks first.
   ok("deleting takes the values with it", !still.get(conv.id)?.some((v) => v.key === "order_id"));
 
+  await changingWhatItBelongsTo(store);
+
   console.log(failed === 0 ? "\nall good\n" : `\n${failed} check(s) failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 }
 
-void main();
+/** Rule 7, through the real controller and the chat's own field check. */
+async function changingWhatItBelongsTo(store: MemoryStore): Promise<void> {
+  console.log("\nCorrecting what a field belongs to\n");
+  const fields = new CustomFieldsController(store);
+  const chat = new NestChatService(store, {} as VisitorBus);
+  const inbox = await store.createInbox({
+    orgId: ORG_ID, type: "nestchat", name: "App chat", handle: "app", teamIds: ["team_support"],
+    routingStrategy: "manual",
+  });
+  const status = async (fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+      return 200;
+    } catch (err) {
+      return (err as { getStatus?: () => number }).getStatus?.() ?? 500;
+    }
+  };
+
+  // The mistake as it happens: an app's field set up on the customer.
+  const appId = await store.createCustomField(ORG_ID, {
+    key: "application_id", label: "Application ID", type: "text", entity: "contact",
+    options: [], inboxIds: [],
+  });
+  const before = await chat.validateFields(inbox.id, { application_id: "APP-1" });
+  ok("on the customer, the chat drops what an app sends", before.unknown.includes("application_id") && !before.values.application_id);
+
+  ok("an agent can't change it", (await status(() => fields.update("usr_james", appId.id, { entity: "conversation" }))) === 403);
+  const moved = await fields.update(DEMO_USER_ID, appId.id, { entity: "conversation" });
+  ok("an admin can, when nothing is recorded on it", moved.entity === "conversation");
+  const after = await chat.validateFields(inbox.id, { application_id: "APP-1" });
+  ok("and the chat now takes it", after.values.application_id === "APP-1" && after.unknown.length === 0);
+
+  // Values recorded on one kind of record can't follow to the other.
+  await store.setCustomFieldValues(ORG_ID, "conversation", "conv_north", { application_id: "APP-2" });
+  ok("with a value recorded, a move is stopped and says so",
+    (await status(() => fields.update(DEMO_USER_ID, appId.id, { entity: "contact" }))) === 409);
+  ok("and nothing changed",
+    (await store.listCustomFields(ORG_ID)).find((f) => f.id === appId.id)?.entity === "conversation" &&
+      (await store.countCustomFieldValues(appId.id)) === 1);
+  const cleared = await fields.update(DEMO_USER_ID, appId.id, { entity: "contact", discardValues: true });
+  ok("told to clear them, it moves", cleared.entity === "contact");
+  ok("and the values are gone, not left on the wrong kind of record", (await store.countCustomFieldValues(appId.id)) === 0);
+
+  // An ordinary edit can't move it by the back door.
+  await store.updateCustomField(appId.id, { label: "Application ref", entity: "conversation" });
+  ok("a plain edit leaves what it belongs to alone",
+    (await store.listCustomFields(ORG_ID)).find((f) => f.id === appId.id)?.entity === "contact");
+
+  // A field an app files its chats by has to stay on the conversation.
+  const order = await store.createCustomField(ORG_ID, {
+    key: "booking_ref", label: "Booking ref", type: "text", entity: "conversation",
+    options: [], inboxIds: [],
+  });
+  await chat.updateApp(inbox.id, { enabled: true, contactTag: "", threadFieldKey: "booking_ref", identity: "optional" });
+  ok("the field a chat threads by can't be moved to the customer",
+    (await status(() => fields.update(DEMO_USER_ID, order.id, { entity: "contact" }))) === 400);
+}
+
+// As a request would: inside the workspace under test (see tenancy/tenant-scope.ts).
+void runInTenant(ORG_ID, main);

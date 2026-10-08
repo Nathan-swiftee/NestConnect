@@ -2046,13 +2046,27 @@ export class MemoryStore extends Store {
   ): Promise<CustomField | undefined> {
     const field = this.customFields.find((f) => f.id === id);
     if (!field) return undefined;
-    Object.assign(field, input);
+    // Never the entity — see changeCustomFieldEntity.
+    const { entity: _entity, discardValues: _discard, ...changes } = input;
+    Object.assign(field, changes);
     return field;
   }
 
   async deleteCustomField(id: string): Promise<void> {
     this.customFields = this.customFields.filter((f) => f.id !== id);
     for (const [k, v] of this.fieldValues) if (v.fieldId === id) this.fieldValues.delete(k);
+  }
+
+  async countCustomFieldValues(id: string): Promise<number> {
+    return [...this.fieldValues.values()].filter((v) => v.fieldId === id).length;
+  }
+
+  async changeCustomFieldEntity(id: string, entity: CustomFieldEntity): Promise<CustomField | undefined> {
+    const field = this.customFields.find((f) => f.id === id);
+    if (!field) return undefined;
+    for (const [k, v] of this.fieldValues) if (v.fieldId === id) this.fieldValues.delete(k);
+    field.entity = entity;
+    return field;
   }
 
   async customFieldValues(

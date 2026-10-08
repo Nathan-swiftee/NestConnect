@@ -824,6 +824,11 @@ export abstract class Store {
   /** Delete a field *and every value recorded against it*. Archiving is the
    *  reversible option; this one is not, which is why the pane asks. */
   abstract deleteCustomField(id: string): Promise<void>;
+  /** How many values are recorded against a field, on any record. */
+  abstract countCustomFieldValues(id: string): Promise<number>;
+  /** Move a field to the other kind of record. Its values are cleared in the
+   *  same step: they hang off records of the old kind. */
+  abstract changeCustomFieldEntity(id: string, entity: CustomFieldEntity): Promise<CustomField | undefined>;
   /**
    * The values on a set of records, keyed by record id.
    *
