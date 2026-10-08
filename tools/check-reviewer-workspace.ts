@@ -192,6 +192,21 @@ async function main(): Promise<void> {
   );
   ok("the real customer on the same number was not merged in", (await root.contact.findUnique({ where: { id: realContact.id } }))?.orgId === REAL);
 
+  console.log("\nAtomic refresh failure\n");
+  const snapshot = async () => JSON.stringify(await root.organization.findUnique({
+    where: { id: REVIEW_ORG_ID }, include: { contacts: { orderBy: { id: "asc" } },
+      inboxes: { orderBy: { id: "asc" } }, conversations: { orderBy: { id: "asc" }, include: { messages: { orderBy: { id: "asc" } } } },
+      users: { orderBy: { id: "asc" }, include: { sessions: true, devices: true } } },
+  }));
+  await root.session.create({ data: { userId: REVIEW_USER_ID } });
+  const beforeFailure = await snapshot();
+  const faulty = root.$extends({ query: { inbox: { async create() { throw new Error("injected reviewer refresh failure"); } } } });
+  ok("a mid-refresh failure is surfaced", await rejects(() => provisionReviewerWorkspace(faulty as unknown as PrismaClient,
+    { email: REVIEW_EMAIL, passwordHash: "FAKE_ROTATED_HASH" }), /injected reviewer refresh failure/));
+  ok("failed refresh rolls back samples, credentials and sessions", (await snapshot()) === beforeFailure);
+  // Restore after the pre-fix RED run so the remaining assertions can execute.
+  await provisionReviewerWorkspace(root, { email: REVIEW_EMAIL, passwordHash: login!.passwordHash! });
+
   console.log("\nRe-running it\n");
   const hashBefore = login?.passwordHash;
   await root.session.create({ data: { userId: REVIEW_USER_ID } });

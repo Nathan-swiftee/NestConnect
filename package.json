@@ -26,7 +26,7 @@
     "check:conversation-counts": "tsx --tsconfig apps/api/tsconfig.json tools/check-conversation-counts.ts",
     "check:tenant-isolation": "tsx --tsconfig apps/api/tsconfig.json tools/check-release-tenant.ts && tsx --tsconfig apps/api/tsconfig.json tools/check-tenant-isolation.ts",
     "check:tenant-http": "tsx --tsconfig apps/api/tsconfig.json tools/check-tenant-http.ts",
-    "check:reviewer-workspace": "tsx --tsconfig apps/api/tsconfig.json tools/check-reviewer-workspace.ts",
+    "check:reviewer-workspace": "tsx --tsconfig apps/api/tsconfig.json tools/check-release-sandbox.ts && tsx --tsconfig apps/api/tsconfig.json tools/check-reviewer-workspace.ts",
     "check:visitor-uploads": "tsx --tsconfig apps/api/tsconfig.json tools/check-visitor-uploads.ts",
     "check:customer-push": "tsx --tsconfig apps/api/tsconfig.json tools/check-customer-push.ts",
     "check:field-filter": "tsx --tsconfig apps/api/tsconfig.json tools/check-field-filter.ts",

@@ -30,7 +30,7 @@
  * Re-run before each review: it resets the sample data and its timestamps.
  */
 import { randomBytes } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 export const REVIEW_ORG_ID = "org_play_review";
 export const REVIEW_USER_ID = "rv_user_reviewer";
@@ -48,6 +48,18 @@ export interface ProvisionResult {
  *  rotate) the login's password; omit it to keep the existing one. */
 export async function provisionReviewerWorkspace(
   prisma: PrismaClient,
+  opts: { email: string; passwordHash?: string; now?: Date },
+): Promise<ProvisionResult> {
+  // Validation, wipe, recreation and credential/session changes commit together.
+  // Concurrent refreshes serialize or fail safely; a failed run changes nothing.
+  return prisma.$transaction(
+    (tx) => provisionInTransaction(tx, opts),
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 10_000, timeout: 30_000 },
+  );
+}
+
+async function provisionInTransaction(
+  prisma: Prisma.TransactionClient,
   opts: { email: string; passwordHash?: string; now?: Date },
 ): Promise<ProvisionResult> {
   const email = opts.email.trim().toLowerCase();
@@ -257,7 +269,7 @@ export async function provisionReviewerWorkspace(
 }
 
 /** Remove the sample data (everything in the workspace except the login). */
-async function wipeSampleData(prisma: PrismaClient): Promise<void> {
+async function wipeSampleData(prisma: Prisma.TransactionClient): Promise<void> {
   const org = REVIEW_ORG_ID;
   const convIds = (await prisma.conversation.findMany({ where: { orgId: org }, select: { id: true } })).map((c) => c.id);
   const msgIds = (await prisma.message.findMany({ where: { conversationId: { in: convIds } }, select: { id: true } })).map((m) => m.id);
