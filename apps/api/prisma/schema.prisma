@@ -459,6 +459,14 @@ model Conversation {
   contactId      String
   channel        ChannelType
   subject        String?
+  /// Whether Nest writes this thread's subject (new WhatsApp and website-chat
+  /// threads): custom field values, then a short topic. Off for email, whose
+  /// subject is the customer's own, and for every thread from before it existed.
+  subjectAuto    Boolean            @default(false)
+  /// The topic half of an automatic subject — AI-written from the customer's
+  /// first messages, or what they picked from the chat's menu. Kept apart so a
+  /// field set later can be put in front without asking the AI again.
+  subjectTopic   String?
   inviteLink     String?
   channelRef     String?
   status         ConversationStatus @default(open)

@@ -13,6 +13,7 @@ import { TenantContext } from "../tenancy/tenant-context";
 import { PushService } from "../push/push.service";
 import { RoutingService } from "./routing.service";
 import { sanitizeEmailHtml } from "./email/html-sanitize";
+import { ConversationSubjectService } from "../ai/conversation-subject.service";
 
 export interface WhatsAppInbound {
   phoneNumberId: string;
@@ -99,6 +100,7 @@ export class IngestService {
     private readonly realtime: RealtimeGateway,
     private readonly tenant: TenantContext,
     private readonly push: PushService,
+    private readonly subjects: ConversationSubjectService,
   ) {}
 
   /**
@@ -173,6 +175,8 @@ export class IngestService {
       inboxId: inbox.id,
       contact,
       channel: inbox.type,
+      // WhatsApp has no subject of its own; Nest writes one (fields + topic).
+      autoSubject: inbox.type === "whatsapp",
     });
 
     let conv = conversation;
@@ -201,6 +205,7 @@ export class IngestService {
     if (message) {
       this.realtime.emitMessageCreated(conv.id, message, inbox.orgId);
       void this.pushInbound(conv.id, contact.displayName, input.text);
+      this.subjects.customerWrote(conv.id, inbox.orgId);
     }
 
     return { conversationId: conv.id, created };
@@ -319,6 +324,9 @@ export class IngestService {
       // deliberately goes first and the URL takes the ellipsis.
       subject: [input.option?.label, input.pageUrl].filter(Boolean).join(" · ") || undefined,
       startedBy: input.startedBy,
+      // That is only its starting topic: Nest writes the subject from here on
+      // (custom fields, then an AI topic once the visitor has said something).
+      autoSubject: true,
     });
     const conversationId = res.conversation.id;
     if (res.created) {
@@ -356,6 +364,7 @@ export class IngestService {
       // "" would arrive on a phone as a notification with no content at all.
       const preview = input.text.trim() || describeAttachments(input.attachments);
       void this.pushInbound(conversationId, input.contact.displayName, preview);
+      this.subjects.customerWrote(conversationId, input.inbox.orgId);
     }
 
     return { conversationId, created: res.created, message };

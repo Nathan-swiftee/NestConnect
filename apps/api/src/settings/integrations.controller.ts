@@ -58,6 +58,8 @@ import {
   ANTHROPIC_API_KEY_KEY,
   ANTHROPIC_MODEL_KEY,
   ANTHROPIC_POLISH_PROMPT_KEY,
+  ANTHROPIC_SUBJECTS_KEY,
+  ANTHROPIC_SUBJECT_PROMPT_KEY,
 } from "../ai/anthropic-config";
 import {
   pushPublicSettings,
@@ -155,6 +157,12 @@ export class IntegrationsController {
     }
     if (body.anthropicPolishPrompt !== undefined) {
       await this.store.setPlatformSetting(ANTHROPIC_POLISH_PROMPT_KEY, body.anthropicPolishPrompt.trim());
+    }
+    if (body.anthropicSubjects !== undefined) {
+      await this.store.setPlatformSetting(ANTHROPIC_SUBJECTS_KEY, body.anthropicSubjects ? "on" : "off");
+    }
+    if (body.anthropicSubjectPrompt !== undefined) {
+      await this.store.setPlatformSetting(ANTHROPIC_SUBJECT_PROMPT_KEY, body.anthropicSubjectPrompt.trim());
     }
     const anthropicApiKey = body.anthropicApiKey?.trim();
     if (anthropicApiKey) await this.store.setPlatformSetting(ANTHROPIC_API_KEY_KEY, anthropicApiKey);

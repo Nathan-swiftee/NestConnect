@@ -7,6 +7,7 @@ import {
   ForbiddenException,
   Get,
   NotFoundException,
+  Optional,
   Param,
   Patch,
   Post,
@@ -28,6 +29,7 @@ import { CurrentUserId } from "../auth/current-user.decorator";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { currentOrgId } from "../tenancy/tenant-scope";
 import { Store } from "../data/store";
+import { ConversationSubjectService } from "../ai/conversation-subject.service";
 
 /**
  * Custom fields: the definitions, and the values recorded against them.
@@ -40,7 +42,12 @@ import { Store } from "../data/store";
  */
 @Controller("custom-fields")
 export class CustomFieldsController {
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    // Optional so a caller that only defines fields (and the checks that drive
+    // this controller directly) needn't build the AI half.
+    @Optional() private readonly subjects?: ConversationSubjectService,
+  ) {}
 
   /** Every definition, archived included — a pane has to show what is retired
    *  in order to offer bringing it back. */
@@ -175,7 +182,11 @@ export class CustomFieldsController {
     @Param("entityId") entityId: string,
     @Body(new ZodValidationPipe(setCustomFieldValuesInputSchema)) body: SetCustomFieldValuesInput,
   ): Promise<{ values: CustomFieldValue[]; unknown: string[] }> {
-    return this.store.setCustomFieldValues(currentOrgId(), this.entity(entity), entityId, body.values);
+    const kind = this.entity(entity);
+    const result = await this.store.setCustomFieldValues(currentOrgId(), kind, entityId, body.values);
+    // A conversation's values sit at the front of its automatic subject.
+    if (kind === "conversation") await this.subjects?.fieldsChanged(entityId);
+    return result;
   }
 
   /** A path segment is not a validated body, so it is checked here. */

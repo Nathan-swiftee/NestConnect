@@ -3014,6 +3014,12 @@ export const integrationSettingsSchema = z.object({
     model: z.string(),
     /** The system prompt Polish runs. Editable; seeded with the default below. */
     polishPrompt: z.string(),
+    /** Whether new WhatsApp and website-chat conversations get an AI subject. */
+    subjects: z.boolean(),
+    /** The system prompt that writes them. Editable; seeded with
+     *  DEFAULT_SUBJECT_PROMPT. Custom field values are put in front by Nest,
+     *  not by the prompt, so they can't be lost by an edit to it. */
+    subjectPrompt: z.string(),
   }),
 });
 export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
@@ -3040,6 +3046,31 @@ Never do this:
 - Don't add a greeting or sign-off the agent didn't write, unless the channel plainly calls for one.
 
 Reply with the finished message only — no preamble, no explanation, no quotes around it.`;
+
+/**
+ * The default instruction for a conversation's AI subject, shown pre-filled in
+ * Settings › Integrations › AI so it can be tuned.
+ *
+ * It writes the *topic* only. Custom field values (an order number, an
+ * application id) are put in front by Nest itself — "Order ID DG-88412 ·
+ * Refund for damaged parcel" — which is why it is told not to repeat them.
+ */
+export const DEFAULT_SUBJECT_PROMPT = `You write the subject line for a customer conversation in a shared support inbox, so an agent scanning the list can tell at a glance what each chat is about.
+
+You are given the start of the conversation. Write a subject that says what the customer wants or what has happened.
+
+Do this:
+- 3 to 7 words. For example: "Refund for damaged parcel", "Change delivery address", "Question about application status".
+- Be specific: name the product, problem or request when the customer did.
+- Sentence case, British English, no full stop.
+
+Never do this:
+- Never invent anything the customer didn't say.
+- Never include the customer's name, phone number, email address or other personal details.
+- Don't repeat the reference details you are told are already shown beside the subject.
+- If the customer hasn't yet said what they want (just "Hi" or "Hello"), reply with exactly: General enquiry
+
+Reply with the subject only — no quotes, no preamble.`;
 
 /** Update the app-level integration credentials. Secrets are written only when
  *  a non-empty value is supplied (so they can be left blank to keep the stored
@@ -3085,6 +3116,10 @@ export const updateIntegrationSettingsInputSchema = z.object({
   anthropicApiKey: z.string().optional(),
   anthropicModel: z.string().optional(),
   anthropicPolishPrompt: z.string().optional(),
+  /** AI subjects for new WhatsApp and website-chat conversations: the switch,
+   *  and the prompt (empty resets it to the default). */
+  anthropicSubjects: z.boolean().optional(),
+  anthropicSubjectPrompt: z.string().optional(),
 });
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
 

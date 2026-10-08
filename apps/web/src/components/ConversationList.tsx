@@ -354,6 +354,16 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
                 </div>
                 <div className="flex items-center gap-1.5 mt-[3px]">
                   <p className={"m-0 text-sm whitespace-nowrap overflow-hidden text-ellipsis flex-1 " + (c.unread ? "text-fg" : "text-muted")}>
+                    {/* The subject leads the line when there is one — on WhatsApp
+                        and the website chat Nest writes it (custom fields, then
+                        an AI topic), so the list says what each chat is about.
+                        Same line as the preview, so a row keeps its height. */}
+                    {c.subject && c.subject !== c.contact.displayName && (
+                      <span className="text-fg font-semibold">
+                        {c.subject}
+                        <span className="text-faint font-normal"> — </span>
+                      </span>
+                    )}
                     {voice && (
                       <span className="inline-flex align-[-2px] mr-1 [&>svg]:w-[13px] [&>svg]:h-[13px]">
                         <MicIcon />

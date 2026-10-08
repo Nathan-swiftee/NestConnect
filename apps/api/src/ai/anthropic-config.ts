@@ -1,4 +1,4 @@
-import { DEFAULT_POLISH_PROMPT } from "@ding/schemas";
+import { DEFAULT_POLISH_PROMPT, DEFAULT_SUBJECT_PROMPT } from "@ding/schemas";
 import { env } from "../config/env";
 import type { Store } from "../data/store";
 
@@ -7,6 +7,10 @@ import type { Store } from "../data/store";
 export const ANTHROPIC_API_KEY_KEY = "anthropic_api_key";
 export const ANTHROPIC_MODEL_KEY = "anthropic_model";
 export const ANTHROPIC_POLISH_PROMPT_KEY = "anthropic_polish_prompt";
+/** AI subjects for new WhatsApp/website-chat threads: "off" turns them off,
+ *  anything else (including unset) leaves them on while a key is configured. */
+export const ANTHROPIC_SUBJECTS_KEY = "anthropic_subjects";
+export const ANTHROPIC_SUBJECT_PROMPT_KEY = "anthropic_subject_prompt";
 
 /** Sonnet is the right default for Polish: it holds a tone brief far better
  *  than a small model, and the task is one short message, so it still returns
@@ -18,6 +22,8 @@ export interface AnthropicConfig {
   apiKey: string;
   model: string;
   polishPrompt: string;
+  subjects: boolean;
+  subjectPrompt: string;
 }
 
 /** Read one setting, falling back to its env default; trimmed, "" when unset. */
@@ -34,27 +40,39 @@ async function pick(store: Store, key: string, fallback: string): Promise<string
  * then reports "not configured" rather than attempting a call.
  */
 export async function resolveAnthropicConfig(store: Store): Promise<AnthropicConfig | null> {
-  const [apiKey, model, polishPrompt] = await Promise.all([
+  const [apiKey, model, polishPrompt, subjects, subjectPrompt] = await Promise.all([
     pick(store, ANTHROPIC_API_KEY_KEY, env.anthropic.apiKey),
     pick(store, ANTHROPIC_MODEL_KEY, env.anthropic.model),
     pick(store, ANTHROPIC_POLISH_PROMPT_KEY, DEFAULT_POLISH_PROMPT),
+    pick(store, ANTHROPIC_SUBJECTS_KEY, ""),
+    pick(store, ANTHROPIC_SUBJECT_PROMPT_KEY, DEFAULT_SUBJECT_PROMPT),
   ]);
   if (!apiKey) return null;
-  return { apiKey, model: model || DEFAULT_ANTHROPIC_MODEL, polishPrompt: polishPrompt || DEFAULT_POLISH_PROMPT };
+  return {
+    apiKey,
+    model: model || DEFAULT_ANTHROPIC_MODEL,
+    polishPrompt: polishPrompt || DEFAULT_POLISH_PROMPT,
+    subjects: subjects !== "off",
+    subjectPrompt: subjectPrompt || DEFAULT_SUBJECT_PROMPT,
+  };
 }
 
 /** The non-secret half, for GET /settings/integrations. The key is never echoed. */
 export async function anthropicPublicSettings(
   store: Store,
-): Promise<{ configured: boolean; model: string; polishPrompt: string }> {
-  const [apiKey, model, polishPrompt] = await Promise.all([
+): Promise<{ configured: boolean; model: string; polishPrompt: string; subjects: boolean; subjectPrompt: string }> {
+  const [apiKey, model, polishPrompt, subjects, subjectPrompt] = await Promise.all([
     pick(store, ANTHROPIC_API_KEY_KEY, env.anthropic.apiKey),
     pick(store, ANTHROPIC_MODEL_KEY, env.anthropic.model),
     pick(store, ANTHROPIC_POLISH_PROMPT_KEY, DEFAULT_POLISH_PROMPT),
+    pick(store, ANTHROPIC_SUBJECTS_KEY, ""),
+    pick(store, ANTHROPIC_SUBJECT_PROMPT_KEY, DEFAULT_SUBJECT_PROMPT),
   ]);
   return {
     configured: Boolean(apiKey),
     model: model || DEFAULT_ANTHROPIC_MODEL,
     polishPrompt: polishPrompt || DEFAULT_POLISH_PROMPT,
+    subjects: subjects !== "off",
+    subjectPrompt: subjectPrompt || DEFAULT_SUBJECT_PROMPT,
   };
 }

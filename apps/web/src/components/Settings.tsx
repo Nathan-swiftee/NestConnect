@@ -4843,6 +4843,8 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const [firebaseAppId, setFirebaseAppId] = useState("");
   const [firebaseStorageBucket, setFirebaseStorageBucket] = useState("");
   const [polishPrompt, setPolishPrompt] = useState("");
+  const [subjectPrompt, setSubjectPrompt] = useState("");
+  const [aiSubjects, setAiSubjects] = useState(true);
   const [aiTesting, setAiTesting] = useState(false);
   // Models this key can use. Empty + an error => the field degrades to free text.
   const [aiModels, setAiModels] = useState<{ id: string; name: string }[]>([]);
@@ -4899,6 +4901,12 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   useEffect(() => {
     if (anthropic?.polishPrompt !== undefined) setPolishPrompt(anthropic.polishPrompt);
   }, [anthropic?.polishPrompt]);
+  useEffect(() => {
+    if (anthropic?.subjectPrompt !== undefined) setSubjectPrompt(anthropic.subjectPrompt);
+  }, [anthropic?.subjectPrompt]);
+  useEffect(() => {
+    if (anthropic?.subjects !== undefined) setAiSubjects(anthropic.subjects);
+  }, [anthropic?.subjects]);
   useEffect(() => {
     if (smtp?.from !== undefined) setSmtpFrom(smtp.from);
   }, [smtp?.from]);
@@ -5096,11 +5104,19 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   }, [editing, anthropicConfigured]);
 
   const saveAnthropic = () => {
-    const input: { anthropicApiKey?: string; anthropicModel?: string; anthropicPolishPrompt?: string } = {};
+    const input: {
+      anthropicApiKey?: string;
+      anthropicModel?: string;
+      anthropicPolishPrompt?: string;
+      anthropicSubjects?: boolean;
+      anthropicSubjectPrompt?: string;
+    } = {};
     // Model + prompt are non-secret — send when changed (empty resets to the
     // built-in default). The API key is write-only — send only when entered.
     if (anthropicModel.trim() !== (anthropic?.model ?? "")) input.anthropicModel = anthropicModel.trim();
     if (polishPrompt.trim() !== (anthropic?.polishPrompt ?? "")) input.anthropicPolishPrompt = polishPrompt.trim();
+    if (aiSubjects !== (anthropic?.subjects ?? true)) input.anthropicSubjects = aiSubjects;
+    if (subjectPrompt.trim() !== (anthropic?.subjectPrompt ?? "")) input.anthropicSubjectPrompt = subjectPrompt.trim();
     const key = anthropicApiKey.trim();
     if (key) input.anthropicApiKey = key;
     if (Object.keys(input).length === 0) {
@@ -5215,7 +5231,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
             color="#D97757"
             glyph={<SparkleIcon />}
             name="Claude"
-            blurb="Polishes an agent’s draft on request"
+            blurb="Polishes drafts on request, and writes conversation subjects"
             summary={anthropicConfigured ? (anthropic?.model ?? "") : "No API key yet"}
             on={anthropicConfigured}
             label={anthropicConfigured ? "Connected" : "Not connected"}
@@ -5708,6 +5724,44 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
               onChange={(e) => setPolishPrompt(e.target.value)}
               placeholder="Loading the default instruction…"
             />
+          </label>
+
+          <div className="setform__sub">
+            <b>Conversation subjects</b>
+            <small>
+              New WhatsApp and website-chat conversations get a subject written from the customer's first messages
+              — “Refund for damaged parcel” — so the inbox list says what each one is about. Any custom field
+              values on the conversation are put in front automatically (“Order ID DG-88412 · …”), whatever the
+              prompt says. Turning this on sends those first messages to Claude.
+            </small>
+          </div>
+
+          <div className="flex items-center gap-3 text-sm">
+            <button
+              type="button"
+              className={"switch sm" + (aiSubjects ? " on" : "")}
+              role="switch"
+              aria-checked={aiSubjects}
+              aria-label="Write conversation subjects with AI"
+              onClick={() => setAiSubjects((v) => !v)}
+            >
+              <span className="switch__dot" />
+            </button>
+            <span>Write subjects for new WhatsApp and website-chat conversations</span>
+          </div>
+
+          <label className="field">
+            <span>Subject prompt</span>
+            <textarea
+              className="prompttext"
+              rows={12}
+              spellCheck={false}
+              value={subjectPrompt}
+              disabled={!aiSubjects}
+              onChange={(e) => setSubjectPrompt(e.target.value)}
+              placeholder="Loading the default instruction…"
+            />
+            <em className="fieldhint">Clear the box and save to restore the default.</em>
           </label>
         </SetupModal>
       )}

@@ -684,6 +684,12 @@ export abstract class Store {
     conversationId: string,
     subject: string | null,
   ): Promise<Conversation | undefined>;
+  /** Whether Nest writes this thread's subject, and the topic half of it. */
+  abstract getSubjectState(
+    conversationId: string,
+  ): Promise<{ auto: boolean; topic: string | null } | undefined>;
+  /** Replace the topic half of an automatic subject (the caller recomposes). */
+  abstract setSubjectTopic(conversationId: string, topic: string | null): Promise<void>;
 
   /** Set a group conversation's shareable invite link (after create/reset). */
   abstract setInviteLink(
@@ -1001,6 +1007,9 @@ export abstract class Store {
      * landed in the customer's own live chat.
      */
     startedBy?: string;
+    /** Nest writes this thread's subject (see ConversationSubjectService).
+     *  `subject` is then its starting topic, not a fixed subject. */
+    autoSubject?: boolean;
   }): Promise<{ conversation: Conversation; created: boolean }>;
 
   abstract appendInboundMessage(

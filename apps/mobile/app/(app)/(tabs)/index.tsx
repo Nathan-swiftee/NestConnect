@@ -172,6 +172,12 @@ const Row = memo(function Row({
 
         <View className="flex-row items-center gap-2">
           <Text numberOfLines={1} className={`flex-1 text-md ${unread ? "text-fg" : "text-muted"}`}>
+            {/* The subject leads the line when there is one (as on the web):
+                on WhatsApp and the website chat Nest writes it. One line, so
+                the row keeps its height. */}
+            {conv.subject && conv.subject !== conv.contact.displayName ? (
+              <Text className="font-semibold text-fg">{`${conv.subject} — `}</Text>
+            ) : null}
             {conv.preview || "No messages yet"}
           </Text>
           {/* Two ways to be unread, and the web draws both. A count when there
