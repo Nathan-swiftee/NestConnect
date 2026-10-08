@@ -889,6 +889,10 @@ export class MemoryStore extends Store {
     return target;
   }
 
+  async isSandboxOrg(_orgId: string): Promise<boolean> {
+    return false; // the in-memory store holds one, ordinary, workspace
+  }
+
   async conversationOrg(conversationId: string): Promise<string | undefined> {
     return this.conversations.find((c) => c.id === conversationId)?.orgId;
   }

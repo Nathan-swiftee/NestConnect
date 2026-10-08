@@ -45,6 +45,7 @@ import { IS_ENROLMENT_ALLOWED_KEY } from "../apps/api/src/auth/enrolment-allowed
 import { IS_PUBLIC_KEY } from "../apps/api/src/auth/public.decorator";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
 import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
+import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -88,7 +89,14 @@ const twoFactor = {
 const reflector = new Reflector();
 // The guard learns the workspace from the account the token names.
 const guardStore = { getUserForAuth: async (id: string) => ({ id, orgId: ORG_ID }) } as unknown as Store;
-const guard = new AuthGuard(reflector, auth, sessions, twoFactor, guardStore);
+// An ordinary workspace: two-factor is required wherever it is switched on.
+const ordinary = {
+  isSandbox: async () => false,
+  current: async () => false,
+  assertLive: async () => {},
+  twoFactorRequired: async () => env.auth.require2fa,
+} as unknown as SandboxPolicy;
+const guard = new AuthGuard(reflector, auth, sessions, twoFactor, guardStore, ordinary);
 
 type Handler = (...args: unknown[]) => unknown;
 const handler = (name: string): Handler =>
@@ -253,7 +261,7 @@ async function main(): Promise<void> {
     me: async () => ({ user: account }),
   } as unknown as Store;
 
-  const controller = new AuthController(auth, resetSessions, resetTwoFactor, resetStore, {} as Mailer);
+  const controller = new AuthController(auth, resetSessions, resetTwoFactor, resetStore, {} as Mailer, ordinary);
   const cookies: Record<string, string> = {};
   const res = {
     cookie: (name: string, value: string) => {
@@ -326,7 +334,7 @@ async function main(): Promise<void> {
       return 2;
     },
   } as unknown as SessionService;
-  const pwCtl = new AuthController(pwAuth, pwSessions, resetTwoFactor, resetStore, {} as Mailer);
+  const pwCtl = new AuthController(pwAuth, pwSessions, resetTwoFactor, resetStore, {} as Mailer, ordinary);
 
   revokedFor = [];
   const changed = await pwCtl.changePassword(

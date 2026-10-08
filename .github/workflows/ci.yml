@@ -71,6 +71,26 @@ jobs:
             echo "::error::a request ran without its workspace bound"; exit 1
           fi
 
+      # The app-store reviewer's demo workspace (docs/play-reviewer-access.md).
+      # A stranger signs in to the real app with it, so what is pinned is what
+      # it must never become: a window onto a real workspace, or a way to
+      # message a real person. Run against an API that *requires* two-factor,
+      # as production does — the demo login is the one exemption, and the
+      # check proves a real workspace's account is still stopped.
+      - name: Reviewer demo workspace (Postgres, 2FA required)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nest_ci
+          NODE_ENV: development
+          GMAIL_POLL_SECONDS: "0"
+          PORT: "3012"
+        run: |
+          node apps/api/dist/main.js > /tmp/api-reviewer.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:3012/health >/dev/null && break; sleep 1; done
+          REVIEWER_HTTP_URL=http://localhost:3012 pnpm check:reviewer-workspace
+          if grep -E "TenantNotBound|TenantConflict" /tmp/api-reviewer.log; then
+            echo "::error::a request ran without its workspace bound"; exit 1
+          fi
+
       # Where an inbound message lands. This shipped wrong — a reply to a snoozed
       # chat opened a second conversation with the same customer — and nothing
       # else here would have noticed: it typechecks, it builds, no request fails,

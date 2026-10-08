@@ -328,6 +328,8 @@ export abstract class Store {
   /** The workspace an inbox belongs to. Cross-tenant: how a signed chat-widget
    *  token, which names its channel, learns which workspace it is acting in. */
   abstract inboxOrg(inboxId: string): Promise<string | undefined>;
+  /** Whether a workspace is a demo sandbox (see tenancy/sandbox.ts). */
+  abstract isSandboxOrg(orgId: string): Promise<boolean>;
   /** The workspace a conversation belongs to. Cross-tenant: for a queued job
    *  recorded before jobs carried their workspace. */
   abstract conversationOrg(conversationId: string): Promise<string | undefined>;

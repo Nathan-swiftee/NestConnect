@@ -36,6 +36,10 @@ import { NestChatProvider } from "../apps/api/src/channels/nestchat/nestchat.pro
 import { NestChatService } from "../apps/api/src/channels/nestchat/nestchat.service";
 import { CustomerPushService } from "../apps/api/src/channels/nestchat/customer-push.service";
 import { VisitorBus, type VisitorEvent } from "../apps/api/src/channels/nestchat/visitor-bus";
+import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
+
+/** An ordinary (not demo) workspace — see tenancy/sandbox.ts. */
+const notSandbox = { isSandbox: async () => false, current: async () => false, assertLive: async () => {}, twoFactorRequired: async () => true } as unknown as SandboxPolicy;
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -79,7 +83,7 @@ async function main(): Promise<void> {
   const store = new MemoryStore();
   const bus = new RecordingBus();
   const nestchat = new NestChatService(store, bus);
-  const provider = new NestChatProvider(bus, new CustomerPushService(store, bus));
+  const provider = new NestChatProvider(bus, new CustomerPushService(store, bus, notSandbox));
 
   // The rich case on purpose. A bare "hello" would match a fixture with none of
   // the optional keys in it, and the keys that go missing in a rename are

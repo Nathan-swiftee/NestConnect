@@ -28,6 +28,10 @@ import type { Store } from "../apps/api/src/data/store";
 import type { Mailer } from "../apps/api/src/mail/mailer.service";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
 import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
+import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
+
+/** An ordinary (not demo) workspace — see tenancy/sandbox.ts. */
+const notSandbox = { isSandbox: async () => false, current: async () => false, assertLive: async () => {}, twoFactorRequired: async () => true } as unknown as SandboxPolicy;
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -69,7 +73,7 @@ async function main(): Promise<void> {
   } as unknown as TwoFactorService;
 
   const auth = new AuthService(store);
-  const controller = new AuthController(auth, sessions, twoFactor, store, {} as Mailer);
+  const controller = new AuthController(auth, sessions, twoFactor, store, {} as Mailer, notSandbox);
 
   /** A browser: a cookie jar that carries across calls. */
   function browser() {
