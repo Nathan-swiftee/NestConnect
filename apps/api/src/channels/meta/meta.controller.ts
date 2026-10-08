@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { Public } from "../../auth/public.decorator";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { Store } from "../../data/store";
+import { bindTenant } from "../../tenancy/tenant-scope";
 import { META_CONFIG, MetaOAuthService } from "./meta-oauth.service";
 import { metaRedirectUri } from "./redirect-uri";
 
@@ -69,9 +70,17 @@ export class MetaController {
       if (!code) throw new Error("Missing authorization code");
       if (!state) throw new Error("Missing state");
       const { orgId } = this.meta.verifyState(state);
+      // The redirect carries no session; the signed state says whose workspace
+      // started the flow, and the rest of it acts there.
+      bindTenant(orgId);
 
       const accessToken = await this.meta.exchangeCode(orgId, code, metaRedirectUri(req));
       const number = await this.meta.discoverNumber(accessToken);
+      // One number, one workspace: a message to it must never be able to match
+      // inboxes in two of them.
+      if (await this.store.channelKeyTaken({ phoneNumberId: number.phoneNumberId })) {
+        throw new Error(`${number.displayNumber} is already connected to another workspace`);
+      }
       await this.meta.subscribeApp(number.wabaId, accessToken);
 
       const name = number.verifiedName

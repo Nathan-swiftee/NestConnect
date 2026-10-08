@@ -8,6 +8,18 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A real Postgres, for the tenant-isolation checks below. Only those steps
+    # are pointed at it (DATABASE_URL is set per step): every other check runs
+    # on the in-memory store, as it always has.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nest_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@v4
 
@@ -29,6 +41,35 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+
+      # Workspaces can't see, change or link to each other's data. Enforced in
+      # one place — the tenant-scoped Prisma client — and so only provable
+      # against Postgres: the in-memory store is single-workspace by design.
+      # The store is attacked directly first, then through the running API
+      # (auth guard, controllers, webhooks, the chat widget, the socket).
+      - name: Tenant isolation (store, Postgres)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nest_ci
+        run: |
+          pnpm --filter @ding/api exec prisma migrate deploy
+          pnpm check:tenant-isolation
+
+      - name: Tenant isolation (HTTP, Postgres)
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nest_ci
+          NODE_ENV: development
+          AUTH_REQUIRE_2FA: "false"
+          GMAIL_POLL_SECONDS: "0"
+          PORT: "3011"
+        run: |
+          node apps/api/dist/main.js > /tmp/api-tenancy.log 2>&1 &
+          for i in $(seq 1 60); do curl -sf localhost:3011/health >/dev/null && break; sleep 1; done
+          TENANT_HTTP_URL=http://localhost:3011 pnpm check:tenant-http
+          # A request that reached the store without its workspace bound fails
+          # closed with one of these; any in the log is a path that forgot.
+          if grep -E "TenantNotBound|TenantConflict" /tmp/api-tenancy.log; then
+            echo "::error::a request ran without its workspace bound"; exit 1
+          fi
 
       # Where an inbound message lands. This shipped wrong — a reply to a snoozed
       # chat opened a second conversation with the same customer — and nothing

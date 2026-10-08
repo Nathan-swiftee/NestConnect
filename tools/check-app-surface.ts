@@ -21,6 +21,7 @@
  */
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 import { NestChatService } from "../apps/api/src/channels/nestchat/nestchat.service";
 import { VisitorBus } from "../apps/api/src/channels/nestchat/visitor-bus";
 import { DEFAULT_NESTCHAT_APP } from "../packages/schemas/src/index";
@@ -138,4 +139,5 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-void main();
+// As a request would: inside the workspace under test (see tenancy/tenant-scope.ts).
+void runInTenant(ORG_ID, main);

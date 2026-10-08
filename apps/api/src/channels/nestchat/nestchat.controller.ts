@@ -485,7 +485,7 @@ export class NestChatController {
     // a malformed pair means "an ordinary audio file", not a failed upload.
     @Body() body: Record<string, unknown> | undefined,
   ): Promise<NestChatUploadResult> {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     if (!file?.buffer?.length) throw new BadRequestException("No file uploaded");
     if (file.size > NESTCHAT_MAX_UPLOAD_BYTES) {
       throw new BadRequestException("That file is too large — 25 MB is the limit");
@@ -529,7 +529,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatSendInputSchema)) body: NestChatSendInput,
   ) {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     const inbox = (await this.store.listInboxes()).find((i) => i.id === claims.inboxId);
     if (!inbox || inbox.type !== "nestchat") throw new NotFoundException("Chat unavailable");
     const contact = await this.store.getContact(claims.contactId);
@@ -617,7 +617,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatReactInputSchema)) body: NestChatReactInput,
   ) {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     const result = await this.nestchat.reactAsVisitor(claims, body.messageId, body.emoji);
     if (!result) return { ok: false };
     // Straight to the agents watching the thread. The visitor's own widget has
@@ -632,7 +632,7 @@ export class NestChatController {
   /** Everything said so far, for a widget that has just reconnected. */
   @Get("messages")
   async messages(@Headers("authorization") auth: string | undefined) {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     if (!claims.conversationId) return { messages: [] };
     return { messages: await this.nestchat.visitorHistory(claims.conversationId) };
   }
@@ -653,7 +653,7 @@ export class NestChatController {
   async conversations(
     @Headers("authorization") auth: string | undefined,
   ): Promise<NestChatConversations> {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     return { conversations: await this.nestchat.visitorConversations(claims) };
   }
 
@@ -671,7 +671,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Param("conversationId") conversationId: string,
   ): Promise<{ messages: NestChatMessage[] }> {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     const messages = await this.nestchat.visitorConversation(claims, conversationId);
     if (!messages) throw new NotFoundException("No such conversation");
     return { messages };
@@ -701,7 +701,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatStartInputSchema)) body: NestChatStartInput,
   ): Promise<NestChatStartResult> {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     const inbox = await this.store.getInbox(claims.inboxId);
     if (!inbox || inbox.type !== "nestchat") throw new NotFoundException("Chat unavailable");
 
@@ -739,7 +739,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatIdentifyInputSchema)) body: NestChatIdentifyInput,
   ): Promise<NestChatIdentifyResult> {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     const { saved, linked, contactId } = await this.nestchat.identifyVisitor(claims, body);
     return {
       ok: true,
@@ -766,7 +766,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatReadInputSchema)) body: NestChatReadInput,
   ) {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     if (!claims.conversationId) return { ok: true };
     const changed = await this.store.markOutboundStatusUpTo(
       claims.conversationId,
@@ -800,7 +800,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatTypingInputSchema)) body: NestChatTypingInput,
   ) {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     if (!claims.conversationId) return { ok: true };
     const contact = await this.store.getContact(claims.contactId);
     this.realtime.emitTyping(
@@ -829,7 +829,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatDeviceInputSchema)) body: NestChatDeviceInput,
   ) {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     const inbox = await this.store.getInbox(claims.inboxId);
     if (!inbox) throw new NotFoundException("Channel not found");
     // A token outlives the contact it names — the customer was merged into
@@ -866,7 +866,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatDeviceInputSchema)) body: NestChatDeviceInput,
   ) {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     const removed = await this.store.deleteCustomerDevice(claims.contactId, body.token);
     return { ok: true, removed };
   }
@@ -885,7 +885,7 @@ export class NestChatController {
     @Query("token") token: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    const claims = this.nestchat.verifyVisitorToken(token);
+    const claims = await this.nestchat.visitor(token);
     const conv = claims.conversationId
       ? await this.store.getConversation(claims.conversationId)
       : undefined;
@@ -926,7 +926,7 @@ export class NestChatController {
     @Headers("authorization") auth: string | undefined,
     @Body(new ZodValidationPipe(nestchatViewingInputSchema)) body: NestChatViewingInput,
   ): Promise<{ ok: true }> {
-    const claims = this.nestchat.verifyVisitorToken(bearer(auth));
+    const claims = await this.nestchat.visitor(bearer(auth));
     if (claims.conversationId) await this.bus.setViewing(claims.conversationId, body.viewing);
     return { ok: true };
   }
@@ -945,7 +945,7 @@ export class NestChatController {
     @Query("presence") presence: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    const claims = this.nestchat.verifyVisitorToken(token);
+    const claims = await this.nestchat.visitor(token);
     if (!claims.conversationId) throw new BadRequestException("No conversation yet");
 
     // Charset named explicitly. Every reader here already decodes UTF-8 — a

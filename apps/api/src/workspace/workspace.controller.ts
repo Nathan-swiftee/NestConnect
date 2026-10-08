@@ -105,9 +105,10 @@ export class WorkspaceController {
     if (body.name !== undefined) params.name = body.name.trim();
     if (body.email !== undefined) {
       const email = body.email.trim().toLowerCase();
-      // Login is by email — keep it unique within the org.
-      const existing = await this.store.findUserByEmail(email);
-      if (existing && existing.id !== userId) {
+      // Login is by email alone, before anything says which workspace — so an
+      // address names one account on the whole platform.
+      const current = await this.store.getUser(userId);
+      if (current?.email.toLowerCase() !== email && (await this.store.emailInUse(email))) {
         throw new ConflictException("That email address is already in use.");
       }
       params.email = email;
@@ -141,6 +142,25 @@ export class WorkspaceController {
     return this.store.listMembers();
   }
 
+  /**
+   * One phone number or mailbox, one workspace. An inbound message is matched to
+   * its inbox by that key alone, so a key held by two workspaces would leave it
+   * to chance which business a customer's message reached.
+   */
+  private async assertChannelKeyFree(
+    type: string,
+    handle: string,
+    channelConfig: Record<string, string> | undefined,
+    exceptInboxId?: string,
+  ): Promise<void> {
+    const phoneNumberId = channelConfig?.phoneNumberId?.trim();
+    const emailAddress = type === "email" ? handle.trim() : undefined;
+    if (!phoneNumberId && !emailAddress) return;
+    if (await this.store.channelKeyTaken({ phoneNumberId, emailAddress }, exceptInboxId)) {
+      throw new ConflictException("That number or address is already connected to another workspace.");
+    }
+  }
+
   /** Create + route a new channel (inbox). Admins and managers only. */
   @Post("inboxes")
   async createInbox(
@@ -148,6 +168,7 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(createInboxInputSchema)) body: CreateInboxInput,
   ) {
     const me = await this.requireManager(userId);
+    await this.assertChannelKeyFree(body.type, body.handle, body.channelConfig);
     const inbox = await this.store.createInbox({ orgId: me.orgId, ...body });
     await this.subscribeWhatsAppWebhook(inbox.id, inbox.type);
     return inbox;
@@ -160,6 +181,9 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(updateInboxInputSchema)) body: UpdateInboxInput,
   ) {
     await this.requireManager(userId);
+    const current = await this.store.getInbox(id);
+    if (!current) throw new NotFoundException("Channel not found");
+    await this.assertChannelKeyFree(current.type, current.handle, body.channelConfig, id);
     const inbox = await this.store.updateInbox(id, body);
     if (!inbox) throw new NotFoundException("Channel not found");
     await this.subscribeWhatsAppWebhook(inbox.id, inbox.type);
@@ -293,6 +317,11 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(createUserInputSchema)) body: CreateUserInput,
   ) {
     const me = await this.requireManager(userId);
+    // Login is by email alone, before anything says which workspace — so an
+    // address names one account on the whole platform.
+    if (await this.store.emailInUse(body.email)) {
+      throw new ConflictException("That email address is already in use.");
+    }
     // No password → the store mints an invite token; email the "set your
     // password" link, and return it so the admin can share it by hand when no
     // transactional email is connected yet.

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { Conversation } from "@ding/schemas";
-import { ORG_ID } from "../../data/fixtures";
+import { currentOrgId } from "../../tenancy/tenant-scope";
 import { Store } from "../../data/store";
 import {
   FCM_SERVICE_ACCOUNT_FIELD,
@@ -281,7 +281,7 @@ export class CustomerPushService {
     const fields = fieldData(
       (
         await this.store
-          .customFieldValues(ORG_ID, "conversation", [conversation.id])
+          .customFieldValues(currentOrgId(), "conversation", [conversation.id])
           .catch(() => new Map<string, { key: string; value: string }[]>())
       ).get(conversation.id) ?? [],
     );

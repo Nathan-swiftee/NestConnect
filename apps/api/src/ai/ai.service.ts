@@ -53,12 +53,12 @@ export class AiService {
 
   /** True when the org has an API key — drives the composer showing the button. */
   async configured(orgId: string): Promise<boolean> {
-    return (await resolveAnthropicConfig(this.store, orgId)) !== null;
+    return (await resolveAnthropicConfig(this.store)) !== null;
   }
 
   /** The model a polish would actually use, for the Settings test result. */
   async model(orgId: string): Promise<string> {
-    return (await resolveAnthropicConfig(this.store, orgId))?.model ?? "";
+    return (await resolveAnthropicConfig(this.store))?.model ?? "";
   }
 
   /**
@@ -68,7 +68,7 @@ export class AiService {
    * key is the only authority on what it may call.
    */
   async listModels(orgId: string): Promise<{ id: string; name: string }[]> {
-    const config = await resolveAnthropicConfig(this.store, orgId);
+    const config = await resolveAnthropicConfig(this.store);
     if (!config) {
       throw new PolishUnavailableError("Add a Claude API key in Settings › Integrations › AI", "not_configured");
     }
@@ -103,7 +103,7 @@ export class AiService {
     text: string,
     opts: { channel?: ChannelType; internal?: boolean; history?: PolishHistoryTurn[] } = {},
   ): Promise<PolishDraftResult> {
-    const config = await resolveAnthropicConfig(this.store, orgId);
+    const config = await resolveAnthropicConfig(this.store);
     if (!config) {
       throw new PolishUnavailableError("Add a Claude API key in Settings › Integrations › AI", "not_configured");
     }

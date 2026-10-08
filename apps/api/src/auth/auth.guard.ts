@@ -7,6 +7,8 @@ import { SessionService } from "./session.service";
 import { TwoFactorService } from "./two-factor.service";
 import { IS_PUBLIC_KEY } from "./public.decorator";
 import { IS_ENROLMENT_ALLOWED_KEY } from "./enrolment-allowed.decorator";
+import { Store } from "../data/store";
+import { runInTenant } from "../tenancy/tenant-scope";
 
 /**
  * Global guard. Reads the session JWT from the httpOnly cookie, validates it,
@@ -22,6 +24,7 @@ export class AuthGuard implements CanActivate {
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
     private readonly twoFactor: TwoFactorService,
+    private readonly store: Store,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -35,7 +38,7 @@ export class AuthGuard implements CanActivate {
 
     const req = ctx
       .switchToHttp()
-      .getRequest<Request & { userId?: string; sessionId?: string; cookies?: Record<string, string> }>();
+      .getRequest<Request & { userId?: string; sessionId?: string; orgId?: string; cookies?: Record<string, string> }>();
     // Browsers send the httpOnly cookie; native clients send the same JWT as a
     // bearer token, because a phone has no cookie jar shared between its HTTP
     // client, its socket and a background push registration.
@@ -44,19 +47,27 @@ export class AuthGuard implements CanActivate {
     const token = req.cookies?.[env.auth.cookieName] ?? bearer;
     const claims = token ? this.auth.verify(token) : undefined;
 
-    if (claims) {
-      if (claims.sessionId) {
-        // Session-bound cookie: honour revocation (remote sign-out). If revoked,
-        // leave req.userId unset so it's treated as unauthenticated below.
-        if (await this.sessions.isValid(claims.sessionId)) {
+    // The user the token names decides which workspace this request acts for.
+    // Looked up across workspaces — the one lookup that has to be — and then
+    // everything else, the session check included, runs inside theirs. The
+    // TenantInterceptor binds the handler to the same org via `req.orgId`.
+    const principal = claims ? await this.store.getUserForAuth(claims.userId) : undefined;
+    if (claims && principal) {
+      await runInTenant(principal.orgId, async () => {
+        if (claims.sessionId) {
+          // Session-bound cookie: honour revocation (remote sign-out). If revoked,
+          // leave req.userId unset so it's treated as unauthenticated below.
+          if (await this.sessions.isValid(claims.sessionId)) {
+            req.userId = claims.userId;
+            req.sessionId = claims.sessionId;
+            this.sessions.touch(claims.sessionId);
+          }
+        } else {
+          // Cookie minted before sessions existed — grandfathered through.
           req.userId = claims.userId;
-          req.sessionId = claims.sessionId;
-          this.sessions.touch(claims.sessionId);
         }
-      } else {
-        // Cookie minted before sessions existed — grandfathered through.
-        req.userId = claims.userId;
-      }
+      });
+      if (req.userId) req.orgId = principal.orgId;
     }
 
     if (isPublic) return true;
@@ -87,7 +98,8 @@ export class AuthGuard implements CanActivate {
       // The allowlist is checked first because it settles the enrolment routes
       // with no I/O at all — and those are the only ones a person in this state
       // is going to be calling.
-      if (!allowed && !(await this.twoFactor.isEnrolled(req.userId))) {
+      const userId = req.userId;
+      if (!allowed && !(await runInTenant(req.orgId, () => this.twoFactor.isEnrolled(userId)))) {
         throw new ForbiddenException(
           "Set up two-factor authentication to finish signing in — this workspace requires it.",
         );

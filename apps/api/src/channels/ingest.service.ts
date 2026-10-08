@@ -132,13 +132,8 @@ export class IngestService {
   }
 
   async ingestWhatsApp(input: WhatsAppInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
-    // Idempotency: Meta retries any webhook it doesn't get a fast 2xx for, so a
-    // message we've already stored must not be ingested twice.
-    if (input.channelMsgId) {
-      const seen = await this.store.getMessageRefByChannelId(input.channelMsgId);
-      if (seen) return { conversationId: seen.conversationId, created: false };
-    }
-
+    // The inbox first: it is what says which workspace this message is for, and
+    // nothing of any workspace's is read until that is settled.
     const inbox = await this.store.getInboxByWhatsAppPhoneId(input.phoneNumberId);
     if (!inbox) {
       this.logger.warn(`No inbox mapped for WhatsApp phone id ${input.phoneNumberId}`);
@@ -149,6 +144,14 @@ export class IngestService {
         detail: `Inbound WhatsApp for an unmapped phone number id (from ${input.from})`,
       });
       return undefined;
+    }
+    this.tenant.bind(inbox.orgId);
+
+    // Idempotency: Meta retries any webhook it doesn't get a fast 2xx for, so a
+    // message we've already stored must not be ingested twice.
+    if (input.channelMsgId) {
+      const seen = await this.store.getMessageRefByChannelId(input.channelMsgId);
+      if (seen) return { conversationId: seen.conversationId, created: false };
     }
 
     const contact = await this.store.upsertContactByIdentity({
@@ -231,7 +234,9 @@ export class IngestService {
       return undefined;
     }
     const conv = await this.store.getConversation(conversationId);
-    const orgId = conv?.orgId ?? this.tenant.defaultOrgId;
+    // Bound by the caller to the workspace whose number received this; the
+    // group was looked up within it.
+    const orgId = this.tenant.orgId;
     const contact = await this.store.upsertContactByIdentity({
       orgId,
       // Record WhatsApp's wa_id (the sender's WhatsApp user id) as `wa_id`, not
@@ -370,13 +375,8 @@ export class IngestService {
   }
 
   async ingestEmail(input: EmailInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
-    // Idempotency: a Postmark/webhook retry of an email we've already stored
-    // (matched on its own Message-ID) must not append a duplicate.
-    if (input.messageId) {
-      const seen = await this.store.getMessageRefByChannelId(input.messageId);
-      if (seen) return { conversationId: seen.conversationId, created: false };
-    }
-
+    // The inbox first: the address it was sent to is what says which workspace
+    // it is for, and nothing of any workspace's is read before that.
     const inbox = await this.store.getInboxByEmailAddress(input.toAddress);
     if (!inbox) {
       this.logger.warn(`No inbox mapped for email address ${input.toAddress}`);
@@ -387,6 +387,14 @@ export class IngestService {
         detail: `Inbound email to an unmanaged address (from ${input.from})`,
       });
       return undefined;
+    }
+    this.tenant.bind(inbox.orgId);
+
+    // Idempotency: a Postmark/webhook retry of an email we've already stored
+    // (matched on its own Message-ID) must not append a duplicate.
+    if (input.messageId) {
+      const seen = await this.store.getMessageRefByChannelId(input.messageId);
+      if (seen) return { conversationId: seen.conversationId, created: false };
     }
 
     const contact = await this.store.upsertContactByIdentity({
@@ -548,7 +556,8 @@ export class IngestService {
    */
   private async recipientContactIds(recipients: string[] | undefined): Promise<string[]> {
     if (!recipients?.length) return [];
-    const orgId = this.tenant.defaultOrgId;
+    // The sync that called this runs inside the mailbox's own workspace.
+    const orgId = this.tenant.orgId;
     const seen = new Set<string>();
     const ids: string[] = [];
     for (const address of recipients) {

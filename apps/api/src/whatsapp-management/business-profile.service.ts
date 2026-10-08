@@ -172,9 +172,8 @@ export class BusinessProfileService {
     // The resumable upload is app-scoped, so we need the Meta App ID. Prefer the
     // one saved when WhatsApp was connected (Integrations), then any per-number
     // config, then env.
-    const orgId = (await this.store.getInbox(inboxId))?.orgId;
     const appId =
-      (orgId ? (await this.store.getAppSetting(orgId, META_APP_ID_KEY))?.trim() : "") ||
+      (await this.store.getPlatformSetting(META_APP_ID_KEY))?.trim() ||
       (await this.store.getInboxConfig(inboxId))?.appId ||
       env.whatsapp.appId;
     if (!appId) {
