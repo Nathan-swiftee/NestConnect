@@ -54,7 +54,8 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Nest Connect uses the microphone so you can reply with a voice note."
+          "microphonePermission": "Nest Connect uses the microphone so you can reply with a voice note.",
+          "enableBackgroundPlayback": false
         }
       ],
       [
