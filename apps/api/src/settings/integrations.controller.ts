@@ -16,6 +16,7 @@ import {
   type User,
 } from "@ding/schemas";
 import { Store } from "../data/store";
+import { isPlatformOrg } from "../tenancy/platform";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
 import {
@@ -67,8 +68,16 @@ import {
   FIREBASE_STORAGE_BUCKET_KEY,
 } from "../push/push-config";
 
-/** App-level integration settings (Settings › Setup). Currently: the org's
- *  Google OAuth app credentials that power the "Connect with Google" flow. */
+/**
+ * Platform integration settings (Settings › Setup): the Google and Meta app
+ * credentials every workspace connects through, media storage, the app's own
+ * email, push, and the AI key.
+ *
+ * These belong to the platform, not to any one workspace — they are stored with
+ * the operator's workspace and read from there by everyone (tenancy/platform.ts).
+ * So only the operator's own admins can see or change them; any other
+ * workspace gets a 403, never a view of another's configuration.
+ */
 @Controller("settings/integrations")
 export class IntegrationsController {
   constructor(
@@ -95,60 +104,60 @@ export class IntegrationsController {
     // Only overwrite a field when a non-empty value is supplied — so the secret
     // can be left blank in the form to keep the stored one.
     const clientId = body.googleClientId?.trim();
-    if (clientId) await this.store.setAppSetting(me.orgId, GOOGLE_CLIENT_ID_KEY, clientId);
+    if (clientId) await this.store.setPlatformSetting(GOOGLE_CLIENT_ID_KEY, clientId);
     const clientSecret = body.googleClientSecret?.trim();
-    if (clientSecret) await this.store.setAppSetting(me.orgId, GOOGLE_CLIENT_SECRET_KEY, clientSecret);
+    if (clientSecret) await this.store.setPlatformSetting(GOOGLE_CLIENT_SECRET_KEY, clientSecret);
     // The Pub/Sub topic is written whenever supplied, including empty to clear it.
     if (body.googlePubsubTopic !== undefined) {
-      await this.store.setAppSetting(me.orgId, GOOGLE_PUBSUB_TOPIC_KEY, body.googlePubsubTopic.trim());
+      await this.store.setPlatformSetting(GOOGLE_PUBSUB_TOPIC_KEY, body.googlePubsubTopic.trim());
     }
     // Meta (WhatsApp) app credentials.
     const metaAppId = body.metaAppId?.trim();
-    if (metaAppId) await this.store.setAppSetting(me.orgId, META_APP_ID_KEY, metaAppId);
+    if (metaAppId) await this.store.setPlatformSetting(META_APP_ID_KEY, metaAppId);
     const metaAppSecret = body.metaAppSecret?.trim();
-    if (metaAppSecret) await this.store.setAppSetting(me.orgId, META_APP_SECRET_KEY, metaAppSecret);
+    if (metaAppSecret) await this.store.setPlatformSetting(META_APP_SECRET_KEY, metaAppSecret);
     if (body.metaConfigId !== undefined) {
-      await this.store.setAppSetting(me.orgId, META_CONFIG_ID_KEY, body.metaConfigId.trim());
+      await this.store.setPlatformSetting(META_CONFIG_ID_KEY, body.metaConfigId.trim());
     }
     // Cloudflare R2 storage. Account id + bucket write on any change (empty
     // clears, dropping back to disk); the keys write only when supplied.
     if (body.r2AccountId !== undefined) {
-      await this.store.setAppSetting(me.orgId, R2_ACCOUNT_ID_KEY, body.r2AccountId.trim());
+      await this.store.setPlatformSetting(R2_ACCOUNT_ID_KEY, body.r2AccountId.trim());
     }
     if (body.r2Bucket !== undefined) {
-      await this.store.setAppSetting(me.orgId, R2_BUCKET_KEY, body.r2Bucket.trim());
+      await this.store.setPlatformSetting(R2_BUCKET_KEY, body.r2Bucket.trim());
     }
     const r2AccessKeyId = body.r2AccessKeyId?.trim();
-    if (r2AccessKeyId) await this.store.setAppSetting(me.orgId, R2_ACCESS_KEY_ID_KEY, r2AccessKeyId);
+    if (r2AccessKeyId) await this.store.setPlatformSetting(R2_ACCESS_KEY_ID_KEY, r2AccessKeyId);
     const r2Secret = body.r2SecretAccessKey?.trim();
-    if (r2Secret) await this.store.setAppSetting(me.orgId, R2_SECRET_ACCESS_KEY_KEY, r2Secret);
+    if (r2Secret) await this.store.setPlatformSetting(R2_SECRET_ACCESS_KEY_KEY, r2Secret);
     // SMTP transactional email. Host/port/username/from/secure write on any
     // change (empty clears); the app password writes only when supplied.
-    if (body.smtpHost !== undefined) await this.store.setAppSetting(me.orgId, SMTP_HOST_KEY, body.smtpHost.trim());
-    if (body.smtpPort !== undefined) await this.store.setAppSetting(me.orgId, SMTP_PORT_KEY, String(body.smtpPort));
+    if (body.smtpHost !== undefined) await this.store.setPlatformSetting(SMTP_HOST_KEY, body.smtpHost.trim());
+    if (body.smtpPort !== undefined) await this.store.setPlatformSetting(SMTP_PORT_KEY, String(body.smtpPort));
     if (body.smtpUsername !== undefined)
-      await this.store.setAppSetting(me.orgId, SMTP_USERNAME_KEY, body.smtpUsername.trim());
-    if (body.smtpFrom !== undefined) await this.store.setAppSetting(me.orgId, SMTP_FROM_KEY, body.smtpFrom.trim());
+      await this.store.setPlatformSetting(SMTP_USERNAME_KEY, body.smtpUsername.trim());
+    if (body.smtpFrom !== undefined) await this.store.setPlatformSetting(SMTP_FROM_KEY, body.smtpFrom.trim());
     if (body.smtpSecure !== undefined)
-      await this.store.setAppSetting(me.orgId, SMTP_SECURE_KEY, body.smtpSecure ? "true" : "false");
+      await this.store.setPlatformSetting(SMTP_SECURE_KEY, body.smtpSecure ? "true" : "false");
     const smtpPassword = body.smtpPassword?.trim();
-    if (smtpPassword) await this.store.setAppSetting(me.orgId, SMTP_PASSWORD_KEY, smtpPassword);
+    if (smtpPassword) await this.store.setPlatformSetting(SMTP_PASSWORD_KEY, smtpPassword);
     // Resend transactional email. From writes on any change (empty clears); the
     // API key writes only when supplied, so it can be left blank to keep the stored one.
-    if (body.resendFrom !== undefined) await this.store.setAppSetting(me.orgId, RESEND_FROM_KEY, body.resendFrom.trim());
+    if (body.resendFrom !== undefined) await this.store.setPlatformSetting(RESEND_FROM_KEY, body.resendFrom.trim());
     const resendApiKey = body.resendApiKey?.trim();
-    if (resendApiKey) await this.store.setAppSetting(me.orgId, RESEND_API_KEY_KEY, resendApiKey);
+    if (resendApiKey) await this.store.setPlatformSetting(RESEND_API_KEY_KEY, resendApiKey);
     // Claude (AI assist). Model + polish prompt write on any change — empty
     // clears the override, so the built-in default applies again; the API key
     // writes only when supplied, so it can be left blank to keep the stored one.
     if (body.anthropicModel !== undefined) {
-      await this.store.setAppSetting(me.orgId, ANTHROPIC_MODEL_KEY, body.anthropicModel.trim());
+      await this.store.setPlatformSetting(ANTHROPIC_MODEL_KEY, body.anthropicModel.trim());
     }
     if (body.anthropicPolishPrompt !== undefined) {
-      await this.store.setAppSetting(me.orgId, ANTHROPIC_POLISH_PROMPT_KEY, body.anthropicPolishPrompt.trim());
+      await this.store.setPlatformSetting(ANTHROPIC_POLISH_PROMPT_KEY, body.anthropicPolishPrompt.trim());
     }
     const anthropicApiKey = body.anthropicApiKey?.trim();
-    if (anthropicApiKey) await this.store.setAppSetting(me.orgId, ANTHROPIC_API_KEY_KEY, anthropicApiKey);
+    if (anthropicApiKey) await this.store.setPlatformSetting(ANTHROPIC_API_KEY_KEY, anthropicApiKey);
     // Push. The Firebase values are the project's public identifiers, so they
     // write on any change (empty clears, dropping back to the environment); the
     // Expo access token is the only secret here and writes only when supplied.
@@ -159,10 +168,10 @@ export class IntegrationsController {
       [FIREBASE_STORAGE_BUCKET_KEY, body.firebaseStorageBucket],
     ];
     for (const [key, value] of firebase) {
-      if (value !== undefined) await this.store.setAppSetting(me.orgId, key, value.trim());
+      if (value !== undefined) await this.store.setPlatformSetting(key, value.trim());
     }
     const expoAccessToken = body.expoAccessToken?.trim();
-    if (expoAccessToken) await this.store.setAppSetting(me.orgId, EXPO_ACCESS_TOKEN_KEY, expoAccessToken);
+    if (expoAccessToken) await this.store.setPlatformSetting(EXPO_ACCESS_TOKEN_KEY, expoAccessToken);
     return this.snapshot(me.orgId, req);
   }
 
@@ -191,15 +200,15 @@ export class IntegrationsController {
     ] = await Promise.all([
         this.google.clientId(orgId),
         this.google.configured(orgId),
-        this.store.getAppSetting(orgId, GOOGLE_PUBSUB_TOPIC_KEY),
+        this.store.getPlatformSetting(GOOGLE_PUBSUB_TOPIC_KEY),
         this.meta.appId(orgId),
         this.meta.configured(orgId),
         this.meta.configId(orgId),
-        r2PublicSettings(this.store, orgId),
-        smtpPublicSettings(this.store, orgId),
-        resendPublicSettings(this.store, orgId),
-        anthropicPublicSettings(this.store, orgId),
-        pushPublicSettings(this.store, orgId),
+        r2PublicSettings(this.store),
+        smtpPublicSettings(this.store),
+        resendPublicSettings(this.store),
+        anthropicPublicSettings(this.store),
+        pushPublicSettings(this.store),
       ]);
     return {
       google: {
@@ -226,6 +235,9 @@ export class IntegrationsController {
   private async requireUser(userId: string): Promise<User> {
     const me = await this.store.getUser(userId);
     if (!me) throw new NotFoundException("Current user not found");
+    if (!isPlatformOrg(me.orgId)) {
+      throw new ForbiddenException("Integrations are managed by the platform operator");
+    }
     return me;
   }
 

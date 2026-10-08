@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import type { User } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
+import { bindTenant } from "../tenancy/tenant-scope";
 
 /** How long "remember this device" skips the second factor at sign-in. */
 export const TRUSTED_DEVICE_TTL_S = 30 * 24 * 60 * 60;
@@ -56,12 +57,26 @@ export class AuthService {
       this.recordFailure(email);
       return null;
     }
+    // From here the request acts for the account's workspace — including the
+    // password check, which reads through the tenant-scoped client.
+    bindTenant(user.orgId);
     const hash = await this.store.getPasswordHash(user.id);
     if (!hash || !(await bcrypt.compare(password, hash))) {
       this.recordFailure(email);
       return null;
     }
     this.failures.delete(this.key(email));
+    return user;
+  }
+
+  /**
+   * Enter the workspace of the account a verified token names (a pending 2FA
+   * token, a session being signed out), for a public route that has no session
+   * of its own yet. Returns the account, or undefined if it no longer exists.
+   */
+  async enterAccount(userId: string): Promise<User | undefined> {
+    const user = await this.store.getUserForAuth(userId);
+    if (user) bindTenant(user.orgId);
     return user;
   }
 

@@ -15,6 +15,7 @@ import type {
 } from "@ding/schemas";
 import { FORWARD_MAX_TARGETS } from "@ding/schemas";
 import { Store, type OutboundDeliveryMeta } from "../data/store";
+import { currentOrgId } from "../tenancy/tenant-scope";
 import { isWaChannel } from "../data/mappers";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { ChannelDispatcher } from "../channels/channel-dispatcher";
@@ -102,7 +103,12 @@ export class ConversationsService {
   }
 
   /** Older messages in a thread (scroll-up history), before a seq cursor. */
-  messages(conversationId: string, opts?: { before?: string; limit?: number }): Promise<MessagePage> {
+  async messages(conversationId: string, opts?: { before?: string; limit?: number }): Promise<MessagePage> {
+    // A thread in another workspace is "not found", not an empty page — the
+    // same answer a missing one gets.
+    if ((await this.store.conversationOrg(conversationId)) !== currentOrgId()) {
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    }
     return this.store.listMessages(conversationId, opts);
   }
 
@@ -276,7 +282,10 @@ export class ConversationsService {
         const cleared = await this.store.setSla(id, null);
         if (cleared) this.realtime.emitConversationUpdated(cleared);
       }
-      await this.queue.enqueueDelivery({ messageId: message.id, conversationId: id }, idempotencyKey);
+      await this.queue.enqueueDelivery(
+        { messageId: message.id, conversationId: id, orgId: currentOrgId() },
+        idempotencyKey,
+      );
     }
     return message;
   }
@@ -374,7 +383,7 @@ export class ConversationsService {
     if (!change) throw new BadRequestException("Message is not in a retryable state");
     this.realtime.emitMessageUpdated(change.conversationId, change.message);
     await this.queue.enqueueDelivery(
-      { messageId, conversationId: change.conversationId },
+      { messageId, conversationId: change.conversationId, orgId: currentOrgId() },
       key,
     );
     return change.message;

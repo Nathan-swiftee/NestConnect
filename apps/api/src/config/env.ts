@@ -200,6 +200,12 @@ export function assertProdSecrets(logger: { warn: (m: string) => void } = consol
     }
     return;
   }
+  // Tenant isolation is enforced by the Postgres store (data/tenant-prisma.ts).
+  // The in-memory store holds one workspace's fixtures and enforces nothing, so
+  // it must never be what a production deployment serves.
+  if (!env.usingDatabase) {
+    throw new Error("Refusing to start in production without DATABASE_URL: the in-memory store is single-workspace and not tenant-isolated.");
+  }
   if (!process.env.AUTH_JWT_SECRET || process.env.AUTH_JWT_SECRET === DEFAULT_JWT_SECRET) {
     throw new Error(
       "Refusing to start in production with an insecure AUTH_JWT_SECRET. Set a strong, random value.",

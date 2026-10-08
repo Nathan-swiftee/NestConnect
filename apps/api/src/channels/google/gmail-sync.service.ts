@@ -7,6 +7,7 @@ import {
 import type { Inbox } from "@ding/schemas";
 import { env } from "../../config/env";
 import { Store, type AttachmentInput } from "../../data/store";
+import { boundOrgId, runInTenant } from "../../tenancy/tenant-scope";
 import { MediaService } from "../../storage/media.service";
 import { IngestService } from "../ingest.service";
 import {
@@ -97,7 +98,8 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
       for (const { inbox, config } of await this.gmailInboxes()) {
         if (opts?.skipPushCovered && this.hasActiveWatch(config)) continue; // push covers it
         try {
-          await this.syncInbox(inbox, config);
+          // Each mailbox syncs as its own workspace.
+          await runInTenant(inbox.orgId, () => this.syncInbox(inbox, config));
           synced++;
         } catch (err) {
           this.logger.warn(`Gmail sync failed for ${inbox.handle}: ${message(err)}`);
@@ -126,7 +128,7 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
       this.logger.warn(`Push for ${emailAddress} but no matching Gmail inbox`);
       return;
     }
-    await this.syncInbox(match.inbox, match.config);
+    await runInTenant(match.inbox.orgId, () => this.syncInbox(match.inbox, match.config));
   }
 
   /**
@@ -150,11 +152,19 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
 
   /* ------------------------------- internals ------------------------------ */
 
+  /**
+   * The Gmail inboxes to sync. A signed-in "refresh" covers its own workspace;
+   * the background poll and the push webhook, which belong to no workspace,
+   * cover all of them — each then synced inside its own (see callers).
+   */
   private async gmailInboxes(): Promise<Array<{ inbox: Inbox; config: Record<string, string> }>> {
     const out: Array<{ inbox: Inbox; config: Record<string, string> }> = [];
-    for (const inbox of await this.store.listInboxes()) {
+    const inboxes = boundOrgId()
+      ? await this.store.listInboxes()
+      : await this.store.listInboxesAcrossWorkspaces("email");
+    for (const inbox of inboxes) {
       if (inbox.type !== "email") continue;
-      const config = await this.store.getInboxConfig(inbox.id);
+      const config = await runInTenant(inbox.orgId, () => this.store.getInboxConfig(inbox.id));
       if (config?.[GMAIL_CONFIG.provider] === "gmail") out.push({ inbox, config });
     }
     return out;
@@ -220,7 +230,7 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
    * No-op when no topic is configured — polling remains the delivery path.
    */
   async armWatch(inbox: Inbox, accessToken?: string): Promise<void> {
-    const topic = (await this.store.getAppSetting(inbox.orgId, GOOGLE_PUBSUB_TOPIC_KEY))?.trim();
+    const topic = (await this.store.getPlatformSetting(GOOGLE_PUBSUB_TOPIC_KEY))?.trim();
     if (!topic) return;
     try {
       const token = accessToken ?? (await this.tokenFor(inbox));
@@ -243,7 +253,7 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     config: Record<string, string>,
     accessToken: string,
   ): Promise<void> {
-    const topic = (await this.store.getAppSetting(inbox.orgId, GOOGLE_PUBSUB_TOPIC_KEY))?.trim();
+    const topic = (await this.store.getPlatformSetting(GOOGLE_PUBSUB_TOPIC_KEY))?.trim();
     if (!topic) return; // push not configured
     const expiry = Number(config[GMAIL_CONFIG.watchExpiry] ?? 0);
     if (expiry && Date.now() < expiry - WATCH_RENEW_BEFORE_MS) return; // still fresh

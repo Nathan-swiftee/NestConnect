@@ -43,6 +43,8 @@ import type { Store } from "../apps/api/src/data/store";
 import type { Mailer } from "../apps/api/src/mail/mailer.service";
 import { IS_ENROLMENT_ALLOWED_KEY } from "../apps/api/src/auth/enrolment-allowed.decorator";
 import { IS_PUBLIC_KEY } from "../apps/api/src/auth/public.decorator";
+import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -84,7 +86,9 @@ const twoFactor = {
 } as unknown as TwoFactorService;
 
 const reflector = new Reflector();
-const guard = new AuthGuard(reflector, auth, sessions, twoFactor);
+// The guard learns the workspace from the account the token names.
+const guardStore = { getUserForAuth: async (id: string) => ({ id, orgId: ORG_ID }) } as unknown as Store;
+const guard = new AuthGuard(reflector, auth, sessions, twoFactor, guardStore);
 
 type Handler = (...args: unknown[]) => unknown;
 const handler = (name: string): Handler =>
@@ -245,7 +249,7 @@ async function main(): Promise<void> {
 
   let account: { id: string; twoFactorEnabled: boolean; twoFactorMethod?: string } | undefined;
   const resetStore = {
-    setPasswordByInviteToken: async () => account,
+    setPasswordByInviteToken: async () => (account ? { orgId: ORG_ID, ...account } : account),
     me: async () => ({ user: account }),
   } as unknown as Store;
 
@@ -370,4 +374,6 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-void main();
+// As a request would: inside a tenant context (see tenancy/tenant-scope.ts).
+// Public routes bind their own workspace into it; the rest run as ORG_ID.
+void runInTenant(undefined, main);

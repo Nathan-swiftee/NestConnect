@@ -1,6 +1,5 @@
 import { DEFAULT_POLISH_PROMPT } from "@ding/schemas";
 import { env } from "../config/env";
-import { ORG_ID } from "../data/fixtures";
 import type { Store } from "../data/store";
 
 /* AppSetting keys for the org's Claude (Anthropic) credentials, set in
@@ -22,8 +21,9 @@ export interface AnthropicConfig {
 }
 
 /** Read one setting, falling back to its env default; trimmed, "" when unset. */
-async function pick(store: Store, orgId: string, key: string, fallback: string): Promise<string> {
-  const saved = (await store.getAppSetting(orgId, key))?.trim();
+async function pick(store: Store, key: string, fallback: string): Promise<string> {
+  // A platform setting: the same for every workspace (see tenancy/platform.ts).
+  const saved = (await store.getPlatformSetting(key))?.trim();
   return saved || fallback;
 }
 
@@ -33,11 +33,11 @@ async function pick(store: Store, orgId: string, key: string, fallback: string):
  * without a redeploy. Returns null when no API key is available — the caller
  * then reports "not configured" rather than attempting a call.
  */
-export async function resolveAnthropicConfig(store: Store, orgId: string = ORG_ID): Promise<AnthropicConfig | null> {
+export async function resolveAnthropicConfig(store: Store): Promise<AnthropicConfig | null> {
   const [apiKey, model, polishPrompt] = await Promise.all([
-    pick(store, orgId, ANTHROPIC_API_KEY_KEY, env.anthropic.apiKey),
-    pick(store, orgId, ANTHROPIC_MODEL_KEY, env.anthropic.model),
-    pick(store, orgId, ANTHROPIC_POLISH_PROMPT_KEY, DEFAULT_POLISH_PROMPT),
+    pick(store, ANTHROPIC_API_KEY_KEY, env.anthropic.apiKey),
+    pick(store, ANTHROPIC_MODEL_KEY, env.anthropic.model),
+    pick(store, ANTHROPIC_POLISH_PROMPT_KEY, DEFAULT_POLISH_PROMPT),
   ]);
   if (!apiKey) return null;
   return { apiKey, model: model || DEFAULT_ANTHROPIC_MODEL, polishPrompt: polishPrompt || DEFAULT_POLISH_PROMPT };
@@ -46,12 +46,11 @@ export async function resolveAnthropicConfig(store: Store, orgId: string = ORG_I
 /** The non-secret half, for GET /settings/integrations. The key is never echoed. */
 export async function anthropicPublicSettings(
   store: Store,
-  orgId: string = ORG_ID,
 ): Promise<{ configured: boolean; model: string; polishPrompt: string }> {
   const [apiKey, model, polishPrompt] = await Promise.all([
-    pick(store, orgId, ANTHROPIC_API_KEY_KEY, env.anthropic.apiKey),
-    pick(store, orgId, ANTHROPIC_MODEL_KEY, env.anthropic.model),
-    pick(store, orgId, ANTHROPIC_POLISH_PROMPT_KEY, DEFAULT_POLISH_PROMPT),
+    pick(store, ANTHROPIC_API_KEY_KEY, env.anthropic.apiKey),
+    pick(store, ANTHROPIC_MODEL_KEY, env.anthropic.model),
+    pick(store, ANTHROPIC_POLISH_PROMPT_KEY, DEFAULT_POLISH_PROMPT),
   ]);
   return {
     configured: Boolean(apiKey),

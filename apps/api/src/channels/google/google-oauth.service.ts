@@ -72,15 +72,15 @@ export class GoogleOAuthService {
 
   private async credentials(orgId: string): Promise<{ clientId: string; clientSecret: string }> {
     const [clientId, clientSecret] = await Promise.all([
-      this.store.getAppSetting(orgId, GOOGLE_CLIENT_ID_KEY),
-      this.store.getAppSetting(orgId, GOOGLE_CLIENT_SECRET_KEY),
+      this.store.getPlatformSetting(GOOGLE_CLIENT_ID_KEY),
+      this.store.getPlatformSetting(GOOGLE_CLIENT_SECRET_KEY),
     ]);
     return { clientId: (clientId ?? "").trim(), clientSecret: (clientSecret ?? "").trim() };
   }
 
   /** The stored (non-secret) client id, or "" if unset. */
   async clientId(orgId: string): Promise<string> {
-    return (await this.store.getAppSetting(orgId, GOOGLE_CLIENT_ID_KEY))?.trim() ?? "";
+    return (await this.store.getPlatformSetting(GOOGLE_CLIENT_ID_KEY))?.trim() ?? "";
   }
 
   /** True once both the client id AND secret are set — i.e. we can run the flow. */

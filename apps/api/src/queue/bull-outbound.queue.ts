@@ -24,7 +24,7 @@ const GMAIL_JOB = "gmail-poll";
 const MOCK_DELIVERED_MS = 1400;
 const MOCK_READ_MS = 3200;
 
-type StatusData = { channelMsgId: string; status: MessageStatus };
+type StatusData = { channelMsgId: string; status: MessageStatus; orgId?: string };
 
 /**
  * BullMQ-backed durable outbound queue (active when REDIS_URL is set). Jobs are
@@ -101,13 +101,13 @@ export class BullOutboundQueue
           throw new Error(result.error ?? "transient delivery failure");
         }
         if (result.state === "sent" && result.simulated && result.channelMsgId) {
-          await this.scheduleMockLadder(result.channelMsgId);
+          await this.scheduleMockLadder(result.channelMsgId, (job.data as DeliveryJob).orgId);
         }
         return;
       }
       case "status": {
-        const { channelMsgId, status } = job.data as StatusData;
-        await this.delivery.applyStatus(channelMsgId, status);
+        const { channelMsgId, status, orgId } = job.data as StatusData;
+        await this.delivery.applyStatus(channelMsgId, status, orgId);
         return;
       }
       case SWEEP_JOB:
@@ -121,15 +121,15 @@ export class BullOutboundQueue
 
   /** Mock providers have no status webhooks, so fake the delivered/read ticks as
    *  durable delayed jobs (survive a restart, unlike a setTimeout). */
-  private async scheduleMockLadder(channelMsgId: string): Promise<void> {
+  private async scheduleMockLadder(channelMsgId: string, orgId?: string): Promise<void> {
     await this.queue.add(
       "status",
-      { channelMsgId, status: "delivered" },
+      { channelMsgId, status: "delivered", orgId },
       { delay: MOCK_DELIVERED_MS, removeOnComplete: true, removeOnFail: true },
     );
     await this.queue.add(
       "status",
-      { channelMsgId, status: "read" },
+      { channelMsgId, status: "read", orgId },
       { delay: MOCK_READ_MS, removeOnComplete: true, removeOnFail: true },
     );
   }
@@ -139,9 +139,8 @@ export class BullOutboundQueue
     if (!job || job.name !== "deliver") return;
     const attempts = job.opts.attempts ?? 1;
     if (job.attemptsMade < attempts) return; // more retries still pending
-    const { messageId } = job.data as DeliveryJob;
     await this.delivery.markExhausted(
-      messageId,
+      job.data as DeliveryJob,
       `Delivery failed after ${job.attemptsMade} attempts: ${err.message}`,
     );
   }
@@ -161,7 +160,7 @@ export class BullOutboundQueue
     const stuck = await this.store.listStuckOutbound(olderThanMs);
     for (const s of stuck) {
       await this.enqueueDelivery(
-        { messageId: s.messageId, conversationId: s.conversationId },
+        { messageId: s.messageId, conversationId: s.conversationId, orgId: s.orgId },
         s.idempotencyKey,
       );
     }

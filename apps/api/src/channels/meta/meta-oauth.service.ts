@@ -52,9 +52,9 @@ export class MetaOAuthService {
 
   private async credentials(orgId: string): Promise<{ appId: string; appSecret: string; configId: string }> {
     const [appId, appSecret, configId] = await Promise.all([
-      this.store.getAppSetting(orgId, META_APP_ID_KEY),
-      this.store.getAppSetting(orgId, META_APP_SECRET_KEY),
-      this.store.getAppSetting(orgId, META_CONFIG_ID_KEY),
+      this.store.getPlatformSetting(META_APP_ID_KEY),
+      this.store.getPlatformSetting(META_APP_SECRET_KEY),
+      this.store.getPlatformSetting(META_CONFIG_ID_KEY),
     ]);
     return {
       appId: (appId ?? "").trim(),
@@ -65,12 +65,12 @@ export class MetaOAuthService {
 
   /** The stored (non-secret) app id, or "" if unset. */
   async appId(orgId: string): Promise<string> {
-    return (await this.store.getAppSetting(orgId, META_APP_ID_KEY))?.trim() ?? "";
+    return (await this.store.getPlatformSetting(META_APP_ID_KEY))?.trim() ?? "";
   }
 
   /** The stored Embedded Signup config id, or "" if unset. */
   async configId(orgId: string): Promise<string> {
-    return (await this.store.getAppSetting(orgId, META_CONFIG_ID_KEY))?.trim() ?? "";
+    return (await this.store.getPlatformSetting(META_CONFIG_ID_KEY))?.trim() ?? "";
   }
 
   /** True once both the app id AND secret are set — i.e. we can run the flow. */

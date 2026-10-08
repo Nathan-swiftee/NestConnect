@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import type { AttachmentKind, MessageStatus, MessageType } from "@ding/schemas";
 import { env } from "../../config/env";
 import { Store, type AttachmentInput } from "../../data/store";
+import { runInTenant } from "../../tenancy/tenant-scope";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { MediaService } from "../../storage/media.service";
 import { IngestService } from "../ingest.service";
@@ -93,115 +94,133 @@ export class WhatsAppService {
         const value = change.value;
         if (!value) continue;
         const phoneNumberId = value.metadata?.phone_number_id ?? "";
-        const valueGroupId = value.metadata?.group_id ?? value.group_id;
-        const nameOf = (waId: string) => value.contacts?.find((c) => c.wa_id === waId)?.profile?.name;
-
-        // Group membership changes (someone joined/left via the invite link).
-        if (change.field === "group_participants_update" && value.group_id && value.participants) {
-          for (const p of value.participants) {
-            const phone = p.wa_id ?? p.user ?? "";
-            if (!phone) continue;
-            await this.groups.handleParticipantEvent(
-              value.group_id,
-              p.action === "remove" ? "remove" : "add",
-              phone,
-              p.profile?.name,
-            );
-            groupEvents += 1;
-          }
+        // Which workspace this change is for: the one whose inbox receives on
+        // this number. Meta batches changes for every number on the app into
+        // one delivery, so this is decided per change, not per request — and a
+        // change for a number no workspace has connected is recorded and
+        // skipped, never handled as anybody's.
+        const inbox = phoneNumberId ? await this.store.getInboxByWhatsAppPhoneId(phoneNumberId) : undefined;
+        if (!inbox) {
+          this.logger.warn(`No inbox mapped for WhatsApp phone id ${phoneNumberId || "(none)"}`);
+          await this.store.recordWebhookDiagnostic({
+            channel: "whatsapp",
+            kind: "unmapped_inbox",
+            reference: phoneNumberId || undefined,
+            detail: `WhatsApp ${change.field ?? "event"} for an unmapped phone number id`,
+          });
           continue;
         }
+        await runInTenant(inbox.orgId, async () => {
+          const valueGroupId = value.metadata?.group_id ?? value.group_id;
+          const nameOf = (waId: string) => value.contacts?.find((c) => c.wa_id === waId)?.profile?.name;
 
-        for (const msg of value.messages ?? []) {
-          // Isolate each message: a single failure (DB blip, media error) must
-          // log-and-continue, never throw the whole batch back to Meta as a 500
-          // — that would retry messages that already succeeded.
-          try {
-            // A reaction updates an existing message (emoji) rather than adding one.
-            if (msg.type === "reaction" || msg.reaction) {
-              const target = msg.reaction?.message_id;
-              if (target) {
-                const ref = await this.store.getMessageRefByChannelId(target);
-                if (ref) {
-                  const updated = await this.store.reactToMessage(ref.id, msg.reaction?.emoji ?? "", "contact");
-                  if (updated) {
-                    this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
-                    reactions += 1;
+          // Group membership changes (someone joined/left via the invite link).
+          if (change.field === "group_participants_update" && value.group_id && value.participants) {
+            for (const p of value.participants) {
+              const phone = p.wa_id ?? p.user ?? "";
+              if (!phone) continue;
+              await this.groups.handleParticipantEvent(
+                value.group_id,
+                p.action === "remove" ? "remove" : "add",
+                phone,
+                p.profile?.name,
+              );
+              groupEvents += 1;
+            }
+            return;
+          }
+
+          for (const msg of value.messages ?? []) {
+            // Isolate each message: a single failure (DB blip, media error) must
+            // log-and-continue, never throw the whole batch back to Meta as a 500
+            // — that would retry messages that already succeeded.
+            try {
+              // A reaction updates an existing message (emoji) rather than adding one.
+              if (msg.type === "reaction" || msg.reaction) {
+                const target = msg.reaction?.message_id;
+                if (target) {
+                  const ref = await this.store.getMessageRefByChannelId(target);
+                  if (ref) {
+                    const updated = await this.store.reactToMessage(ref.id, msg.reaction?.emoji ?? "", "contact");
+                    if (updated) {
+                      this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+                      reactions += 1;
+                    }
                   }
                 }
+                continue;
               }
-              continue;
-            }
 
-            const groupId = valueGroupId ?? msg.group_id;
-            const { text, messageType, attachments } = await this.resolveInbound(msg, phoneNumberId);
-            // Resolve a reply's quoted message to our internal id (when we have it).
-            const quotedMsgId = msg.context?.id
-              ? (await this.store.getMessageRefByChannelId(msg.context.id))?.id
-              : undefined;
-            // Meta only sets this when the sender forwarded the message to us.
-            const forwarded = msg.context?.forwarded === true;
-            const res = groupId
-              ? await this.ingest.ingestWhatsAppGroup({
-                  groupId,
-                  from: msg.from,
-                  name: nameOf(msg.from),
-                  text,
-                  channelMsgId: msg.id,
-                  messageType,
-                  attachments,
-                  quotedMsgId,
-                  forwarded,
-                })
-              : await this.ingest.ingestWhatsApp({
-                  phoneNumberId,
-                  from: msg.from,
-                  name: nameOf(msg.from),
-                  text,
-                  channelMsgId: msg.id,
-                  messageType,
-                  attachments,
-                  quotedMsgId,
-                  forwarded,
-                });
-            if (res) messages += 1;
-          } catch (err) {
-            this.logger.error(`Failed to ingest WhatsApp message ${msg.id}: ${String(err)}`);
+              const groupId = valueGroupId ?? msg.group_id;
+              const { text, messageType, attachments } = await this.resolveInbound(msg, phoneNumberId);
+              // Resolve a reply's quoted message to our internal id (when we have it).
+              const quotedMsgId = msg.context?.id
+                ? (await this.store.getMessageRefByChannelId(msg.context.id))?.id
+                : undefined;
+              // Meta only sets this when the sender forwarded the message to us.
+              const forwarded = msg.context?.forwarded === true;
+              const res = groupId
+                ? await this.ingest.ingestWhatsAppGroup({
+                    groupId,
+                    from: msg.from,
+                    name: nameOf(msg.from),
+                    text,
+                    channelMsgId: msg.id,
+                    messageType,
+                    attachments,
+                    quotedMsgId,
+                    forwarded,
+                  })
+                : await this.ingest.ingestWhatsApp({
+                    phoneNumberId,
+                    from: msg.from,
+                    name: nameOf(msg.from),
+                    text,
+                    channelMsgId: msg.id,
+                    messageType,
+                    attachments,
+                    quotedMsgId,
+                    forwarded,
+                  });
+              if (res) messages += 1;
+            } catch (err) {
+              this.logger.error(`Failed to ingest WhatsApp message ${msg.id}: ${String(err)}`);
+            }
           }
-        }
 
-        for (const st of value.statuses ?? []) {
-          try {
-            // Meta reports WHY a message failed here — the decisive signal for a
-            // send that we accepted but the recipient can't open (media download
-            // errors, billing not configured, test-number limits, etc.).
-            //
-            // The log keeps the whole thing, links and all, for whoever is going
-            // to fix it. `reason` is the same answer trimmed to a line, and goes
-            // onto the message itself: this used to be logged and nowhere else,
-            // so a thread said "Not delivered" about failures that named their
-            // own cure — a currency Meta wanted configuring, a reply window that
-            // had closed — and the only way to find out was to read the server
-            // log, which is not a thing an agent can do mid-conversation.
-            let reason: string | undefined;
-            if (st.errors?.length) {
-              const e = st.errors[0];
-              this.logger.warn(
-                `WhatsApp delivery failed for ${st.id}: code=${e.code} title="${e.title ?? ""}" details="${e.error_data?.details ?? ""}"`,
-              );
-              reason = deliveryFailureReason(e);
+          for (const st of value.statuses ?? []) {
+            try {
+              // Meta reports WHY a message failed here — the decisive signal for a
+              // send that we accepted but the recipient can't open (media download
+              // errors, billing not configured, test-number limits, etc.).
+              //
+              // The log keeps the whole thing, links and all, for whoever is going
+              // to fix it. `reason` is the same answer trimmed to a line, and goes
+              // onto the message itself: this used to be logged and nowhere else,
+              // so a thread said "Not delivered" about failures that named their
+              // own cure — a currency Meta wanted configuring, a reply window that
+              // had closed — and the only way to find out was to read the server
+              // log, which is not a thing an agent can do mid-conversation.
+              let reason: string | undefined;
+              if (st.errors?.length) {
+                const e = st.errors[0];
+                this.logger.warn(
+                  `WhatsApp delivery failed for ${st.id}: code=${e.code} title="${e.title ?? ""}" details="${e.error_data?.details ?? ""}"`,
+                );
+                reason = deliveryFailureReason(e);
+              }
+              const status = this.mapStatus(st.status);
+              if (!status) continue;
+              const updated = await this.store.updateMessageStatusByChannelId(st.id, status, reason);
+              if (updated) {
+                this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+                statuses += 1;
+              }
+            } catch (err) {
+              this.logger.warn(`Failed to apply WhatsApp status ${st.id}: ${String(err)}`);
             }
-            const status = this.mapStatus(st.status);
-            if (!status) continue;
-            const updated = await this.store.updateMessageStatusByChannelId(st.id, status, reason);
-            if (updated) {
-              this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
-              statuses += 1;
-            }
-          } catch (err) {
-            this.logger.warn(`Failed to apply WhatsApp status ${st.id}: ${String(err)}`);
           }
-        }
+        });
       }
     }
     return { messages, statuses, groupEvents, reactions };

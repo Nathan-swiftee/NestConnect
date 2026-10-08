@@ -1,5 +1,4 @@
 import { env } from "../config/env";
-import { ORG_ID } from "../data/fixtures";
 import type { Store } from "../data/store";
 
 /* AppSetting keys for push delivery, set in Settings › Integrations › Push.
@@ -55,21 +54,20 @@ export interface FirebaseProject {
  * without a token, so this always returns a config and the token is simply
  * empty when unset.
  */
-export async function resolvePushConfig(store: Store, orgId: string = ORG_ID): Promise<PushConfig> {
-  const saved = (await store.getAppSetting(orgId, EXPO_ACCESS_TOKEN_KEY))?.trim();
+export async function resolvePushConfig(store: Store): Promise<PushConfig> {
+  const saved = (await store.getPlatformSetting(EXPO_ACCESS_TOKEN_KEY))?.trim();
   return { accessToken: saved || env.push.expoAccessToken };
 }
 
 /** Saved settings over environment, per field — same rule as everything else. */
 export async function resolveFirebaseProject(
   store: Store,
-  orgId: string = ORG_ID,
 ): Promise<FirebaseProject> {
   const [projectId, projectNumber, appId, storageBucket] = await Promise.all([
-    store.getAppSetting(orgId, FIREBASE_PROJECT_ID_KEY),
-    store.getAppSetting(orgId, FIREBASE_PROJECT_NUMBER_KEY),
-    store.getAppSetting(orgId, FIREBASE_APP_ID_KEY),
-    store.getAppSetting(orgId, FIREBASE_STORAGE_BUCKET_KEY),
+    store.getPlatformSetting(FIREBASE_PROJECT_ID_KEY),
+    store.getPlatformSetting(FIREBASE_PROJECT_NUMBER_KEY),
+    store.getPlatformSetting(FIREBASE_APP_ID_KEY),
+    store.getPlatformSetting(FIREBASE_STORAGE_BUCKET_KEY),
   ]);
   return {
     projectId: projectId?.trim() || env.firebase.projectId,
@@ -82,7 +80,6 @@ export async function resolveFirebaseProject(
 /** The non-secret half, for GET /settings/integrations. The token is never echoed. */
 export async function pushPublicSettings(
   store: Store,
-  orgId: string = ORG_ID,
 ): Promise<{
   configured: boolean;
   projectId: string;
@@ -91,8 +88,8 @@ export async function pushPublicSettings(
   storageBucket: string;
 }> {
   const [{ accessToken }, firebase] = await Promise.all([
-    resolvePushConfig(store, orgId),
-    resolveFirebaseProject(store, orgId),
+    resolvePushConfig(store),
+    resolveFirebaseProject(store),
   ]);
   return { configured: Boolean(accessToken), ...firebase };
 }

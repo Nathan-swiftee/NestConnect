@@ -23,6 +23,7 @@
 import type { Conversation } from "../packages/schemas/src/index";
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 import {
   CustomerPushService,
   fieldData,
@@ -528,4 +529,5 @@ async function main(): Promise<void> {
   process.exit(failed ? 1 : 0);
 }
 
-void main();
+// As a request would: inside the workspace under test (see tenancy/tenant-scope.ts).
+void runInTenant(ORG_ID, main);

@@ -30,6 +30,7 @@ import {
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { Store } from "../data/store";
 import { env } from "../config/env";
+import { bindTenant } from "../tenancy/tenant-scope";
 import { AuthService, TRUSTED_DEVICE_TTL_S } from "./auth.service";
 import { SessionService } from "./session.service";
 import { TwoFactorService } from "./two-factor.service";
@@ -186,7 +187,9 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const userId = this.auth.verifyPending(body.pendingToken ?? readCookie(req, PENDING_COOKIE) ?? "");
-    if (!userId) throw new UnauthorizedException("Your sign-in expired — please start again.");
+    if (!userId || !(await this.auth.enterAccount(userId))) {
+      throw new UnauthorizedException("Your sign-in expired — please start again.");
+    }
     if (!(await this.twoFactor.verifyChallenge(userId, body.code))) {
       throw new UnauthorizedException("That code isn't right.");
     }
@@ -206,7 +209,9 @@ export class AuthController {
   @Post("login/2fa/resend")
   async resendLoginCode(@Req() req: Request, @Body() body: { pendingToken?: string } = {}) {
     const userId = this.auth.verifyPending(body?.pendingToken ?? readCookie(req, PENDING_COOKIE) ?? "");
-    if (!userId) throw new UnauthorizedException("Your sign-in expired — please start again.");
+    if (!userId || !(await this.auth.enterAccount(userId))) {
+      throw new UnauthorizedException("Your sign-in expired — please start again.");
+    }
     const user = await this.requireUser(userId);
     if (user.twoFactorMethod === "email") await this.twoFactor.sendEmailCode(user);
     return { ok: true };
@@ -224,6 +229,8 @@ export class AuthController {
   ) {
     const user = await this.store.setPasswordByInviteToken(body.token, body.password);
     if (!user) throw new UnauthorizedException("This invite link is invalid or has expired.");
+    // The link named the account; the rest of the request acts in its workspace.
+    bindTenant(user.orgId);
 
     // Everything the old password could reach, the new one now can — so anyone
     // still holding a session from before it changed is holding a key to a lock
@@ -262,7 +269,9 @@ export class AuthController {
     // Revoking the session is what actually signs a token client out — it has no
     // cookie to clear, and its stored JWT is dead the moment the row is revoked.
     const claims = this.auth.verify(readCookie(req, env.auth.cookieName) ?? readBearer(req) ?? "");
-    if (claims?.sessionId) await this.sessions.revoke(claims.userId, claims.sessionId).catch(() => {});
+    if (claims?.sessionId && (await this.auth.enterAccount(claims.userId))) {
+      await this.sessions.revoke(claims.userId, claims.sessionId).catch(() => {});
+    }
     res.clearCookie(env.auth.cookieName, { path: "/" });
     res.clearCookie(PENDING_COOKIE, { path: "/" });
     return { ok: true };

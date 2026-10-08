@@ -99,16 +99,11 @@ export class WhatsAppController {
     return this.whatsapp.handleWebhook(body);
   }
 
-  /** The Meta app secret to verify with: the number's org secret, else the global
-   *  env secret, else none. */
-  private async resolveAppSecret(phoneNumberId?: string): Promise<string | undefined> {
-    if (phoneNumberId) {
-      const inbox = await this.store.getInboxByWhatsAppPhoneId(phoneNumberId);
-      if (inbox) {
-        const orgSecret = (await this.store.getAppSetting(inbox.orgId, META_APP_SECRET_KEY))?.trim();
-        if (orgSecret) return orgSecret;
-      }
-    }
-    return env.whatsapp.appSecret || undefined;
+  /** The Meta app secret to verify with: the platform's saved secret, else the
+   *  env one, else none. One Meta app carries every workspace's numbers, so its
+   *  secret is a platform setting — see tenancy/platform.ts. */
+  private async resolveAppSecret(_phoneNumberId?: string): Promise<string | undefined> {
+    const saved = (await this.store.getPlatformSetting(META_APP_SECRET_KEY))?.trim();
+    return saved || env.whatsapp.appSecret || undefined;
   }
 }

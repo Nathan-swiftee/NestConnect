@@ -46,7 +46,7 @@ export class InlineOutboundQueue extends OutboundQueue implements OnApplicationB
       if (result.state === "failed-transient") {
         if (attempt + 1 >= INLINE_ATTEMPTS) {
           await this.delivery.markExhausted(
-            job.messageId,
+            job,
             `Delivery failed after ${attempt + 1} attempts: ${result.error ?? "transient error"}`,
           );
           return;
@@ -56,22 +56,22 @@ export class InlineOutboundQueue extends OutboundQueue implements OnApplicationB
         return;
       }
       if (result.state === "sent" && result.simulated && result.channelMsgId) {
-        this.scheduleMockLadder(result.channelMsgId);
+        this.scheduleMockLadder(result.channelMsgId, job.orgId);
       }
     } catch (err) {
       this.logger.warn(`Inline delivery error for ${job.messageId}: ${String(err)}`);
     }
   }
 
-  private scheduleMockLadder(channelMsgId: string): void {
-    setTimeout(() => void this.delivery.applyStatus(channelMsgId, "delivered"), MOCK_DELIVERED_MS).unref?.();
-    setTimeout(() => void this.delivery.applyStatus(channelMsgId, "read"), MOCK_READ_MS).unref?.();
+  private scheduleMockLadder(channelMsgId: string, orgId?: string): void {
+    setTimeout(() => void this.delivery.applyStatus(channelMsgId, "delivered", orgId), MOCK_DELIVERED_MS).unref?.();
+    setTimeout(() => void this.delivery.applyStatus(channelMsgId, "read", orgId), MOCK_READ_MS).unref?.();
   }
 
   async recoverStuck(olderThanMs = 0): Promise<number> {
     const stuck = await this.store.listStuckOutbound(olderThanMs);
     for (const s of stuck) {
-      await this.enqueueDelivery({ messageId: s.messageId, conversationId: s.conversationId });
+      await this.enqueueDelivery({ messageId: s.messageId, conversationId: s.conversationId, orgId: s.orgId });
     }
     return stuck.length;
   }

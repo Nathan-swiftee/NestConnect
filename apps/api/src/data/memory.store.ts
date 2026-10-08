@@ -51,6 +51,8 @@ import { env } from "../config/env";
 import { threadsTogether } from "./email-threading";
 import { canAdvanceStatus, canonicalLang, computeWaWindow, isWaChannel, messageTypeForKind, previewFromBody, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
 import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
+import { PLATFORM_ORG_ID } from "../tenancy/platform";
+import { boundOrgId } from "../tenancy/tenant-scope";
 import {
   Store,
   EMAIL_OPEN_GRACE_MS,
@@ -132,7 +134,14 @@ function identityField(kind: ContactIdentityKind): {
   return { field: "phone", matchAs: "phone" };
 }
 
-/** Zero-infrastructure store backed by in-memory fixtures. Default in dev. */
+/**
+ * Zero-infrastructure store backed by in-memory fixtures. Default in dev.
+ *
+ * Single-workspace by design: it holds one org's fixtures and does not confine
+ * reads to the bound tenant the way the Postgres store does. That is why a
+ * production deployment refuses to start on it (see assertProdSecrets) — tenant
+ * isolation is a property of PrismaStore, and is tested there.
+ */
 @Injectable()
 export class MemoryStore extends Store {
   private users: User[];
@@ -210,9 +219,19 @@ export class MemoryStore extends Store {
     return this.users.find((u) => u.id === id);
   }
 
+  async getUserForAuth(id: string): Promise<User | undefined> {
+    return this.users.find((u) => u.id === id);
+  }
+
   async findUserByEmail(email: string): Promise<User | undefined> {
     const e = email.trim().toLowerCase();
-    return this.users.find((u) => u.email.toLowerCase() === e);
+    const hits = this.users.filter((u) => u.email.toLowerCase() === e);
+    return hits.length === 1 ? hits[0] : undefined;
+  }
+
+  async emailInUse(email: string): Promise<boolean> {
+    const e = email.trim().toLowerCase();
+    return this.users.some((u) => u.email.toLowerCase() === e);
   }
 
   async getPasswordHash(userId: string): Promise<string | undefined> {
@@ -305,6 +324,14 @@ export class MemoryStore extends Store {
 
   async setAppSetting(orgId: string, key: string, value: string): Promise<void> {
     this.appSettings.set(`${orgId}::${key}`, value);
+  }
+
+  async getPlatformSetting(key: string): Promise<string | undefined> {
+    return this.appSettings.get(`${PLATFORM_ORG_ID}::${key}`);
+  }
+
+  async setPlatformSetting(key: string, value: string): Promise<void> {
+    this.appSettings.set(`${PLATFORM_ORG_ID}::${key}`, value);
   }
 
   /* ---- message templates ---- */
@@ -860,6 +887,18 @@ export class MemoryStore extends Store {
     for (const i of this.inboxes) if (i.type === target.type) i.isDefault = false;
     target.isDefault = on;
     return target;
+  }
+
+  async conversationOrg(conversationId: string): Promise<string | undefined> {
+    return this.conversations.find((c) => c.id === conversationId)?.orgId;
+  }
+
+  async inboxOrg(inboxId: string): Promise<string | undefined> {
+    return this.inboxes.find((i) => i.id === inboxId)?.orgId;
+  }
+
+  async listInboxesAcrossWorkspaces(type: ChannelType): Promise<Inbox[]> {
+    return (await this.listInboxes()).filter((i) => i.type === type);
   }
 
   async listInboxes(): Promise<Inbox[]> {
@@ -1572,16 +1611,16 @@ export class MemoryStore extends Store {
 
   async listStuckOutbound(
     olderThanMs: number,
-  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>> {
+  ): Promise<Array<{ messageId: string; conversationId: string; orgId: string; idempotencyKey?: string }>> {
     const cutoff = Date.now() - olderThanMs;
-    const out: Array<{ messageId: string; conversationId: string; idempotencyKey?: string }> = [];
+    const out: Array<{ messageId: string; conversationId: string; orgId: string; idempotencyKey?: string }> = [];
     for (const rec of this.conversations) {
       for (const m of rec.messages) {
         if (m.direction !== "out" || m.internal) continue;
         if (m.status !== "queued" && m.status !== "sending") continue;
         const meta = this.outboundMeta.get(m.id);
         if (meta?.lastAttemptAt == null || meta.lastAttemptAt <= cutoff) {
-          out.push({ messageId: m.id, conversationId: rec.id, idempotencyKey: meta?.idempotencyKey });
+          out.push({ messageId: m.id, conversationId: rec.id, orgId: rec.orgId, idempotencyKey: meta?.idempotencyKey });
         }
       }
     }
@@ -1638,7 +1677,20 @@ export class MemoryStore extends Store {
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
     const a = address.trim().toLowerCase();
     // Deterministic match on the inbox address only — no arbitrary fallback.
-    return this.inboxes.find((i) => i.type === "email" && i.handle.toLowerCase() === a);
+    const hits = this.inboxes.filter((i) => i.type === "email" && i.handle.toLowerCase() === a);
+    return hits.length === 1 ? hits[0] : undefined;
+  }
+
+  async channelKeyTaken(
+    key: { phoneNumberId?: string; emailAddress?: string },
+    exceptInboxId?: string,
+  ): Promise<boolean> {
+    const orgId = boundOrgId();
+    return this.inboxes.some((i) => {
+      if (i.orgId === orgId || i.id === exceptInboxId) return false;
+      if (key.phoneNumberId && this.inboxConfig.get(i.id)?.phoneNumberId === key.phoneNumberId) return true;
+      return !!key.emailAddress && i.type === "email" && i.handle.toLowerCase() === key.emailAddress.trim().toLowerCase();
+    });
   }
 
   async recordWebhookDiagnostic(input: {

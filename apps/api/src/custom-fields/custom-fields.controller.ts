@@ -24,7 +24,7 @@ import {
 } from "@ding/schemas";
 import { CurrentUserId } from "../auth/current-user.decorator";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
-import { ORG_ID } from "../data/fixtures";
+import { currentOrgId } from "../tenancy/tenant-scope";
 import { Store } from "../data/store";
 
 /**
@@ -44,7 +44,7 @@ export class CustomFieldsController {
    *  in order to offer bringing it back. */
   @Get()
   list(): Promise<CustomField[]> {
-    return this.store.listCustomFields(ORG_ID);
+    return this.store.listCustomFields(currentOrgId());
   }
 
   @Post()
@@ -58,11 +58,11 @@ export class CustomFieldsController {
     if (body.type === "select" && !body.options.length) {
       throw new BadRequestException("A choice field needs at least one option");
     }
-    const existing = await this.store.listCustomFields(ORG_ID);
+    const existing = await this.store.listCustomFields(currentOrgId());
     if (existing.some((f) => f.key === body.key)) {
       throw new BadRequestException(`A field with the key “${body.key}” already exists`);
     }
-    return this.store.createCustomField(ORG_ID, body);
+    return this.store.createCustomField(currentOrgId(), body);
   }
 
   @Patch(":id")
@@ -105,7 +105,7 @@ export class CustomFieldsController {
     @Param("entityId") entityId: string,
   ): Promise<CustomFieldValue[]> {
     const kind = this.entity(entity);
-    const map = await this.store.customFieldValues(ORG_ID, kind, [entityId]);
+    const map = await this.store.customFieldValues(currentOrgId(), kind, [entityId]);
     return map.get(entityId) ?? [];
   }
 
@@ -124,7 +124,7 @@ export class CustomFieldsController {
     @Param("entityId") entityId: string,
     @Body(new ZodValidationPipe(setCustomFieldValuesInputSchema)) body: SetCustomFieldValuesInput,
   ): Promise<{ values: CustomFieldValue[]; unknown: string[] }> {
-    return this.store.setCustomFieldValues(ORG_ID, this.entity(entity), entityId, body.values);
+    return this.store.setCustomFieldValues(currentOrgId(), this.entity(entity), entityId, body.values);
   }
 
   /** A path segment is not a validated body, so it is checked here. */

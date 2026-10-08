@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { MessageStatus } from "@ding/schemas";
 import { Store } from "../data/store";
+import { boundOrgId, runInTenant } from "../tenancy/tenant-scope";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { redactSecrets } from "../crypto/redact";
 import { ChannelDispatcher } from "./channel-dispatcher";
@@ -10,6 +11,9 @@ import type { OutboundTemplate } from "./channel-provider";
 export interface DeliveryJob {
   messageId: string;
   conversationId: string;
+  /** The workspace the message belongs to; the attempt runs inside it. Absent
+   *  only on a job queued before jobs carried it — then read off the conversation. */
+  orgId?: string;
 }
 
 /** What one delivery attempt did, so the queue can decide whether to retry. */
@@ -44,6 +48,13 @@ export class OutboundDeliveryService {
    *  sending stage (or failed/internal/missing) is skipped, so re-delivering the
    *  same job never double-sends. */
   async deliver(job: DeliveryJob): Promise<DeliverResult> {
+    // A queue worker belongs to no request, so the attempt states its workspace.
+    const orgId = job.orgId ?? (await this.store.conversationOrg(job.conversationId));
+    if (!orgId) return { state: "skipped", reason: "conversation not found" };
+    return runInTenant(orgId, () => this.deliverInWorkspace(job));
+  }
+
+  private async deliverInWorkspace(job: DeliveryJob): Promise<DeliverResult> {
     const ref = await this.store.getOutboundMessage(job.messageId);
     if (!ref) return { state: "skipped", reason: "message not found" };
     if (ref.internal) return { state: "skipped", reason: "internal note" };
@@ -118,17 +129,28 @@ export class OutboundDeliveryService {
 
   /** Apply a delivery-ladder status transition (used by the mock delivered/read
    *  progression and by any deferred status job). Ladder-guarded in the store. */
-  async applyStatus(channelMsgId: string, status: MessageStatus): Promise<void> {
-    const updated = await this.store.updateMessageStatusByChannelId(channelMsgId, status);
-    if (updated) this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+  async applyStatus(channelMsgId: string, status: MessageStatus, orgId?: string): Promise<void> {
+    const workspace = orgId ?? boundOrgId();
+    if (!workspace) {
+      this.logger.warn(`Status ${status} for ${channelMsgId} has no workspace; skipped`);
+      return;
+    }
+    await runInTenant(workspace, async () => {
+      const updated = await this.store.updateMessageStatusByChannelId(channelMsgId, status);
+      if (updated) this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+    });
   }
 
   /** Give up on a message after the queue has exhausted its retries. */
-  async markExhausted(messageId: string, reason: string): Promise<void> {
-    const change = await this.store.recordSendFailure(messageId, { permanent: true, reason });
-    if (change) {
-      this.logger.warn(`Delivery permanently failed for ${messageId}: ${reason}`);
-      this.realtime.emitMessageUpdated(change.conversationId, change.message);
-    }
+  async markExhausted(job: DeliveryJob, reason: string): Promise<void> {
+    const orgId = job.orgId ?? (await this.store.conversationOrg(job.conversationId));
+    if (!orgId) return;
+    await runInTenant(orgId, async () => {
+      const change = await this.store.recordSendFailure(job.messageId, { permanent: true, reason });
+      if (change) {
+        this.logger.warn(`Delivery permanently failed for ${job.messageId}: ${reason}`);
+        this.realtime.emitMessageUpdated(change.conversationId, change.message);
+      }
+    });
   }
 }

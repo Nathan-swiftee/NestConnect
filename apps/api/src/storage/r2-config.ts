@@ -1,5 +1,4 @@
 import { env } from "../config/env";
-import { ORG_ID } from "../data/fixtures";
 import type { Store } from "../data/store";
 
 /* AppSetting keys for the org's Cloudflare R2 credentials (set in Settings › Setup). */
@@ -17,8 +16,9 @@ export interface R2Config {
 }
 
 /** Read one setting, falling back to its env default; trimmed, "" when unset. */
-async function pick(store: Store, orgId: string, key: string, fallback: string): Promise<string> {
-  const saved = (await store.getAppSetting(orgId, key))?.trim();
+async function pick(store: Store, key: string, fallback: string): Promise<string> {
+  // A platform setting: the same for every workspace (see tenancy/platform.ts).
+  const saved = (await store.getPlatformSetting(key))?.trim();
   return saved || fallback;
 }
 
@@ -28,12 +28,12 @@ async function pick(store: Store, orgId: string, key: string, fallback: string):
  * redeploy. Returns null unless all four values are present — the caller then
  * falls back to local-disk storage.
  */
-export async function resolveR2Config(store: Store, orgId: string = ORG_ID): Promise<R2Config | null> {
+export async function resolveR2Config(store: Store): Promise<R2Config | null> {
   const [accountId, accessKeyId, secretAccessKey, bucket] = await Promise.all([
-    pick(store, orgId, R2_ACCOUNT_ID_KEY, env.r2.accountId),
-    pick(store, orgId, R2_ACCESS_KEY_ID_KEY, env.r2.accessKeyId),
-    pick(store, orgId, R2_SECRET_ACCESS_KEY_KEY, env.r2.secretAccessKey),
-    pick(store, orgId, R2_BUCKET_KEY, env.r2.bucket),
+    pick(store, R2_ACCOUNT_ID_KEY, env.r2.accountId),
+    pick(store, R2_ACCESS_KEY_ID_KEY, env.r2.accessKeyId),
+    pick(store, R2_SECRET_ACCESS_KEY_KEY, env.r2.secretAccessKey),
+    pick(store, R2_BUCKET_KEY, env.r2.bucket),
   ]);
   if (accountId && accessKeyId && secretAccessKey && bucket) {
     return { accountId, accessKeyId, secretAccessKey, bucket };
@@ -44,12 +44,11 @@ export async function resolveR2Config(store: Store, orgId: string = ORG_ID): Pro
 /** The non-secret parts of the current config, for echoing back to the UI. */
 export async function r2PublicSettings(
   store: Store,
-  orgId: string = ORG_ID,
 ): Promise<{ configured: boolean; accountId: string; bucket: string }> {
   const [config, accountId, bucket] = await Promise.all([
-    resolveR2Config(store, orgId),
-    pick(store, orgId, R2_ACCOUNT_ID_KEY, env.r2.accountId),
-    pick(store, orgId, R2_BUCKET_KEY, env.r2.bucket),
+    resolveR2Config(store),
+    pick(store, R2_ACCOUNT_ID_KEY, env.r2.accountId),
+    pick(store, R2_BUCKET_KEY, env.r2.bucket),
   ]);
   return { configured: config !== null, accountId, bucket };
 }

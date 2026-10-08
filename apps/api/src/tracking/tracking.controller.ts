@@ -57,7 +57,9 @@ export class TrackingController {
         // The store also suppresses opens inside the send-time grace window.
         const change = await this.store.recordEmailOpen(clean);
         if (change) {
-          this.realtime.emitMessageUpdated(change.conversationId, change.message);
+          // The pixel carries only its token; the store says whose message it
+          // is, and the update goes to that workspace's room alone.
+          if (change.orgId) this.realtime.emitMessageUpdated(change.conversationId, change.message, change.orgId);
           this.logger.debug(`Open recorded (${clean.slice(0, 8)}…) ua="${ua.slice(0, 80)}"`);
         }
       } catch {
