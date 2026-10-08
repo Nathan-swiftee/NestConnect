@@ -1016,8 +1016,9 @@ const FIELD_TYPES: Array<{ value: CustomFieldType; label: string; hint: string }
  * Where a workspace defines the facts we did not think of.
  *
  * The distinction the form asks for first is which record a field hangs off,
- * because it is the one that cannot be changed afterwards and the one people
- * get wrong. A fact about the *person* should be on the contact — their account
+ * because it is the one people get wrong — and changing it afterwards clears
+ * whatever was already recorded, which can't follow the field to the other
+ * kind of record. A fact about the *person* should be on the contact — their account
  * number belongs to them and should surface every chat they have ever had. A
  * fact about *this conversation* belongs on the thread: the order a chat is
  * about is that chat's, and putting it on the contact would mean last week's
@@ -1037,6 +1038,7 @@ function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
   const [draftInboxIds, setDraftInboxIds] = useState<string[]>([]);
+  const [draftEntity, setDraftEntity] = useState<CustomFieldEntity>("conversation");
 
   const list = fields.data ?? [];
   const live = list.filter((f) => !f.archived);
@@ -1089,15 +1091,48 @@ function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
     setEditingId(f.id);
     setDraftLabel(f.label);
     setDraftInboxIds(f.inboxIds);
+    setDraftEntity(f.entity);
   };
-  const saveEdit = (f: CustomField) => {
+  const saveEdit = (f: CustomField, discardValues = false) => {
     const next = draftLabel.trim();
     if (!next) return;
+    const moving = draftEntity !== f.entity;
     update.mutate(
-      { id: f.id, input: { label: next, inboxIds: draftInboxIds } },
       {
-        onSuccess: () => { setEditingId(null); onToast("Field updated"); },
-        onError: (err) => onToast(err instanceof Error ? err.message : "Couldn’t update the field"),
+        id: f.id,
+        input: {
+          label: next,
+          inboxIds: draftInboxIds,
+          ...(moving ? { entity: draftEntity, ...(discardValues ? { discardValues: true } : {}) } : {}),
+        },
+      },
+      {
+        onSuccess: () => {
+          setEditingId(null);
+          onToast(
+            moving
+              ? `“${next}” now belongs to ${draftEntity === "conversation" ? "the conversation" : "the customer"}`
+              : "Field updated",
+          );
+        },
+        onError: (err) => {
+          // Values already recorded hang off records of the old kind and can't
+          // follow the field, so the server stops and says how many. Asked
+          // once, spelled out, then sent again with the go-ahead.
+          if (moving && !discardValues && (err as { status?: number }).status === 409) {
+            const from = f.entity === "conversation" ? "conversations" : "customers";
+            if (
+              window.confirm(
+                `${err.message}.\n\nThey were recorded on ${from}, and can't move with the field. ` +
+                  `Change “${next}” anyway and clear them?`,
+              )
+            ) {
+              saveEdit(f, true);
+            }
+            return;
+          }
+          onToast(err instanceof Error ? err.message : "Couldn’t update the field");
+        },
       },
     );
   };
@@ -1168,7 +1203,21 @@ function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
           <code className="cfkey">{f.key}</code>
         </span>
         <span className="dcell">
-          <span className="tpl-cat">{f.entity === "conversation" ? "Conversation" : "Customer"}</span>
+          {editing ? (
+            // Changeable, because picking the wrong one is easy and its symptom
+            // is quiet: an app's conversation field set up on the customer is
+            // dropped by the chat without a word on this screen.
+            <select
+              value={draftEntity}
+              onChange={(e) => setDraftEntity(e.target.value as CustomFieldEntity)}
+              aria-label="Belongs to"
+            >
+              <option value="conversation">Conversation</option>
+              <option value="contact">Customer</option>
+            </select>
+          ) : (
+            <span className="tpl-cat">{f.entity === "conversation" ? "Conversation" : "Customer"}</span>
+          )}
         </span>
         <span className="dcell dcell--muted">
           {FIELD_TYPES.find((t) => t.value === f.type)?.label ?? f.type}
@@ -1223,7 +1272,7 @@ function CustomFieldsPane({ onToast }: { onToast: (msg: string) => void }) {
         <span className="dcell dacts">
           {editing ? (
             <>
-              <button className="btn-primary" onClick={() => saveEdit(f)}>Save</button>
+              <button className="btn-primary" disabled={update.isPending} onClick={() => saveEdit(f)}>Save</button>
               <button className="btn-ghost" onClick={() => setEditingId(null)}>Cancel</button>
             </>
           ) : (

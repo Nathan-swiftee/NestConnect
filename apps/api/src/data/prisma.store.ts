@@ -2483,8 +2483,11 @@ export class PrismaStore extends Store {
     id: string,
     input: UpdateCustomFieldInput,
   ): Promise<CustomField | undefined> {
+    // Never the entity: that goes through changeCustomFieldEntity, which
+    // clears the values a move would otherwise strand.
+    const { entity: _entity, discardValues: _discard, ...data } = input;
     const row = await this.prisma.customField
-      .update({ where: { id }, data: input })
+      .update({ where: { id }, data })
       .catch(() => null);
     return row ? mapCustomField(row) : undefined;
   }
@@ -2493,6 +2496,20 @@ export class PrismaStore extends Store {
     // The values go with it, by the cascade on the foreign key. That is the
     // point of the confirmation on the screen that calls this.
     await this.prisma.customField.delete({ where: { id } }).catch(() => undefined);
+  }
+
+  async countCustomFieldValues(id: string): Promise<number> {
+    return this.prisma.customFieldValue.count({ where: { fieldId: id } });
+  }
+
+  async changeCustomFieldEntity(id: string, entity: CustomFieldEntity): Promise<CustomField | undefined> {
+    const row = await this.prisma
+      .$transaction(async (tx) => {
+        await tx.customFieldValue.deleteMany({ where: { fieldId: id } });
+        return tx.customField.update({ where: { id }, data: { entity } });
+      })
+      .catch(() => null);
+    return row ? mapCustomField(row) : undefined;
   }
 
   async customFieldValues(

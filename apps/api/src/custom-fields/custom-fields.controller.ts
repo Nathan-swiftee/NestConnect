@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   ForbiddenException,
@@ -13,6 +14,7 @@ import {
 import {
   createCustomFieldInputSchema,
   customFieldEntitySchema,
+  nestchatAppSchema,
   setCustomFieldValuesInputSchema,
   updateCustomFieldInputSchema,
   type CreateCustomFieldInput,
@@ -75,9 +77,58 @@ export class CustomFieldsController {
     if (body.type === "select" && body.options && !body.options.length) {
       throw new BadRequestException("A choice field needs at least one option");
     }
-    const field = await this.store.updateCustomField(id, body);
+    const { entity, discardValues, ...changes } = body;
+    const current = (await this.store.listCustomFields(currentOrgId())).find((f) => f.id === id);
+    if (!current) throw new NotFoundException("Field not found");
+    if (entity && entity !== current.entity) await this.moveField(current, entity, discardValues === true);
+    const field = await this.store.updateCustomField(id, changes);
     if (!field) throw new NotFoundException("Field not found");
     return field;
+  }
+
+  /**
+   * Contact ↔ conversation. Refused while an app files its chats by the field
+   * (threads need a conversation field), and — when values are already
+   * recorded — until the caller agrees to clear them, because they hang off
+   * records of the old kind and cannot follow. The 409 carries the count so
+   * the screen can say exactly what would go.
+   */
+  private async moveField(field: CustomField, entity: CustomFieldEntity, discardValues: boolean): Promise<void> {
+    if (field.entity === "conversation") {
+      const threading = await this.channelsThreadingBy(field.key);
+      if (threading.length) {
+        throw new BadRequestException(
+          `${threading.join(", ")} files app chats into threads by this field. Pick another thread field there first.`,
+        );
+      }
+    }
+    const recorded = await this.store.countCustomFieldValues(field.id);
+    if (recorded && !discardValues) {
+      throw new ConflictException({
+        message: `${recorded} recorded value${recorded === 1 ? "" : "s"} would be cleared`,
+        recorded,
+      });
+    }
+    if (!(await this.store.changeCustomFieldEntity(field.id, entity))) {
+      throw new NotFoundException("Field not found");
+    }
+  }
+
+  /** The chat channels whose app settings thread conversations by `key`. */
+  private async channelsThreadingBy(key: string): Promise<string[]> {
+    const names: string[] = [];
+    for (const inbox of await this.store.listInboxes()) {
+      if (inbox.type !== "nestchat") continue;
+      const raw = (await this.store.getInboxConfig(inbox.id))?.app;
+      if (!raw) continue;
+      try {
+        const app = nestchatAppSchema.safeParse(JSON.parse(raw));
+        if (app.success && app.data.threadFieldKey === key) names.push(inbox.name);
+      } catch {
+        // An unreadable blob threads by nothing — the chat falls back to defaults.
+      }
+    }
+    return names;
   }
 
   /**
