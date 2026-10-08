@@ -429,11 +429,12 @@ nothing sent has been lost, offers a way back to the inbox, and reports the
 crash.
 
 *EAS Submit.* The production submit profile is filled in for TestFlight and
-Play internal testing, reading every account-specific value from the
-environment so nothing identifying is committed: `EXPO_APPLE_ID`,
-`EXPO_ASC_APP_ID`, `EXPO_APPLE_TEAM_ID`, and
-`EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH`. Android goes to the `internal` track as
-a `draft` release, so a submission is never one command away from being live.
+Play internal testing. The store credentials live on the Expo project rather
+than in `eas.json` — an App Store Connect API key for iOS, a Google service
+account key for Play — because `--auto-submit` reads `eas.json` on EAS's
+servers, where a `$VARIABLE` from the runner arrives as literal text. See
+`docs/10-release.md` §3.5. Android goes to the `internal` track as a `draft`
+release, so a submission is never one command away from being live.
 
 *Device E2E.* `apps/mobile/.maestro/smoke.yaml` — sign in, inbox loads with
 conversations (asserted against the empty *and* error states, either of which
