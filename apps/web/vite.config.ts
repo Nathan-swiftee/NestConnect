@@ -31,16 +31,21 @@ export default defineConfig({
   build: {
     rollupOptions: {
       /**
-       * Two apps out of one package.
+       * Three pages out of one package.
        *
        * `index.html` is the inbox. `widget.html` is the NestChat chat widget,
        * which loads in an iframe on a customer's own website — it must not pull
        * the agent console in with it, so it gets its own entry and its own
        * dependency graph rather than a route inside the SPA.
+       *
+       * `privacy.html` is the public privacy policy, served at /privacy (the
+       * API resolves extensionless paths to `.html` files). Same reasoning: a
+       * public page must not load the agent console or sit behind its login.
        */
       input: {
         main: resolve(__dirname, "index.html"),
         widget: resolve(__dirname, "widget.html"),
+        privacy: resolve(__dirname, "privacy.html"),
       },
     },
   },
