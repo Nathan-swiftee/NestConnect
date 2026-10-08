@@ -222,7 +222,6 @@ Set on the EAS project (`eas secret:create`), not in the repo:
 |---|---|
 | `EXPO_PUBLIC_SENTRY_DSN` | Turns crash reporting on. Absent → Sentry never initialises, which is the intended default. |
 | `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` | Let the Expo plugin upload source maps. Without them a native stack trace arrives minified and unreadable. |
-| `EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH` | Read by `eas.json`'s submit profile, for Play. |
 
 The Apple submit credentials are **repository** secrets rather than EAS ones,
 because the workflow passes them into the runner's environment where eas-cli
@@ -358,6 +357,22 @@ The key itself is uploaded once, through the Expo dashboard, under
 **Account settings → Android & iOS credentials → App Store Connect API Keys**.
 It needs the **Admin** role: a lesser role can upload builds but cannot create
 the signing certificate.
+
+**Android works the same way.** `eas.json` names no key for Play: a
+`serviceAccountKeyPath` of `$EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH` used to sit
+there and would have failed exactly as `$EXPO_ASC_APP_ID` did — and the
+workflow never wrote a key file for it to point at anyway. With no path, EAS
+uses the Google service account key held on the project. Upload it once, on
+expo.dev under **Project → Credentials → Android → Google Service Account Key
+for Play Store submissions**. The account behind it needs the *Google Play
+Android Developer API* enabled in Google Cloud, and to be invited in the Play
+Console (Users & permissions) with permission to release to testing tracks.
+
+**Before the first Android submit, once.** Google will not accept an app's
+first build through its API. Build it (`production`, submit unticked),
+download the `.aab` from the build page, and upload it by hand in the Play
+Console under **Testing → Internal testing → Create release**. Every build
+after that can be submitted from the workflow.
 
 **Before the first iOS build, once.** EAS needs an Apple distribution
 certificate and provisioning profile, and generating them means signing in to

@@ -36,7 +36,6 @@
         "ascAppId": "6812062945"
       },
       "android": {
-        "serviceAccountKeyPath": "$EXPO_GOOGLE_SERVICE_ACCOUNT_KEY_PATH",
         "track": "internal",
         "releaseStatus": "draft"
       }
