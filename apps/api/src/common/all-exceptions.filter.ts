@@ -27,10 +27,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
 
-    const status =
-      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
-    const message =
-      exception instanceof HttpException
+    // A request that reached for another workspace's row — refused by the
+    // tenant-scoped client, or a write whose target was filtered out of sight —
+    // reads exactly like a row that doesn't exist. Which of the two it was is
+    // nobody's business but ours, so both are a plain 404.
+    const outOfReach = isOutOfReach(exception);
+    const status = outOfReach
+      ? HttpStatus.NOT_FOUND
+      : exception instanceof HttpException
+        ? exception.getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+    const message = outOfReach
+      ? "Not found"
+      : exception instanceof HttpException
         ? exception.message
         : "Internal server error"; // never leak internals to the client
 
@@ -45,8 +54,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
     if (res.headersSent) return;
     res.status(status).json({
       statusCode: status,
-      error: exception instanceof HttpException ? exception.name : "InternalServerError",
+      error: outOfReach ? "NotFoundException" : exception instanceof HttpException ? exception.name : "InternalServerError",
       message,
     });
   }
+}
+
+/** A cross-workspace refusal, or Prisma's "record to update/delete not found". */
+function isOutOfReach(exception: unknown): boolean {
+  if (!exception || typeof exception !== "object") return false;
+  const e = exception as { name?: string; code?: string };
+  return e.name === "TenantViolationError" || e.code === "P2025";
 }

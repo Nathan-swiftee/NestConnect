@@ -18,7 +18,7 @@ import type { Request, Response } from "express";
 import type { Attachment, AttachmentKind } from "@ding/schemas";
 import { attachmentKindSchema } from "@ding/schemas";
 import { env } from "../config/env";
-import { ORG_ID } from "../data/fixtures";
+import { currentOrgId } from "../tenancy/tenant-scope";
 import { Store } from "../data/store";
 import { CurrentUserId } from "../auth/current-user.decorator";
 import { MediaService } from "./media.service";
@@ -78,7 +78,7 @@ export class MediaController {
     input.width = toInt(width);
     input.height = toInt(height);
     input.waveform = parseWaveform(waveform);
-    return this.store.createUploadAttachment(ORG_ID, input);
+    return this.store.createUploadAttachment(currentOrgId(), input);
   }
 
   @Get(":id")

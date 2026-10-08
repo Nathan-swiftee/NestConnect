@@ -23,6 +23,7 @@
 import type { Conversation } from "../packages/schemas/src/index";
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 import {
   CustomerPushService,
   fieldData,
@@ -37,6 +38,10 @@ import {
   type FcmResult,
 } from "../apps/api/src/channels/nestchat/fcm";
 import { VisitorBus } from "../apps/api/src/channels/nestchat/visitor-bus";
+import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
+
+/** An ordinary (not demo) workspace — see tenancy/sandbox.ts. */
+const notSandbox = { isSandbox: async () => false, current: async () => false } as unknown as SandboxPolicy;
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -116,7 +121,7 @@ async function main(): Promise<void> {
 
   const store = new MemoryStore();
   const bus = new VisitorBus();
-  const push = new TestPush(store, bus);
+  const push = new TestPush(store, bus, notSandbox);
 
   const inbox = await store.createInbox({
     orgId: ORG_ID, type: "nestchat", name: "Ding app", handle: "ding",
@@ -331,7 +336,7 @@ async function main(): Promise<void> {
     error: () => {},
     verbose: () => {},
   };
-  const logged = new TestPush(store, bus);
+  const logged = new TestPush(store, bus, notSandbox);
   (logged as unknown as { logger: unknown }).logger = spy;
   const settle = () => new Promise((r) => setTimeout(r, 0));
 
@@ -528,4 +533,5 @@ async function main(): Promise<void> {
   process.exit(failed ? 1 : 0);
 }
 
-void main();
+// As a request would: inside the workspace under test (see tenancy/tenant-scope.ts).
+void runInTenant(ORG_ID, main);

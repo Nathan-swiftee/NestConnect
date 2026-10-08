@@ -15,6 +15,8 @@ import { env } from "../../config/env";
 import { Public } from "../../auth/public.decorator";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { Store } from "../../data/store";
+import { SandboxPolicy } from "../../tenancy/sandbox";
+import { bindTenant } from "../../tenancy/tenant-scope";
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
 import { GmailSyncService } from "./gmail-sync.service";
 import { googleRedirectUri } from "./redirect-uri";
@@ -40,6 +42,7 @@ export class GoogleController {
     private readonly google: GoogleOAuthService,
     private readonly store: Store,
     private readonly gmailSync: GmailSyncService,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /**
@@ -57,6 +60,10 @@ export class GoogleController {
     const user = await this.store.getUser(userId);
     if (!user) {
       this.sendResult(res, { source: "ding-oauth", ok: false, error: "Not signed in" });
+      return;
+    }
+    if (await this.sandbox.current()) {
+      this.sendResult(res, { source: "ding-oauth", ok: false, error: "Connecting channels isn't available in the demo workspace" });
       return;
     }
     if (!(await this.google.configured(user.orgId))) {
@@ -89,6 +96,10 @@ export class GoogleController {
       if (!state) throw new Error("Missing state");
       const { userId, orgId } = this.google.verifyState(state);
       void userId; // bound for CSRF/user verification; teams drive routing below
+      // The redirect carries no session; the signed state says whose workspace
+      // started the flow, and the rest of it acts there.
+      bindTenant(orgId);
+      await this.sandbox.assertLive("Connecting a channel");
 
       const redirectUri = googleRedirectUri(req);
       const { accessToken, refreshToken, expiresIn } = await this.google.exchangeCode(
@@ -97,6 +108,11 @@ export class GoogleController {
         redirectUri,
       );
       const email = await this.google.getEmail(accessToken);
+      // One mailbox, one workspace: mail to it must never be able to match
+      // inboxes in two of them.
+      if (await this.store.channelKeyTaken({ emailAddress: email })) {
+        throw new Error(`${email} is already connected to another workspace`);
+      }
 
       const tokenExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
       const channelConfig: Record<string, string> = {

@@ -26,6 +26,12 @@ import type { SessionService } from "../apps/api/src/auth/session.service";
 import type { TwoFactorService } from "../apps/api/src/auth/two-factor.service";
 import type { Store } from "../apps/api/src/data/store";
 import type { Mailer } from "../apps/api/src/mail/mailer.service";
+import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
+import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
+
+/** An ordinary (not demo) workspace — see tenancy/sandbox.ts. */
+const notSandbox = { isSandbox: async () => false, current: async () => false, assertLive: async () => {}, twoFactorRequired: async () => true } as unknown as SandboxPolicy;
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -38,8 +44,8 @@ const GOOD_CODE = "123456";
 
 async function main(): Promise<void> {
   const users = {
-    marta: { id: "user_marta", email: "marta@example.com", twoFactorEnabled: true, twoFactorMethod: "totp" },
-    sam: { id: "user_sam", email: "sam@example.com", twoFactorEnabled: true, twoFactorMethod: "totp" },
+    marta: { id: "user_marta", orgId: ORG_ID, email: "marta@example.com", twoFactorEnabled: true, twoFactorMethod: "totp" },
+    sam: { id: "user_sam", orgId: ORG_ID, email: "sam@example.com", twoFactorEnabled: true, twoFactorMethod: "totp" },
   };
   const hashes: Record<string, string> = {
     user_marta: await bcrypt.hash("marta-password", 4),
@@ -49,6 +55,7 @@ async function main(): Promise<void> {
 
   const store = {
     findUserByEmail: async (email: string) => Object.values(users).find((u) => u.email === email),
+    getUserForAuth: async (id: string) => Object.values(users).find((u) => u.id === id),
     getPasswordHash: async (id: string) => hashes[id],
     getTwoFactor: async (id: string) => ({
       enabled: true,
@@ -66,7 +73,7 @@ async function main(): Promise<void> {
   } as unknown as TwoFactorService;
 
   const auth = new AuthService(store);
-  const controller = new AuthController(auth, sessions, twoFactor, store, {} as Mailer);
+  const controller = new AuthController(auth, sessions, twoFactor, store, {} as Mailer, notSandbox);
 
   /** A browser: a cookie jar that carries across calls. */
   function browser() {
@@ -184,4 +191,5 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-void main();
+// As a request would: inside the workspace under test (see tenancy/tenant-scope.ts).
+void runInTenant(ORG_ID, main);

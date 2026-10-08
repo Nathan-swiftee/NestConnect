@@ -32,8 +32,13 @@
  */
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
+import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 import { TemplatesService } from "../apps/api/src/templates/templates.service";
 import { templatesForWaba } from "../packages/schemas/src/index";
+import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
+
+/** An ordinary (not demo) workspace — see tenancy/sandbox.ts. */
+const notSandbox = { isSandbox: async () => false, current: async () => false, assertLive: async () => {}, twoFactorRequired: async () => true } as unknown as SandboxPolicy;
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -149,7 +154,7 @@ async function main(): Promise<void> {
   // has closed. One workspace-wide default is guaranteed to be wrong for every
   // account but one — and it would be chosen automatically, at the moment an
   // agent is trying to get back to somebody.
-  const svc = new TemplatesService(store);
+  const svc = new TemplatesService(store, notSandbox);
   const listed = await svc.list();
   const aTpl = listed.find((t) => t.wabaId === WABA_A)!;
   const bTpl = listed.find((t) => t.wabaId === WABA_B)!;
@@ -200,4 +205,5 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-void main();
+// As a request would: inside the workspace under test (see tenancy/tenant-scope.ts).
+void runInTenant(ORG_ID, main);

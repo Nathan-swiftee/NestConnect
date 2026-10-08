@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { ChannelType, PolishDraftResult } from "@ding/schemas";
 import { Store } from "../data/store";
+import { SandboxPolicy } from "../tenancy/sandbox";
 import { resolveAnthropicConfig } from "./anthropic-config";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -49,16 +50,27 @@ export class PolishUnavailableError extends Error {
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly sandbox: SandboxPolicy,
+  ) {}
 
-  /** True when the org has an API key — drives the composer showing the button. */
+  /** True when the org has an API key — drives the composer showing the button.
+   *  Never in a demo workspace: polishing sends the draft to Anthropic. */
   async configured(orgId: string): Promise<boolean> {
-    return (await resolveAnthropicConfig(this.store, orgId)) !== null;
+    if (await this.sandbox.isSandbox(orgId)) return false;
+    return (await resolveAnthropicConfig(this.store)) !== null;
+  }
+
+  /** The key, unless this is a demo workspace — whose text never leaves. */
+  private async liveConfig(orgId: string) {
+    if (await this.sandbox.isSandbox(orgId)) return null;
+    return resolveAnthropicConfig(this.store);
   }
 
   /** The model a polish would actually use, for the Settings test result. */
   async model(orgId: string): Promise<string> {
-    return (await resolveAnthropicConfig(this.store, orgId))?.model ?? "";
+    return (await resolveAnthropicConfig(this.store))?.model ?? "";
   }
 
   /**
@@ -68,7 +80,7 @@ export class AiService {
    * key is the only authority on what it may call.
    */
   async listModels(orgId: string): Promise<{ id: string; name: string }[]> {
-    const config = await resolveAnthropicConfig(this.store, orgId);
+    const config = await this.liveConfig(orgId);
     if (!config) {
       throw new PolishUnavailableError("Add a Claude API key in Settings › Integrations › AI", "not_configured");
     }
@@ -103,7 +115,7 @@ export class AiService {
     text: string,
     opts: { channel?: ChannelType; internal?: boolean; history?: PolishHistoryTurn[] } = {},
   ): Promise<PolishDraftResult> {
-    const config = await resolveAnthropicConfig(this.store, orgId);
+    const config = await this.liveConfig(orgId);
     if (!config) {
       throw new PolishUnavailableError("Add a Claude API key in Settings › Integrations › AI", "not_configured");
     }

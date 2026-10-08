@@ -213,6 +213,9 @@ export interface OutboundMessageRef {
 export interface MessageStatusChange {
   conversationId: string;
   message: Message;
+  /** The workspace the message belongs to. Set by lookups that cross tenants
+   *  (a tracking pixel), so the caller can act in it. */
+  orgId?: string;
 }
 
 /** A recorded inbound-webhook problem (unmapped account, bad signature, …). */
@@ -290,8 +293,16 @@ export abstract class Store {
   /** Cheap liveness probe of the persistence layer (SELECT 1 / no-op). */
   abstract healthCheck(): Promise<boolean>;
 
+  /** A user in the bound workspace. */
   abstract getUser(id: string): Promise<User | undefined>;
+  /** The user a verified session token names, in whichever workspace they are —
+   *  how a request learns its tenant. Cross-tenant; for authentication only. */
+  abstract getUserForAuth(id: string): Promise<User | undefined>;
+  /** The one account an email address signs in as, on the whole platform.
+   *  Nothing when no account — or more than one — has it. Cross-tenant. */
   abstract findUserByEmail(email: string): Promise<User | undefined>;
+  /** Whether any workspace has an account with this address. Cross-tenant. */
+  abstract emailInUse(email: string): Promise<boolean>;
   abstract getPasswordHash(userId: string): Promise<string | undefined>;
   abstract teamsForUser(userId: string): Promise<string[]>;
   abstract me(userId: string): Promise<{ user?: User; teams: Team[] }>;
@@ -310,6 +321,18 @@ export abstract class Store {
    *  twice running, which a cross-channel reply depends on to pick the number
    *  it sends from. */
   abstract listInboxes(): Promise<Inbox[]>;
+  /** Every workspace's inboxes of one type, for a background job that covers
+   *  them all (Gmail polling). Cross-tenant: each inbox must then be handled
+   *  inside its own workspace (`runInTenant(inbox.orgId, …)`). */
+  abstract listInboxesAcrossWorkspaces(type: ChannelType): Promise<Inbox[]>;
+  /** The workspace an inbox belongs to. Cross-tenant: how a signed chat-widget
+   *  token, which names its channel, learns which workspace it is acting in. */
+  abstract inboxOrg(inboxId: string): Promise<string | undefined>;
+  /** Whether a workspace is a demo sandbox (see tenancy/sandbox.ts). */
+  abstract isSandboxOrg(orgId: string): Promise<boolean>;
+  /** The workspace a conversation belongs to. Cross-tenant: for a queued job
+   *  recorded before jobs carried their workspace. */
+  abstract conversationOrg(conversationId: string): Promise<string | undefined>;
   abstract createInbox(params: {
     orgId: string;
     type: ChannelType;
@@ -341,6 +364,10 @@ export abstract class Store {
   abstract getAppSetting(orgId: string, key: string): Promise<string | undefined>;
   /** Create or update an org-scoped app setting. */
   abstract setAppSetting(orgId: string, key: string, value: string): Promise<void>;
+  /** A platform setting (storage, system email, push, app credentials) — kept
+   *  with the platform's own workspace, read the same from any workspace. */
+  abstract getPlatformSetting(key: string): Promise<string | undefined>;
+  abstract setPlatformSetting(key: string, value: string): Promise<void>;
 
   /* ---- WhatsApp message templates (org-scoped) ---- */
   abstract listTemplates(orgId: string): Promise<Template[]>;
@@ -769,7 +796,7 @@ export abstract class Store {
    *  idempotency key rides along so the re-enqueue reuses the same job identity. */
   abstract listStuckOutbound(
     olderThanMs: number,
-  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>>;
+  ): Promise<Array<{ messageId: string; conversationId: string; orgId: string; idempotencyKey?: string }>>;
 
   /** Reset a failed message to queued for a manual retry (new idempotency key,
    *  failure fields cleared). Returns undefined if it isn't in a retryable state. */
@@ -890,6 +917,13 @@ export abstract class Store {
 
   abstract getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined>;
   abstract getInboxByEmailAddress(address: string): Promise<Inbox | undefined>;
+  /** Whether a workspace other than the bound one already receives on this
+   *  phone number id or email address. Checked before a channel is connected,
+   *  so an inbound event can never match inboxes in two workspaces. */
+  abstract channelKeyTaken(
+    key: { phoneNumberId?: string; emailAddress?: string },
+    exceptInboxId?: string,
+  ): Promise<boolean>;
   /** The NestChat channel a widget key belongs to. The key is public (it sits in
    *  the embed snippet on the business's website), so an unknown one is simply
    *  not found — it is an identifier, not a credential. */
@@ -905,6 +939,8 @@ export abstract class Store {
     kind: string;
     reference?: string;
     detail?: string;
+    /** The workspace concerned, if known. Unset → visible to platform operators only. */
+    orgId?: string;
   }): Promise<void>;
   abstract listWebhookDiagnostics(limit?: number): Promise<WebhookDiagnostic[]>;
   abstract getMembers(teamId: string): Promise<User[]>;

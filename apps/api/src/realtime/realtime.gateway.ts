@@ -25,6 +25,8 @@ import {
 import { env } from "../config/env";
 import { Store } from "../data/store";
 import { TenantContext } from "../tenancy/tenant-context";
+import { runInTenant } from "../tenancy/tenant-scope";
+import { SandboxPolicy } from "../tenancy/sandbox";
 
 type DingServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type DingSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -54,6 +56,7 @@ export class RealtimeGateway
   constructor(
     private readonly store: Store,
     private readonly tenant: TenantContext,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   @WebSocketServer()
@@ -71,7 +74,23 @@ export class RealtimeGateway
     }
   }
 
+  /**
+   * Each socket's authentication, so a message handler can wait for it.
+   *
+   * socket.io delivers a client's first messages as soon as the handshake is
+   * accepted — before `handleConnection`, which has to look the user up, has
+   * finished. A client that joins a thread the moment it (re)connects would
+   * otherwise be asking as nobody, and be refused.
+   */
+  private readonly authenticated = new WeakMap<DingSocket, Promise<void>>();
+
   async handleConnection(client: DingSocket): Promise<void> {
+    const done = this.authenticate(client);
+    this.authenticated.set(client, done);
+    await done;
+  }
+
+  private async authenticate(client: DingSocket): Promise<void> {
     // Authenticate the handshake with the same session token the REST API uses:
     // an unauthenticated socket would otherwise stream every conversation to
     // anyone who can reach the endpoint. Identity (and the org room) come from
@@ -96,8 +115,14 @@ export class RealtimeGateway
     // Honour remote sign-out here too. It matters more on a socket than on a
     // request: a socket is opened once and then lives for hours, so without this
     // a revoked device would keep receiving the org's traffic until it reconnects.
-    const revoked = claims?.jti ? await this.store.getSession(claims.jti).then((s) => !s || !!s.revokedAt) : false;
-    const user = userId && !revoked ? await this.store.getUser(userId) : undefined;
+    // The user the token names, in whichever workspace they are — then the
+    // session check runs inside that workspace, like the HTTP guard's.
+    const principal = userId ? await this.store.getUserForAuth(userId) : undefined;
+    const revoked =
+      principal && claims?.jti
+        ? await runInTenant(principal.orgId, () => this.store.getSession(claims!.jti!)).then((s) => !s || !!s.revokedAt)
+        : false;
+    const user = principal && !revoked ? principal : undefined;
     if (!user) {
       this.logger.debug(`socket rejected (no valid session): ${client.id}`);
       client.disconnect();
@@ -106,7 +131,7 @@ export class RealtimeGateway
     // Held at the mandatory two-factor gate. The HTTP guard refuses those
     // sessions every route but enrolment; this is the one way into the org's
     // traffic that doesn't go through it, and it streams the lot.
-    if (env.auth.require2fa && !user.twoFactorEnabled) {
+    if (!user.twoFactorEnabled && (await this.sandbox.twoFactorRequired(user.orgId))) {
       this.logger.debug(`socket rejected (two-factor not set up): ${client.id}`);
       client.disconnect();
       return;
@@ -179,9 +204,22 @@ export class RealtimeGateway
       .emit(ServerEvent.Typing, { conversationId, who, typing, preview });
   }
 
+  /**
+   * Open a thread's room — only a thread in the socket's own workspace.
+   *
+   * Room names are conversation ids, and a room is joined by naming it, so
+   * without this check anyone signed in to any workspace could name another
+   * workspace's conversation and receive its typing previews, which carry the
+   * draft being written.
+   */
   @SubscribeMessage(ClientEvent.JoinConversation)
-  onJoin(@ConnectedSocket() client: DingSocket, @MessageBody() body: { conversationId: string }) {
-    client.join(convRoom(body.conversationId));
+  async onJoin(@ConnectedSocket() client: DingSocket, @MessageBody() body: { conversationId: string }) {
+    await this.authenticated.get(client);
+    const orgId = client.data.orgId;
+    const id = typeof body?.conversationId === "string" ? body.conversationId : "";
+    if (!orgId || !id) return;
+    const conv = await runInTenant(orgId, () => this.store.getConversation(id)).catch(() => undefined);
+    if (conv?.orgId === orgId) client.join(convRoom(id));
   }
 
   @SubscribeMessage(ClientEvent.LeaveConversation)
@@ -194,7 +232,10 @@ export class RealtimeGateway
     @ConnectedSocket() client: DingSocket,
     @MessageBody() body: { conversationId: string; typing: boolean; who?: string },
   ) {
-    // Relay to the other agents on this thread (client.to excludes the sender).
+    // Relay to the other agents on this thread (client.to excludes the sender) —
+    // only from a socket that was let into the room, which onJoin confines to
+    // its own workspace's threads.
+    if (!client.rooms.has(convRoom(body.conversationId))) return;
     client.to(convRoom(body.conversationId)).emit(ServerEvent.Typing, {
       conversationId: body.conversationId,
       who: body.who?.trim() || "Someone",
@@ -205,10 +246,11 @@ export class RealtimeGateway
   /* ---- server-side emit helpers, called by services ----
    * Events go to the owning org's room, so nothing ever crosses a tenant
    * boundary. Conversation-carrying emits derive the org from the conversation;
-   * message emits take the org from the caller (falling back to the single-tenant
-   * default when a caller doesn't yet thread it — the TenantContext seam). */
+   * message emits take it from the caller or, by default, from the workspace the
+   * current request or job is bound to. There is no fallback org: an emit with
+   * no workspace bound throws rather than broadcasting to a guess. */
 
-  emitMessageCreated(conversationId: string, message: Message, orgId: string = this.tenant.defaultOrgId) {
+  emitMessageCreated(conversationId: string, message: Message, orgId: string = this.tenant.orgId) {
     this.server.to(orgRoom(orgId)).emit(ServerEvent.MessageCreated, { conversationId, message });
   }
 
@@ -230,7 +272,7 @@ export class RealtimeGateway
     }
   }
 
-  emitMessageUpdated(conversationId: string, message: Message, orgId: string = this.tenant.defaultOrgId) {
+  emitMessageUpdated(conversationId: string, message: Message, orgId: string = this.tenant.orgId) {
     this.server.to(orgRoom(orgId)).emit(ServerEvent.MessageUpdated, { conversationId, message });
   }
 

@@ -1,7 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { Conversation } from "@ding/schemas";
-import { ORG_ID } from "../../data/fixtures";
+import { currentOrgId } from "../../tenancy/tenant-scope";
 import { Store } from "../../data/store";
+import { SandboxPolicy } from "../../tenancy/sandbox";
 import {
   FCM_SERVICE_ACCOUNT_FIELD,
   FcmSender,
@@ -136,6 +137,7 @@ export class CustomerPushService {
   constructor(
     private readonly store: Store,
     private readonly bus: VisitorBus,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /** Queue a notification. Returns immediately: the reply is already stored and
@@ -198,6 +200,9 @@ export class CustomerPushService {
    * be worse than no test at all.
    */
   async sendTest(inboxId: string): Promise<CustomerPushTest> {
+    if (await this.sandbox.current()) {
+      return { ok: false, reason: "sandbox", detail: "Push notifications are off in the demo workspace." };
+    }
     const device = await this.store.latestCustomerDeviceFor(inboxId);
     if (!device) {
       return {
@@ -256,6 +261,8 @@ export class CustomerPushService {
   private async deliver(req: CustomerPushRequest): Promise<CustomerPushOutcome> {
     const none = (skipped: string) => ({ sent: 0, failed: 0, skipped });
     const { conversation } = req;
+    // A demo workspace's customers are invented; no phone is ever pushed to.
+    if (await this.sandbox.isSandbox(conversation.orgId)) return none("sandbox");
     if (!conversation.contact?.id) return none("no_contact");
 
     // Cheapest first: the customer looking at the chat right now is both the
@@ -281,7 +288,7 @@ export class CustomerPushService {
     const fields = fieldData(
       (
         await this.store
-          .customFieldValues(ORG_ID, "conversation", [conversation.id])
+          .customFieldValues(currentOrgId(), "conversation", [conversation.id])
           .catch(() => new Map<string, { key: string; value: string }[]>())
       ).get(conversation.id) ?? [],
     );

@@ -7,8 +7,9 @@ import type {
   UpdateTemplateInput,
 } from "@ding/schemas";
 import { env } from "../config/env";
-import { ORG_ID } from "../data/fixtures";
+import { currentOrgId } from "../tenancy/tenant-scope";
 import { Store } from "../data/store";
+import { SandboxPolicy } from "../tenancy/sandbox";
 
 /*
  * The org setting holding a WhatsApp account's default template id. Empty
@@ -47,7 +48,10 @@ interface MetaTemplate {
 export class TemplatesService {
   private readonly logger = new Logger(TemplatesService.name);
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly sandbox: SandboxPolicy,
+  ) {}
 
   /**
    * Every template, each flagged if it is the default *for its own account*.
@@ -57,14 +61,14 @@ export class TemplatesService {
    * claim it and leave the winner to whichever query ran first.
    */
   async list(): Promise<Template[]> {
-    const templates = await this.store.listTemplates(ORG_ID);
+    const templates = await this.store.listTemplates(currentOrgId());
     // One lookup per distinct account, not one per template.
     const wabaIds = [...new Set(templates.map((t) => t.wabaId).filter(Boolean))] as string[];
-    const legacy = (await this.store.getAppSetting(ORG_ID, DEFAULT_TEMPLATE_KEY)) ?? "";
+    const legacy = (await this.store.getAppSetting(currentOrgId(), DEFAULT_TEMPLATE_KEY)) ?? "";
     const defaults = new Map<string, string>();
     await Promise.all(
       wabaIds.map(async (wabaId) => {
-        const own = await this.store.getAppSetting(ORG_ID, defaultTemplateKey(wabaId));
+        const own = await this.store.getAppSetting(currentOrgId(), defaultTemplateKey(wabaId));
         // Fall back to the pre-accounts setting so a workspace that had a
         // default before templates were scoped does not silently lose it.
         const id = own || legacy;
@@ -95,31 +99,31 @@ export class TemplatesService {
     // old behaviour, kept because refusing the request instead would break a
     // screen somebody still has open rather than fix anything.
     if (templateId === null) {
-      const all = await this.store.listTemplates(ORG_ID);
+      const all = await this.store.listTemplates(currentOrgId());
       const keys = new Set(all.map((t) => defaultTemplateKey(t.wabaId)));
       keys.add(DEFAULT_TEMPLATE_KEY);
-      await Promise.all([...keys].map((k) => this.store.setAppSetting(ORG_ID, k, "")));
+      await Promise.all([...keys].map((k) => this.store.setAppSetting(currentOrgId(), k, "")));
       return this.list();
     }
     // And sending an id with nothing else always meant "make this the default".
     const starred = isDefault ?? true;
-    const template = (await this.store.listTemplates(ORG_ID)).find((t) => t.id === templateId);
+    const template = (await this.store.listTemplates(currentOrgId())).find((t) => t.id === templateId);
     if (!template) throw new NotFoundException("Template not found");
     const key = defaultTemplateKey(template.wabaId);
     if (!starred) {
-      await this.store.setAppSetting(ORG_ID, key, "");
+      await this.store.setAppSetting(currentOrgId(), key, "");
       // An unclaimed template answers to the bare key, which is also the
       // fallback every account reads when it has none of its own. Clearing it
       // has to clear it there too, or unstarring would appear to do nothing.
-      if (!template.wabaId) await this.store.setAppSetting(ORG_ID, DEFAULT_TEMPLATE_KEY, "");
+      if (!template.wabaId) await this.store.setAppSetting(currentOrgId(), DEFAULT_TEMPLATE_KEY, "");
       return this.list();
     }
-    await this.store.setAppSetting(ORG_ID, key, templateId);
+    await this.store.setAppSetting(currentOrgId(), key, templateId);
     return this.list();
   }
 
   create(input: CreateTemplateInput): Promise<Template> {
-    return this.store.createTemplate(ORG_ID, input);
+    return this.store.createTemplate(currentOrgId(), input);
   }
 
   async update(id: string, input: UpdateTemplateInput): Promise<Template> {
@@ -147,6 +151,7 @@ export class TemplatesService {
    * anything Meta no longer has for that account removed.
    */
   async syncFromMeta(): Promise<{ synced: number; pruned: number }> {
+    await this.sandbox.assertLive("Syncing templates from Meta");
     const accounts = await this.whatsAppAccounts();
     if (!accounts.length) return { synced: 0, pruned: 0 };
     let synced = 0;
@@ -187,7 +192,7 @@ export class TemplatesService {
       for (const t of json.data) {
         const body = t.components?.find((c) => c.type?.toUpperCase() === "BODY")?.text;
         if (!body) continue;
-        await this.store.upsertTemplateByName(ORG_ID, {
+        await this.store.upsertTemplateByName(currentOrgId(), {
           name: t.name,
           language: t.language,
           category: normalizeCategory(t.category),
@@ -200,7 +205,7 @@ export class TemplatesService {
       }
       // Only prune on a response we actually understood. An empty `data` from a
       // permissions problem would otherwise wipe the account's templates.
-      const pruned = await this.store.pruneTemplatesForWaba(ORG_ID, account.wabaId, seen);
+      const pruned = await this.store.pruneTemplatesForWaba(currentOrgId(), account.wabaId, seen);
       return { synced, pruned };
     } catch (err) {
       this.logger.warn(`Template sync for WABA ${account.wabaId} failed: ${String(err)}`);

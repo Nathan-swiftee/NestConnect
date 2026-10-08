@@ -1,5 +1,4 @@
 import { env } from "../config/env";
-import { ORG_ID } from "../data/fixtures";
 import type { Store } from "../data/store";
 
 /* AppSetting keys for the org's SMTP (transactional email) credentials,
@@ -22,8 +21,9 @@ export interface SmtpConfig {
 }
 
 /** Read one setting, falling back to its env default; trimmed, "" when unset. */
-async function pick(store: Store, orgId: string, key: string, fallback: string): Promise<string> {
-  const saved = (await store.getAppSetting(orgId, key))?.trim();
+async function pick(store: Store, key: string, fallback: string): Promise<string> {
+  // A platform setting: the same for every workspace (see tenancy/platform.ts).
+  const saved = (await store.getPlatformSetting(key))?.trim();
   return saved || fallback;
 }
 
@@ -33,14 +33,14 @@ async function pick(store: Store, orgId: string, key: string, fallback: string):
  * UI without a redeploy. Returns null unless host + username + password + from
  * are all present — the caller then falls back to Postmark (or no send at all).
  */
-export async function resolveSmtpConfig(store: Store, orgId: string = ORG_ID): Promise<SmtpConfig | null> {
+export async function resolveSmtpConfig(store: Store): Promise<SmtpConfig | null> {
   const [host, portStr, username, password, fromRaw, secureStr] = await Promise.all([
-    pick(store, orgId, SMTP_HOST_KEY, env.smtp.host),
-    pick(store, orgId, SMTP_PORT_KEY, String(env.smtp.port)),
-    pick(store, orgId, SMTP_USERNAME_KEY, env.smtp.username),
-    pick(store, orgId, SMTP_PASSWORD_KEY, env.smtp.password),
-    pick(store, orgId, SMTP_FROM_KEY, env.smtp.from),
-    pick(store, orgId, SMTP_SECURE_KEY, env.smtp.secure ? "true" : "false"),
+    pick(store, SMTP_HOST_KEY, env.smtp.host),
+    pick(store, SMTP_PORT_KEY, String(env.smtp.port)),
+    pick(store, SMTP_USERNAME_KEY, env.smtp.username),
+    pick(store, SMTP_PASSWORD_KEY, env.smtp.password),
+    pick(store, SMTP_FROM_KEY, env.smtp.from),
+    pick(store, SMTP_SECURE_KEY, env.smtp.secure ? "true" : "false"),
   ]);
   const from = fromRaw || username; // From defaults to the login (Gmail) address.
   const port = Number(portStr) || 587;
@@ -67,10 +67,10 @@ export interface ResendConfig {
  * enabled from the UI without a redeploy. Returns null unless an API key is
  * present — the caller then falls back to Gmail/SMTP/Postmark.
  */
-export async function resolveResendConfig(store: Store, orgId: string = ORG_ID): Promise<ResendConfig | null> {
+export async function resolveResendConfig(store: Store): Promise<ResendConfig | null> {
   const [apiKey, fromRaw] = await Promise.all([
-    pick(store, orgId, RESEND_API_KEY_KEY, env.resend.apiKey),
-    pick(store, orgId, RESEND_FROM_KEY, env.resend.from),
+    pick(store, RESEND_API_KEY_KEY, env.resend.apiKey),
+    pick(store, RESEND_FROM_KEY, env.resend.from),
   ]);
   const from = fromRaw || env.email.from; // From defaults to the customer-email from-address.
   if (apiKey && from) return { apiKey, from };
@@ -80,11 +80,10 @@ export async function resolveResendConfig(store: Store, orgId: string = ORG_ID):
 /** The non-secret Resend settings for echoing back to the UI (key never returned). */
 export async function resendPublicSettings(
   store: Store,
-  orgId: string = ORG_ID,
 ): Promise<{ configured: boolean; from: string }> {
   const [config, from] = await Promise.all([
-    resolveResendConfig(store, orgId),
-    pick(store, orgId, RESEND_FROM_KEY, env.resend.from),
+    resolveResendConfig(store),
+    pick(store, RESEND_FROM_KEY, env.resend.from),
   ]);
   return { configured: config !== null, from: from || env.email.from };
 }
@@ -92,15 +91,14 @@ export async function resendPublicSettings(
 /** The non-secret parts of the current config, for echoing back to the UI. */
 export async function smtpPublicSettings(
   store: Store,
-  orgId: string = ORG_ID,
 ): Promise<{ configured: boolean; host: string; port: number; username: string; from: string; secure: boolean }> {
   const [config, host, portStr, username, from, secureStr] = await Promise.all([
-    resolveSmtpConfig(store, orgId),
-    pick(store, orgId, SMTP_HOST_KEY, env.smtp.host),
-    pick(store, orgId, SMTP_PORT_KEY, String(env.smtp.port)),
-    pick(store, orgId, SMTP_USERNAME_KEY, env.smtp.username),
-    pick(store, orgId, SMTP_FROM_KEY, env.smtp.from),
-    pick(store, orgId, SMTP_SECURE_KEY, env.smtp.secure ? "true" : "false"),
+    resolveSmtpConfig(store),
+    pick(store, SMTP_HOST_KEY, env.smtp.host),
+    pick(store, SMTP_PORT_KEY, String(env.smtp.port)),
+    pick(store, SMTP_USERNAME_KEY, env.smtp.username),
+    pick(store, SMTP_FROM_KEY, env.smtp.from),
+    pick(store, SMTP_SECURE_KEY, env.smtp.secure ? "true" : "false"),
   ]);
   return {
     configured: config !== null,

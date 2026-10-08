@@ -30,7 +30,7 @@ import {
   type User,
 } from "@ding/schemas";
 import { Store, type AttachmentInput } from "../../data/store";
-import { ORG_ID } from "../../data/fixtures";
+import { bindTenant, currentOrgId } from "../../tenancy/tenant-scope";
 import { env } from "../../config/env";
 import { FCM_SERVICE_ACCOUNT_FIELD, parseServiceAccount } from "./fcm";
 import { previewOf, toVisitorMessage } from "./visitor-message";
@@ -274,7 +274,7 @@ export class NestChatService {
     await this.requireNestChatInbox(inboxId);
     const parsed = nestchatAppSchema.parse(app);
     if (parsed.threadFieldKey) {
-      const fields = await this.store.listCustomFields(ORG_ID);
+      const fields = await this.store.listCustomFields(currentOrgId());
       const field = fields.find((f) => f.key === parsed.threadFieldKey && !f.archived);
       if (!field) {
         throw new BadRequestException("That field no longer exists — pick another, or none");
@@ -385,6 +385,8 @@ export class NestChatService {
     const key = appKey.trim();
     const inbox = key ? await this.store.getInboxByAppKey(key) : undefined;
     if (!inbox) throw new NotFoundException("Unknown app key");
+    // The key names the channel, and so the workspace; the request acts there.
+    bindTenant(inbox.orgId);
     const app = await this.appFor(inbox.id);
     if (!app.enabled) throw new NotFoundException("Unknown app key");
     return { inbox, app };
@@ -505,7 +507,7 @@ export class NestChatService {
   ): Promise<{ values: Record<string, string>; unknown: string[] }> {
     const keys = Object.keys(fields);
     if (!keys.length) return { values: {}, unknown: [] };
-    const defined = fieldsForInbox(await this.store.listCustomFields(ORG_ID), inboxId).filter(
+    const defined = fieldsForInbox(await this.store.listCustomFields(currentOrgId()), inboxId).filter(
       (f) => f.entity === "conversation",
     );
     const values: Record<string, string> = {};
@@ -532,6 +534,8 @@ export class NestChatService {
     const key = widgetKey.trim();
     const inbox = key ? await this.store.getInboxByWidgetKey(key) : undefined;
     if (!inbox) throw new NotFoundException("Unknown chat widget");
+    // The key names the channel, and so the workspace; the request acts there.
+    bindTenant(inbox.orgId);
     return inbox;
   }
 
@@ -705,7 +709,7 @@ export class NestChatService {
       // scoped to other inboxes would be offered here and then refused by
       // `validateFields` on every session, which looks exactly like the thread
       // key working until somebody notices every order in one conversation.
-      threadFields: fieldsForInbox(await this.store.listCustomFields(ORG_ID), inboxId)
+      threadFields: fieldsForInbox(await this.store.listCustomFields(currentOrgId()), inboxId)
         .filter((f) => f.entity === "conversation")
         .map((f) => ({ key: f.key, label: f.label })),
       // The same faces the visitor's header would carry, so the preview beside
@@ -745,8 +749,30 @@ export class NestChatService {
     return jwt.sign(claims, this.tokenSecret, { expiresIn: TOKEN_TTL });
   }
 
+  /**
+   * Verify a visitor token and act, from here on, in the workspace of the
+   * channel it was issued for. What every widget and SDK route calls first.
+   *
+   * The token is signed and names its inbox; the inbox says the workspace. The
+   * answer is cached because an inbox never changes workspace.
+   */
+  async visitor(token: string | undefined): Promise<VisitorClaims> {
+    const claims = this.verifyVisitorToken(token);
+    let orgId = this.inboxOrgs.get(claims.inboxId);
+    if (!orgId) {
+      orgId = await this.store.inboxOrg(claims.inboxId);
+      if (!orgId) throw new ForbiddenException("Chat session expired");
+      this.inboxOrgs.set(claims.inboxId, orgId);
+    }
+    bindTenant(orgId);
+    return claims;
+  }
+
+  private readonly inboxOrgs = new Map<string, string>();
+
   /** Verify a visitor token, or reject. Never throws anything but Forbidden, so
-   *  a malformed token can't be told apart from an expired one. */
+   *  a malformed token can't be told apart from an expired one. Binds nothing —
+   *  routes call `visitor()`, which does. */
   verifyVisitorToken(token: string | undefined): VisitorClaims {
     if (!token) throw new ForbiddenException("Chat session required");
     try {

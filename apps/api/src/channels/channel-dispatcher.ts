@@ -16,6 +16,7 @@ import {
   type SendResult,
 } from "./channel-provider";
 import { forwardSubject } from "./email/email.provider";
+import { SandboxPolicy } from "../tenancy/sandbox";
 
 /**
  * The result of a single provider send attempt, in the domain's terms. The
@@ -48,6 +49,7 @@ export class ChannelDispatcher {
     @Inject(CHANNEL_PROVIDERS) private readonly providers: ChannelProvider[],
     private readonly store: Store,
     private readonly media: MediaService,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /** Attempt one send. Returns a structured outcome; never throws for a normal
@@ -58,6 +60,14 @@ export class ChannelDispatcher {
     template?: OutboundTemplate,
     opts?: { cc?: string[]; bcc?: string[]; signatureHtml?: string; forwardTo?: string[] },
   ): Promise<DeliveryOutcome> {
+    // A demo workspace's replies go nowhere: no provider is so much as looked
+    // up. The thread shows them sent (and, via the simulated ladder, delivered
+    // and read), which is what a demo is for; no customer is real, and none is
+    // ever contacted.
+    if (await this.sandbox.isSandbox(conversation.orgId)) {
+      return { ok: true, inboxId: conversation.inboxId, channelMsgId: `sandbox_${randomUUID()}`, simulated: true };
+    }
+
     // A message may be sent on a different channel than the conversation's own
     // (cross-channel reply within one open thread). Resolve the effective channel
     // and the inbox to send from. The conversation's inbox tracks the customer's

@@ -1,6 +1,7 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import type { Conversation, Notification, NotificationType } from "@ding/schemas";
 import { Store } from "../data/store";
+import { runInTenant } from "../tenancy/tenant-scope";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { PushService, type PushKind } from "../push/push.service";
 
@@ -99,19 +100,22 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
   /** Wake snoozed conversations that have come due and tell their assignee. */
   private async sweepSnoozed(): Promise<void> {
     try {
+      // Every workspace's due snoozes; each is woken inside its own workspace.
       const due = await this.store.listDueSnoozed();
       for (const conv of due) {
-        const woken = await this.store.wakeSnoozed(conv.id);
-        if (!woken) continue;
-        this.realtime.emitConversationUpdated(woken);
-        if (conv.assigneeUserId) {
-          await this.create(conv.assigneeUserId, {
-            type: "snooze_due",
-            title: "Snoozed chat is back",
-            body: conv.contact.displayName,
-            conversationId: conv.id,
-          });
-        }
+        await runInTenant(conv.orgId, async () => {
+          const woken = await this.store.wakeSnoozed(conv.id);
+          if (!woken) return;
+          this.realtime.emitConversationUpdated(woken);
+          if (conv.assigneeUserId) {
+            await this.create(conv.assigneeUserId, {
+              type: "snooze_due",
+              title: "Snoozed chat is back",
+              body: conv.contact.displayName,
+              conversationId: conv.id,
+            });
+          }
+        });
       }
     } catch (err) {
       this.logger.warn(`Snooze sweep failed: ${String(err)}`);

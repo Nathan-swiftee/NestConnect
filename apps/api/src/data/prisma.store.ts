@@ -49,11 +49,14 @@ import {
   THREADABLE_STATUSES,
 } from "@ding/schemas";
 import { env } from "../config/env";
-import { DEMO_USER_ID, ORG_ID } from "./fixtures";
+import { DEMO_USER_ID } from "./fixtures";
+import { currentOrgId, runInTenant } from "../tenancy/tenant-scope";
+import { PLATFORM_ORG_ID } from "../tenancy/platform";
+import { tenantScoped, TenantViolationError, type TenantPrisma } from "./tenant-prisma";
 
-/** Which normalisation wrote the identity keys currently in the table. Stored
- *  under the default org because it describes the data, not a tenant's
- *  configuration; a multi-tenant future would key it per org alongside the rest. */
+/** Which normalisation wrote the identity keys currently in the table. A
+ *  platform setting: it describes the data in every workspace, not any one
+ *  workspace's configuration. */
 const IDENTITY_VERSION_KEY = "identity_normalization_version";
 /** Per-org uniqueness on (orgId, kind, normalizedValue). Created at runtime
  *  rather than by a Prisma migration, because it can only be applied after the
@@ -146,6 +149,11 @@ function keysetBefore(cur: { t: Date; id: string }): Prisma.ConversationWhereInp
   };
 }
 
+/** The one row an inbox lookup names, or nothing when it names several. */
+function unambiguous<R extends Parameters<typeof mapInbox>[0]>(rows: R[]): Inbox | undefined {
+  return rows.length === 1 ? mapInbox(rows[0]) : undefined;
+}
+
 const AVATAR_PALETTE = [
   "linear-gradient(135deg,#F97316,#DB2777)",
   "linear-gradient(135deg,#0EA5E9,#2563EB)",
@@ -158,11 +166,20 @@ const AVATAR_PALETTE = [
 /** Postgres-backed store (active when DATABASE_URL is set). */
 @Injectable()
 export class PrismaStore extends Store {
+  /**
+   * Every query below goes through `prisma`, which confines it to the tenant
+   * bound for the current request or job (see tenant-prisma.ts). `root` is the
+   * unscoped client, used only where a lookup has to cross workspaces — each use
+   * says why. Search for `this.root` to see every one.
+   */
+  private readonly prisma: TenantPrisma;
+
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly root: PrismaService,
     private readonly crypto: SecretEncryptionService,
   ) {
     super();
+    this.prisma = tenantScoped(root);
   }
 
   get demoUserId(): string {
@@ -171,7 +188,7 @@ export class PrismaStore extends Store {
 
   async healthCheck(): Promise<boolean> {
     try {
-      await this.prisma.$queryRaw`SELECT 1`;
+      await this.root.$queryRaw`SELECT 1`;
       return true;
     } catch {
       return false;
@@ -183,11 +200,30 @@ export class PrismaStore extends Store {
     return u ? mapUser(u) : undefined;
   }
 
-  async findUserByEmail(email: string): Promise<User | undefined> {
-    const u = await this.prisma.user.findFirst({
-      where: { orgId: ORG_ID, email: { equals: email, mode: "insensitive" } },
-    });
+  // Cross-tenant by necessity: the verified session token names a user, and the
+  // user is how the request learns which workspace it is in.
+  async getUserForAuth(id: string): Promise<User | undefined> {
+    const u = await this.root.user.findUnique({ where: { id } });
     return u ? mapUser(u) : undefined;
+  }
+
+  // Cross-tenant by necessity: an email address is what somebody signs in with,
+  // before anything says which workspace they belong to. An address must name
+  // exactly one account on the platform; if it ever named two, signing in as
+  // either would be a guess, so it signs in as neither.
+  async findUserByEmail(email: string): Promise<User | undefined> {
+    const rows = await this.root.user.findMany({
+      where: { email: { equals: email.trim(), mode: "insensitive" } },
+      take: 2,
+    });
+    return rows.length === 1 ? mapUser(rows[0]) : undefined;
+  }
+
+  // Cross-tenant by necessity: an account is created only if the address is
+  // free on the whole platform, for the reason above.
+  async emailInUse(email: string): Promise<boolean> {
+    const n = await this.root.user.count({ where: { email: { equals: email.trim(), mode: "insensitive" } } });
+    return n > 0;
   }
 
   async getPasswordHash(userId: string): Promise<string | undefined> {
@@ -327,6 +363,26 @@ export class PrismaStore extends Store {
     });
   }
 
+  // Platform settings live with the platform's own workspace and are read from
+  // there whichever workspace is asking — see tenancy/platform.ts. Who may
+  // change them is decided by the controller, not here.
+  async getPlatformSetting(key: string): Promise<string | undefined> {
+    const row = await this.root.appSetting.findUnique({
+      where: { orgId_key: { orgId: PLATFORM_ORG_ID, key } },
+    });
+    if (row?.value == null) return undefined;
+    return this.crypto.decryptAppSetting(key, row.value);
+  }
+
+  async setPlatformSetting(key: string, value: string): Promise<void> {
+    const stored = this.crypto.encryptAppSetting(key, value);
+    await this.root.appSetting.upsert({
+      where: { orgId_key: { orgId: PLATFORM_ORG_ID, key } },
+      create: { orgId: PLATFORM_ORG_ID, key, value: stored },
+      update: { value: stored },
+    });
+  }
+
   /* ---- message templates ---- */
 
   async listTemplates(orgId: string): Promise<Template[]> {
@@ -454,7 +510,7 @@ export class PrismaStore extends Store {
 
   async listTeams(): Promise<Team[]> {
     const rows = await this.prisma.team.findMany({
-      where: { orgId: ORG_ID },
+      where: { orgId: currentOrgId() },
       orderBy: [{ order: "asc" }, { name: "asc" }],
     });
     return rows.map(mapTeam);
@@ -462,7 +518,7 @@ export class PrismaStore extends Store {
 
   async listMembers(): Promise<Member[]> {
     const rows = await this.prisma.user.findMany({
-      where: { orgId: ORG_ID },
+      where: { orgId: currentOrgId() },
       include: { memberships: true },
       orderBy: { name: "asc" },
     });
@@ -520,7 +576,7 @@ export class PrismaStore extends Store {
     // workspace would otherwise be taken at its word.
     await this.prisma.$transaction(
       orderedIds.map((id, i) =>
-        this.prisma.inbox.updateMany({ where: { id, orgId: ORG_ID }, data: { order: i } }),
+        this.prisma.inbox.updateMany({ where: { id, orgId: currentOrgId() }, data: { order: i } }),
       ),
     );
     return this.listInboxes();
@@ -561,21 +617,28 @@ export class PrismaStore extends Store {
     return { user: mapUser(u), inviteToken: invite?.token };
   }
 
+  // Cross-tenant by necessity: the single-use token is the only thing the
+  // person holds, and it is what identifies their account.
   async setPasswordByInviteToken(token: string, password: string): Promise<User | undefined> {
-    const u = await this.prisma.user.findFirst({ where: { inviteTokenHash: hashInviteToken(token) } });
+    const u = await this.root.user.findFirst({ where: { inviteTokenHash: hashInviteToken(token) } });
     if (!u || !u.inviteExpiresAt || u.inviteExpiresAt.getTime() < Date.now()) return undefined;
-    const updated = await this.prisma.user.update({
+    const updated = await this.root.user.update({
       where: { id: u.id },
       data: { passwordHash: bcrypt.hashSync(password, 8), inviteTokenHash: null, inviteExpiresAt: null },
     });
     return mapUser(updated);
   }
 
+  // Cross-tenant by necessity: a reset is asked for by email address alone.
   async createPasswordResetToken(email: string): Promise<{ user: User; token: string } | null> {
-    const u = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: "insensitive" } } });
-    if (!u) return null;
+    const matches = await this.root.user.findMany({
+      where: { email: { equals: email.trim(), mode: "insensitive" } },
+      take: 2,
+    });
+    if (matches.length !== 1) return null;
+    const u = matches[0];
     const inv = newInviteToken();
-    const updated = await this.prisma.user.update({
+    const updated = await this.root.user.update({
       where: { id: u.id },
       data: { inviteTokenHash: inv.hash, inviteExpiresAt: inv.expiresAt },
     });
@@ -731,6 +794,14 @@ export class PrismaStore extends Store {
       osVersion: params.osVersion ?? null,
       deviceName: params.deviceName ?? null,
     };
+    // Cross-tenant by necessity: the same handset last signed in to an account
+    // in another workspace. The token now belongs to this sign-in, so the old
+    // row goes — that account must stop being notified on a phone it is no
+    // longer signed in on. Nothing of the other workspace is read.
+    const elsewhere = await this.root.device.count({
+      where: { pushToken: params.pushToken, user: { orgId: { not: currentOrgId() } } },
+    });
+    if (elsewhere) await this.root.device.deleteMany({ where: { pushToken: params.pushToken } });
     const row = await this.prisma.device.upsert({
       where: { pushToken: params.pushToken },
       create: { ...common, pushToken: params.pushToken },
@@ -769,8 +840,9 @@ export class PrismaStore extends Store {
     return res.count;
   }
 
+  // Cross-tenant by necessity: Expo reports a dead token by the token alone.
   async disableDevice(pushToken: string, reason: string): Promise<void> {
-    await this.prisma.device.updateMany({
+    await this.root.device.updateMany({
       where: { pushToken, disabledAt: null },
       data: { disabledAt: new Date(), disabledReason: reason },
     });
@@ -822,8 +894,9 @@ export class PrismaStore extends Store {
     return res.count > 0;
   }
 
+  // Cross-tenant by necessity: FCM/Expo report a dead token by the token alone.
   async disableCustomerDevice(token: string, reason: string): Promise<void> {
-    await this.prisma.customerDevice.updateMany({
+    await this.root.customerDevice.updateMany({
       where: { token, disabledAt: null },
       data: { disabledAt: new Date(), disabledReason: reason },
     });
@@ -923,9 +996,38 @@ export class PrismaStore extends Store {
     return this.getInbox(inboxId);
   }
 
+  // Cross-tenant by necessity: see the Store contract — background jobs only.
+  async listInboxesAcrossWorkspaces(type: ChannelType): Promise<Inbox[]> {
+    const rows = await this.root.inbox.findMany({
+      where: { type },
+      include: { teams: true },
+      orderBy: [{ orgId: "asc" }, { order: "asc" }, { createdAt: "asc" }],
+    });
+    return rows.map(mapInbox);
+  }
+
+  // Cross-tenant by necessity: asked by policy code (the auth guard, the
+  // dispatcher) about a workspace by id, sometimes before one is bound.
+  async isSandboxOrg(orgId: string): Promise<boolean> {
+    const row = await this.root.organization.findUnique({ where: { id: orgId }, select: { sandbox: true } });
+    return row?.sandbox === true;
+  }
+
+  // Cross-tenant by necessity: see the Store contract.
+  async conversationOrg(conversationId: string): Promise<string | undefined> {
+    const row = await this.root.conversation.findUnique({ where: { id: conversationId }, select: { orgId: true } });
+    return row?.orgId;
+  }
+
+  // Cross-tenant by necessity: see the Store contract.
+  async inboxOrg(inboxId: string): Promise<string | undefined> {
+    const row = await this.root.inbox.findUnique({ where: { id: inboxId }, select: { orgId: true } });
+    return row?.orgId;
+  }
+
   async listInboxes(): Promise<Inbox[]> {
     const rows = await this.prisma.inbox.findMany({
-      where: { orgId: ORG_ID },
+      where: { orgId: currentOrgId() },
       include: { teams: true },
       // Oldest first, and never left to the database's own idea of row order —
       // see the contract on Store.listInboxes. `id` breaks a same-millisecond tie.
@@ -956,7 +1058,7 @@ export class PrismaStore extends Store {
     token: string,
     forCount = false,
   ): Prisma.ConversationWhereInput {
-    const org = { orgId: ORG_ID };
+    const org = { orgId: currentOrgId() };
     const active: Prisma.ConversationWhereInput = { status: { in: ["open", "pending"] } };
     // Lists carry closed items (for the Closed filter) but never snoozed ones —
     // those live only in "Later". Counts (badges) are active-only.
@@ -1013,7 +1115,7 @@ export class PrismaStore extends Store {
     const parts: Prisma.ConversationWhereInput[] = [base];
     if (opts?.field) {
       const { conversationIds, contactIds } = await this.findByCustomField(
-        ORG_ID,
+        currentOrgId(),
         opts.field.key,
         opts.field.value,
       );
@@ -1048,7 +1150,7 @@ export class PrismaStore extends Store {
     ];
     if (opts?.field) {
       const { conversationIds, contactIds } = await this.findByCustomField(
-        ORG_ID,
+        currentOrgId(),
         opts.field.key,
         opts.field.value,
       );
@@ -1103,11 +1205,11 @@ export class PrismaStore extends Store {
     // what makes an order number an index hit rather than a scan, and the
     // reason this is a separate query instead of a join through JSON.
     const [convIds, contactIds] = await Promise.all([
-      this.findByCustomFieldValue(ORG_ID, "conversation", q),
-      this.findByCustomFieldValue(ORG_ID, "contact", q),
+      this.findByCustomFieldValue(currentOrgId(), "conversation", q),
+      this.findByCustomFieldValue(currentOrgId(), "contact", q),
     ]);
     const match: Prisma.ConversationWhereInput = {
-      orgId: ORG_ID,
+      orgId: currentOrgId(),
       ...(scope ? { AND: [scope] } : {}),
       OR: [
         { subject: { contains: q, mode: "insensitive" } },
@@ -1173,7 +1275,7 @@ export class PrismaStore extends Store {
       this.prisma.conversation.count({ where: this.buildWhere(view, userId, userTeams, token, true) });
     const dueSnoozed = () =>
       this.prisma.conversation.count({
-        where: { orgId: ORG_ID, status: "snoozed", snoozedUntil: { lte: new Date() } },
+        where: { orgId: currentOrgId(), status: "snoozed", snoozedUntil: { lte: new Date() } },
       });
 
     const my: ViewItem[] = [
@@ -1185,7 +1287,7 @@ export class PrismaStore extends Store {
     ];
 
     const teamRows = await this.prisma.team.findMany({
-      where: elevated ? { orgId: ORG_ID } : { id: { in: userTeams } },
+      where: elevated ? { orgId: currentOrgId() } : { id: { in: userTeams } },
       orderBy: [{ order: "asc" }, { name: "asc" }],
     });
     const teams: ViewItem[] = [];
@@ -1194,7 +1296,7 @@ export class PrismaStore extends Store {
     }
 
     const inboxRows = await this.prisma.inbox.findMany({
-      where: elevated ? { orgId: ORG_ID } : { teams: { some: { teamId: { in: userTeams } } } },
+      where: elevated ? { orgId: currentOrgId() } : { teams: { some: { teamId: { in: userTeams } } } },
       include: { teams: true },
       // This had no ordering at all, which is why the sidebar's channels came
       // back in whatever order the database felt like — and changed between
@@ -1222,7 +1324,7 @@ export class PrismaStore extends Store {
       });
     }
 
-    const labelRows = await this.prisma.label.findMany({ where: { orgId: ORG_ID }, orderBy: { name: "asc" } });
+    const labelRows = await this.prisma.label.findMany({ where: { orgId: currentOrgId() }, orderBy: { name: "asc" } });
     const labels: ViewItem[] = [];
     for (const l of labelRows) {
       const c = await count(`label:${l.id}`);
@@ -1585,8 +1687,10 @@ export class PrismaStore extends Store {
     }
   }
 
+  // Cross-tenant by necessity: the sweep wakes every workspace's snoozes. The
+  // caller handles each conversation inside its own workspace (conv.orgId).
   async listDueSnoozed(): Promise<Conversation[]> {
-    const rows = await this.prisma.conversation.findMany({
+    const rows = await this.root.conversation.findMany({
       where: { status: "snoozed", snoozedUntil: { lte: new Date() } },
       include: convInclude,
       orderBy: { snoozedUntil: "asc" },
@@ -1718,14 +1822,17 @@ export class PrismaStore extends Store {
     });
   }
 
+  // Cross-tenant by necessity: a tracking pixel carries only its token. The
+  // workspace is read off the message it belongs to and returned, so the
+  // caller can act in it.
   async recordEmailOpen(token: string): Promise<MessageStatusChange | undefined> {
-    const rcpt = await this.prisma.emailRecipient.findUnique({ where: { token } });
+    const rcpt = await this.root.emailRecipient.findUnique({ where: { token } });
     if (!rcpt) return undefined;
     // A hit within the grace window of sending is a proxy pre-cache (e.g. Gmail's
     // GoogleImageProxy), not a human read — bump the count but don't call it seen.
     const withinGrace = Date.now() - rcpt.createdAt.getTime() < EMAIL_OPEN_GRACE_MS;
     const firstOpen = rcpt.openedAt == null;
-    await this.prisma.emailRecipient.update({
+    await this.root.emailRecipient.update({
       where: { token },
       data: {
         openCount: { increment: 1 },
@@ -1734,12 +1841,12 @@ export class PrismaStore extends Store {
     });
     // Re-opens (Gmail proxy re-fetches, etc.) and early pre-caches don't broadcast.
     if (!firstOpen || withinGrace) return undefined;
-    const message = await this.prisma.message.findUnique({
+    const message = await this.root.message.findUnique({
       where: { id: rcpt.messageId },
-      include: { attachments: true, emailRecipients: true },
+      include: { attachments: true, emailRecipients: true, conversation: { select: { orgId: true } } },
     });
     if (!message) return undefined;
-    return { conversationId: message.conversationId, message: mapMessage(message) };
+    return { conversationId: message.conversationId, message: mapMessage(message), orgId: message.conversation.orgId };
   }
 
   async recordSendFailure(
@@ -1767,24 +1874,27 @@ export class PrismaStore extends Store {
     return { conversationId: updated.conversationId, message: mapMessage(updated) };
   }
 
+  // Cross-tenant by necessity: the recovery sweep covers every workspace. Each
+  // row carries its org so the retry runs inside it.
   async listStuckOutbound(
     olderThanMs: number,
-  ): Promise<Array<{ messageId: string; conversationId: string; idempotencyKey?: string }>> {
+  ): Promise<Array<{ messageId: string; conversationId: string; orgId: string; idempotencyKey?: string }>> {
     const cutoff = new Date(Date.now() - olderThanMs);
-    const rows = await this.prisma.message.findMany({
+    const rows = await this.root.message.findMany({
       where: {
         direction: "out",
         internal: false,
         status: { in: ["queued", "sending"] },
         OR: [{ lastAttemptAt: null }, { lastAttemptAt: { lte: cutoff } }],
       },
-      select: { id: true, conversationId: true, idempotencyKey: true },
+      select: { id: true, conversationId: true, idempotencyKey: true, conversation: { select: { orgId: true } } },
       orderBy: { createdAt: "asc" },
       take: 500,
     });
     return rows.map((r) => ({
       messageId: r.id,
       conversationId: r.conversationId,
+      orgId: r.conversation.orgId,
       idempotencyKey: r.idempotencyKey ?? undefined,
     }));
   }
@@ -1815,24 +1925,36 @@ export class PrismaStore extends Store {
 
   /* ---- ingestion ---- */
 
+  /*
+   * Which inbox an incoming event is addressed to.
+   *
+   * Cross-tenant by necessity — this is how a webhook learns which workspace it
+   * is for — and so each is strict about ambiguity: a key that matches inboxes
+   * in two workspaces matches neither, because delivering a customer's message
+   * to the wrong business is worse than not delivering it. Connecting a channel
+   * refuses a key another workspace already holds (see `channelKeyTaken`), so
+   * ambiguity should never arise; this is the backstop.
+   */
+
   async getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined> {
-    const rows = await this.prisma.inbox.findMany({
-      where: { orgId: ORG_ID, type: { in: ["whatsapp", "whatsapp_group"] } },
+    const rows = await this.root.inbox.findMany({
+      where: { type: { in: ["whatsapp", "whatsapp_group"] } },
       include: { teams: true },
     });
     // Deterministic: the inbox whose configured number matches this one.
-    const byConfig = rows.find(
+    const byConfig = rows.filter(
       (i) => (i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId === phoneNumberId,
     );
-    if (byConfig) return mapInbox(byConfig);
-    // Single-number env fallback: the globally-configured number maps to the one
-    // WhatsApp inbox that has no per-inbox number of its own. Still deterministic
-    // (keyed on the incoming number equalling env) — never an arbitrary inbox.
+    if (byConfig.length) return unambiguous(byConfig);
+    // Single-number env fallback: the deployment-wide number maps to the one
+    // WhatsApp inbox that has no per-inbox number of its own — and only in the
+    // platform's own workspace, whose number the environment describes. Another
+    // workspace's unconfigured inbox is never a match for it.
     if (env.whatsapp.phoneNumberId && env.whatsapp.phoneNumberId === phoneNumberId) {
-      const envInbox = rows.find(
-        (i) => !(i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId,
+      const envInbox = rows.filter(
+        (i) => i.orgId === PLATFORM_ORG_ID && !(i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId,
       );
-      if (envInbox) return mapInbox(envInbox);
+      if (envInbox.length) return mapInbox(envInbox[0]);
     }
     return undefined; // no deterministic match — caller records a diagnostic
   }
@@ -1843,14 +1965,11 @@ export class PrismaStore extends Store {
     // Matched in code rather than in the query: the key lives inside the
     // channelConfig JSON, and there are a handful of channels in an org — a JSON
     // path index would be machinery for a list that fits on a screen.
-    const rows = await this.prisma.inbox.findMany({
-      where: { orgId: ORG_ID, type: "nestchat" },
+    const rows = await this.root.inbox.findMany({
+      where: { type: "nestchat" },
       include: { teams: true },
     });
-    const match = rows.find(
-      (i) => (i.channelConfig as Record<string, string> | null)?.widgetKey === key,
-    );
-    return match ? mapInbox(match) : undefined;
+    return unambiguous(rows.filter((i) => (i.channelConfig as Record<string, string> | null)?.widgetKey === key));
   }
 
   async getInboxByAppKey(appKey: string): Promise<Inbox | undefined> {
@@ -1859,36 +1978,73 @@ export class PrismaStore extends Store {
     // Same shape as the widget key above, and matched in code for the same
     // reason: a handful of channels per org, and the key lives inside the
     // channelConfig JSON.
-    const rows = await this.prisma.inbox.findMany({
-      where: { orgId: ORG_ID, type: "nestchat" },
+    const rows = await this.root.inbox.findMany({
+      where: { type: "nestchat" },
       include: { teams: true },
     });
-    const match = rows.find(
-      (i) => (i.channelConfig as Record<string, string> | null)?.appKey === key,
-    );
-    return match ? mapInbox(match) : undefined;
+    return unambiguous(rows.filter((i) => (i.channelConfig as Record<string, string> | null)?.appKey === key));
   }
 
   async getInboxByEmailAddress(address: string): Promise<Inbox | undefined> {
-    const rows = await this.prisma.inbox.findMany({
-      where: { orgId: ORG_ID, type: "email" },
+    const rows = await this.root.inbox.findMany({
+      where: { type: "email" },
       include: { teams: true },
     });
     const a = address.trim().toLowerCase();
     // Deterministic match on the inbox address only — never fall back to an
     // arbitrary inbox for mail addressed to an account we don't manage.
-    const match = rows.find((i) => i.handle.toLowerCase() === a);
-    return match ? mapInbox(match) : undefined;
+    return unambiguous(rows.filter((i) => i.handle.toLowerCase() === a));
   }
 
+  // Cross-tenant by necessity: whether another workspace already receives on
+  // this channel key, checked before a channel is connected.
+  async channelKeyTaken(
+    key: { phoneNumberId?: string; emailAddress?: string },
+    exceptInboxId?: string,
+  ): Promise<boolean> {
+    const orgId = currentOrgId();
+    if (key.phoneNumberId) {
+      const rows = await this.root.inbox.findMany({
+        where: { type: { in: ["whatsapp", "whatsapp_group"] }, NOT: { orgId } },
+        select: { id: true, channelConfig: true },
+      });
+      if (
+        rows.some(
+          (i) =>
+            i.id !== exceptInboxId &&
+            (i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId === key.phoneNumberId,
+        )
+      )
+        return true;
+    }
+    if (key.emailAddress) {
+      const n = await this.root.inbox.count({
+        where: {
+          type: "email",
+          NOT: { orgId },
+          handle: { equals: key.emailAddress.trim(), mode: "insensitive" },
+          ...(exceptInboxId ? { id: { not: exceptInboxId } } : {}),
+        },
+      });
+      if (n > 0) return true;
+    }
+    return false;
+  }
+
+  // Cross-tenant by necessity: most diagnostics are about an event no workspace
+  // could be found for. Those are kept against no workspace (orgId null) and
+  // shown only to the platform's operators; one about a known inbox is kept
+  // against that inbox's workspace.
   async recordWebhookDiagnostic(input: {
     channel: string;
     kind: string;
     reference?: string;
     detail?: string;
+    orgId?: string;
   }): Promise<void> {
-    await this.prisma.webhookDiagnostic.create({
+    await this.root.webhookDiagnostic.create({
       data: {
+        orgId: input.orgId ?? null,
         channel: input.channel,
         kind: input.kind,
         reference: input.reference ?? null,
@@ -1898,7 +2054,11 @@ export class PrismaStore extends Store {
   }
 
   async listWebhookDiagnostics(limit = 100): Promise<WebhookDiagnostic[]> {
-    const rows = await this.prisma.webhookDiagnostic.findMany({
+    const orgId = currentOrgId();
+    // A workspace sees its own; the platform's operators also see the ones no
+    // workspace could be matched to, which is where a misrouted channel shows up.
+    const rows = await this.root.webhookDiagnostic.findMany({
+      where: orgId === PLATFORM_ORG_ID ? { OR: [{ orgId }, { orgId: null }] } : { orgId },
       orderBy: { createdAt: "desc" },
       take: Math.min(Math.max(limit, 1), 500),
     });
@@ -1988,8 +2148,10 @@ export class PrismaStore extends Store {
       });
       return mapContact(contact);
     } catch (err) {
-      // Concurrent webhook raced us to the same identity (global [kind,value]
-      // unique) — re-fetch and return the contact that won.
+      // A write for another workspace is refused, not retried as a race.
+      if (err instanceof TenantViolationError) throw err;
+      // Concurrent webhook raced us to the same identity (per-workspace
+      // [orgId,kind,value] unique) — re-fetch and return the contact that won.
       const raced = await this.prisma.contactIdentity.findFirst({
         where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },
         include: { contact: { include: { identities: true } } },
@@ -2663,10 +2825,10 @@ export class PrismaStore extends Store {
    * collapsed together.
    */
   async backfillIdentityNormalization(): Promise<{ updated: number }> {
-    const stored = Number((await this.getAppSetting(ORG_ID, IDENTITY_VERSION_KEY)) ?? 0);
+    const stored = Number((await this.getPlatformSetting(IDENTITY_VERSION_KEY)) ?? 0);
     const stale = stored < IDENTITY_NORMALIZATION_VERSION;
 
-    const rows = await this.prisma.contactIdentity.findMany({
+    const rows = await this.root.contactIdentity.findMany({
       where: stale ? {} : { OR: [{ normalizedValue: null }, { orgId: null }] },
       include: { contact: { select: { orgId: true } } },
     });
@@ -2675,7 +2837,7 @@ export class PrismaStore extends Store {
       // The index is keyed on normalizedValue; rewriting those values can
       // transiently violate it, and the collisions it would reject are exactly
       // the duplicates reconcile is about to merge.
-      await this.prisma.$executeRawUnsafe(`DROP INDEX IF EXISTS "${IDENTITY_UNIQUE_INDEX}"`).catch(() => {});
+      await this.root.$executeRawUnsafe(`DROP INDEX IF EXISTS "${IDENTITY_UNIQUE_INDEX}"`).catch(() => {});
     }
 
     let updated = 0;
@@ -2685,14 +2847,14 @@ export class PrismaStore extends Store {
       // Skip rows already holding the right answer, so a version bump that only
       // moves a handful of keys doesn't rewrite the whole table.
       if (r.normalizedValue === normalized && r.orgId === orgId) continue;
-      await this.prisma.contactIdentity
+      await this.root.contactIdentity
         .update({ where: { id: r.id }, data: { normalizedValue: normalized, orgId } })
         .catch(() => {});
       updated++;
     }
 
     if (stale) {
-      await this.setAppSetting(ORG_ID, IDENTITY_VERSION_KEY, String(IDENTITY_NORMALIZATION_VERSION));
+      await this.setPlatformSetting(IDENTITY_VERSION_KEY, String(IDENTITY_NORMALIZATION_VERSION));
     }
     return { updated };
   }
@@ -2707,7 +2869,7 @@ export class PrismaStore extends Store {
     // Fast path: once the unique index is in place, the data is already clean.
     // The normalisation backfill drops it when the rule changed, which is what
     // brings us back through the full pass below.
-    const already = await this.prisma.$queryRawUnsafe<{ exists: boolean }[]>(
+    const already = await this.root.$queryRawUnsafe<{ exists: boolean }[]>(
       `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = $1) AS "exists"`,
       INDEX,
     );
@@ -2725,7 +2887,7 @@ export class PrismaStore extends Store {
     //    person, and no constraint violation to reveal it. Merging more than the
     //    constraint demands is safe: it can only remove collisions, never create
     //    them. Oldest contact wins; mergeContacts moves the conversations across.
-    const rows = await this.prisma.contactIdentity.findMany({
+    const rows = await this.root.contactIdentity.findMany({
       where: { normalizedValue: { not: null }, orgId: { not: null } },
       select: { contactId: true, orgId: true, kind: true, normalizedValue: true },
     });
@@ -2749,6 +2911,7 @@ export class PrismaStore extends Store {
       else byKey.set(key, [r.contactId]);
     }
     for (const ids of byKey.values()) for (let i = 1; i < ids.length; i++) union(ids[0], ids[i]);
+    const orgOf = new Map(rows.map((r) => [r.contactId, r.orgId as string]));
     const clusters = new Map<string, string[]>();
     for (const cid of new Set(rows.map((r) => r.contactId))) {
       const root = find(cid);
@@ -2759,10 +2922,16 @@ export class PrismaStore extends Store {
     let mergedContacts = 0;
     for (const ids of clusters.values()) {
       if (ids.length < 2) continue;
-      const meta = await this.prisma.contact.findMany({ where: { id: { in: ids } }, select: { id: true, createdAt: true } });
+      const meta = await this.root.contact.findMany({ where: { id: { in: ids } }, select: { id: true, createdAt: true } });
       if (meta.length < 2) continue;
       const winner = meta.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b));
-      await this.mergeContacts({ winnerId: winner.id, loserIds: meta.filter((m) => m.id !== winner.id).map((m) => m.id) });
+      // Every contact in a cluster shares a workspace — the key the cluster was
+      // built from includes the org — so the merge runs as that workspace.
+      const clusterOrg = orgOf.get(winner.id);
+      if (!clusterOrg) continue;
+      await runInTenant(clusterOrg, () =>
+        this.mergeContacts({ winnerId: winner.id, loserIds: meta.filter((m) => m.id !== winner.id).map((m) => m.id) }),
+      );
       mergedContacts += meta.length - 1;
     }
 
@@ -2770,7 +2939,7 @@ export class PrismaStore extends Store {
     //    (orgId, kind, normalizedValue) but a different raw format (e.g.
     //    "+447700900123" and "07700 900123"). The contactId guard keeps this
     //    lossless: only a same-contact twin is removed, the customer keeps one.
-    const collapsedIdentities = await this.prisma.$executeRawUnsafe(`
+    const collapsedIdentities = await this.root.$executeRawUnsafe(`
       DELETE FROM "ContactIdentity" AS a
       USING "ContactIdentity" AS b
       WHERE a."orgId" = b."orgId"
@@ -2786,7 +2955,7 @@ export class PrismaStore extends Store {
     //    would fail on any legacy duplicate. Idempotent; never blocks boot.
     let constraintApplied = false;
     try {
-      await this.prisma.$executeRawUnsafe(
+      await this.root.$executeRawUnsafe(
         `CREATE UNIQUE INDEX IF NOT EXISTS "${INDEX}" ON "ContactIdentity" ("orgId", "kind", "normalizedValue") WHERE "normalizedValue" IS NOT NULL`,
       );
       constraintApplied = true;
@@ -2950,7 +3119,7 @@ export class PrismaStore extends Store {
 
   async listContacts(): Promise<Contact[]> {
     const rows = await this.prisma.contact.findMany({
-      where: { orgId: ORG_ID },
+      where: { orgId: currentOrgId() },
       include: { identities: true },
     });
     return rows.map(mapContact).sort((a, b) => a.displayName.localeCompare(b.displayName));
@@ -3163,6 +3332,9 @@ export class PrismaStore extends Store {
 /** AttachmentInput → Prisma nested-create row (storage key stored as r2Key). */
 function toAttachmentCreate(a: AttachmentInput): Prisma.AttachmentCreateWithoutMessageInput {
   return {
+    // Set explicitly: a nested create (inside a message) is not seen by the
+    // tenant extension, which only fills in top-level writes.
+    orgId: currentOrgId(),
     r2Key: a.storageKey,
     mime: a.mime,
     size: a.size,

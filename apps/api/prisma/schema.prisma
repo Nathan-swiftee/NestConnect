@@ -69,6 +69,10 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   region    String   @default("uk")
+  // A demo workspace (e.g. for app-store reviewers): synthetic data only, and
+  // nothing it does reaches anyone — sends are simulated, channels can't be
+  // connected, no email/push/AI leaves it. See tenancy/sandbox.ts.
+  sandbox   Boolean  @default(false)
   createdAt DateTime @default(now())
 
   users         User[]
@@ -405,7 +409,9 @@ model ContactIdentity {
 
   contact Contact @relation(fields: [contactId], references: [id])
 
-  @@unique([kind, value])
+  // Per workspace: the same customer can message two businesses on the platform,
+  // and each has its own contact for them.
+  @@unique([orgId, kind, value])
   @@index([contactId])
   @@index([orgId, kind, normalizedValue])
 }
@@ -570,6 +576,9 @@ model Message {
 
 model Attachment {
   id         String   @id @default(cuid())
+  // The workspace it belongs to. Carried on the row itself, not only through
+  // its message, because an upload staged in the composer has no message yet.
+  orgId      String?
   // Null while an upload is staged (not yet attached to a sent message).
   messageId  String?
   // Storage object key (R2/S3 key or local path).
@@ -589,6 +598,7 @@ model Attachment {
   message Message? @relation(fields: [messageId], references: [id])
 
   @@index([messageId])
+  @@index([orgId])
 }
 
 /// One outbound-email recipient (To or Cc), tracked individually for read
@@ -748,6 +758,9 @@ model AppSetting {
 // resolution failed, so they must not be pinned to an arbitrary org.
 model WebhookDiagnostic {
   id        String   @id @default(cuid())
+  // The workspace it concerns, when one could be identified. Null for an event
+  // no inbox matched — those are visible to the platform's operators only.
+  orgId     String?
   channel   String // whatsapp | whatsapp_group | email | gmail
   kind      String // unmapped_inbox | bad_signature | unmapped_group
   reference String? // phone number id / email address / group id
@@ -755,4 +768,5 @@ model WebhookDiagnostic {
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+  @@index([orgId, createdAt])
 }
