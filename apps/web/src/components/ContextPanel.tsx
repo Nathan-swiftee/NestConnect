@@ -229,7 +229,12 @@ function CustomerTags({ contact, onToast }: { contact: Contact; onToast: (m: str
   );
 }
 
-/** This customer's other threads — click to jump straight to one. */
+/** How many of a customer's threads the sidebar lists before "Show all". */
+const RECENT_CONVERSATIONS = 5;
+
+/** This customer's other threads, newest first — click to jump straight to one.
+ *  The five most recent by default: a regular with a year of chats otherwise
+ *  pushes everything below it off the bottom of the panel. */
 function RecentConversations({
   contactId,
   currentId,
@@ -241,6 +246,11 @@ function RecentConversations({
 }) {
   const detail = useContact(contactId);
   const convos: Conversation[] = detail.data?.conversations ?? [];
+  const [showAll, setShowAll] = useState(false);
+  // Another customer starts collapsed again.
+  useEffect(() => setShowAll(false), [contactId]);
+  const shown = showAll ? convos : convos.slice(0, RECENT_CONVERSATIONS);
+  const hidden = convos.length - RECENT_CONVERSATIONS;
 
   return (
     <Block title="Recent conversations" count={convos.length}>
@@ -248,7 +258,7 @@ function RecentConversations({
         <p className="custconvs__empty">{detail.isLoading ? "Loading…" : "No other conversations."}</p>
       ) : (
         <div className="custconvs">
-          {convos.map((c) => {
+          {shown.map((c) => {
             const cm = channelMeta(c.channel);
             const Glyph = cm.Glyph;
             const active = c.id === currentId;
@@ -271,6 +281,11 @@ function RecentConversations({
               </button>
             );
           })}
+          {hidden > 0 && (
+            <button type="button" className="custconvs__more" onClick={() => setShowAll((v) => !v)}>
+              {showAll ? "Show fewer" : `Show all ${convos.length}`}
+            </button>
+          )}
         </div>
       )}
     </Block>

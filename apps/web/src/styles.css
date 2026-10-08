@@ -2167,6 +2167,8 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 /* conversation history */
 .custconvs{display:flex;flex-direction:column;gap:1px}
 .custconvs__empty{margin:2px 0 0;font-size:var(--fs-sm);color:var(--text-faint);font-weight:500}
+.custconvs__more{align-self:flex-start;margin-top:2px;padding:var(--sp-1) var(--sp-3);border:0;border-radius:var(--r-8);background:none;font-size:var(--fs-xs);font-weight:600;color:var(--text-muted);transition:color var(--t-fast),background var(--t-fast)}
+.custconvs__more:hover{color:var(--text);background:var(--hover)}
 .custconv{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3);border-radius:var(--r-8);background:none;border:0;text-align:left;width:100%;transition:background var(--t-base)}
 .custconv:hover{background:var(--hover)}
 .custconv__ic{width:28px;height:28px;flex:0 0 28px;border-radius:var(--r-8);background:var(--surface-2);display:grid;place-items:center}

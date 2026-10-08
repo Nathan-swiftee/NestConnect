@@ -289,7 +289,7 @@ export function DetailsPanel({
               <>
                 <Section>Other conversations</Section>
                 <Card>
-                  {others.slice(0, 6).map((x, i, arr) => (
+                  {others.slice(0, 5).map((x, i, arr) => (
                     <Touchable feel="row"
                       key={x.id}
                       onPress={() => {
