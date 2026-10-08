@@ -3,6 +3,8 @@ import type { AttachmentKind } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store, type AttachmentInput } from "../data/store";
 import { StorageService } from "./storage.service";
+import { SandboxPolicy } from "../tenancy/sandbox";
+import { currentOrgId } from "../tenancy/tenant-scope";
 
 interface MediaMeta {
   filename?: string;
@@ -23,6 +25,7 @@ export class MediaService {
   constructor(
     private readonly storage: StorageService,
     private readonly dataStore: Store,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /** Load a stored attachment's bytes by id (for outbound delivery). */
@@ -39,6 +42,9 @@ export class MediaService {
     url: string,
     meta: MediaMeta & { authToken?: string } = {},
   ): Promise<AttachmentInput | null> {
+    // Outside the catch: surface the restriction, never attempt a provider fetch.
+    currentOrgId();
+    await this.sandbox.assertLive("Media downloads");
     try {
       const res = await fetch(url, {
         headers: meta.authToken ? { authorization: `Bearer ${meta.authToken}` } : undefined,
@@ -62,6 +68,9 @@ export class MediaService {
 
   /** Store already-in-memory bytes (e.g. a decoded Gmail attachment). */
   async store(bytes: Buffer, meta: MediaMeta = {}): Promise<AttachmentInput> {
+    // Shared storage may be configured even though the sandbox has no credentials.
+    currentOrgId();
+    await this.sandbox.assertLive("File uploads");
     const mime = meta.mime || "application/octet-stream";
     const kind = meta.kind ?? kindFromMime(mime);
     const key = this.storage.newKey(extFromMime(mime, meta.filename));

@@ -310,6 +310,14 @@ async function overHttp(
   ok("and is told enrolment isn't required here", signIn.json?.twoFactorEnforced === false);
   ok("a wrong password is still refused", (await call(undefined, "POST", "/auth/login", { email: REVIEW_EMAIL, password: `${password}x`, tokenAuth: true })).status === 401);
 
+  const upload = new FormData();
+  upload.append("file", new Blob(["synthetic reviewer avatar"], { type: "image/png" }), "avatar.png");
+  const uploadResponse = await fetch(`${HTTP}/api/media`, {
+    method: "POST", headers: { authorization: `Bearer ${token}` }, body: upload,
+  });
+  ok("reviewer multipart uploads return a clear sandbox restriction",
+    uploadResponse.status === 403 && (await uploadResponse.text()).includes("demo workspace"), String(uploadResponse.status));
+
   const ownerIn = await call(undefined, "POST", "/auth/login", { email: OWNER_EMAIL, password: OWNER_PASSWORD, tokenAuth: true });
   ok("a real workspace's account is told enrolment is required", ownerIn.json?.twoFactorEnforced === true);
   ok("and, without 2FA, is held at the enrolment gate", (await call(ownerIn.json?.token, "GET", "/conversations?view=all")).status === 403);
