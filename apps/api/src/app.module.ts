@@ -27,6 +27,7 @@ import { AnalyticsModule } from "./analytics/analytics.module";
 import { TrackingModule } from "./tracking/tracking.module";
 import { AiModule } from "./ai/ai.module";
 import { HealthController } from "./health/health.controller";
+import { webStaticOptions } from "./web-static";
 
 const imports: ModuleMetadata["imports"] = [
   // Global IP rate limiting (in-memory per node; move to Redis storage for
@@ -58,10 +59,9 @@ const imports: ModuleMetadata["imports"] = [
 // so the whole app runs as one same-origin service (auth cookies + WS work cleanly).
 if (env.serveWeb) {
   imports.push(
-    ServeStaticModule.forRoot({
-      rootPath: join(__dirname, "..", "..", "web", "dist"),
-      exclude: ["/api/(.*)", "/health", "/health/(.*)", "/socket.io/(.*)"],
-    }),
+    // Options live in web-static.ts (checked by tools/check-privacy-route.ts):
+    // same exclusions as before, plus `/privacy` → privacy.html.
+    ServeStaticModule.forRoot(webStaticOptions(join(__dirname, "..", "..", "web", "dist"))),
   );
 }
 

@@ -1,0 +1,106 @@
+/*
+ * The public privacy page. Built on the shared design tokens (light and dark
+ * come from tokens.css: prefers-color-scheme, or an explicit data-theme), and
+ * nothing else from the inbox — this is a reading page, not an app shell.
+ */
+html, body { margin: 0; background: var(--bg); }
+body {
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-lg);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.pp { min-height: 100dvh; background: var(--bg); color: var(--text); }
+
+/* Rendered by the inbox entry as a fallback (index.html served for /privacy):
+   the inbox's own stylesheet locks body scrolling, so the page scrolls itself. */
+.pp--contained { position: fixed; inset: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+
+.pp__bar {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center;
+  padding: var(--sp-3) var(--sp-4);
+  padding-top: max(var(--sp-3), env(safe-area-inset-top));
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: saturate(1.4) blur(10px);
+  -webkit-backdrop-filter: saturate(1.4) blur(10px);
+}
+.pp__brand { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text); text-decoration: none; }
+/* Same navy tile as the inbox's .brandmark — the mark is green artwork. */
+.pp__mark {
+  width: 30px; height: 30px; border-radius: var(--r-8); background: #071634;
+  display: grid; place-items: center; flex: 0 0 30px;
+}
+.pp__mark img { width: 19px; height: 19px; object-fit: contain; }
+.pp__wordmark { font-size: var(--fs-lg); font-weight: var(--fw-semibold); letter-spacing: var(--ls-tight); }
+.pp__dot { color: var(--brand); }
+
+.pp__main {
+  max-width: 760px; margin: 0 auto;
+  padding: var(--sp-8) var(--sp-4) var(--sp-16);
+  padding-left: max(var(--sp-4), env(safe-area-inset-left));
+  padding-right: max(var(--sp-4), env(safe-area-inset-right));
+}
+
+.pp__title {
+  font-size: 30px; line-height: var(--lh-tight); letter-spacing: var(--ls-tight);
+  font-weight: var(--fw-bold); margin: 0 0 var(--sp-2);
+}
+.pp__meta { color: var(--text-muted); font-size: var(--fs-md); margin: 0 0 var(--sp-5); }
+.pp__lede { color: var(--text-muted); margin: 0 0 var(--sp-6); }
+
+.pp__pending {
+  margin-top: var(--sp-10);
+  padding: var(--sp-8) var(--sp-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-16);
+  box-shadow: var(--shadow);
+}
+.pp__pending .pp__lede { margin: 0; }
+
+.pp__toc {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-12);
+  padding: var(--sp-4) var(--sp-5);
+  margin: 0 0 var(--sp-8);
+  font-size: var(--fs-md);
+}
+.pp__toc ol { margin: 0; padding-left: var(--sp-5); columns: 2; column-gap: var(--sp-8); }
+.pp__toc li { break-inside: avoid; padding: 2px 0; }
+
+.pp__section { scroll-margin-top: 72px; margin-top: var(--sp-8); }
+.pp__section h2 {
+  font-size: var(--fs-2xl); line-height: var(--lh-tight); letter-spacing: var(--ls-snug);
+  font-weight: var(--fw-semibold); margin: 0 0 var(--sp-3);
+}
+.pp__section h3 {
+  font-size: var(--fs-xl); font-weight: var(--fw-semibold); margin: var(--sp-5) 0 var(--sp-2);
+}
+.pp__section p { margin: 0 0 var(--sp-3); }
+.pp__section ul { margin: 0 0 var(--sp-4); padding-left: var(--sp-5); }
+.pp__section li { margin: 0 0 var(--sp-2); }
+
+.pp a { color: var(--brand-strong); text-underline-offset: 2px; overflow-wrap: anywhere; }
+.pp a:hover { color: var(--brand); }
+.pp .pp__brand, .pp .pp__brand:hover { color: var(--text); text-decoration: none; }
+.pp a:focus-visible { outline: 2px solid var(--brand-ring); outline-offset: 2px; border-radius: 4px; }
+
+@media (max-width: 600px) {
+  .pp__main { padding-top: var(--sp-6); }
+  .pp__title { font-size: var(--fs-2xl); }
+  .pp__section h2 { font-size: var(--fs-xl); }
+  .pp__section h3 { font-size: var(--fs-lg); }
+  .pp__toc ol { columns: 1; }
+  .pp__pending { margin-top: var(--sp-6); padding: var(--sp-6) var(--sp-5); }
+}
+
+@media print {
+  .pp__bar, .pp__toc { display: none; }
+  .pp--contained { position: static; overflow: visible; }
+}

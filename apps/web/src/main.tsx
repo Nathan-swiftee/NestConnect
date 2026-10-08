@@ -7,6 +7,7 @@ import { playReceived, playSent } from "./lib/sound";
 import { syncThemeColor } from "./lib/theme";
 import { initViewport } from "./lib/viewport";
 import { initLayout } from "./lib/layout";
+import { isPrivacyPath } from "./privacy/route";
 // Design tokens first (shared with the native app), then the app's own CSS,
 // which consumes those custom properties. Order matters: variables before use.
 import "@ding/design/tokens.css";
@@ -39,10 +40,21 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 5_000, refetchOnWindowFocus: false } },
 });
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </React.StrictMode>,
-);
+const rootEl = document.getElementById("root") as HTMLElement;
+
+if (isPrivacyPath(window.location.pathname)) {
+  // The privacy policy is public. Production serves /privacy from its own
+  // document (privacy.html), but if this inbox document is ever served for that
+  // path instead, render the policy here — ahead of the session check — rather
+  // than letting the login screen swallow it. Loaded on demand, so the inbox
+  // bundle carries none of it.
+  void import("./privacy/mount").then(({ mountPrivacyPage }) => mountPrivacyPage(rootEl, { contained: true }));
+} else {
+  ReactDOM.createRoot(rootEl).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </React.StrictMode>,
+  );
+}
