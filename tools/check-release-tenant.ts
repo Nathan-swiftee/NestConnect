@@ -7,6 +7,10 @@ import { WhatsAppService } from "../apps/api/src/channels/whatsapp/whatsapp.serv
 import { tenantScoped, TenantViolationError } from "../apps/api/src/data/tenant-prisma";
 import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 import { PLATFORM_ORG_ID } from "../apps/api/src/tenancy/platform";
+import { WhatsAppGroupsProvider } from "../apps/api/src/channels/whatsapp/whatsapp-groups.provider";
+import { WhatsAppRegistrationService } from "../apps/api/src/whatsapp-management/whatsapp-registration.service";
+import { BusinessProfileService } from "../apps/api/src/whatsapp-management/business-profile.service";
+import { BroadcastService } from "../apps/api/src/whatsapp-management/broadcast.service";
 
 async function main() {
   env.whatsapp.phoneNumberId = "FAKE_PLATFORM_NUMBER";
@@ -30,6 +34,20 @@ async function main() {
       assert.equal(fetches, 0, "all sender side effects must avoid global sender");
       const inbound = new WhatsAppService({} as any, {} as any, store, {} as any, {} as any);
       assert.equal(await (inbound as any).tokenFor("other"), null, "inbound media must not inherit platform token");
+      const livePolicy = { assertLive: async () => {} };
+      const registration = new (WhatsAppRegistrationService as any)(store, livePolicy);
+      assert.equal((await registration.stateFor("test")).status, "configuration_error");
+      assert.equal((await registration.register("test", "000000")).ok, false);
+      const profile = new (BusinessProfileService as any)(store, livePolicy);
+      await assert.rejects(() => profile.get("test"), /isn't connected/);
+      await assert.rejects(() => profile.update("test", {}), /isn't connected/);
+      await assert.rejects(() => new (BroadcastService as any)(store, livePolicy).send({
+        inboxId: "test", templateId: "fake", recipients: [{ phone: "+447700900101" }],
+      }), /isn't connected/);
+      const groups = new WhatsAppGroupsProvider(store);
+      await groups.createGroup("test", "Fake demo");
+      await groups.resetInviteLink("test", "fake_group");
+      assert.equal(fetches, 0, "every credential consumer must avoid platform credentials outside its tenant");
     });
     inbox = undefined;
     assert.equal(await runInTenant(PLATFORM_ORG_ID, () => resolveWhatsAppCreds(store, "missing")), null);
