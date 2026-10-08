@@ -190,6 +190,16 @@ async function main(): Promise<void> {
   await notFound("label A's conversation", "POST", `/conversations/${convA.id}/labels`, { labelIds: [] });
   await notFound("read A's contact", "GET", `/contacts/${contactA}`);
   await notFound("edit A's contact", "PATCH", `/contacts/${contactA}`, { displayName: "isoh hijacked" });
+  for (const [field, foreign] of [["ownerUserId", a.user.id], ["ownerTeamId", a.team.id]] as const) {
+    const beforeOwner = await root.contact.findUnique({ where: { id: convB.contactId } });
+    const edit = await call(tokenB, "PATCH", `/contacts/${convB.contactId}`, { [field]: foreign });
+    ok(`B cannot pin its contact to A's ${field}`, edit.status === 404, String(edit.status));
+    ok(`rejected ${field} leaves B's contact unchanged`,
+      (await root.contact.findUnique({ where: { id: convB.contactId } }))?.[field] === beforeOwner?.[field]);
+    const create = await call(tokenB, "POST", "/contacts", { displayName: "isoh foreign owner", [field]: foreign });
+    ok(`B cannot create a contact with A's ${field}`, create.status === 404, String(create.status));
+    ok(`rejected ${field} create writes nothing`, (await root.contact.count({ where: { orgId: B, displayName: "isoh foreign owner" } })) === 0);
+  }
   await notFound("delete A's contact", "DELETE", `/contacts/${contactA}`);
   await notFound("edit A's inbox", "PATCH", `/inboxes/${a.wa.id}`, { name: "isoh hijacked" });
   await notFound("delete A's inbox", "DELETE", `/inboxes/${a.chat.id}`);
