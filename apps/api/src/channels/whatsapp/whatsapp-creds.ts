@@ -1,5 +1,7 @@
 import { env } from "../../config/env";
 import type { Store } from "../../data/store";
+import { currentOrgId } from "../../tenancy/tenant-scope";
+import { PLATFORM_ORG_ID } from "../../tenancy/platform";
 
 /** The credentials needed to call the WhatsApp Cloud API for one number. */
 export interface WhatsAppCreds {
@@ -19,6 +21,9 @@ export async function resolveWhatsAppCreds(
   store: Store,
   inboxId: string,
 ): Promise<WhatsAppCreds | null> {
+  const orgId = currentOrgId();
+  const inbox = await store.getInbox(inboxId);
+  if (!inbox || inbox.orgId !== orgId || !["whatsapp", "whatsapp_group"].includes(inbox.type)) return null;
   const config = await store.getInboxConfig(inboxId);
   if (config?.phoneNumberId && config?.accessToken) {
     return {
@@ -27,7 +32,9 @@ export async function resolveWhatsAppCreds(
       wabaId: config.wabaId,
     };
   }
-  if (env.whatsapp.phoneNumberId && env.whatsapp.token) {
+  if (orgId === PLATFORM_ORG_ID &&
+      (!config?.phoneNumberId || config.phoneNumberId === env.whatsapp.phoneNumberId) &&
+      !config?.accessToken && env.whatsapp.phoneNumberId && env.whatsapp.token) {
     return { phoneNumberId: env.whatsapp.phoneNumberId, accessToken: env.whatsapp.token };
   }
   return null;

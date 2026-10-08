@@ -7,6 +7,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import type { AttachmentKind, ChannelType, Conversation } from "@ding/schemas";
 import { env } from "../../config/env";
 import { Store } from "../../data/store";
+import { resolveWhatsAppCreds } from "./whatsapp-creds";
 import {
   ChannelProvider,
   type OutboundMedia,
@@ -548,13 +549,6 @@ export class WhatsAppCloudProvider extends ChannelProvider {
 
   /** The number's own credentials (Meta-connected inbox) or the global env ones. */
   private async credsFor(inboxId: string): Promise<WhatsAppCreds | null> {
-    const config = await this.store.getInboxConfig(inboxId);
-    if (config?.phoneNumberId && config?.accessToken) {
-      return { phoneNumberId: config.phoneNumberId, accessToken: config.accessToken };
-    }
-    if (env.whatsapp.phoneNumberId && env.whatsapp.token) {
-      return { phoneNumberId: env.whatsapp.phoneNumberId, accessToken: env.whatsapp.token };
-    }
-    return null;
+    return resolveWhatsAppCreds(this.store, inboxId);
   }
 }

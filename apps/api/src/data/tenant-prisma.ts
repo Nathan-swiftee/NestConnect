@@ -80,6 +80,8 @@ const REFERENCES: Record<string, string> = {
   messageId: "Message",
   quotedMsgId: "Message",
   authorUserId: "User",
+  ownerUserId: "User",
+  ownerTeamId: "Team",
   assigneeUserId: "User",
   assignedTeamId: "Team",
   fieldId: "CustomField",
