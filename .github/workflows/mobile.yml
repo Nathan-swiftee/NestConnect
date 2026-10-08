@@ -30,7 +30,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "build = a new installable app. update = push JS-only changes to apps already installed (seconds, no rebuild). submit = send the last finished build to TestFlight / Play, without rebuilding."
+        description: "build = a new installable app. update = push JS-only changes to apps already installed (seconds, no rebuild). submit = send an existing build to TestFlight / Play, without rebuilding (Android requires an exact build ID)."
         type: choice
         options: [build, update, submit]
         default: build
@@ -45,9 +45,18 @@ on:
         options: [preview, production]
         default: preview
       submit:
-        description: "After a production build, send it straight to TestFlight (iOS) / Play internal draft (Android). Ignored for preview — a store will not take one."
+        description: "After a production build, submit to TestFlight (iOS) / the selected Play target (Android). Ignored for preview — a store will not take one."
         type: boolean
         default: false
+      android_release:
+        description: "Play target: internal draft (safe default) or PUBLIC production release. Public requires android + production + submission."
+        type: choice
+        options: [internal-draft, public-production]
+        default: internal-draft
+      android_build_id:
+        description: "Exact EAS production Android build UUID, required for submit mode (android/all). Never chooses the latest APK."
+        type: string
+        required: false
       message:
         description: "Note shown against the build/update on expo.dev. Defaults to the commit subject."
         type: string
@@ -69,10 +78,16 @@ env:
   # after the build has already been paid for, which is a confusing place to
   # learn it.
   MOBILE_SUBMIT: ${{ github.event_name != 'push' && inputs.submit && inputs.profile == 'production' }}
+  MOBILE_PLATFORM: ${{ inputs.platform }}
+  MOBILE_ANDROID_RELEASE: ${{ github.event_name == 'push' && 'internal-draft' || inputs.android_release || 'internal-draft' }}
+  MOBILE_ANDROID_BUILD_ID: ${{ inputs.android_build_id }}
 
 jobs:
   mobile:
     runs-on: ubuntu-latest
+    env:
+      # The lockfile-pinned eas-cli reads this directly; no global CLI install.
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,11 +101,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - uses: expo/expo-github-action@v8
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Validate release selection
+        id: release
+        run: node tools/mobile-release.mjs validate
 
+      # eas is resolved by pnpm exec from the repository lockfile, not latest.
       # Installed from the ROOT: apps/mobile depends on @ding/client and
       # @ding/schemas, and node-linker=hoisted puts their files in the root
       # node_modules rather than under apps/mobile.
@@ -106,9 +121,13 @@ jobs:
       # `head_commit` only exists on push events, so read the subject from git.
       - name: Resolve the message
         id: msg
+        env:
+          INPUT_MESSAGE: ${{ inputs.message }}
         run: |
-          MSG="${{ inputs.message }}"
+          MSG="$INPUT_MESSAGE"
           [ -n "$MSG" ] || MSG="$(git log -1 --pretty=%s)"
+          MSG="${MSG//$'\n'/ }"
+          MSG="${MSG//$'\r'/ }"
           echo "text=$MSG" >> "$GITHUB_OUTPUT"
 
       - name: Build
@@ -127,42 +146,55 @@ jobs:
         # The build page URL is printed near the start of the command's output,
         # so it's available in the log long before the run finishes.
         timeout-minutes: 60
+        env:
+          BUILD_MESSAGE: ${{ steps.msg.outputs.text }}
+          SUBMIT_PROFILE: ${{ steps.release.outputs.submit_profile }}
         run: |
           # --auto-submit hands the finished binary to the store in the same run.
           # Splitting them meant a 25-minute build followed by a trip to a
           # terminal, and the trip is what did not happen.
-          SUBMIT=""
-          [ "${{ env.MOBILE_SUBMIT }}" = "true" ] && SUBMIT="--auto-submit"
+          SUBMIT=()
+          [ "$MOBILE_SUBMIT" = "true" ] && SUBMIT=(--auto-submit-with-profile "$SUBMIT_PROFILE")
           pnpm exec eas build \
-            --platform ${{ inputs.platform }} \
-            --profile ${{ env.MOBILE_PROFILE }} \
-            --message "${{ steps.msg.outputs.text }}" \
-            $SUBMIT \
+            --platform "$MOBILE_PLATFORM" \
+            --profile "$MOBILE_PROFILE" \
+            --message "$BUILD_MESSAGE" \
+            "${SUBMIT[@]}" \
             --non-interactive
 
       # For the case the build survived and the upload didn't — a wrong secret,
       # an App Store Connect hiccup. Re-submitting the binary that already exists
       # beats spending another 25 minutes making an identical one.
-      - name: Submit
-        if: env.MOBILE_MODE == 'submit'
+      - name: Submit Android
+        if: env.MOBILE_MODE == 'submit' && inputs.platform != 'ios'
+        working-directory: apps/mobile
+        timeout-minutes: 30
+        run: node ../../tools/mobile-release.mjs submit-android
+
+      # Keep the existing TestFlight latest-build behavior; only Android needs
+      # the explicit build ID. Public Android releases cannot select all/ios.
+      - name: Submit iOS
+        if: env.MOBILE_MODE == 'submit' && inputs.platform != 'android'
         working-directory: apps/mobile
         timeout-minutes: 30
         run: |
           pnpm exec eas submit \
-            --platform ${{ inputs.platform }} \
-            --profile ${{ env.MOBILE_PROFILE }} \
+            --platform ios \
+            --profile "$MOBILE_PROFILE" \
             --latest \
             --non-interactive
 
       - name: Update
         if: env.MOBILE_MODE == 'update'
         working-directory: apps/mobile
+        env:
+          UPDATE_MESSAGE: ${{ steps.msg.outputs.text }}
         run: |
           # The channel matches the build profile's `channel` in eas.json, so an
           # update published here reaches the builds made with that profile.
           pnpm exec eas update \
             --channel ${{ env.MOBILE_PROFILE }} \
-            --message "${{ steps.msg.outputs.text }}" \
+            --message "$UPDATE_MESSAGE" \
             --non-interactive
 
       - name: Where to find it
@@ -180,10 +212,15 @@ jobs:
             echo "<https://expo.dev/accounts/swiftee/projects/nest-connect/$KIND>"
             echo
             if [ "${{ env.MOBILE_SUBMIT }}" = "true" ] || [ "$KIND" = "submissions" ]; then
-              echo "It goes on to App Store Connect from there. TestFlight"
-              echo "processing takes a few more minutes after the upload"
-              echo "reports success, and the build appears for internal testers"
-              echo "once it finishes."
+              if [ "$MOBILE_PLATFORM" != "ios" ]; then
+                echo "Android Play target: $MOBILE_ANDROID_RELEASE."
+                echo "Public production submissions request a completed release and review."
+                echo "Play declarations, permissions, review and managed publishing can still block availability."
+                echo "This summary is not evidence that the app is public. Check Play Console."
+              fi
+              if [ "$MOBILE_PLATFORM" != "android" ]; then
+                echo "iOS goes to App Store Connect / TestFlight, not a public App Store release."
+              fi
               echo
             fi
             if [ "$KIND" = "updates" ]; then
