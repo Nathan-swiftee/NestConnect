@@ -285,6 +285,7 @@ export class ChannelDispatcher {
 
   /** Send a read receipt for an inbound message on a channel that supports it. */
   async markRead(conversation: ConversationWithMessages, channelMsgId?: string): Promise<void> {
+    if (await this.sandbox.isSandbox(conversation.orgId)) return;
     const provider = this.providers.find((p) => p.supports(conversation.channel) && p.markRead);
     if (!provider?.markRead) return;
     try {
@@ -296,6 +297,7 @@ export class ChannelDispatcher {
 
   /** Show the customer a typing indicator on a channel that supports it. */
   async sendTyping(conversation: ConversationWithMessages, channelMsgId?: string): Promise<void> {
+    if (await this.sandbox.isSandbox(conversation.orgId)) return;
     const provider = this.providers.find((p) => p.supports(conversation.channel) && p.sendTyping);
     if (!provider?.sendTyping) return;
     try {
@@ -312,6 +314,7 @@ export class ChannelDispatcher {
     emoji: string,
     messageId?: string,
   ): Promise<void> {
+    if (await this.sandbox.isSandbox(conversation.orgId)) return;
     const provider = this.providers.find((p) => p.supports(conversation.channel) && p.sendReaction);
     if (!provider?.sendReaction) return;
     try {
