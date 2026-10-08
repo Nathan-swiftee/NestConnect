@@ -31,6 +31,8 @@ import type { PushProvider } from "../apps/api/src/push/push.provider";
 import type { RealtimeGateway } from "../apps/api/src/realtime/realtime.gateway";
 import { inboundAudience } from "../apps/api/src/channels/ingest.service";
 import { DEFAULT_PUSH_PREFERENCES } from "../packages/schemas/src/index";
+import { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
+import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -77,9 +79,9 @@ async function run(
     },
   } as unknown as PushProvider;
 
-  const svc = new PushService(store, provider, realtime);
+  const svc = new PushService(store, provider, realtime, new SandboxPolicy(store));
   if (who.prefs) await svc.updatePreferences(who.userId, who.prefs);
-  await svc.notifyAndWait(req);
+  await runInTenant("org_swiftee", () => svc.notifyAndWait(req));
   return { cued, pushed };
 }
 
@@ -102,8 +104,8 @@ async function runBurst(times: number): Promise<{ cued: number; pushed: number }
       return messages.map((m) => ({ ok: true as const, to: m.to, ticketId: "t" }));
     },
   } as unknown as PushProvider;
-  const svc = new PushService(store, provider, realtime);
-  for (let i = 0; i < times; i++) await svc.notifyAndWait(inbound("message"));
+  const svc = new PushService(store, provider, realtime, new SandboxPolicy(store));
+  for (let i = 0; i < times; i++) await runInTenant("org_swiftee", () => svc.notifyAndWait(inbound("message")));
   return { cued, pushed };
 }
 

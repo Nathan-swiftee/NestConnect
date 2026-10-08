@@ -8,6 +8,8 @@ import { env } from "../config/env";
 import { Store } from "../data/store";
 import { R2Driver } from "./r2.driver";
 import { resolveR2Config } from "./r2-config";
+import { SandboxPolicy } from "../tenancy/sandbox";
+import { currentOrgId } from "../tenancy/tenant-scope";
 
 /**
  * Object storage for message media. Uses Cloudflare R2 when configured —
@@ -27,10 +29,14 @@ export class StorageService {
   private resolvedAt = 0;
   private readonly ttlMs = 15_000;
 
-  constructor(private readonly store: Store) {}
+  constructor(private readonly store: Store, private readonly sandbox: SandboxPolicy) {}
 
   /** The active R2 driver (or null for disk), re-resolved from settings on a TTL. */
   private async r2(): Promise<R2Driver | null> {
+    // Before credentials, cache lookup or any disk/R2 operation. Reads and
+    // redirects must not let reviewer media/avatar requests reach shared R2 either.
+    currentOrgId();
+    await this.sandbox.assertLive("Media storage");
     const now = Date.now();
     if (this.driverSig !== null && now - this.resolvedAt < this.ttlMs) return this.driver;
     const cfg = await resolveR2Config(this.store);

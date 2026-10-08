@@ -9,6 +9,8 @@ import { env } from "../config/env";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { PushProvider, type PushMessage } from "./push.provider";
+import { SandboxPolicy } from "../tenancy/sandbox";
+import { currentOrgId } from "../tenancy/tenant-scope";
 
 /** What a push is *about*. Each maps to a preference, an Android notification
  *  channel, and whether quiet hours may hold it back. */
@@ -124,6 +126,7 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly store: Store,
     private readonly provider: PushProvider,
     private readonly realtime: RealtimeGateway,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -232,6 +235,9 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async deliver(req: PushRequest): Promise<{ sent: number; failed: number }> {
+    // One policy seam for tests, reminders and fire-and-forget notifications.
+    // Require a bound workspace before any preferences, devices or provider work.
+    if (await this.sandbox.isSandbox(currentOrgId())) return { sent: 0, failed: 0 };
     const { audience, push: recipients } = await this.recipientsFor(req);
 
     // The desktop is told here rather than at the call site, so a caller cannot
