@@ -63,6 +63,7 @@ import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { IngestService } from "../ingest.service";
 import { NestChatService, visitorStamp } from "./nestchat.service";
 import { VisitorBus } from "./visitor-bus";
+import { ConversationSubjectService } from "../../ai/conversation-subject.service";
 
 /** The subset of a multer file we rely on (avoids an Express.Multer.File dep). */
 interface UploadedFileLike {
@@ -105,6 +106,7 @@ export class NestChatController {
     private readonly bus: VisitorBus,
     private readonly media: MediaService,
     private readonly realtime: RealtimeGateway,
+    private readonly subjects: ConversationSubjectService,
   ) {}
 
   /** What the widget needs before it draws anything. No customer data. */
@@ -283,6 +285,7 @@ export class NestChatController {
     const hasFields = Object.keys(values).length > 0;
     if (conversationId && hasFields) {
       await this.store.setCustomFieldValues(inbox.orgId, "conversation", conversationId, values);
+      await this.subjects.fieldsChanged(conversationId);
     }
 
     const token = conversationId
@@ -336,6 +339,7 @@ export class NestChatController {
     const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values, visitorId);
     if (conversationId && Object.keys(values).length) {
       await this.store.setCustomFieldValues(inbox.orgId, "conversation", conversationId, values);
+      await this.subjects.fieldsChanged(conversationId);
     }
 
     return {
@@ -440,6 +444,7 @@ export class NestChatController {
     // a conversation.
     if (conversationId && Object.keys(values).length) {
       await this.store.setCustomFieldValues(inbox.orgId, "conversation", conversationId, values);
+      await this.subjects.fieldsChanged(conversationId);
     }
 
     return {
@@ -575,6 +580,7 @@ export class NestChatController {
         result.conversationId,
         claims.fields,
       );
+      await this.subjects.fieldsChanged(result.conversationId);
     }
 
     const message = result.message

@@ -194,6 +194,16 @@ Internal notes are never included as context. Names and contact details are
 not sent as separate fields, but they are sent if they appear in that text.
 The result is shown to the agent, who decides whether to use it.
 
+NestConnect can also write a short subject for new WhatsApp and website-chat
+conversations, so staff can see what each one is about. This runs
+automatically, on each of the customer's first three messages, unless it is
+switched off in Settings. We then send Anthropic up to the first 8 messages of
+the conversation, each shortened to 1,000 characters and labelled only as
+"Customer" or "Agent" (internal notes are never included), together with the
+names and values of the conversation's custom fields, such as an order number.
+Names and contact details are not sent as separate fields, but they are sent
+if they appear in that text. The subject is shown only to the business's staff.
+
 #### Push notifications
 
 Workspace users: the Nest Connect app sends notifications through the Expo

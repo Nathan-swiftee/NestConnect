@@ -161,6 +161,8 @@ export class MemoryStore extends Store {
   private appSettings = new Map<string, string>();
   private customFields: CustomField[] = [];
   /** Values keyed `entity:entityId:fieldId`, so a write is a single lookup. */
+  /** Automatic-subject state per conversation (see getSubjectState). */
+  private subjectState = new Map<string, { auto: boolean; topic: string | null }>();
   private fieldValues = new Map<string, { fieldId: string; entityId: string; entity: string; value: string }>();
   /** Backend-only attachment storage refs, keyed by attachment id (for serving). */
   private mediaRefs = new Map<string, StoredAttachmentRef>();
@@ -1404,6 +1406,16 @@ export class MemoryStore extends Store {
     return this.summary(rec);
   }
 
+  async getSubjectState(conversationId: string): Promise<{ auto: boolean; topic: string | null } | undefined> {
+    if (!this.conversations.some((c) => c.id === conversationId)) return undefined;
+    return this.subjectState.get(conversationId) ?? { auto: false, topic: null };
+  }
+
+  async setSubjectTopic(conversationId: string, topic: string | null): Promise<void> {
+    const state = this.subjectState.get(conversationId);
+    if (state) state.topic = topic;
+  }
+
   async setSubject(conversationId: string, subject: string | null): Promise<Conversation | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;
@@ -1781,6 +1793,7 @@ export class MemoryStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
     startedBy?: string;
+    autoSubject?: boolean;
   }): Promise<{ conversation: Conversation; created: boolean }> {
     // One live conversation per contact PER INBOX (channel endpoint): a different
     // inbox — another number, email address, or channel — starts a separate
@@ -1832,6 +1845,7 @@ export class MemoryStore extends Store {
       messages: [],
     };
     this.conversations.push(rec);
+    if (params.autoSubject) this.subjectState.set(rec.id, { auto: true, topic: params.subject ?? null });
     return { conversation: this.summary(rec), created: true };
   }
 

@@ -382,6 +382,9 @@ export function buildPolicy(f: ResolvedOwnerFields): PolicyDocument {
             p(
               "A workspace can enable \"Polish\", which rewrites an agent's draft reply using Anthropic's Claude API. It runs only when an agent taps Polish. We then send Anthropic the draft (up to 5,000 characters) and, when the draft belongs to a conversation, up to the 12 most recent messages in it, each shortened to 600 characters and labelled only as \"Customer\" or \"Agent\". Internal notes are never included as context. Names and contact details are not sent as separate fields, but they are sent if they appear in that text. The result is shown to the agent, who decides whether to use it.",
             ),
+            p(
+              "NestConnect can also write a short subject for new WhatsApp and website-chat conversations, so staff can see what each one is about. This runs automatically, on each of the customer's first three messages, unless it is switched off in Settings. We then send Anthropic up to the first 8 messages of the conversation, each shortened to 1,000 characters and labelled only as \"Customer\" or \"Agent\" (internal notes are never included), together with the names and values of the conversation's custom fields, such as an order number. Names and contact details are not sent as separate fields, but they are sent if they appear in that text. The subject is shown only to the business's staff.",
+            ),
           ]
         : []),
       sub("Push notifications"),
@@ -417,7 +420,7 @@ export function buildPolicy(f: ResolvedOwnerFields): PolicyDocument {
     ...(f.smtpInUse ? [["An SMTP email provider — sends account emails."]] : []),
     ["Expo, Google Firebase Cloud Messaging and Apple Push Notification service — deliver notifications to the Nest Connect app."],
     ...(f.sdkCustomerPushInUse ? [["Google Firebase Cloud Messaging (the business's own project) — delivers notifications to customers in a business's app."]] : []),
-    ...(f.anthropicPolishAvailable ? [["Anthropic — processes drafts and recent conversation text when an agent uses Polish."]] : []),
+    ...(f.anthropicPolishAvailable ? [["Anthropic — processes drafts and recent conversation text when an agent uses Polish, and the opening messages and custom field values of new WhatsApp and website-chat conversations to write their subjects."]] : []),
     ...(f.sentryEnabledInProduction ? [["Sentry — receives crash and error reports from the mobile app."]] : []),
     ["Gravatar — when a workspace user views a contact or colleague who has an email address in the NestConnect web app, their browser asks Gravatar for a profile picture using a one-way (SHA-256) hash of that email address."],
   ];

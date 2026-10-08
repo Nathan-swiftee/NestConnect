@@ -20,6 +20,7 @@
     "check:outbound-inbox": "tsx --tsconfig apps/api/tsconfig.json tools/check-outbound-inbox.ts",
     "check:default-template": "tsx --tsconfig apps/api/tsconfig.json tools/check-default-template.ts",
     "check:custom-fields": "tsx --tsconfig apps/api/tsconfig.json tools/check-custom-fields.ts",
+    "check:conversation-subjects": "tsx --tsconfig apps/api/tsconfig.json tools/check-conversation-subjects.ts",
     "check:app-surface": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-surface.ts",
     "check:app-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-identity.ts",
     "check:website-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-website-identity.ts",

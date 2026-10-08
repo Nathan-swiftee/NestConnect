@@ -1604,6 +1604,20 @@ export class PrismaStore extends Store {
     }
   }
 
+  async getSubjectState(conversationId: string): Promise<{ auto: boolean; topic: string | null } | undefined> {
+    const row = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { subjectAuto: true, subjectTopic: true },
+    });
+    return row ? { auto: row.subjectAuto, topic: row.subjectTopic } : undefined;
+  }
+
+  async setSubjectTopic(conversationId: string, topic: string | null): Promise<void> {
+    await this.prisma.conversation
+      .update({ where: { id: conversationId }, data: { subjectTopic: topic } })
+      .catch(() => undefined);
+  }
+
   async setSubject(conversationId: string, subject: string | null): Promise<Conversation | undefined> {
     try {
       const row = await this.prisma.conversation.update({
@@ -2181,6 +2195,7 @@ export class PrismaStore extends Store {
     assigneeUserId?: string | null;
     assignedTeamId?: string | null;
     startedBy?: string;
+    autoSubject?: boolean;
   }): Promise<{ conversation: Conversation; created: boolean }> {
     // One open conversation per contact PER INBOX (channel endpoint): an inbound
     // to this inbox threads into the customer's open thread here; a different inbox
@@ -2234,6 +2249,7 @@ export class PrismaStore extends Store {
         seq: 0,
         preview: "",
         ...(params.startedBy !== undefined ? { channelRef: params.startedBy } : {}),
+        ...(params.autoSubject ? { subjectAuto: true, subjectTopic: params.subject ?? null } : {}),
       },
       include: convInclude,
     });
