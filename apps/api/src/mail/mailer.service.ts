@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import type { Inbox } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
+import { SandboxPolicy } from "../tenancy/sandbox";
 import { resolveResendConfig, resolveSmtpConfig, type ResendConfig, type SmtpConfig } from "./smtp-config";
 import { GMAIL_CONFIG, GoogleOAuthService } from "../channels/google/google-oauth.service";
 import { buildMime, gmail } from "../channels/google/gmail-api";
@@ -48,6 +49,7 @@ export class Mailer {
   constructor(
     private readonly store: Store,
     private readonly moduleRef: ModuleRef,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /** True when any transactional transport is available (Resend, Gmail, SMTP, Postmark). */
@@ -59,6 +61,8 @@ export class Mailer {
   }
 
   async sendMail(input: MailInput): Promise<MailResult> {
+    // Nothing leaves a demo workspace — not an invite, a reset, or a code.
+    if (await this.sandbox.current()) return { sent: false, error: "Email is off in the demo workspace" };
     // Resend first when configured (in Settings › Integrations or via env): it's
     // the intended transport for system mail, runs over HTTPS (delivers even where
     // the host blocks outbound SMTP), and is a single API call with no lookup.

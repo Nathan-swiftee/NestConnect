@@ -29,6 +29,10 @@ import { ChannelDispatcher } from "../apps/api/src/channels/channel-dispatcher";
 import type { ChannelProvider, SendParams, SendResult } from "../apps/api/src/channels/channel-provider";
 import type { MediaService } from "../apps/api/src/storage/media.service";
 import type { ChannelType, ConversationWithMessages, Message } from "../packages/schemas/src/index";
+import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
+
+/** An ordinary (not demo) workspace — see tenancy/sandbox.ts. */
+const notSandbox = { isSandbox: async () => false, current: async () => false, assertLive: async () => {}, twoFactorRequired: async () => true } as unknown as SandboxPolicy;
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -126,7 +130,7 @@ async function main(): Promise<void> {
 
   const send = async (channel: ChannelType | undefined, fails = false) => {
     const { provider, seen } = recordingProvider(fails);
-    const dispatcher = new ChannelDispatcher([provider], store, {} as MediaService);
+    const dispatcher = new ChannelDispatcher([provider], store, {} as MediaService, notSandbox);
     const outcome = await dispatcher.attemptSend(conv, message(channel));
     return { outcome, sentFrom: seen[0] };
   };
@@ -180,7 +184,7 @@ async function main(): Promise<void> {
   // A thread already running on a number must not start answering from another.
   const onOwn = { ...conv, inboxId: whatsapps[0].id, channel: "whatsapp" as ChannelType };
   const { provider: p2, seen: seen2 } = recordingProvider();
-  await new ChannelDispatcher([p2], store, {} as MediaService).attemptSend(onOwn, message(undefined));
+  await new ChannelDispatcher([p2], store, {} as MediaService, notSandbox).attemptSend(onOwn, message(undefined));
   ok("but a thread on its own number keeps it", seen2[0] === whatsapps[0].id, seen2[0]);
 
   // Exactly one, and only within its own channel.

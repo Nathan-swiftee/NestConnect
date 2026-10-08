@@ -15,6 +15,7 @@ import { env } from "../../config/env";
 import { Public } from "../../auth/public.decorator";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { Store } from "../../data/store";
+import { SandboxPolicy } from "../../tenancy/sandbox";
 import { bindTenant } from "../../tenancy/tenant-scope";
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
 import { GmailSyncService } from "./gmail-sync.service";
@@ -41,6 +42,7 @@ export class GoogleController {
     private readonly google: GoogleOAuthService,
     private readonly store: Store,
     private readonly gmailSync: GmailSyncService,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /**
@@ -58,6 +60,10 @@ export class GoogleController {
     const user = await this.store.getUser(userId);
     if (!user) {
       this.sendResult(res, { source: "ding-oauth", ok: false, error: "Not signed in" });
+      return;
+    }
+    if (await this.sandbox.current()) {
+      this.sendResult(res, { source: "ding-oauth", ok: false, error: "Connecting channels isn't available in the demo workspace" });
       return;
     }
     if (!(await this.google.configured(user.orgId))) {
@@ -93,6 +99,7 @@ export class GoogleController {
       // The redirect carries no session; the signed state says whose workspace
       // started the flow, and the rest of it acts there.
       bindTenant(orgId);
+      await this.sandbox.assertLive("Connecting a channel");
 
       const redirectUri = googleRedirectUri(req);
       const { accessToken, refreshToken, expiresIn } = await this.google.exchangeCode(

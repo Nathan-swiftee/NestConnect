@@ -69,6 +69,10 @@ model Organization {
   id        String   @id @default(cuid())
   name      String
   region    String   @default("uk")
+  // A demo workspace (e.g. for app-store reviewers): synthetic data only, and
+  // nothing it does reaches anyone — sends are simulated, channels can't be
+  // connected, no email/push/AI leaves it. See tenancy/sandbox.ts.
+  sandbox   Boolean  @default(false)
   createdAt DateTime @default(now())
 
   users         User[]

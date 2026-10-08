@@ -5,6 +5,7 @@ import {
   type CreateGroupInput,
 } from "@ding/schemas";
 import { Store } from "../../data/store";
+import { SandboxPolicy } from "../../tenancy/sandbox";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { RoutingService } from "../routing.service";
 import { WhatsAppGroupsProvider } from "../whatsapp/whatsapp-groups.provider";
@@ -20,6 +21,7 @@ export class GroupsService {
     private readonly provider: WhatsAppGroupsProvider,
     private readonly routing: RoutingService,
     private readonly realtime: RealtimeGateway,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /**
@@ -29,6 +31,8 @@ export class GroupsService {
    * the `group_participants_update` webhook fills the roster in as they do.
    */
   async createGroup(input: CreateGroupInput): Promise<ConversationWithMessages> {
+    // Creates a real group on WhatsApp — never from a demo workspace.
+    await this.sandbox.assertLive("Creating a WhatsApp group");
     // A WhatsApp group is hosted BY a WhatsApp number (the business number is a
     // member of the group) — not a channel of its own.
     const inbox = (await this.store.listInboxes()).find((i) => i.id === input.inboxId);
@@ -67,6 +71,7 @@ export class GroupsService {
 
   /** Revoke a group's invite link and mint a fresh one (e.g. if the link leaks). */
   async resetInviteLink(conversationId: string): Promise<{ inviteLink: string }> {
+    await this.sandbox.assertLive("Resetting a WhatsApp group link");
     const conv = await this.store.getConversation(conversationId);
     if (!conv || conv.channel !== "whatsapp_group") throw new NotFoundException("Group not found");
     if (!conv.channelRef) throw new BadRequestException("This group has no WhatsApp id yet");
@@ -77,6 +82,7 @@ export class GroupsService {
   }
 
   async removeParticipant(conversationId: string, contactId: string): Promise<void> {
+    await this.sandbox.assertLive("Removing someone from a WhatsApp group");
     const conv = await this.store.getConversation(conversationId);
     if (!conv || conv.channel !== "whatsapp_group") throw new NotFoundException("Group not found");
     const target = conv.participants.find((p) => p.contact.id === contactId);

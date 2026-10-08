@@ -9,6 +9,7 @@ import type {
 import { env } from "../config/env";
 import { currentOrgId } from "../tenancy/tenant-scope";
 import { Store } from "../data/store";
+import { SandboxPolicy } from "../tenancy/sandbox";
 
 /*
  * The org setting holding a WhatsApp account's default template id. Empty
@@ -47,7 +48,10 @@ interface MetaTemplate {
 export class TemplatesService {
   private readonly logger = new Logger(TemplatesService.name);
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly sandbox: SandboxPolicy,
+  ) {}
 
   /**
    * Every template, each flagged if it is the default *for its own account*.
@@ -147,6 +151,7 @@ export class TemplatesService {
    * anything Meta no longer has for that account removed.
    */
   async syncFromMeta(): Promise<{ synced: number; pruned: number }> {
+    await this.sandbox.assertLive("Syncing templates from Meta");
     const accounts = await this.whatsAppAccounts();
     if (!accounts.length) return { synced: 0, pruned: 0 };
     let synced = 0;

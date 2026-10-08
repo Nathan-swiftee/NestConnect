@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { Public } from "../../auth/public.decorator";
 import { CurrentUserId } from "../../auth/current-user.decorator";
 import { Store } from "../../data/store";
+import { SandboxPolicy } from "../../tenancy/sandbox";
 import { bindTenant } from "../../tenancy/tenant-scope";
 import { META_CONFIG, MetaOAuthService } from "./meta-oauth.service";
 import { metaRedirectUri } from "./redirect-uri";
@@ -21,6 +22,7 @@ export class MetaController {
   constructor(
     private readonly meta: MetaOAuthService,
     private readonly store: Store,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /**
@@ -37,6 +39,10 @@ export class MetaController {
     const user = await this.store.getUser(userId);
     if (!user) {
       this.sendResult(res, { source: "ding-oauth", ok: false, error: "Not signed in" });
+      return;
+    }
+    if (await this.sandbox.current()) {
+      this.sendResult(res, { source: "ding-oauth", ok: false, error: "Connecting channels isn't available in the demo workspace" });
       return;
     }
     if (!(await this.meta.configured(user.orgId))) {
@@ -73,6 +79,7 @@ export class MetaController {
       // The redirect carries no session; the signed state says whose workspace
       // started the flow, and the rest of it acts there.
       bindTenant(orgId);
+      await this.sandbox.assertLive("Connecting a channel");
 
       const accessToken = await this.meta.exchangeCode(orgId, code, metaRedirectUri(req));
       const number = await this.meta.discoverNumber(accessToken);

@@ -31,6 +31,7 @@ import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { Store } from "../data/store";
 import { env } from "../config/env";
 import { bindTenant } from "../tenancy/tenant-scope";
+import { SandboxPolicy } from "../tenancy/sandbox";
 import { AuthService, TRUSTED_DEVICE_TTL_S } from "./auth.service";
 import { SessionService } from "./session.service";
 import { TwoFactorService } from "./two-factor.service";
@@ -84,6 +85,7 @@ export class AuthController {
     private readonly twoFactor: TwoFactorService,
     private readonly store: Store,
     private readonly mailer: Mailer,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   /**
@@ -106,7 +108,8 @@ export class AuthController {
    * every successful session look like one.
    */
   private async meResponse(userId: string) {
-    return { ...(await this.store.me(userId)), twoFactorEnforced: env.auth.require2fa };
+    const me = await this.store.me(userId);
+    return { ...me, twoFactorEnforced: await this.sandbox.twoFactorRequired(me.user?.orgId) };
   }
 
   private async grantSession(userId: string, req: Request, res: Response, tokenAuth = false) {
@@ -254,6 +257,11 @@ export class AuthController {
   @Public()
   @Post("forgot-password")
   async forgotPassword(@Body(new ZodValidationPipe(forgotPasswordInputSchema)) body: ForgotPasswordInput) {
+    // A demo workspace's shared login is reset by its setup script, never by
+    // email: no link is minted and nothing is sent. Checked here because this
+    // route is public — no workspace is bound, so the mailer can't tell.
+    const account = await this.store.findUserByEmail(body.email);
+    if (account && (await this.sandbox.isSandbox(account.orgId))) return { ok: true };
     const reset = await this.store.createPasswordResetToken(body.email);
     if (reset) {
       const url = `${env.appUrl}/?reset=${reset.token}`;
@@ -315,6 +323,8 @@ export class AuthController {
     @Body(new ZodValidationPipe(changePasswordInputSchema)) body: ChangePasswordInput,
     @CurrentSessionId() sessionId?: string,
   ) {
+    // A demo workspace's login is shared; it stays the way the setup made it.
+    await this.sandbox.assertLive("Changing the demo account's sign-in");
     const ok = await this.auth.changePassword(userId, body.currentPassword, body.newPassword);
     if (!ok) throw new BadRequestException("Your current password is incorrect.");
     // The same rule as a reset, from the other side. Somebody changing their
@@ -359,6 +369,8 @@ export class AuthController {
   @EnrolmentAllowed()
   @Post("2fa/totp/start")
   async startTotp(@CurrentUserId() userId: string) {
+    // A demo workspace's login is shared; it stays the way the setup made it.
+    await this.sandbox.assertLive("Changing the demo account's sign-in");
     return this.twoFactor.startTotpSetup(await this.requireUser(userId));
   }
 
@@ -368,6 +380,8 @@ export class AuthController {
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(twoFactorCodeInputSchema)) body: TwoFactorCodeInput,
   ) {
+    // A demo workspace's login is shared; it stays the way the setup made it.
+    await this.sandbox.assertLive("Changing the demo account's sign-in");
     const recoveryCodes = await this.twoFactor.enableTotp(userId, body.code);
     if (!recoveryCodes) throw new BadRequestException("That code isn't right — try the current one from your app.");
     return { recoveryCodes };
@@ -377,6 +391,8 @@ export class AuthController {
   @EnrolmentAllowed()
   @Post("2fa/email/start")
   async startEmail(@CurrentUserId() userId: string) {
+    // A demo workspace's login is shared; it stays the way the setup made it.
+    await this.sandbox.assertLive("Changing the demo account's sign-in");
     await this.twoFactor.sendEmailCode(await this.requireUser(userId));
     return { ok: true };
   }
@@ -387,6 +403,8 @@ export class AuthController {
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(twoFactorCodeInputSchema)) body: TwoFactorCodeInput,
   ) {
+    // A demo workspace's login is shared; it stays the way the setup made it.
+    await this.sandbox.assertLive("Changing the demo account's sign-in");
     const recoveryCodes = await this.twoFactor.enableEmail(userId, body.code);
     if (!recoveryCodes) throw new BadRequestException("That code isn't right or has expired.");
     return { recoveryCodes };
@@ -394,11 +412,15 @@ export class AuthController {
 
   @Post("2fa/recovery/regenerate")
   async regenerateRecovery(@CurrentUserId() userId: string) {
+    // A demo workspace's login is shared; it stays the way the setup made it.
+    await this.sandbox.assertLive("Changing the demo account's sign-in");
     return { recoveryCodes: await this.twoFactor.regenerateRecoveryCodes(userId) };
   }
 
   @Post("2fa/disable")
   async disableTwoFactor(@CurrentUserId() userId: string) {
+    // A demo workspace's login is shared; it stays the way the setup made it.
+    await this.sandbox.assertLive("Changing the demo account's sign-in");
     // Where the workspace requires a second factor this puts the person back
     // behind the enrolment gate on every device, because the guard asks whether
     // the account has one rather than what a token said when it was minted. It

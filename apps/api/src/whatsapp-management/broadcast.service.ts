@@ -7,6 +7,7 @@ import {
 import type { BroadcastResult, SendBroadcastInput } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
+import { SandboxPolicy } from "../tenancy/sandbox";
 import { metaErrorMessage, resolveWhatsAppCreds } from "../channels/whatsapp/whatsapp-creds";
 
 /** How many recipient sends run at once — bounded so a big list doesn't hammer
@@ -25,9 +26,14 @@ const CONCURRENCY = 8;
 export class BroadcastService {
   private readonly logger = new Logger(BroadcastService.name);
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly sandbox: SandboxPolicy,
+  ) {}
 
   async send(input: SendBroadcastInput): Promise<BroadcastResult> {
+    // Sends straight to Meta, to many people — never from a demo workspace.
+    await this.sandbox.assertLive("Broadcasting");
     const inbox = await this.store.getInbox(input.inboxId);
     if (!inbox || inbox.type !== "whatsapp") {
       throw new BadRequestException("Pick a WhatsApp number to broadcast from.");

@@ -9,6 +9,7 @@ import { IS_PUBLIC_KEY } from "./public.decorator";
 import { IS_ENROLMENT_ALLOWED_KEY } from "./enrolment-allowed.decorator";
 import { Store } from "../data/store";
 import { runInTenant } from "../tenancy/tenant-scope";
+import { SandboxPolicy } from "../tenancy/sandbox";
 
 /**
  * Global guard. Reads the session JWT from the httpOnly cookie, validates it,
@@ -25,6 +26,7 @@ export class AuthGuard implements CanActivate {
     private readonly sessions: SessionService,
     private readonly twoFactor: TwoFactorService,
     private readonly store: Store,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -90,7 +92,9 @@ export class AuthGuard implements CanActivate {
      * turning it back off, lands on every device at once instead of on whichever
      * one happened to make the change.
      */
-    if (env.auth.require2fa) {
+    // Required everywhere it is switched on — except a demo workspace's shared
+    // login (tenancy/sandbox.ts), where it would make the demo unreachable.
+    if (await this.sandbox.twoFactorRequired(req.orgId)) {
       const allowed = this.reflector.getAllAndOverride<boolean>(IS_ENROLMENT_ALLOWED_KEY, [
         ctx.getHandler(),
         ctx.getClass(),

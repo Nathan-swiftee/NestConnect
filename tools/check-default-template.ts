@@ -32,6 +32,10 @@ import { ORG_ID } from "../apps/api/src/data/fixtures";
 import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 import { TemplatesService } from "../apps/api/src/templates/templates.service";
 import { setDefaultTemplateInputSchema } from "../packages/schemas/src/index";
+import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
+
+/** An ordinary (not demo) workspace — see tenancy/sandbox.ts. */
+const notSandbox = { isSandbox: async () => false, current: async () => false, assertLive: async () => {}, twoFactorRequired: async () => true } as unknown as SandboxPolicy;
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -50,7 +54,7 @@ function forAccount(templates: Array<{ wabaId?: string; isDefault: boolean; vari
 
 async function main(): Promise<void> {
   const store = new MemoryStore();
-  const templates = new TemplatesService(store);
+  const templates = new TemplatesService(store, notSandbox);
 
   const mk = (name: string, body: string, wabaId?: string) =>
     store.upsertTemplateByName(ORG_ID, {
@@ -81,7 +85,7 @@ async function main(): Promise<void> {
 
   console.log("\nThe pre-accounts workspace setting still holds\n");
   const fresh = new MemoryStore();
-  const svc = new TemplatesService(fresh);
+  const svc = new TemplatesService(fresh, notSandbox);
   // What a workspace that predates template scoping has: the bare key, and a
   // template no sync has claimed for an account.
   const legacyTpl = await fresh.upsertTemplateByName(ORG_ID, {
@@ -112,7 +116,7 @@ async function main(): Promise<void> {
   // and rejecting that is not a validation success, it is every star on that
   // tab silently failing. Both shapes have to work.
   const old = new MemoryStore();
-  const oldSvc = new TemplatesService(old);
+  const oldSvc = new TemplatesService(old, notSandbox);
   const t1 = await old.upsertTemplateByName(ORG_ID, {
     name: "one", body: "Hi: {{1}}", language: "en", category: "utility",
     approvalStatus: "approved", wabaId: WABA_A,

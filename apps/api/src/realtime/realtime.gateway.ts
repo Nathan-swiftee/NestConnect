@@ -26,6 +26,7 @@ import { env } from "../config/env";
 import { Store } from "../data/store";
 import { TenantContext } from "../tenancy/tenant-context";
 import { runInTenant } from "../tenancy/tenant-scope";
+import { SandboxPolicy } from "../tenancy/sandbox";
 
 type DingServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type DingSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -55,6 +56,7 @@ export class RealtimeGateway
   constructor(
     private readonly store: Store,
     private readonly tenant: TenantContext,
+    private readonly sandbox: SandboxPolicy,
   ) {}
 
   @WebSocketServer()
@@ -129,7 +131,7 @@ export class RealtimeGateway
     // Held at the mandatory two-factor gate. The HTTP guard refuses those
     // sessions every route but enrolment; this is the one way into the org's
     // traffic that doesn't go through it, and it streams the lot.
-    if (env.auth.require2fa && !user.twoFactorEnabled) {
+    if (!user.twoFactorEnabled && (await this.sandbox.twoFactorRequired(user.orgId))) {
       this.logger.debug(`socket rejected (two-factor not set up): ${client.id}`);
       client.disconnect();
       return;

@@ -2,6 +2,7 @@ import { BadGatewayException, BadRequestException, Injectable, Logger } from "@n
 import type { OpeningDay, OpeningHours, UpdateWhatsAppBusinessProfileInput, WhatsAppBusinessProfile } from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
+import { SandboxPolicy } from "../tenancy/sandbox";
 import { metaErrorMessage, resolveWhatsAppCreds } from "../channels/whatsapp/whatsapp-creds";
 import { META_APP_ID_KEY } from "../channels/meta/meta-oauth.service";
 
@@ -40,10 +41,15 @@ interface MetaProfile {
 export class BusinessProfileService {
   private readonly logger = new Logger(BusinessProfileService.name);
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly sandbox: SandboxPolicy,
+  ) {}
 
   /** Resolve a WhatsApp inbox's live credentials, or explain why it can't. */
   private async credsFor(inboxId: string) {
+    // Every profile read and write is a call to Meta on the number's behalf.
+    await this.sandbox.assertLive("The WhatsApp business profile");
     const inbox = await this.store.getInbox(inboxId);
     if (!inbox || inbox.type !== "whatsapp") {
       throw new BadRequestException("That inbox isn't a WhatsApp number.");

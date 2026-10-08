@@ -1006,6 +1006,13 @@ export class PrismaStore extends Store {
     return rows.map(mapInbox);
   }
 
+  // Cross-tenant by necessity: asked by policy code (the auth guard, the
+  // dispatcher) about a workspace by id, sometimes before one is bound.
+  async isSandboxOrg(orgId: string): Promise<boolean> {
+    const row = await this.root.organization.findUnique({ where: { id: orgId }, select: { sandbox: true } });
+    return row?.sandbox === true;
+  }
+
   // Cross-tenant by necessity: see the Store contract.
   async conversationOrg(conversationId: string): Promise<string | undefined> {
     const row = await this.root.conversation.findUnique({ where: { id: conversationId }, select: { orgId: true } });
