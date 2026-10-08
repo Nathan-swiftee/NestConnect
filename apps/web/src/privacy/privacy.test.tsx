@@ -53,6 +53,25 @@ const html = (fields?: PrivacyOwnerFields) => renderToStaticMarkup(<PrivacyPage 
 const visibleText = (markup: string) => markup.replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 
 describe("privacy policy — unresolved owner fields (fail closed)", () => {
+  it("records only the three owner-confirmed facts and keeps the shipped page pending", () => {
+    const confirmed = {
+      controllerName: "Nest Partners Ltd",
+      postalAddress: "14 grosvenor way e59nd",
+      contactEmail: "info@swiftee.co.uk",
+    };
+    expect(OWNER_FIELDS).toEqual({ ...ALL_UNRESOLVED, ...confirmed });
+    expect(unresolvedOwnerFields(OWNER_FIELDS)).toEqual(
+      OWNER_FIELD_NAMES.filter((name) => !(name in confirmed)),
+    );
+    expect(resolvePolicy()).toEqual({ status: "pending" });
+    const out = html();
+    expect(out).toContain('data-testid="privacy-pending"');
+    expect(out).not.toContain('data-testid="privacy-policy"');
+    const text = visibleText(out);
+    for (const value of Object.values(confirmed)) expect(text).not.toContain(value);
+    for (const section of buildPolicy(FILLED).sections) expect(text).not.toContain(section.title);
+  });
+
   it("shows only the neutral 'being finalised' state", () => {
     const out = html(ALL_UNRESOLVED);
     expect(out).toContain('data-testid="privacy-pending"');

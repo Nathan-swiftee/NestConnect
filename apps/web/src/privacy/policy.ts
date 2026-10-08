@@ -86,15 +86,16 @@ export interface PrivacyOwnerFields {
 export type ResolvedOwnerFields = { [K in keyof PrivacyOwnerFields]: NonNullable<PrivacyOwnerFields[K]> };
 
 /**
- * THE owner fields. Every value is unresolved on purpose: none of these may be
- * guessed. Fill them in (after the owner's approval) to publish the policy —
- * see the owner-approval checklist in docs/privacy-policy-draft.md.
+ * THE owner fields. Only owner-confirmed facts are populated; never guess the
+ * remaining values. Recording these facts does not approve publication: all
+ * remaining fields and the final policy still need owner approval — see
+ * docs/privacy-policy-draft.md.
  */
 export const OWNER_FIELDS: PrivacyOwnerFields = {
-  controllerName: null,
+  controllerName: "Nest Partners Ltd",
   companyDetails: null,
-  postalAddress: null,
-  contactEmail: null,
+  postalAddress: "14 grosvenor way e59nd",
+  contactEmail: "info@swiftee.co.uk",
   effectiveDate: null,
   endCustomerDataRole: null,
   hostingProvider: null,
