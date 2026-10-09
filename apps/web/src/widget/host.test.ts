@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hostWillSpeak, readHostMessage, sameIdentity, sessionInputFor } from "./host";
+import { hostWillSpeak, readHostMessage, readLayoutMessage, sameIdentity, sessionInputFor } from "./host";
 
 describe("what the page says about who is signed in", () => {
   it("is only waited for when the loader said it would speak", () => {
@@ -59,5 +59,21 @@ describe("what the page says about who is signed in", () => {
     expect(sameIdentity(a, b)).toBe(false);
     expect(sameIdentity(a, out)).toBe(false);
     expect(sameIdentity(null, out)).toBe(true);
+  });
+});
+
+describe("what the page says about the chat's shape", () => {
+  it("is full screen only when the loader says so", () => {
+    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: true })).toEqual({ fullscreen: true });
+    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: false })).toEqual({ fullscreen: false });
+    // Anything but a literal true is the card: a page cannot talk the chat
+    // into hiding its own way out by sending something truthy.
+    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: "yes" })).toEqual({ fullscreen: false });
+  });
+
+  it("ignores every other message", () => {
+    expect(readLayoutMessage({ type: "nestchat:user", user: null })).toBeUndefined();
+    expect(readLayoutMessage("nestchat:layout")).toBeUndefined();
+    expect(readLayoutMessage(null)).toBeUndefined();
   });
 });
