@@ -284,6 +284,42 @@ body {
   align-items: center;
 }
 
+/* The right-hand end of the header's top row: the faces (or the business's
+   mark), then — full screen on a phone — the minimise button. */
+.nc__headend {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Minimise, full screen on a phone. On the brand colour, so it takes the
+   header's own text colour, like Back. 40px: a thumb target, not a cursor's. */
+.nc__min {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-right: -8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nc__min:hover,
+.nc__min:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.nc__min:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+
 .nc__face {
   position: relative;
   width: 34px;

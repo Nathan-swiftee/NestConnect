@@ -32,7 +32,15 @@ import {
   uploadVoice,
 } from "./api";
 import { gateFor } from "./prechat";
-import { HOST_WAIT_MS, listenToHost, sameIdentity, sessionInputFor, type HostIdentity } from "./host";
+import {
+  HOST_WAIT_MS,
+  askHostToClose,
+  listenToHost,
+  readLayoutMessage,
+  sameIdentity,
+  sessionInputFor,
+  type HostIdentity,
+} from "./host";
 import { MessageRow, describeQuote } from "./MessageRow";
 import { VoiceNote } from "./VoiceNote";
 import { VoiceRecorder } from "./VoiceRecorder";
@@ -284,6 +292,9 @@ export function Widget({
    * feature is off.
    */
   const [view, setView] = useState<"home" | "chat">("chat");
+  /** The loader has opened this chat full screen (a phone): it shows its own
+   *  minimise button, because the loader's round one is hidden. */
+  const [fullscreen, setFullscreen] = useState(false);
   const [preChat, setPreChat] = useState<NestChatPreChat>();
   const [routing, setRouting] = useState<NestChatPublicRouting>();
   /** Their name, as they gave it — for the greeting, and so they can see who we
@@ -401,6 +412,20 @@ export function Widget({
       .then((session) => adopt(session, who))
       .catch(() => setPhase("unavailable"));
   };
+
+  /* ---- full screen, on a phone ---- */
+
+  // Registered before the boot effect below says "ready", so the loader's
+  // first word on the layout is never missed.
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      const layout = readLayoutMessage(event.data);
+      if (layout) setFullscreen(layout.fullscreen);
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
 
   /* ---- boot: appearance, then session ---- */
 
@@ -1121,6 +1146,7 @@ export function Widget({
         )}
         </>
         )}
+        <div className="nc__headend">
         {team?.faces.length ? (
           /* Who is behind the counter. Overlapped left-to-right with the first
              face on top, so the stack reads as a group rather than a row.
@@ -1165,6 +1191,24 @@ export function Widget({
             <i className={online ? "nc__pip nc__pip--online" : "nc__pip"} />
           </div>
         )}
+        {/* Full screen on a phone, the page's round button is hidden (it would
+            cover the composer), so the way back to the page is here, in the
+            corner people reach for. */}
+        {fullscreen ? (
+          <button type="button" className="nc__min" aria-label="Minimise chat" title="Minimise" onClick={askHostToClose}>
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M6 9l6 6 6-6"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        ) : null}
+        </div>
         </div>
         <div className="nc__headtext">
           {/* The greeting takes their name; the title asks the question. Empty

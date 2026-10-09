@@ -148,14 +148,135 @@
     frame.contentWindow.postMessage({ type: "nestchat:user", user: user, fields: fields }, origin);
   }
 
+  /** Whether the chat fills the screen: it does whenever it's open on a phone,
+   *  so the chat draws its own minimise button rather than relying on ours. */
+  function tellLayout() {
+    if (!frameReady || !frame.contentWindow) return;
+    frame.contentWindow.postMessage({ type: "nestchat:layout", fullscreen: open && small() }, origin);
+  }
+
   window.addEventListener("message", function (event) {
-    // Only our own frame, from our own origin, asking who is signed in.
+    // Only our own frame, from our own origin.
     if (event.origin !== origin || event.source !== frame.contentWindow) return;
-    if (event.data && event.data.type === "nestchat:ready") {
+    var type = event.data && event.data.type;
+    if (type === "nestchat:ready") {
       frameReady = true;
       tellFrame();
+      tellLayout();
+    } else if (type === "nestchat:close") {
+      // The minimise button inside the full-screen chat.
+      setOpen(false);
     }
   });
+
+  /*
+   * A phone gets the chat full screen.
+   *
+   * A floating card is the right shape for a desktop, where it sits beside the
+   * page. On a phone the same card is nearly the width of the screen but not
+   * the height: the page shows and scrolls behind it, the keyboard shoves it
+   * around, and our round button lands on top of the chat's own send button.
+   * So below this width — or on a phone held sideways, which is short rather
+   * than narrow — opening the chat takes the whole screen, the page behind it
+   * is held still, and the chat shows its own minimise button.
+   */
+  var SMALL = "(max-width: 640px), (max-height: 500px) and (pointer: coarse)";
+  function small() {
+    return !!(window.matchMedia && window.matchMedia(SMALL).matches);
+  }
+
+  var CARD = [
+    "top:auto",
+    "left:auto",
+    "right:auto",
+    "bottom:88px",
+    side + ":20px",
+    "width:380px",
+    "height:min(620px, calc(100vh - 120px))",
+    "max-width:calc(100vw - 40px)",
+    "max-height:none",
+    "border-radius:16px",
+    "box-shadow:0 12px 40px rgba(16,24,40,.22)",
+  ];
+  var FULL = [
+    "top:0",
+    "left:0",
+    "right:0",
+    "bottom:0",
+    "width:100%",
+    "height:100%",
+    "max-width:none",
+    "max-height:none",
+    "border-radius:0",
+    "box-shadow:none",
+  ];
+
+  /** Still fading out of full screen: it keeps that shape until it's gone,
+   *  rather than snapping into a card on its way out. */
+  var leaving = false;
+
+  /** Put the frame in the shape this screen gets, keeping everything else. */
+  function shape() {
+    var rules = small() && (open || leaving) ? FULL : CARD;
+    for (var i = 0; i < rules.length; i++) {
+      var at = rules[i].indexOf(":");
+      frame.style.setProperty(rules[i].slice(0, at), rules[i].slice(at + 1));
+    }
+    // Hidden while the chat covers the screen — the chat has its own minimise
+    // button, and ours would sit on top of the composer.
+    button.style.display = open && small() ? "none" : "flex";
+  }
+
+  /*
+   * Hold the page still behind a full-screen chat, and put it back exactly
+   * where it was afterwards. `overflow: hidden` alone is not enough on iOS,
+   * which scrolls the page anyway; pinning the body at its scroll offset is
+   * what stops it — and what has to be undone carefully, or the visitor is
+   * dropped at the top of the page they were reading.
+   */
+  var locked = null;
+  function lockPage(lock) {
+    var body = document.body;
+    var html = document.documentElement;
+    if (!body) return;
+    if (lock && !locked) {
+      locked = {
+        y: window.pageYOffset || html.scrollTop || 0,
+        html: html.style.overflow,
+        overflow: body.style.overflow,
+        position: body.style.position,
+        top: body.style.top,
+        width: body.style.width,
+      };
+      html.style.overflow = "hidden";
+      body.style.overflow = "hidden";
+      body.style.position = "fixed";
+      body.style.top = -locked.y + "px";
+      body.style.width = "100%";
+    } else if (!lock && locked) {
+      var was = locked;
+      locked = null;
+      html.style.overflow = was.html;
+      body.style.overflow = was.overflow;
+      body.style.position = was.position;
+      body.style.top = was.top;
+      body.style.width = was.width;
+      window.scrollTo(0, was.y);
+    }
+  }
+
+  /** Shape, page lock and the chat's minimise button, for the current screen. */
+  function layout() {
+    shape();
+    lockPage(open && small());
+    tellLayout();
+  }
+  if (window.matchMedia) {
+    var query = window.matchMedia(SMALL);
+    // Turning a phone, or a desktop window dragged narrow, while it's open.
+    if (query.addEventListener) query.addEventListener("change", layout);
+    else if (query.addListener) query.addListener(layout);
+  }
 
   var frame = document.createElement("iframe");
   // Stable ids on both elements. A customer's own stylesheet is written against
@@ -176,14 +297,7 @@
   frame.allow = "microphone; clipboard-write";
   frame.style.cssText = [
     "position:fixed",
-    "bottom:88px",
-    side + ":20px",
-    "width:380px",
-    "height:min(620px, calc(100vh - 120px))",
-    "max-width:calc(100vw - 40px)",
     "border:0",
-    "border-radius:16px",
-    "box-shadow:0 12px 40px rgba(16,24,40,.22)",
     "background:transparent",
     "z-index:2147483646",
     "display:none",
@@ -227,10 +341,12 @@
   button.innerHTML = bubbleIcon;
 
   function setOpen(next) {
+    leaving = open && !next && small();
     open = next;
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.innerHTML = open ? closeIcon : bubbleIcon;
     frame.setAttribute("aria-hidden", open ? "false" : "true");
+    layout();
     if (open) {
       frame.style.display = "block";
       // One frame of layout before the transition, or it starts from its end
@@ -243,7 +359,10 @@
       frame.style.opacity = "0";
       frame.style.transform = "translateY(12px)";
       setTimeout(function () {
-        if (!open) frame.style.display = "none";
+        if (open) return;
+        frame.style.display = "none";
+        leaving = false;
+        shape();
       }, 180);
     }
   }
@@ -258,6 +377,7 @@
   function mount() {
     document.body.appendChild(frame);
     document.body.appendChild(button);
+    shape();
   }
   if (document.body) mount();
   else document.addEventListener("DOMContentLoaded", mount);

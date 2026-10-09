@@ -39,6 +39,25 @@ export function readHostMessage(data: unknown): HostIdentity | undefined {
   return { user: cleanUser(msg.user), fields: cleanFields(msg.fields) };
 }
 
+/**
+ * The loader's word on whether this chat fills the screen — it does when it's
+ * open on a phone (see `small()` in public/nestchat.js). Full screen, the
+ * chat draws its own minimise button: the loader's round one is hidden, since
+ * it would sit on top of the composer.
+ */
+export function readLayoutMessage(data: unknown): { fullscreen: boolean } | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const msg = data as { type?: unknown; fullscreen?: unknown };
+  if (msg.type !== "nestchat:layout") return undefined;
+  return { fullscreen: msg.fullscreen === true };
+}
+
+/** Ask the loader to put the chat away — the full-screen chat's minimise. */
+export function askHostToClose(): void {
+  // Carries nothing but the request; the loader checks it came from its frame.
+  window.parent?.postMessage({ type: "nestchat:close" }, "*");
+}
+
 function cleanUser(raw: unknown): HostUser | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
