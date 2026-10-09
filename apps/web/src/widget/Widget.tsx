@@ -295,6 +295,17 @@ export function Widget({
   /** The loader has opened this chat full screen (a phone): it shows its own
    *  minimise button, because the loader's round one is hidden. */
   const [fullscreen, setFullscreen] = useState(false);
+  /** The phone's keyboard is up (the page says so), or the visitor is in the
+   *  message box — either way they are typing, and the header goes compact. */
+  const [keyboard, setKeyboard] = useState(false);
+  const [composing, setComposing] = useState(false);
+  /**
+   * The one-line header, as the Flutter SDK draws it with the keyboard up: on
+   * a phone the keyboard takes half the screen, and the greeting, the away
+   * line and the big faces are an introduction — somebody mid-sentence has
+   * been introduced. The conversation gets the room instead.
+   */
+  const compact = fullscreen && view === "chat" && (keyboard || composing);
   const [preChat, setPreChat] = useState<NestChatPreChat>();
   const [routing, setRouting] = useState<NestChatPublicRouting>();
   /** Their name, as they gave it — for the greeting, and so they can see who we
@@ -421,7 +432,10 @@ export function Widget({
     const handler = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
       const layout = readLayoutMessage(event.data);
-      if (layout) setFullscreen(layout.fullscreen);
+      if (layout) {
+        setFullscreen(layout.fullscreen);
+        setKeyboard(layout.keyboard);
+      }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
@@ -613,10 +627,12 @@ export function Widget({
 
   /* ---- keep the newest message in view ---- */
 
+  // `compact` too: the keyboard taking half the screen is no reason to lose
+  // the message being answered.
   useEffect(() => {
     const el = threadRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, agentTyping]);
+  }, [messages, agentTyping, compact]);
 
   /* ---- sending ---- */
 
@@ -1105,7 +1121,11 @@ export function Widget({
           a title bar and somewhere a person answers. */}
       {/* The fade belongs to the home screen only — see the CSS for why a
           dissolve over a scrolling thread reads as unfinished. */}
-      <header className={view === "home" && home ? "nc__head nc__head--fade" : "nc__head"}>
+      <header
+        className={
+          compact ? "nc__head nc__head--compact" : view === "home" && home ? "nc__head nc__head--fade" : "nc__head"
+        }
+      >
         <div className="nc__headtop">
         {/* Back to the cards. Only when there is a home screen and they are not
             already on it — and it takes the logo's place rather than sitting
@@ -1146,6 +1166,8 @@ export function Widget({
         )}
         </>
         )}
+        {/* Compact, the title moves up into the one row that's left. */}
+        {compact ? <div className="nc__ctitle">{fillVisitorName(appearance.title, visitorName)}</div> : null}
         <div className="nc__headend">
         {team?.faces.length ? (
           /* Who is behind the counter. Overlapped left-to-right with the first
@@ -1210,6 +1232,7 @@ export function Widget({
         ) : null}
         </div>
         </div>
+        {compact ? null : (
         <div className="nc__headtext">
           {/* The greeting takes their name; the title asks the question. Empty
               headline drops the line rather than leaving a gap where it was. */}
@@ -1219,6 +1242,7 @@ export function Widget({
           <div className="nc__title">{fillVisitorName(appearance.title, visitorName)}</div>
           <div className="nc__sub">{online ? appearance.subtitle : appearance.awayMessage}</div>
         </div>
+        )}
       </header>
 
       {view === "home" && home ? (
@@ -1701,6 +1725,8 @@ export function Widget({
           placeholder={appearance.placeholder}
           aria-label={appearance.placeholder}
           onChange={(e) => onDraft(e.target.value)}
+          onFocus={() => setComposing(true)}
+          onBlur={() => setComposing(false)}
           onPaste={(e) => {
             // A screenshot pasted into the box is a screenshot to send, not
             // nothing. Text pastes as text, as it always did.
@@ -1751,7 +1777,9 @@ export function Widget({
       </>
       )}
 
-      {appearance.showBranding ? (
+      {/* Dropped while typing on a phone: a line of our branding is not worth
+          a line of their conversation. */}
+      {appearance.showBranding && !compact ? (
         <div className="nc__brand">
           Powered by{" "}
           <a href="https://nestconnect.io" target="_blank" rel="noreferrer">

@@ -284,6 +284,53 @@ body {
   align-items: center;
 }
 
+/* ── compact header ───────────────────────────────────────────────────────
+   Full screen on a phone, while typing: one row — back, the title, up to three
+   small faces, minimise — like the Flutter SDK's header with the keyboard up.
+   The greeting is an introduction; somebody mid-sentence has been introduced,
+   and with the keyboard taking half the screen the room goes to the thread. */
+.nc__head--compact {
+  gap: 0;
+  padding: 8px 10px 8px 14px;
+}
+
+.nc__head--compact .nc__headtop {
+  min-height: 40px;
+  justify-content: flex-start;
+}
+
+.nc__head--compact .nc__logo {
+  display: none;
+}
+
+/* A bare arrow, as in the Flutter SDK's compact header: the word would take
+   the title's room. The icon has its own size, so only the text goes. */
+.nc__head--compact .nc__back {
+  font-size: 0;
+  gap: 0;
+  padding: 6px;
+}
+
+.nc__ctitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nc__head--compact .nc__face,
+.nc__head--compact .nc__mark {
+  width: 30px;
+  height: 30px;
+}
+
+.nc__head--compact .nc__face:nth-child(n + 4) {
+  display: none;
+}
+
 /* The right-hand end of the header's top row: the faces (or the business's
    mark), then — full screen on a phone — the minimise button. */
 .nc__headend {
