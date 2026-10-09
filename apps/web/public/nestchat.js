@@ -272,12 +272,18 @@
    * Above the keyboard.
    *
    * The on-screen keyboard doesn't make the page shorter: it covers the bottom
-   * of it, and iOS then scrolls the whole page up to show the box being typed
-   * in — which carried the chat's header off the top of the screen. The part
-   * still visible is the *visual* viewport, and a full-screen chat should be
-   * exactly that: so it is pinned to its top and sized to its height, and
-   * follows it as the keyboard comes and goes. The chat is told the keyboard
-   * is up, and folds its header to one line to give the thread the room.
+   * of it, and iOS Safari then slides the whole screen up to show the box being
+   * typed in, carrying the chat's header off the top. Following that slide
+   * (moving the chat down by it) was the first attempt, and it fought Safari:
+   * every move of the chat moved the box, Safari slid again to "reveal" it, and
+   * the header and the composer took turns disappearing.
+   *
+   * So the slide is undone instead — scrolled back to the top — and the chat is
+   * sized to what the keyboard leaves visible. The box is then already above
+   * the keyboard, and Safari has no reason to slide again. A browser that won't
+   * be scrolled back is followed (`offsetTop`) rather than fought. The chat is
+   * told the keyboard is up, and folds its header to one line, as the Flutter
+   * SDK does.
    */
   var viewport = window.visualViewport;
   function keyboardUp() {
@@ -286,18 +292,76 @@
   }
   var lastKeyboard = null;
   var fitQueued = false;
+  var placed = { top: -1, height: -1 };
+  /** Set once undoing the slide is seen not to work, so it isn't tried
+   *  again — trying would be the same fight by another route. */
+  var slideStays = false;
+  var verifying = null;
   function fit() {
     fitQueued = false;
     if (!viewport || !(open && small())) return;
-    frame.style.top = viewport.offsetTop + "px";
-    frame.style.height = viewport.height + "px";
-    frame.style.bottom = "auto";
     var up = keyboardUp();
+    var slid = viewport.offsetTop > 0 || window.pageYOffset > 0;
+    var top;
+    // Undo the slide — but only once the keyboard's size is known. Safari can
+    // slide before it reports the keyboard; undoing it then, with the chat
+    // still full height, would hide the box again and start the fight. The
+    // page itself is pinned behind the chat (lockPage), so scrolling back
+    // moves nothing the visitor can see but the slide.
+    if (up && slid && !slideStays) {
+      window.scrollTo(0, 0);
+      top = 0;
+      // Check it took. If the browser kept its slide, follow it from now on.
+      clearTimeout(verifying);
+      verifying = setTimeout(function () {
+        if (viewport.offsetTop > 0 && keyboardUp()) slideStays = true;
+        queueFit();
+      }, 120);
+    } else {
+      top = Math.max(0, Math.round(viewport.offsetTop));
+    }
+    var height = Math.round(viewport.height);
+    // Only when something changed: a write that changes nothing still moves
+    // the box as far as Safari is concerned, and starts the fight again.
+    if (top !== placed.top || height !== placed.height) {
+      placed = { top: top, height: height };
+      frame.style.top = top + "px";
+      frame.style.height = height + "px";
+      frame.style.bottom = "auto";
+    }
     if (up !== lastKeyboard) {
       lastKeyboard = up;
       tellLayout();
     }
+    if (!up) slideStays = false;
+    debug();
   }
+
+  /*
+   * `?nestchat_debug=1` on the page's address: a small live readout of what
+   * the browser reports about the screen and the keyboard. Phone keyboards
+   * can't be raised in a test, so a screen recording with this on is how a
+   * misbehaving phone gets diagnosed rather than guessed at. Off otherwise —
+   * nothing is drawn and nothing is read.
+   */
+  var debugBox = null;
+  function debug() {
+    if (!/[?&]nestchat_debug=1\b/.test(window.location.search)) return;
+    if (!debugBox) {
+      debugBox = document.createElement("div");
+      debugBox.style.cssText =
+        "position:fixed;left:4px;top:4px;z-index:2147483647;padding:4px 6px;border-radius:6px;" +
+        "background:rgba(0,0,0,.75);color:#0f0;font:11px/1.3 monospace;pointer-events:none;white-space:pre";
+      document.body.appendChild(debugBox);
+    }
+    var r = frame.getBoundingClientRect();
+    debugBox.textContent =
+      "inner " + window.innerWidth + "x" + window.innerHeight + "  scrollY " + Math.round(window.pageYOffset) +
+      "\nvv " + (viewport ? Math.round(viewport.width) + "x" + Math.round(viewport.height) + " @" + Math.round(viewport.offsetTop) : "none") +
+      "\nframe " + Math.round(r.top) + "/" + Math.round(r.height) +
+      "  kb " + (keyboardUp() ? "up" : "down") + (slideStays ? "  follow" : "");
+  }
+
   function queueFit() {
     if (fitQueued) return;
     fitQueued = true;
@@ -306,6 +370,11 @@
   if (viewport) {
     viewport.addEventListener("resize", queueFit);
     viewport.addEventListener("scroll", queueFit);
+    // Safari's slide can arrive as a scroll of the page rather than of the
+    // viewport; either way it is undone.
+    window.addEventListener("scroll", function () {
+      if (open && small()) queueFit();
+    });
   }
 
   /** Shape, page lock and the chat's minimise button, for the current screen. */
@@ -313,6 +382,7 @@
     shape();
     lockPage(open && small());
     lastKeyboard = null;
+    placed = { top: -1, height: -1 };
     fit();
     tellLayout();
   }

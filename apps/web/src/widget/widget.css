@@ -49,6 +49,10 @@ html,
 body {
   height: 100%;
   margin: 0;
+  /* The chat is a fixed-size app: the thread scrolls inside it, the page never
+     does. Without this, iOS scrolled the page inside the frame to reveal the
+     message box and took the header with it. */
+  overflow: hidden;
 }
 
 body {
