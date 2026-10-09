@@ -272,12 +272,18 @@
    * Above the keyboard.
    *
    * The on-screen keyboard doesn't make the page shorter: it covers the bottom
-   * of it, and iOS then scrolls the whole page up to show the box being typed
-   * in — which carried the chat's header off the top of the screen. The part
-   * still visible is the *visual* viewport, and a full-screen chat should be
-   * exactly that: so it is pinned to its top and sized to its height, and
-   * follows it as the keyboard comes and goes. The chat is told the keyboard
-   * is up, and folds its header to one line to give the thread the room.
+   * of it, and iOS Safari then slides the whole screen up to show the box being
+   * typed in, carrying the chat's header off the top. Following that slide
+   * (moving the chat down by it) was the first attempt, and it fought Safari:
+   * every move of the chat moved the box, Safari slid again to "reveal" it, and
+   * the header and the composer took turns disappearing.
+   *
+   * So the slide is undone instead — scrolled back to the top — and the chat is
+   * sized to what the keyboard leaves visible. The box is then already above
+   * the keyboard, and Safari has no reason to slide again. A browser that won't
+   * be scrolled back is followed (`offsetTop`) rather than fought. The chat is
+   * told the keyboard is up, and folds its header to one line, as the Flutter
+   * SDK does.
    */
   var viewport = window.visualViewport;
   function keyboardUp() {
@@ -286,12 +292,23 @@
   }
   var lastKeyboard = null;
   var fitQueued = false;
+  var placed = { top: -1, height: -1 };
   function fit() {
     fitQueued = false;
     if (!viewport || !(open && small())) return;
-    frame.style.top = viewport.offsetTop + "px";
-    frame.style.height = viewport.height + "px";
-    frame.style.bottom = "auto";
+    // Undo the slide. The page itself is pinned in place behind the chat (see
+    // lockPage), so this moves nothing the visitor can see but the slide.
+    if (viewport.offsetTop > 0 || window.pageYOffset > 0) window.scrollTo(0, 0);
+    var top = Math.max(0, Math.round(viewport.offsetTop));
+    var height = Math.round(viewport.height);
+    // Only when something changed: a write that changes nothing still moves
+    // the box as far as Safari is concerned, and starts the fight again.
+    if (top !== placed.top || height !== placed.height) {
+      placed = { top: top, height: height };
+      frame.style.top = top + "px";
+      frame.style.height = height + "px";
+      frame.style.bottom = "auto";
+    }
     var up = keyboardUp();
     if (up !== lastKeyboard) {
       lastKeyboard = up;
@@ -306,6 +323,11 @@
   if (viewport) {
     viewport.addEventListener("resize", queueFit);
     viewport.addEventListener("scroll", queueFit);
+    // Safari's slide can arrive as a scroll of the page rather than of the
+    // viewport; either way it is undone.
+    window.addEventListener("scroll", function () {
+      if (open && small()) queueFit();
+    });
   }
 
   /** Shape, page lock and the chat's minimise button, for the current screen. */
@@ -313,6 +335,7 @@
     shape();
     lockPage(open && small());
     lastKeyboard = null;
+    placed = { top: -1, height: -1 };
     fit();
     tellLayout();
   }

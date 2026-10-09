@@ -14,6 +14,17 @@ import "./widget.css";
  */
 const widgetKey = new URLSearchParams(window.location.search).get("key")?.trim() ?? "";
 
+// The chat's own page never scrolls — the thread scrolls inside it. iOS will
+// still scroll even an `overflow: hidden` page to reveal a focused message box,
+// taking the header off the top, so any such scroll is put straight back.
+window.addEventListener(
+  "scroll",
+  () => {
+    if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+  },
+  { passive: true },
+);
+
 const root = ReactDOM.createRoot(document.getElementById("widget") as HTMLElement);
 root.render(
   <React.StrictMode>
