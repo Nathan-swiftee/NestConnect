@@ -293,13 +293,33 @@
   var lastKeyboard = null;
   var fitQueued = false;
   var placed = { top: -1, height: -1 };
+  /** Set once undoing the slide is seen not to work, so it isn't tried
+   *  again — trying would be the same fight by another route. */
+  var slideStays = false;
+  var verifying = null;
   function fit() {
     fitQueued = false;
     if (!viewport || !(open && small())) return;
-    // Undo the slide. The page itself is pinned in place behind the chat (see
-    // lockPage), so this moves nothing the visitor can see but the slide.
-    if (viewport.offsetTop > 0 || window.pageYOffset > 0) window.scrollTo(0, 0);
-    var top = Math.max(0, Math.round(viewport.offsetTop));
+    var up = keyboardUp();
+    var slid = viewport.offsetTop > 0 || window.pageYOffset > 0;
+    var top;
+    // Undo the slide — but only once the keyboard's size is known. Safari can
+    // slide before it reports the keyboard; undoing it then, with the chat
+    // still full height, would hide the box again and start the fight. The
+    // page itself is pinned behind the chat (lockPage), so scrolling back
+    // moves nothing the visitor can see but the slide.
+    if (up && slid && !slideStays) {
+      window.scrollTo(0, 0);
+      top = 0;
+      // Check it took. If the browser kept its slide, follow it from now on.
+      clearTimeout(verifying);
+      verifying = setTimeout(function () {
+        if (viewport.offsetTop > 0 && keyboardUp()) slideStays = true;
+        queueFit();
+      }, 120);
+    } else {
+      top = Math.max(0, Math.round(viewport.offsetTop));
+    }
     var height = Math.round(viewport.height);
     // Only when something changed: a write that changes nothing still moves
     // the box as far as Safari is concerned, and starts the fight again.
@@ -309,12 +329,39 @@
       frame.style.height = height + "px";
       frame.style.bottom = "auto";
     }
-    var up = keyboardUp();
     if (up !== lastKeyboard) {
       lastKeyboard = up;
       tellLayout();
     }
+    if (!up) slideStays = false;
+    debug();
   }
+
+  /*
+   * `?nestchat_debug=1` on the page's address: a small live readout of what
+   * the browser reports about the screen and the keyboard. Phone keyboards
+   * can't be raised in a test, so a screen recording with this on is how a
+   * misbehaving phone gets diagnosed rather than guessed at. Off otherwise —
+   * nothing is drawn and nothing is read.
+   */
+  var debugBox = null;
+  function debug() {
+    if (!/[?&]nestchat_debug=1\b/.test(window.location.search)) return;
+    if (!debugBox) {
+      debugBox = document.createElement("div");
+      debugBox.style.cssText =
+        "position:fixed;left:4px;top:4px;z-index:2147483647;padding:4px 6px;border-radius:6px;" +
+        "background:rgba(0,0,0,.75);color:#0f0;font:11px/1.3 monospace;pointer-events:none;white-space:pre";
+      document.body.appendChild(debugBox);
+    }
+    var r = frame.getBoundingClientRect();
+    debugBox.textContent =
+      "inner " + window.innerWidth + "x" + window.innerHeight + "  scrollY " + Math.round(window.pageYOffset) +
+      "\nvv " + (viewport ? Math.round(viewport.width) + "x" + Math.round(viewport.height) + " @" + Math.round(viewport.offsetTop) : "none") +
+      "\nframe " + Math.round(r.top) + "/" + Math.round(r.height) +
+      "  kb " + (keyboardUp() ? "up" : "down") + (slideStays ? "  follow" : "");
+  }
+
   function queueFit() {
     if (fitQueued) return;
     fitQueued = true;
