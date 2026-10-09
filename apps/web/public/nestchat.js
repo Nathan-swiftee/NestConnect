@@ -152,7 +152,10 @@
    *  so the chat draws its own minimise button rather than relying on ours. */
   function tellLayout() {
     if (!frameReady || !frame.contentWindow) return;
-    frame.contentWindow.postMessage({ type: "nestchat:layout", fullscreen: open && small() }, origin);
+    frame.contentWindow.postMessage(
+      { type: "nestchat:layout", fullscreen: open && small(), keyboard: open && small() && keyboardUp() },
+      origin,
+    );
   }
 
   window.addEventListener("message", function (event) {
@@ -265,10 +268,52 @@
     }
   }
 
+  /*
+   * Above the keyboard.
+   *
+   * The on-screen keyboard doesn't make the page shorter: it covers the bottom
+   * of it, and iOS then scrolls the whole page up to show the box being typed
+   * in — which carried the chat's header off the top of the screen. The part
+   * still visible is the *visual* viewport, and a full-screen chat should be
+   * exactly that: so it is pinned to its top and sized to its height, and
+   * follows it as the keyboard comes and goes. The chat is told the keyboard
+   * is up, and folds its header to one line to give the thread the room.
+   */
+  var viewport = window.visualViewport;
+  function keyboardUp() {
+    // Over a hundred and fifty pixels gone is a keyboard, not a URL bar.
+    return !!viewport && window.innerHeight - viewport.height > 150;
+  }
+  var lastKeyboard = null;
+  var fitQueued = false;
+  function fit() {
+    fitQueued = false;
+    if (!viewport || !(open && small())) return;
+    frame.style.top = viewport.offsetTop + "px";
+    frame.style.height = viewport.height + "px";
+    frame.style.bottom = "auto";
+    var up = keyboardUp();
+    if (up !== lastKeyboard) {
+      lastKeyboard = up;
+      tellLayout();
+    }
+  }
+  function queueFit() {
+    if (fitQueued) return;
+    fitQueued = true;
+    requestAnimationFrame(fit);
+  }
+  if (viewport) {
+    viewport.addEventListener("resize", queueFit);
+    viewport.addEventListener("scroll", queueFit);
+  }
+
   /** Shape, page lock and the chat's minimise button, for the current screen. */
   function layout() {
     shape();
     lockPage(open && small());
+    lastKeyboard = null;
+    fit();
     tellLayout();
   }
   if (window.matchMedia) {

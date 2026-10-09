@@ -45,11 +45,13 @@ export function readHostMessage(data: unknown): HostIdentity | undefined {
  * chat draws its own minimise button: the loader's round one is hidden, since
  * it would sit on top of the composer.
  */
-export function readLayoutMessage(data: unknown): { fullscreen: boolean } | undefined {
+export function readLayoutMessage(data: unknown): { fullscreen: boolean; keyboard: boolean } | undefined {
   if (!data || typeof data !== "object") return undefined;
-  const msg = data as { type?: unknown; fullscreen?: unknown };
+  const msg = data as { type?: unknown; fullscreen?: unknown; keyboard?: unknown };
   if (msg.type !== "nestchat:layout") return undefined;
-  return { fullscreen: msg.fullscreen === true };
+  // `keyboard`: the page can see the on-screen keyboard (its visual viewport
+  // shrinks); this frame, sized to fit above it, can't tell on its own.
+  return { fullscreen: msg.fullscreen === true, keyboard: msg.fullscreen === true && msg.keyboard === true };
 }
 
 /** Ask the loader to put the chat away — the full-screen chat's minimise. */

@@ -64,11 +64,20 @@ describe("what the page says about who is signed in", () => {
 
 describe("what the page says about the chat's shape", () => {
   it("is full screen only when the loader says so", () => {
-    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: true })).toEqual({ fullscreen: true });
-    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: false })).toEqual({ fullscreen: false });
+    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: true })).toEqual({ fullscreen: true, keyboard: false });
+    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: false })).toEqual({ fullscreen: false, keyboard: false });
     // Anything but a literal true is the card: a page cannot talk the chat
     // into hiding its own way out by sending something truthy.
-    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: "yes" })).toEqual({ fullscreen: false });
+    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: "yes" })).toEqual({ fullscreen: false, keyboard: false });
+  });
+
+  it("hears the keyboard only when full screen", () => {
+    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: true, keyboard: true })).toEqual({
+      fullscreen: true,
+      keyboard: true,
+    });
+    // The card on a desktop has no on-screen keyboard to make room for.
+    expect(readLayoutMessage({ type: "nestchat:layout", fullscreen: false, keyboard: true })?.keyboard).toBe(false);
   });
 
   it("ignores every other message", () => {
