@@ -1,3 +1,4 @@
+import { availableNow } from "@ding/schemas";
 import { useEffect, useState } from "react";
 import { useLogout, useMe, useSound, useTheme, useUpdateMyPreferences } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
@@ -37,6 +38,9 @@ export function IconRail({
   useEffect(() => {
     if (me) setAvailable(me.available);
   }, [me?.available]);
+  // What actually decides whether chats come to you: the switch, and — if
+  // you've set working hours — whether it's within them.
+  const here = availableNow({ available, schedule: me?.schedule });
   const toggleAvailable = () => {
     const next = !available;
     setAvailable(next);
@@ -107,7 +111,7 @@ export function IconRail({
           <span
             className={
               "absolute right-[-1px] bottom-[-1px] w-[11px] h-[11px] rounded-full border-2 border-solid border-surface " +
-              (available ? "bg-wa" : "bg-amber")
+              (here ? "bg-wa" : "bg-amber")
             }
           />
         </button>
@@ -126,8 +130,10 @@ export function IconRail({
                 aria-checked={available}
                 onClick={toggleAvailable}
               >
-                <span className={"pres-dot" + (available ? " on" : " away")} />
-                <span className="rail-menu__availlbl">{available ? "Available" : "Unavailable"}</span>
+                <span className={"pres-dot" + (here ? " on" : " away")} />
+                <span className="rail-menu__availlbl">
+                  {!available ? "Unavailable" : here ? "Available" : "Outside your hours"}
+                </span>
                 <span className={"switch sm" + (available ? " on" : "")}>
                   <span className="switch__dot" />
                 </span>

@@ -8,7 +8,7 @@ import {
   useUpdateMyPreferences,
   useUpdatePushPreferences,
 } from "@ding/client";
-import type { PushPreferences } from "@ding/schemas";
+import { availableNow, type PushPreferences } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { BellIcon, ContrastIcon, LogoutIcon } from "../../../src/icons";
@@ -69,6 +69,12 @@ export default function Settings() {
   useEffect(() => {
     if (me) setAvailable(me.available);
   }, [me?.available]);
+
+  // What actually decides whether work comes to you: the switch, and — if
+  // working hours are set (Personal settings on the web) — whether it's within
+  // them. The same rule routing and the website chat use.
+  const here = availableNow({ available, schedule: me?.schedule });
+  const hours = me?.schedule?.enabled ? me.schedule : null;
 
   function toggleAvailable() {
     const next = !available;
@@ -133,14 +139,25 @@ export default function Settings() {
           className="flex-row items-center gap-2.5"
         >
           <View
-            style={{ backgroundColor: available ? c.wa : c.amber }}
+            style={{ backgroundColor: here ? c.wa : c.amber }}
             className="h-2.5 w-2.5 rounded-full"
           />
           <View className="flex-1">
-            <Text className="text-md font-medium text-fg">{available ? "Available" : "Unavailable"}</Text>
-            <Text className="text-2xs text-muted">
-              {available ? "Round-robin can route work to you" : "You're skipped when work is routed"}
+            <Text className="text-md font-medium text-fg">
+              {!available ? "Unavailable" : here ? "Available" : "Outside your hours"}
             </Text>
+            <Text className="text-2xs text-muted">
+              {!available
+                ? "You're skipped when work is routed"
+                : here
+                  ? hours
+                    ? "Within your working hours"
+                    : "Round-robin can route work to you"
+                  : "Skipped until your working hours start"}
+            </Text>
+            {hours ? null : (
+              <Text className="text-2xs text-faint">Set working hours in Personal settings on the web</Text>
+            )}
           </View>
           <Switch
             value={available}

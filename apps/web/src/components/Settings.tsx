@@ -2608,6 +2608,14 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                 />
                 Ask for an email address, so a reply can reach someone who has left
               </label>
+              <label className={"check" + (draft.appearance.emailReplies ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.appearance.emailReplies}
+                  onChange={(e) => set("emailReplies", e.target.checked)}
+                />
+                Email a reply the visitor hasn’t seen after 5 minutes (when they left an email address)
+              </label>
               <label className={"check" + (draft.appearance.askPhone ? " on" : "")}>
                 <input
                   type="checkbox"

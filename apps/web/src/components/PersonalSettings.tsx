@@ -13,6 +13,13 @@ import FontFamily from "@tiptap/extension-font-family";
 import TextAlign from "@tiptap/extension-text-align";
 import type { UpdateMyProfileInput } from "@ding/schemas";
 import {
+  DEFAULT_AVAILABILITY_SCHEDULE,
+  WEEKDAYS,
+  availableNow,
+  type AvailabilitySchedule,
+  type Weekday,
+} from "@ding/schemas";
+import {
   useMe,
   useUpdateMyPreferences,
   useUpdateMyProfile,
@@ -198,6 +205,10 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
 
   // Availability + signature
   const [available, setAvailable] = useState(true);
+  const [schedule, setSchedule] = useState<AvailabilitySchedule>(() => ({
+    ...DEFAULT_AVAILABILITY_SCHEDULE,
+    timezone: browserTimeZone(),
+  }));
   const [seeded, setSeeded] = useState(false);
 
   // Password
@@ -238,6 +249,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
   useEffect(() => {
     if (!me || !editor || seeded) return;
     setAvailable(me.available);
+    if (me.schedule) setSchedule(me.schedule);
     if (me.emailSignature) editor.commands.setContent(me.emailSignature);
     setSeeded(true);
   }, [me, editor, seeded]);
@@ -318,7 +330,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
 
     try {
       if (Object.keys(prof).length) await profile.mutateAsync(prof);
-      await update.mutateAsync({ available, emailSignature: empty ? "" : html });
+      await update.mutateAsync({ available, schedule, emailSignature: empty ? "" : html });
       onToast("Personal settings saved");
       onClose();
     } catch (e) {
@@ -461,11 +473,18 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
                 <span className="switch__dot" />
               </button>
             </div>
-            <p className={"pers-avail " + (available ? "is-on" : "is-off")}>
+            <p className={"pers-avail " + (availableNow({ available, schedule }) ? "is-on" : "is-off")}>
               <span className="pers-avail__dot" />
-              {available ? "Available — you’re in the round-robin for new chats." : "Unavailable — new chats skip you until you’re back."}
+              {!available
+                ? "Unavailable — new chats skip you until you’re back."
+                : availableNow({ available, schedule })
+                  ? "Available — you’re in the round-robin for new chats."
+                  : "Outside your working hours — new chats skip you until they start."}
             </p>
           </div>
+
+          {/* Working hours */}
+          <WorkingHours schedule={schedule} onChange={setSchedule} />
           </>
           )}
 
@@ -711,5 +730,118 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** The browser's own time zone — the right first guess for somebody's hours. */
+function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/London";
+  } catch {
+    return "Europe/London";
+  }
+}
+
+/** Every zone the browser knows, for the picker; the current one always included. */
+function timeZones(current: string): string[] {
+  const all =
+    (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [];
+  return all.includes(current) ? all : [current, ...all];
+}
+
+const DAY_LABEL: Record<Weekday, string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+  sun: "Sunday",
+};
+
+/**
+ * When somebody works.
+ *
+ * With it on, they're available only inside these hours (and with the switch
+ * above on): round-robin skips them outside them, and if nobody who answers
+ * the website chat is inside their hours, the chat says it's offline. Off,
+ * the switch alone decides, as it always has — and the hours are kept, so
+ * turning it back on doesn't mean typing them again.
+ */
+function WorkingHours({
+  schedule,
+  onChange,
+}: {
+  schedule: AvailabilitySchedule;
+  onChange: (next: AvailabilitySchedule) => void;
+}) {
+  const setDay = (day: Weekday, patch: Partial<AvailabilitySchedule["days"][Weekday]>) =>
+    onChange({ ...schedule, days: { ...schedule.days, [day]: { ...schedule.days[day], ...patch } } });
+  return (
+    <div className="pers-field">
+      <div className="pers-field__hd">
+        <span className="pers-field__lbl">Working hours</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={schedule.enabled}
+          aria-label="Set my working hours"
+          className={"switch" + (schedule.enabled ? " on" : "")}
+          onClick={() => onChange({ ...schedule, enabled: !schedule.enabled })}
+        >
+          <span className="switch__dot" />
+        </button>
+      </div>
+      <p className="m-0 mt-1 text-xs text-faint">
+        {schedule.enabled
+          ? "Outside these hours you’re unavailable: no new chats come to you, and if nobody who answers the website chat is working, it shows as offline."
+          : "Off — the switch above alone decides when you’re available."}
+      </p>
+      {schedule.enabled ? (
+        <div className="mt-3 flex flex-col gap-2">
+          <label className="field">
+            <span>Time zone</span>
+            <select value={schedule.timezone} onChange={(e) => onChange({ ...schedule, timezone: e.target.value })}>
+              {timeZones(schedule.timezone).map((tz) => (
+                <option key={tz} value={tz}>
+                  {tz.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+          </label>
+          {WEEKDAYS.map((day) => {
+            const d = schedule.days[day];
+            return (
+              <div key={day} className="flex items-center gap-3 text-sm">
+                <label className={"check w-32 flex-none" + (d.on ? " on" : "")}>
+                  <input type="checkbox" checked={d.on} onChange={(e) => setDay(day, { on: e.target.checked })} />
+                  {DAY_LABEL[day]}
+                </label>
+                {d.on ? (
+                  <>
+                    <input
+                      type="time"
+                      aria-label={`${DAY_LABEL[day]} start`}
+                      value={d.start}
+                      onChange={(e) => e.target.value && setDay(day, { start: e.target.value })}
+                    />
+                    <span className="text-faint">to</span>
+                    <input
+                      type="time"
+                      aria-label={`${DAY_LABEL[day]} end`}
+                      value={d.end}
+                      onChange={(e) => e.target.value && setDay(day, { end: e.target.value })}
+                    />
+                    {d.end <= d.start ? <span className="text-faint text-xs">(next day)</span> : null}
+                  </>
+                ) : (
+                  <span className="text-faint">Off</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }

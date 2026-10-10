@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   DEFAULT_NESTCHAT_APP,
   DEFAULT_NESTCHAT_APPEARANCE,
+  LEGACY_AWAY_MESSAGE,
   DEFAULT_NESTCHAT_HOME,
   DEFAULT_NESTCHAT_PRECHAT,
   DEFAULT_NESTCHAT_ROUTING,
@@ -28,6 +29,7 @@ import {
   type NestChatRoutingOption,
   type NestChatSettings,
   type User,
+  availableNow,
 } from "@ding/schemas";
 import { Store, type AttachmentInput } from "../../data/store";
 import { bindTenant, currentOrgId } from "../../tenancy/tenant-scope";
@@ -556,7 +558,33 @@ export class NestChatService {
   }
 
   private parseAppearance(raw: string | undefined): NestChatAppearance {
-    return parseBlob(raw, nestchatAppearanceSchema, DEFAULT_NESTCHAT_APPEARANCE);
+    const appearance = parseBlob(raw, nestchatAppearanceSchema, DEFAULT_NESTCHAT_APPEARANCE);
+    // The old default promised an email reply that nothing sent. A channel
+    // still carrying it word for word never chose it, so it gets the new one;
+    // one somebody actually wrote is theirs and is left alone.
+    if (appearance.awayMessage === LEGACY_AWAY_MESSAGE) {
+      return { ...appearance, awayMessage: DEFAULT_NESTCHAT_APPEARANCE.awayMessage };
+    }
+    return appearance;
+  }
+
+  /**
+   * Whether anybody is here to answer this channel right now.
+   *
+   * The people on the teams it routes to (the whole workspace, for a channel
+   * with no team) who are available now — switched on and inside their
+   * working hours. It used to be "is anybody in the workspace connected",
+   * which said Online to a visitor while every person who answers this chat
+   * was marked unavailable, as long as somebody else had the app open.
+   */
+  async channelOnline(inbox: Inbox, at: Date = new Date()): Promise<boolean> {
+    const people: User[] = [];
+    if (inbox.teamIds.length) {
+      for (const teamId of inbox.teamIds) people.push(...(await this.store.getMembers(teamId)));
+    } else {
+      people.push(...(await this.store.listMembers()).map((m) => m.user));
+    }
+    return people.some((u) => availableNow(u, at));
   }
 
   /* ---- the pre-chat form ---- */
@@ -1069,9 +1097,10 @@ export class NestChatService {
         members.push(m);
       }
     }
-    members.sort((a, b) =>
-      a.online === b.online ? a.name.localeCompare(b.name) : a.online ? -1 : 1,
-    );
+    // Who's available first: the faces should be the people who'll answer.
+    const now = new Date();
+    const here = (u: User) => availableNow(u, now);
+    members.sort((a, b) => (here(a) === here(b) ? a.name.localeCompare(b.name) : here(a) ? -1 : 1));
     const widgetKey = await this.ensureWidgetKey(inbox.id);
     const faces = members.slice(0, 4).map((m) => ({
       // A first name is what a person says when they answer the phone.
@@ -1093,7 +1122,7 @@ export class NestChatService {
       avatarUrl: m.avatarUrl
         ? `/api/nestchat/${widgetKey}/avatar/${encodeURIComponent(m.id)}`
         : undefined,
-      online: Boolean(m.online),
+      online: here(m),
     }));
     return { name: serving[0]?.name, faces, total: members.length };
   }

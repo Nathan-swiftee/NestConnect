@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   ConflictException,
   Controller,
@@ -21,6 +22,8 @@ import {
   setDefaultInboxInputSchema,
   updateLabelInputSchema,
   updateMyPreferencesInputSchema,
+  isTimeZone,
+  type AvailabilitySchedule,
   updateMyProfileInputSchema,
   updateTeamInputSchema,
   updateUserInputSchema,
@@ -85,8 +88,16 @@ export class WorkspaceController {
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(updateMyPreferencesInputSchema)) body: UpdateMyPreferencesInput,
   ): Promise<User> {
-    const params: { available?: boolean; emailSignature?: string | null } = {};
+    const params: { available?: boolean; schedule?: AvailabilitySchedule | null; emailSignature?: string | null } = {};
     if (body.available !== undefined) params.available = body.available;
+    if (body.schedule !== undefined) {
+      // A zone the server can't read would be quietly read as UTC — hours an
+      // hour or eight off with nothing on screen to say why.
+      if (body.schedule && !isTimeZone(body.schedule.timezone)) {
+        throw new BadRequestException(`“${body.schedule.timezone}” isn't a time zone we recognise`);
+      }
+      params.schedule = body.schedule;
+    }
     if (body.emailSignature !== undefined) {
       // Sanitize the agent's rich signature (keeps formatting + inline images,
       // strips scripts) — the same treatment an outbound email body gets.

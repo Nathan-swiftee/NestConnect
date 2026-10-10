@@ -165,6 +165,7 @@ For anything about this policy or your information, contact us at
 - While you are typing, a preview of the text you have written so far (up to 500 characters) is shown live to the business's agents before you press send.
 - Whether you have read the latest replies (shown to the business as read status) and whether the chat is open on screen (so you are not sent a notification for a reply you are already reading). The web address of the chat window is sent with your messages and shown to the business as part of the conversation subject.
 - If the website signs you in to the chat: the identifier the website uses for you, and the name, email address and phone number it passes to the chat.
+- If you gave an email address, a reply from the business that you have not read within about 5 minutes is emailed to you at that address, once, in the business's name (unless the business has turned this off). It contains the reply and, where the business has given its website, a link back to it.
 
 #### Recipients of emails sent from NestConnect
 
@@ -178,6 +179,7 @@ For anything about this policy or your information, contact us at
 - To notify workspace users (in the app and by push) and, where described above, customers.
 - To let a business search, filter and report on its own conversations. These reports are produced inside NestConnect.
 - To send account emails to workspace users: invitations, password resets and two-step verification codes.
+- To email a website-chat visitor who gave an email address the replies they have not seen.
 - To secure the service: authentication, two-step verification, session management, rate limiting, checking that incoming webhooks come from the channel provider, and diagnosing faults.
 
 The NestConnect web app, chat widget and mobile app contain no advertising
@@ -247,10 +249,10 @@ what it needs for the purpose given:
 - Cloudflare provides network and security services in front of nestconnect.io ⟦OWNER: cloudflareInFrontOfDomain⟧.
 - Cloudflare R2 stores attachments, voice notes, profile photos and logos ⟦OWNER: r2StorageInProduction⟧.
 - Meta (WhatsApp Business Platform) sends and receives WhatsApp messages, media, read receipts and typing indicators ⟦OWNER: whatsappCloudApiInUse⟧.
-- Google (Gmail API, Google sign-in and, where configured, Cloud Pub/Sub) sends and receives email for connected Gmail mailboxes, and may send account emails through a connected mailbox ⟦OWNER: gmailIntegrationInUse⟧.
-- Postmark sends and receives email for email inboxes, and may send account emails ⟦OWNER: postmarkInUse⟧.
-- Resend sends account emails (invitations, password resets, verification codes) ⟦OWNER: resendInUse⟧.
-- An SMTP email provider sends account emails ⟦OWNER: smtpInUse⟧.
+- Google (Gmail API, Google sign-in and, where configured, Cloud Pub/Sub) sends and receives email for connected Gmail mailboxes, and may send account emails and website-chat reply emails through a connected mailbox ⟦OWNER: gmailIntegrationInUse⟧.
+- Postmark sends and receives email for email inboxes, and may send account emails and website-chat reply emails ⟦OWNER: postmarkInUse⟧.
+- Resend sends account emails (invitations, password resets, verification codes) and website-chat reply emails ⟦OWNER: resendInUse⟧.
+- An SMTP email provider sends account emails and website-chat reply emails ⟦OWNER: smtpInUse⟧.
 - Expo, Google Firebase Cloud Messaging and the Apple Push Notification service deliver notifications to the Nest Connect app. *(Always listed: the code has no alternative.)*
 - Google Firebase Cloud Messaging (the business's own project) delivers notifications to customers in a business's app ⟦OWNER: sdkCustomerPushInUse⟧.
 - Anthropic processes drafts and recent conversation text when an agent uses Polish ⟦OWNER: anthropicPolishAvailable⟧.

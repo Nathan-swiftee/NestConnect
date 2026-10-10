@@ -38,6 +38,7 @@ import type {
   Template,
   UpdateTemplateInput,
   User,
+  AvailabilitySchedule,
 } from "@ding/schemas";
 import {
   CONVERSATIONS_PAGE_SIZE,
@@ -161,6 +162,8 @@ export class MemoryStore extends Store {
   private appSettings = new Map<string, string>();
   private customFields: CustomField[] = [];
   /** Values keyed `entity:entityId:fieldId`, so a write is a single lookup. */
+  /** Website chat: how far replies have been emailed to the visitor. */
+  private visitorEmailed = new Map<string, number>();
   /** Automatic-subject state per conversation (see getSubjectState). */
   private subjectState = new Map<string, { auto: boolean; topic: string | null }>();
   private fieldValues = new Map<string, { fieldId: string; entityId: string; entity: string; value: string }>();
@@ -586,11 +589,12 @@ export class MemoryStore extends Store {
 
   async updateMyPreferences(
     userId: string,
-    params: { available?: boolean; emailSignature?: string | null },
+    params: { available?: boolean; schedule?: AvailabilitySchedule | null; emailSignature?: string | null },
   ): Promise<User | undefined> {
     const user = this.users.find((u) => u.id === userId);
     if (!user) return undefined;
     if (params.available !== undefined) user.available = params.available;
+    if (params.schedule !== undefined) user.schedule = params.schedule;
     if (params.emailSignature !== undefined) user.emailSignature = params.emailSignature ?? undefined;
     return user;
   }
@@ -1404,6 +1408,43 @@ export class MemoryStore extends Store {
     if (!rec) return undefined;
     rec.priority = priority;
     return this.summary(rec);
+  }
+
+  async listUnseenNestChatReplies(from: Date, to: Date): Promise<{ conversationId: string; orgId: string }[]> {
+    const out: { conversationId: string; orgId: string }[] = [];
+    for (const c of this.conversations) {
+      if (c.channel !== "nestchat") continue;
+      const emailed = this.visitorEmailed.get(c.id) ?? 0;
+      const due = c.messages.some((m) => {
+        const at = new Date(m.createdAt).getTime();
+        return (
+          m.direction === "out" &&
+          !m.internal &&
+          m.authorType !== "system" &&
+          (m.status === "sent" || m.status === "delivered") &&
+          at >= from.getTime() &&
+          at <= to.getTime() &&
+          m.seq > emailed
+        );
+      });
+      if (due) out.push({ conversationId: c.id, orgId: c.orgId });
+    }
+    return out;
+  }
+
+  async getOrganizationName(_orgId: string): Promise<string | undefined> {
+    return "Swiftee";
+  }
+
+  async getVisitorEmailedSeq(conversationId: string): Promise<number | undefined> {
+    if (!this.conversations.some((c) => c.id === conversationId)) return undefined;
+    return this.visitorEmailed.get(conversationId) ?? 0;
+  }
+
+  async claimVisitorEmail(conversationId: string, prev: number, through: number): Promise<boolean> {
+    if ((this.visitorEmailed.get(conversationId) ?? 0) !== prev) return false;
+    this.visitorEmailed.set(conversationId, through);
+    return true;
   }
 
   async getSubjectState(conversationId: string): Promise<{ auto: boolean; topic: string | null } | undefined> {

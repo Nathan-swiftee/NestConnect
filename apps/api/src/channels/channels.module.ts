@@ -6,6 +6,7 @@ import { CHANNEL_PROVIDERS } from "./channel-provider";
 import { ChannelDispatcher } from "./channel-dispatcher";
 import { OutboundDeliveryService } from "./outbound-delivery.service";
 import { AiModule } from "../ai/ai.module";
+import { VisitorEmailService } from "./nestchat/visitor-email.service";
 import { IngestService } from "./ingest.service";
 import { RoutingService } from "./routing.service";
 import { WhatsAppCloudProvider } from "./whatsapp/whatsapp.provider";
@@ -46,6 +47,7 @@ import { IntegrationsController } from "../settings/integrations.controller";
     IntegrationsController,
   ],
   providers: [
+    VisitorEmailService,
     WhatsAppCloudProvider,
     WhatsAppGroupsProvider,
     EmailProvider,

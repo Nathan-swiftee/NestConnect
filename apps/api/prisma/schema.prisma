@@ -183,6 +183,8 @@ model User {
   // Manual "accepting work" flag (distinct from `online` presence) — an
   // unavailable agent is skipped by round-robin auto-assignment.
   available    Boolean  @default(true)
+  // Working hours (availabilityScheduleSchema). Null: the switch alone decides.
+  availabilitySchedule Json?
   // Personal rich-text (HTML) email signature, appended to outbound email the
   // agent sends. Never shown on the in-app message bubble.
   emailSignature String?
@@ -467,6 +469,9 @@ model Conversation {
   /// first messages, or what they picked from the chat's menu. Kept apart so a
   /// field set later can be put in front without asking the AI again.
   subjectTopic   String?
+  /// Website chat: the highest message seq already emailed to a visitor who
+  /// had left before reading it. Claimed atomically, so a reply is emailed once.
+  visitorEmailedSeq Int              @default(0)
   inviteLink     String?
   channelRef     String?
   status         ConversationStatus @default(open)
