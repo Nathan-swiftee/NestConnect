@@ -23,7 +23,7 @@ import type {
   User,
   WaWindow,
 } from "@ding/schemas";
-import { isInboxConnected, publicChannelConfig } from "@ding/schemas";
+import { availabilityScheduleSchema, isInboxConnected, publicChannelConfig, type AvailabilitySchedule } from "@ding/schemas";
 import type { StoredCustomerDevice, StoredDevice, StoredSession } from "./store";
 
 /** A Prisma Session row → the store's StoredSession (dates as ISO strings). */
@@ -301,10 +301,19 @@ export function mapUser(u: Prisma.UserGetPayload<object>): User {
     avatarUrl: u.avatarUrl ?? undefined,
     online: u.online,
     available: u.available,
+    schedule: readSchedule(u.availabilitySchedule),
     emailSignature: u.emailSignature ?? undefined,
     twoFactorEnabled: u.twoFactorEnabled,
     twoFactorMethod: (u.twoFactorMethod as "totp" | "email" | null) ?? null,
   };
+}
+
+/** Stored working hours, or null when unset or unreadable (the switch then
+ *  decides alone — a bad row must not make somebody permanently away). */
+function readSchedule(raw: unknown): AvailabilitySchedule | null {
+  if (!raw) return null;
+  const parsed = availabilityScheduleSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 export function mapNotification(n: Prisma.NotificationGetPayload<object>): Notification {

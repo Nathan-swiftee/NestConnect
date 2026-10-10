@@ -157,7 +157,9 @@ export class NestChatController {
           ? `/api/nestchat/${encodeURIComponent(widgetKey)}/logo`
           : appearance.logoUrl,
       },
-      online: await this.realtime.hasOnlineAgents(inbox.orgId),
+      // Somebody who answers this channel is available now — not just anybody
+      // in the workspace with the app open.
+      online: await this.nestchat.channelOnline(inbox),
       // Only when the business asked for it: showing who is behind the counter
       // is a choice, not a default we make on their behalf.
       team: appearance.showTeam ? await this.nestchat.teamFacesFor(inbox) : undefined,

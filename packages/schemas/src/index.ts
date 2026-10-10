@@ -237,6 +237,131 @@ export type RoutingStrategy = z.infer<typeof routingStrategySchema>;
 /* Core entities                                                       */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Availability — the switch, and the working hours behind it.          */
+/* ------------------------------------------------------------------ */
+
+export const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
+export type Weekday = (typeof WEEKDAYS)[number];
+
+const clockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM, 24-hour");
+
+/** One day of somebody's working hours. An end at or before the start runs
+ *  past midnight into the next day — a 22:00–06:00 night shift. */
+export const availabilityDaySchema = z.object({
+  on: z.boolean(),
+  start: clockTime,
+  end: clockTime,
+});
+export type AvailabilityDay = z.infer<typeof availabilityDaySchema>;
+
+const workday = { on: true, start: "09:00", end: "17:30" };
+const dayOff = { on: false, start: "09:00", end: "17:30" };
+
+/**
+ * When somebody works. Off by default: until they set hours, the switch alone
+ * decides, as it always has. With it on, they are available only inside these
+ * hours (in their own time zone) *and* with the switch on — so "Unavailable"
+ * still means unavailable, and leaving the switch on overnight no longer
+ * means taking chats at 3am.
+ */
+export const availabilityScheduleSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** IANA time zone, e.g. "Europe/London". The hours are read in it. */
+  timezone: z.string().min(1).max(64).default("Europe/London"),
+  days: z
+    .object({
+      mon: availabilityDaySchema.default(workday),
+      tue: availabilityDaySchema.default(workday),
+      wed: availabilityDaySchema.default(workday),
+      thu: availabilityDaySchema.default(workday),
+      fri: availabilityDaySchema.default(workday),
+      sat: availabilityDaySchema.default(dayOff),
+      sun: availabilityDaySchema.default(dayOff),
+    })
+    .default({}),
+});
+export type AvailabilitySchedule = z.infer<typeof availabilityScheduleSchema>;
+export const DEFAULT_AVAILABILITY_SCHEDULE: AvailabilitySchedule = availabilityScheduleSchema.parse({});
+
+const minutesOf = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+
+/** The weekday and minute-of-day at `at`, in `timezone` (UTC if it's not one
+ *  the runtime knows — a typo must not make somebody permanently away). */
+function localClock(at: Date, timezone: string): { day: Weekday; minute: number } | null {
+  const read = (tz: string) => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(at);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    return {
+      day: get("weekday").slice(0, 3).toLowerCase() as Weekday,
+      minute: Number(get("hour")) * 60 + Number(get("minute")),
+    };
+  };
+  try {
+    return read(timezone);
+  } catch {
+    try {
+      return read("UTC");
+    } catch {
+      // A runtime without time zones at all (some phone JS engines): the hours
+      // can't be read, so they don't decide — the switch alone does.
+      return null;
+    }
+  }
+}
+
+/** Whether `timezone` is one the runtime can read hours in. */
+export function isTimeZone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-GB", { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether a schedule says "working" at `at`. A disabled schedule always does. */
+export function withinSchedule(schedule: AvailabilitySchedule | null | undefined, at: Date = new Date()): boolean {
+  if (!schedule?.enabled) return true;
+  const clock = localClock(at, schedule.timezone);
+  if (!clock || !WEEKDAYS.includes(clock.day) || Number.isNaN(clock.minute)) return true;
+  const { day, minute } = clock;
+  const i = WEEKDAYS.indexOf(day);
+  const today = schedule.days[day];
+  const yesterday = schedule.days[WEEKDAYS[(i + 6) % 7]!];
+  if (today?.on) {
+    const start = minutesOf(today.start);
+    const end = minutesOf(today.end);
+    if (start < end ? minute >= start && minute < end : minute >= start) return true;
+  }
+  // Yesterday's shift running on past midnight.
+  if (yesterday?.on) {
+    const start = minutesOf(yesterday.start);
+    const end = minutesOf(yesterday.end);
+    if (end <= start && minute < end) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether somebody is taking new chats right now: the switch is on, and — if
+ * they've set working hours — it's within them. The one rule round-robin, the
+ * chat widget's "online" and the apps' availability all read, so they can't
+ * disagree about whether a person is there.
+ */
+export function availableNow(
+  user: { available?: boolean; schedule?: AvailabilitySchedule | null },
+  at: Date = new Date(),
+): boolean {
+  return user.available !== false && withinSchedule(user.schedule, at);
+}
+
 export const userSchema = z.object({
   id: z.string(),
   orgId: z.string(),
@@ -251,6 +376,8 @@ export const userSchema = z.object({
   /** Manual "accepting work" flag — an unavailable agent is skipped by
    *  round-robin auto-assignment (distinct from `online` presence). */
   available: z.boolean().default(true),
+  /** Working hours. Null or disabled: the switch alone decides. See availableNow. */
+  schedule: availabilityScheduleSchema.nullable().optional(),
   /** Personal HTML email signature, appended to outbound email this user sends. */
   emailSignature: z.string().nullable().optional(),
   /** Two-factor status, surfaced so the UI can show it + gate mandatory setup.
@@ -1494,11 +1621,12 @@ export const nestchatAppearanceSchema = z.object({
   placeholder: z.string().max(60).default("Write a message…"),
   /** The floating bubble's tooltip, for the script embed. */
   launcherLabel: z.string().max(40).default("Chat with us"),
-  /** Shown in place of the subtitle when no agent is online. */
+  /** Shown in place of the subtitle when nobody who answers this channel is
+   *  available (switched off, or outside their working hours). */
   awayMessage: z
     .string()
     .max(200)
-    .default("We're away right now — leave a message and we'll reply by email."),
+    .default("We're currently offline. We'll get back to you as soon as possible."),
   /**
    * Said to the visitor when an agent closes the chat.
    *
@@ -1518,6 +1646,13 @@ export const nestchatAppearanceSchema = z.object({
    *  who has closed the tab. */
   askEmail: z.boolean().default(true),
   askEmailLabel: z.string().max(80).default("Your email, so we can reply if you leave"),
+  /**
+   * Email a visitor the replies they haven't seen, a few minutes after they're
+   * sent, when they left an email address. What the away message and the
+   * email question both promise: somebody who closed the tab still hears back,
+   * as they would from any other channel. Each reply is emailed once.
+   */
+  emailReplies: z.boolean().default(true),
   /** Ask for a phone number as well. Off by default — one field converts better
    *  than two, and most businesses only need one way back to the person. */
   askPhone: z.boolean().default(false),
@@ -1561,6 +1696,10 @@ export const nestchatAppearanceSchema = z.object({
 export type NestChatAppearance = z.infer<typeof nestchatAppearanceSchema>;
 
 /** The appearance every new NestChat channel starts with. */
+/** The away message every channel was given before it changed — recognised so
+ *  a channel that never chose it moves to the new default. */
+export const LEGACY_AWAY_MESSAGE = "We're away right now — leave a message and we'll reply by email.";
+
 export const DEFAULT_NESTCHAT_APPEARANCE: NestChatAppearance = nestchatAppearanceSchema.parse({});
 
 /* ---- who we're talking to, and who should answer ---- */
@@ -2636,6 +2775,8 @@ export type UpdateUserInput = z.infer<typeof updateUserInputSchema>;
 /** A user editing their OWN personal settings (no admin rights needed). */
 export const updateMyPreferencesInputSchema = z.object({
   available: z.boolean().optional(),
+  /** Working hours; null clears them (the switch alone decides again). */
+  schedule: availabilityScheduleSchema.nullable().optional(),
   /** Rich-text (HTML) signature; empty string clears it. Images are hosted (a
    *  short https URL, not inline base64), so this only needs headroom for
    *  formatting markup and the occasional pasted data-URL. */

@@ -34,6 +34,7 @@ import type {
   Template,
   UpdateTemplateInput,
   User,
+  AvailabilitySchedule,
 } from "@ding/schemas";
 
 export interface ViewItem {
@@ -330,6 +331,8 @@ export abstract class Store {
   abstract inboxOrg(inboxId: string): Promise<string | undefined>;
   /** Whether a workspace is a demo sandbox (see tenancy/sandbox.ts). */
   abstract isSandboxOrg(orgId: string): Promise<boolean>;
+  /** The workspace's own name — the business, as its customers know it. */
+  abstract getOrganizationName(orgId: string): Promise<string | undefined>;
   /** The workspace a conversation belongs to. Cross-tenant: for a queued job
    *  recorded before jobs carried their workspace. */
   abstract conversationOrg(conversationId: string): Promise<string | undefined>;
@@ -464,7 +467,7 @@ export abstract class Store {
   /** A user updating their OWN personal settings (availability + signature). */
   abstract updateMyPreferences(
     userId: string,
-    params: { available?: boolean; emailSignature?: string | null },
+    params: { available?: boolean; schedule?: AvailabilitySchedule | null; emailSignature?: string | null },
   ): Promise<User | undefined>;
   /** A user updating their OWN profile (name, login email, photo). Email
    *  uniqueness within the org is enforced by the caller. */
@@ -684,6 +687,21 @@ export abstract class Store {
     conversationId: string,
     subject: string | null,
   ): Promise<Conversation | undefined>;
+  /**
+   * Website-chat conversations with an agent reply the visitor hasn't seen,
+   * sent between `from` and `to` — the candidates for an email follow-up.
+   * Cross-tenant (a platform job); each is then handled inside its own
+   * workspace. Only replies past the conversation's `visitorEmailedSeq`.
+   */
+  abstract listUnseenNestChatReplies(from: Date, to: Date): Promise<{ conversationId: string; orgId: string }[]>;
+  /** How far through this conversation replies have been emailed to the visitor. */
+  abstract getVisitorEmailedSeq(conversationId: string): Promise<number | undefined>;
+  /**
+   * Move the emailed marker from `prev` to `through`, only if it is still
+   * `prev`. True when this call moved it — the one caller allowed to send.
+   * Passing them the other way round undoes a claim whose email failed.
+   */
+  abstract claimVisitorEmail(conversationId: string, prev: number, through: number): Promise<boolean>;
   /** Whether Nest writes this thread's subject, and the topic half of it. */
   abstract getSubjectState(
     conversationId: string,

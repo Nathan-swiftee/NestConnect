@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { Contact, Inbox } from "@ding/schemas";
+import { availableNow, type Contact, type Inbox } from "@ding/schemas";
 import { Store } from "../data/store";
 
 export interface RoutingDecision {
@@ -33,6 +33,11 @@ export interface RoutingHints {
  * What survives of the owner is the part that costs nothing: if they are on the
  * team that was asked for, they get it. The customer reaches billing, and
  * billing turns out to be the person who already knows them.
+ *
+ * Nobody is handed a chat while they're unavailable — switched off, or outside
+ * the working hours they set (`availableNow`). That includes a customer's own
+ * person: their chat goes to the team instead of waiting on somebody who is
+ * away, which is the one thing the customer would notice.
  */
 @Injectable()
 export class RoutingService {
@@ -45,14 +50,23 @@ export class RoutingService {
     if (asked) {
       // Their own person, but only when they're one of the people who answer
       // what was asked for. Otherwise the team takes it on its own terms.
-      if (contact.ownerUserId && (await this.isMember(asked, contact.ownerUserId))) {
+      if (
+        contact.ownerUserId &&
+        (await this.isMember(asked, contact.ownerUserId)) &&
+        (await this.isAvailable(contact.ownerUserId))
+      ) {
         return { assigneeUserId: contact.ownerUserId, assignedTeamId: asked };
       }
       return this.withinTeam(inbox, asked);
     }
 
     if (contact.ownerUserId) {
-      return { assigneeUserId: contact.ownerUserId, assignedTeamId: contact.ownerTeamId ?? inbox.teamIds[0] ?? null };
+      const team = contact.ownerTeamId ?? inbox.teamIds[0] ?? null;
+      if (await this.isAvailable(contact.ownerUserId)) {
+        return { assigneeUserId: contact.ownerUserId, assignedTeamId: team };
+      }
+      // Their person is away: the team takes it rather than it waiting.
+      return this.withinTeam(inbox, team);
     }
     if (contact.ownerTeamId) {
       return { assigneeUserId: null, assignedTeamId: contact.ownerTeamId };
@@ -68,16 +82,23 @@ export class RoutingService {
     }
 
     const members = await this.store.getMembers(teamId);
-    // Only agents who've marked themselves available take auto-assignments; among
-    // those, prefer the ones currently online. If nobody is available, leave it
-    // unassigned in the team's queue rather than handing it to someone who's out.
-    const available = members.filter((m) => m.available !== false);
+    // Only agents available right now take auto-assignments — switched on and
+    // inside their working hours. Among those, prefer the ones currently online.
+    // If nobody is available, leave it unassigned in the team's queue rather
+    // than handing it to someone who's out.
+    const now = new Date();
+    const available = members.filter((m) => availableNow(m, now));
     const online = available.filter((m) => m.online);
     const pool = online.length ? online : available;
     if (!pool.length) return { assigneeUserId: null, assignedTeamId: teamId };
 
     const pick = pool[this.rotation++ % pool.length];
     return { assigneeUserId: pick.id, assignedTeamId: teamId };
+  }
+
+  private async isAvailable(userId: string): Promise<boolean> {
+    const user = await this.store.getUser(userId);
+    return Boolean(user && availableNow(user));
   }
 
   private async isMember(teamId: string, userId: string): Promise<boolean> {

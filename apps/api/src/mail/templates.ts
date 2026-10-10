@@ -79,7 +79,11 @@ function safeUrl(url: string): string {
  * Connect…". Setting it deliberately is one of the cheapest things that
  * separates a designed email from a default one.
  */
-function layout(opts: { preheader: string; body: string }): string {
+function layout(opts: { preheader: string; body: string; brand?: string; footer?: string }): string {
+  // A business's own email to its customer carries the business's name, not
+  // ours: the person reading it chatted with them and has never heard of us.
+  const brand = opts.brand ? escapeHtml(opts.brand) : "Nest&nbsp;Connect";
+  const footer = opts.footer ?? "Sent by Nest Connect — WhatsApp, email and group chats in one shared inbox.";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -87,7 +91,7 @@ function layout(opts: { preheader: string; body: string }): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<title>Nest Connect</title>
+<title>${brand}</title>
 </head>
 <body style="margin:0;padding:0;background:${C.page};color:${C.text};font-family:${SANS};-webkit-font-smoothing:antialiased;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">${escapeHtml(opts.preheader)}</div>
@@ -97,7 +101,7 @@ function layout(opts: { preheader: string; body: string }): string {
 <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
 
   <tr><td style="padding:0 4px 16px;">
-    <span style="font-family:${SANS};font-size:16px;font-weight:700;letter-spacing:-0.2px;color:${C.brandStrong};">Nest&nbsp;Connect</span>
+    <span style="font-family:${SANS};font-size:16px;font-weight:700;letter-spacing:-0.2px;color:${C.brandStrong};">${brand}</span>
   </td></tr>
 
   <tr><td>
@@ -112,7 +116,7 @@ function layout(opts: { preheader: string; body: string }): string {
 
   <tr><td style="padding:20px 4px 0;">
     <p style="margin:0;font-family:${SANS};font-size:12px;line-height:1.6;color:${C.faint};">
-      Sent by Nest Connect — WhatsApp, email and group chats in one shared inbox.
+      ${footer}
     </p>
   </td></tr>
 
@@ -191,6 +195,53 @@ export interface Composed {
   subject: string;
   text: string;
   html: string;
+}
+
+/**
+ * Replies a website-chat visitor hasn't seen, sent once they've left.
+ *
+ * In the business's name: the visitor chatted with them. `replies` are the
+ * agent's messages in order; `siteUrl`, when the channel names a website, is
+ * where to carry on — the chat is still there, on the same browser.
+ */
+export function visitorReplyEmail(opts: {
+  business: string;
+  visitorName?: string;
+  replies: { author: string; text: string }[];
+  siteUrl?: string;
+}): Composed {
+  const who = opts.visitorName?.trim() || "there";
+  const many = opts.replies.length > 1;
+  const heading = many ? `You have new replies from ${opts.business}` : `You have a new reply from ${opts.business}`;
+  const footer = `You're getting this because you chatted with ${escapeHtml(opts.business)} and left your email address so they could reply.`;
+  return {
+    subject: `${many ? "New replies" : "New reply"} from ${opts.business}`,
+    text: [
+      `Hi ${who},`,
+      ``,
+      `${heading}:`,
+      ``,
+      ...opts.replies.flatMap((r) => [`${r.author}:`, r.text, ``]),
+      ...(opts.siteUrl ? [`Carry on the conversation at ${opts.siteUrl}`, ``] : []),
+      `You're getting this because you chatted with ${opts.business} and left your email address so they could reply.`,
+    ].join("\n"),
+    html: layout({
+      brand: opts.business,
+      footer,
+      preheader: opts.replies[0] ? `${opts.replies[0].author}: ${opts.replies[0].text}`.slice(0, 120) : heading,
+      body:
+        h1(heading) +
+        p(`Hi ${escapeHtml(who)},`) +
+        opts.replies
+          .map(
+            (r) =>
+              `<p style="margin:0 0 4px;font-family:${SANS};font-size:13px;font-weight:600;color:${C.muted};">${escapeHtml(r.author)}</p>` +
+              `<p style="margin:0 0 16px;padding:12px 14px;background:${C.page};border-radius:10px;font-family:${SANS};font-size:15px;line-height:1.55;color:${C.text};white-space:pre-wrap;">${escapeHtml(r.text)}</p>`,
+          )
+          .join("") +
+        (opts.siteUrl ? button("Carry on the conversation", opts.siteUrl) + fallbackLink(opts.siteUrl) : ""),
+    }),
+  };
 }
 
 export function inviteEmail(name: string, url: string): Composed {

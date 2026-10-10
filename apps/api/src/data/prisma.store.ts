@@ -5,7 +5,7 @@ import { hashInviteToken, newInviteToken } from "../auth/invite-token";
 import { IDENTITY_NORMALIZATION_VERSION, normalizeIdentity, type IdentityKind } from "../contacts/identity";
 import { groupDuplicateContacts } from "../contacts/duplicates";
 import { threadsTogether } from "./email-threading";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type {
   CreateCustomFieldInput,
   CustomField,
@@ -40,6 +40,7 @@ import type {
   Template,
   UpdateTemplateInput,
   User,
+  AvailabilitySchedule,
 } from "@ding/schemas";
 import {
   CONVERSATIONS_PAGE_SIZE,
@@ -674,11 +675,14 @@ export class PrismaStore extends Store {
 
   async updateMyPreferences(
     userId: string,
-    params: { available?: boolean; emailSignature?: string | null },
+    params: { available?: boolean; schedule?: AvailabilitySchedule | null; emailSignature?: string | null },
   ): Promise<User | undefined> {
     try {
       const data: Prisma.UserUpdateInput = {};
       if (params.available !== undefined) data.available = params.available;
+      if (params.schedule !== undefined) {
+        data.availabilitySchedule = params.schedule === null ? Prisma.DbNull : (params.schedule as Prisma.InputJsonValue);
+      }
       if (params.emailSignature !== undefined) data.emailSignature = params.emailSignature;
       const u = await this.prisma.user.update({ where: { id: userId }, data });
       return mapUser(u);
@@ -1602,6 +1606,50 @@ export class PrismaStore extends Store {
     } catch {
       return undefined;
     }
+  }
+
+  async listUnseenNestChatReplies(from: Date, to: Date): Promise<{ conversationId: string; orgId: string }[]> {
+    // Root: a platform job looking across workspaces. Each candidate is then
+    // handled inside its own workspace, through the scoped client.
+    const rows = await this.root.message.findMany({
+      where: {
+        direction: "out",
+        internal: false,
+        authorType: { not: "system" },
+        status: { in: ["sent", "delivered"] },
+        createdAt: { gte: from, lte: to },
+        conversation: { channel: "nestchat" },
+      },
+      select: { seq: true, conversationId: true, conversation: { select: { orgId: true, visitorEmailedSeq: true } } },
+      orderBy: { createdAt: "asc" },
+      take: 500,
+    });
+    const out = new Map<string, string>();
+    for (const r of rows) {
+      if (r.seq > r.conversation.visitorEmailedSeq) out.set(r.conversationId, r.conversation.orgId);
+    }
+    return [...out].map(([conversationId, orgId]) => ({ conversationId, orgId }));
+  }
+
+  async getOrganizationName(orgId: string): Promise<string | undefined> {
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId }, select: { name: true } });
+    return org?.name ?? undefined;
+  }
+
+  async getVisitorEmailedSeq(conversationId: string): Promise<number | undefined> {
+    const row = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { visitorEmailedSeq: true },
+    });
+    return row?.visitorEmailedSeq;
+  }
+
+  async claimVisitorEmail(conversationId: string, prev: number, through: number): Promise<boolean> {
+    const { count } = await this.prisma.conversation.updateMany({
+      where: { id: conversationId, visitorEmailedSeq: prev },
+      data: { visitorEmailedSeq: through },
+    });
+    return count === 1;
   }
 
   async getSubjectState(conversationId: string): Promise<{ auto: boolean; topic: string | null } | undefined> {

@@ -177,6 +177,14 @@ jobs:
       - name: Conversation subjects
         run: pnpm check:conversation-subjects
 
+      # Who is here. Working hours read in each person's own zone (night shifts
+      # included); round-robin and a customer's own person respect them; the
+      # website chat is online only while somebody who answers it is available;
+      # and a visitor who left gets an unseen reply by email — once, and never
+      # if they read it, answered, gave no address or the channel said no.
+      - name: Availability, working hours and visitor email
+        run: pnpm check:availability
+
       # The app surface on a live-chat channel. Two things here are worth a
       # build failing over: the identity secret must never reach a browser (it
       # is what signs "this really is that customer", so anyone holding it can
