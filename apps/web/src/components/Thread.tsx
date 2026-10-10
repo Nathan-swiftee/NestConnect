@@ -17,6 +17,7 @@ import { hasOtherRecipients, replyAllRecipients } from "@ding/client";
 import { Avatar } from "./Avatar";
 import { useHoverGlide } from "../lib/useHoverGlide";
 import { unlock } from "../lib/sound";
+import { emailFit } from "../lib/email-fit";
 import { TemplatePicker } from "./TemplatePicker";
 import {
   channelMeta,
@@ -319,7 +320,16 @@ const EMAIL_COLLAPSED_MAX = 220;
  *  content height to size the frame; `allow-popups` lets links open in a tab. */
 function EmailHtml({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(80);
+  const boxRef = useRef<HTMLDivElement>(null);
+  // The email's own height, in its own (unscaled) pixels.
+  const [contentHeight, setContentHeight] = useState(80);
+  // How wide the email lays itself out, when that's wider than the column.
+  // Designed emails are often a fixed 600px; they're scaled down to fit rather
+  // than cut off on the right (see emailFit).
+  const [contentWidth, setContentWidth] = useState(0);
+  const [boxWidth, setBoxWidth] = useState(0);
+  const fit = emailFit(contentWidth, boxWidth);
+  const height = Math.ceil(contentHeight * fit.scale);
   // Remote images show by default; the bar below lets you hide them per message.
   const [showImages, setShowImages] = useState(true);
   // Long emails are clamped to a preview height with a "Read more" toggle, so a
@@ -357,13 +367,32 @@ function EmailHtml({ html }: { html: string }) {
     const d = ref.current?.contentDocument;
     if (d?.body) {
       const h = Math.max(d.body.scrollHeight, d.documentElement?.scrollHeight ?? 0);
-      setHeight(Math.min(2000, Math.max(40, h + 6)));
+      setContentHeight(Math.min(4000, Math.max(40, h + 6)));
+      // Measured at whatever width the frame has now: the column's, or the
+      // email's own once it's being scaled. Either way, anything wider is
+      // content that would otherwise be cut off.
+      setContentWidth(Math.max(d.body.scrollWidth, d.documentElement?.scrollWidth ?? 0));
     }
   };
   useEffect(() => {
-    const timers = [60, 260, 700].map((d) => window.setTimeout(measure, d));
+    // A new body, images toggled or a new column width: lay out afresh at the
+    // column's width first, so an email that can reflow does, and only one
+    // that genuinely can't fit is scaled.
+    setContentWidth(0);
+    const timers = [60, 260, 700, 1500].map((d) => window.setTimeout(measure, d));
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [srcDoc]);
+  }, [srcDoc, boxWidth]);
+
+  // Follow the column as the window, sidebar or panel changes its width.
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const read = () => setBoxWidth(box.clientWidth);
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, []);
 
   // The sandboxed iframe is its own scrolling context, so a gesture that starts
   // over the email doesn't reach the thread's scroll container — it escapes to
@@ -429,14 +458,22 @@ function EmailHtml({ html }: { html: string }) {
           <span className="emailhtml__show">{showImages ? "Hide" : "Show images"}</span>
         </button>
       )}
-      <div className={"emailhtml__clip" + (collapsed ? " is-clamped" : "")} style={collapsed ? { maxHeight: EMAIL_COLLAPSED_MAX } : undefined}>
+      <div
+        ref={boxRef}
+        className={"emailhtml__clip" + (collapsed ? " is-clamped" : "")}
+        style={{ height, maxHeight: collapsed ? EMAIL_COLLAPSED_MAX : undefined }}
+      >
         <iframe
           ref={ref}
           className="emailhtml__frame"
           title="Email message"
           sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
           srcDoc={srcDoc}
-          style={{ height }}
+          style={
+            fit.width
+              ? { height: contentHeight, width: fit.width, transform: `scale(${fit.scale})`, transformOrigin: "0 0" }
+              : { height: contentHeight }
+          }
           onLoad={measure}
         />
       </div>
