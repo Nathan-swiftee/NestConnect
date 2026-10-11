@@ -78,6 +78,7 @@ import type {
   ConversationAccountContext,
   CreateAccountInput,
   LinkContactInput,
+  LinkContactsInput,
   NoteInput,
   ResourceInput,
   SopInput,
@@ -532,6 +533,8 @@ export const api = {
       body: JSON.stringify({ accountId }),
     }),
   linkAccountContact: (id: string, input: LinkContactInput) => post<AccountContact>(`/accounts/${encodeURIComponent(id)}/contacts`, input),
+  linkAccountContacts: (id: string, input: LinkContactsInput) =>
+    post<AccountContact[]>(`/accounts/${encodeURIComponent(id)}/contacts/many`, input),
   updateAccountContact: (id: string, contactId: string, input: UpdateContactLinkInput) =>
     patch<AccountContact>(`/accounts/${encodeURIComponent(id)}/contacts/${encodeURIComponent(contactId)}`, input),
   unlinkAccountContact: (id: string, contactId: string) =>

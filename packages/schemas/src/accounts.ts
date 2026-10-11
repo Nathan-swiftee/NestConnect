@@ -291,11 +291,13 @@ export const createAccountInputSchema = z.object({
   force: z.boolean().optional(),
   /** Link this contact straight away (from the inbox / a contact's profile). */
   contactId: z.string().optional(),
+  /** People to add as it's created. */
+  contactIds: z.array(z.string().min(1)).max(200).optional(),
 });
 export type CreateAccountInput = z.input<typeof createAccountInputSchema>;
 
 export const updateAccountInputSchema = createAccountInputSchema
-  .omit({ force: true, contactId: true })
+  .omit({ force: true, contactId: true, contactIds: true })
   .partial()
   .extend({ name: trimmed(160).min(1).optional() });
 export type UpdateAccountInput = z.input<typeof updateAccountInputSchema>;
@@ -308,6 +310,9 @@ export const linkContactInputSchema = z.object({
   notes: optionalText(2000),
 });
 export type LinkContactInput = z.input<typeof linkContactInputSchema>;
+/** Several people added to an organisation in one go. */
+export const linkContactsInputSchema = z.object({ contactIds: z.array(z.string().min(1)).min(1).max(200) });
+export type LinkContactsInput = z.input<typeof linkContactsInputSchema>;
 export const updateContactLinkInputSchema = linkContactInputSchema.omit({ contactId: true }).partial();
 export type UpdateContactLinkInput = z.input<typeof updateContactLinkInputSchema>;
 

@@ -107,6 +107,10 @@ async function main(): Promise<void> {
       ok("its SOP can't be changed via B's", await refuses(() => svc.updateSop(b.user.id, b.account.id, a.sop.id, { title: "x" })));
       ok("A's contact can't be linked to B's organisation", await refuses(() => svc.link(b.user.id, b.account.id, { contactId: a.contact.id })));
       ok("B's contact can't be linked to A's", await refuses(() => svc.link(b.user.id, a.account.id, { contactId: b.contact.id })));
+      ok("nor added in bulk to B's", !(await svc.linkMany(b.user.id, b.account.id, [a.contact.id])).some((l) => l.contactId === a.contact.id));
+      ok("nor to A's in bulk", await refuses(() => svc.linkMany(b.user.id, a.account.id, [b.contact.id])));
+      const sneaky = await svc.create(b.user.id, { name: "Sneaky Ltd", contactIds: [a.contact.id] });
+      ok("nor ticked into a new one", (await svc.detail(sneaky.id)).contacts.length === 0);
       ok("A's upload can't become B's document", await refuses(() =>
         svc.createResource(b.user.id, b.account.id, { kind: "file", title: "x", description: "", category: "", instructions: "", attachmentId: a.upload.id }),
       ));

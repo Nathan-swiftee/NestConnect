@@ -155,7 +155,7 @@ export class AccountsService {
 
   async create(
     userId: string,
-    input: AccountInputParsed & { name: string; force?: boolean; contactId?: string },
+    input: AccountInputParsed & { name: string; force?: boolean; contactId?: string; contactIds?: string[] },
   ): Promise<Account> {
     const { actor } = await this.actor(userId);
     await this.validOwner(input.ownerUserId);
@@ -191,6 +191,7 @@ export class AccountsService {
     const row = await this.accounts.create(fields, actor);
     await this.accounts.logActivity(row.id, actor, "account.created", `Created ${row.name}`);
     if (input.contactId) await this.link(userId, row.id, { contactId: input.contactId, isPrimary: true });
+    if (input.contactIds?.length) await this.linkMany(userId, row.id, input.contactIds);
     return this.toAccount(row);
   }
 
@@ -283,6 +284,32 @@ export class AccountsService {
       );
     }
     return (await this.withContact(link))!;
+  }
+
+  /**
+   * Add several people at once — picked from the organisation's side rather
+   * than one contact at a time. Anyone already there is left as they are; an
+   * id that isn't a contact in this workspace is skipped. If the organisation
+   * had nobody, the first person added becomes its primary contact.
+   */
+  async linkMany(userId: string, accountId: string, contactIds: string[]): Promise<AccountContact[]> {
+    const { actor } = await this.actor(userId);
+    const account = await this.mustEdit(accountId);
+    const before = await this.accounts.listLinks(accountId);
+    const already = new Set(before.map((l) => l.contactId));
+    const added: string[] = [];
+    for (const id of [...new Set(contactIds)]) {
+      if (already.has(id)) continue;
+      const contact = await this.store.getContact(id);
+      if (!contact) continue;
+      await this.accounts.link(accountId, id, { role: null, department: null, isPrimary: before.length === 0 && added.length === 0, notes: null });
+      added.push(contact.displayName);
+    }
+    if (added.length) {
+      const names = added.length <= 3 ? added.join(", ") : `${added.slice(0, 2).join(", ")} and ${added.length - 2} others`;
+      await this.accounts.logActivity(accountId, actor, "contact.linked", `Linked ${names} to ${account.name}`);
+    }
+    return this.contactsOf(accountId);
   }
 
   /** One primary contact per organisation. */

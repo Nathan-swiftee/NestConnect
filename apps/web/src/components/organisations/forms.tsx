@@ -75,7 +75,7 @@ export function AccountFormModal({
   const save = useAccountMutation((v: { force?: boolean }) =>
     account
       ? api.updateAccount(account.id, fields())
-      : api.createAccount({ ...fields(), force: v.force, contactId: linkContactId }),
+      : api.createAccount({ ...fields(), force: v.force, contactId: linkContactId, contactIds: members.length ? members : undefined }),
   );
   const [name, setName] = useState(account?.name ?? initialName ?? "");
   const [legalName, setLegalName] = useState(account?.legalName ?? "");
@@ -90,6 +90,8 @@ export function AccountFormModal({
   const [website, setWebsite] = useState(account?.website ?? "");
   const [address, setAddress] = useState(account?.address ?? "");
   const [dupe, setDupe] = useState<{ id: string; name: string; archived: boolean; message: string } | null>(null);
+  // People to add as it's created (from the organisation's side).
+  const [members, setMembers] = useState<string[]>([]);
 
   function fields() {
     return {
@@ -211,6 +213,12 @@ export function AccountFormModal({
         <textarea rows={2} value={address} onChange={(e) => setAddress(e.target.value)} />
       </label>
       <TagEditor tags={tags} suggestions={[]} onChange={setTags} />
+      {!account && (
+        <div className="field">
+          <span>People at this organisation <em>optional</em>{members.length > 0 && ` · ${members.length} chosen`}</span>
+          <ContactMultiPicker selected={members} onChange={setMembers} exclude={linkContactId ? [linkContactId] : []} />
+        </div>
+      )}
     </Modal>
   );
 }
@@ -522,90 +530,95 @@ export function ResourceModal({ accountId, resource, sops, onClose, onToast }: {
 
 /* ------------------------------ linking contacts ------------------------------ */
 
+/**
+ * Pick any number of customers: search, tick, done. Used when creating an
+ * organisation and from an organisation's Contacts tab, so people can be added
+ * from the organisation's side rather than one contact profile at a time.
+ */
+export function ContactMultiPicker({
+  selected,
+  onChange,
+  exclude = [],
+  autoFocus,
+}: {
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  exclude?: string[];
+  autoFocus?: boolean;
+}) {
+  const contacts = useContacts();
+  const [q, setQ] = useState("");
+  const skip = new Set(exclude);
+  const chosen = new Set(selected);
+  const s = q.trim().toLowerCase();
+  const list = (contacts.data ?? [])
+    .filter((c) => !skip.has(c.id) && !c.blocked)
+    .filter((c) => !s || [c.displayName, c.company, c.phone, c.email].some((v) => (v ?? "").toLowerCase().includes(s)))
+    // Ticked people stay in view while searching for the next one.
+    .sort((a, b) => Number(chosen.has(b.id)) - Number(chosen.has(a.id)))
+    .slice(0, 80);
+  const toggle = (id: string) => onChange(chosen.has(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  return (
+    <div className="org-multipick">
+      <div className="setsearch">
+        <SearchIcon />
+        <input
+          value={q}
+          autoFocus={autoFocus}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}
+          placeholder="Search customers by name, number or email…"
+          aria-label="Search customers"
+        />
+      </div>
+      <div className="org-pick" role="listbox" aria-multiselectable="true" aria-label="Customers">
+        {list.map((c) => (
+          <label key={c.id} className={"org-pick__row" + (chosen.has(c.id) ? " on" : "")} role="option" aria-selected={chosen.has(c.id)}>
+            <input type="checkbox" checked={chosen.has(c.id)} onChange={() => toggle(c.id)} />
+            <Avatar name={c.displayName} email={c.email} color={c.avatarColor} className="av" />
+            <span>
+              <b>{c.displayName}</b>
+              <small>{[c.company, c.phone, c.email].filter(Boolean).join(" · ") || "No contact details"}</small>
+            </span>
+          </label>
+        ))}
+        {contacts.isLoading && <p className="org-muted">Loading…</p>}
+        {contacts.data && list.length === 0 && <p className="org-muted">{s ? "No customers match." : "Everyone's already here."}</p>}
+      </div>
+    </div>
+  );
+}
+
 export function LinkContactModal({ accountId, linked, onClose, onToast }: {
   accountId: string;
   linked: AccountContact[];
   onClose: () => void;
   onToast: (m: string) => void;
 }) {
-  const contacts = useContacts();
-  const [q, setQ] = useState("");
-  const [picked, setPicked] = useState<string | null>(null);
-  const [role, setRole] = useState("");
-  const [department, setDepartment] = useState("");
-  const [isPrimary, setPrimary] = useState(linked.length === 0);
-  const link = useAccountMutation(() =>
-    api.linkAccountContact(accountId, { contactId: picked!, role: role.trim() || null, department: department.trim() || null, isPrimary }),
-  );
-  const already = new Set(linked.map((l) => l.contactId));
-  const list = (contacts.data ?? [])
-    .filter((c) => !already.has(c.id) && !c.blocked)
-    .filter((c) => {
-      const s = q.trim().toLowerCase();
-      return !s || [c.displayName, c.company, c.phone, c.email].some((v) => (v ?? "").toLowerCase().includes(s));
-    })
-    .slice(0, 50);
-  const chosen = contacts.data?.find((c) => c.id === picked);
-
+  const [picked, setPicked] = useState<string[]>([]);
+  const add = useAccountMutation(() => api.linkAccountContacts(accountId, { contactIds: picked }));
   return (
     <Modal
-      title="Add a contact"
+      title="Add people"
       onClose={onClose}
       onSubmit={() =>
-        picked &&
-        link.mutate(undefined, {
-          onSuccess: () => { onToast(`${chosen?.displayName ?? "Contact"} added`); onClose(); },
-          onError: (err) => onToast(errMessage(err, "Couldn't add the contact")),
+        picked.length &&
+        add.mutate(undefined, {
+          onSuccess: () => { onToast(picked.length === 1 ? "Added" : `${picked.length} people added`); onClose(); },
+          onError: (err) => onToast(errMessage(err, "Couldn't add them")),
         })
       }
       foot={
         <div className="setform__footactions">
           <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn-primary" disabled={!picked || link.isPending}>Add to organisation</button>
+          <button type="submit" className="btn-primary" disabled={!picked.length || add.isPending}>
+            {picked.length > 1 ? `Add ${picked.length} people` : "Add"}
+          </button>
         </div>
       }
     >
-      {!picked ? (
-        <>
-          <div className="setsearch">
-            <SearchIcon />
-            <input value={q} autoFocus onChange={(e) => setQ(e.target.value)} placeholder="Search customers by name, number or email…" />
-          </div>
-          <div className="org-pick">
-            {list.map((c) => (
-              <button type="button" key={c.id} className="org-pick__row" onClick={() => setPicked(c.id)}>
-                <Avatar name={c.displayName} email={c.email} color={c.avatarColor} className="av" />
-                <span>
-                  <b>{c.displayName}</b>
-                  <small>{[c.phone, c.email].filter(Boolean).join(" · ") || "No contact details"}</small>
-                </span>
-              </button>
-            ))}
-            {contacts.data && list.length === 0 && <p className="org-muted">No customers match. Add them under Customers first.</p>}
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="org-pick__chosen">
-            <b>{chosen?.displayName}</b>
-            <button type="button" className="btn-ghost sm" onClick={() => setPicked(null)}>Change</button>
-          </div>
-          <div className="setform__grid two">
-            <label className="field">
-              <span>Role <em>optional</em></span>
-              <input value={role} autoFocus onChange={(e) => setRole(e.target.value)} placeholder="Bookings Manager" />
-            </label>
-            <label className="field">
-              <span>Department <em>optional</em></span>
-              <input value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="Operations" />
-            </label>
-          </div>
-          <label className="custblock">
-            <input type="checkbox" checked={isPrimary} onChange={(e) => setPrimary(e.target.checked)} />
-            <span><b>Primary contact</b><small>The first person to go to for this organisation.</small></span>
-          </label>
-        </>
-      )}
+      <ContactMultiPicker selected={picked} onChange={setPicked} exclude={linked.map((l) => l.contactId)} autoFocus />
+      <p className="capnote">Set each person's role afterwards with the pencil beside them.</p>
     </Modal>
   );
 }

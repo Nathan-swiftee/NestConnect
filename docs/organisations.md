@@ -18,7 +18,10 @@ it doesn't talk to dispatch or any other system.
 | **Organisations** (building icon in the left rail; the sidebar menu on narrow screens) | A searchable directory of organisations, filterable by status, with archived ones on request. Each opens a profile with five tabs: **Overview**, **Contacts**, **Knowledge & SOPs**, **Resources** and **Activity**. |
 | **Inbox → the details panel** | An **Organisation** section directly under the contact's header. It shows the organisation, the contact's role there, the pinned instructions, the active SOPs (each opens a reader), the resources, and a link to the full profile. |
 | **Customers → a customer's profile** | The customer's organisations, with options to add to an existing one, create a new one, or remove the link. |
-| **Mobile app → conversation details** | The organisation, its pinned instructions and active SOPs (warnings and steps), plus links and apps. Editing is done on the web. |
+| **Organisations → a profile → Contacts → Add people** | Tick any number of customers and add them in one go. **New organisation** has the same picker, so the people can be added as it's created. |
+| **Mobile app → Customers → Organisations** | A People / Organisations switch at the top of the tab. Organisations can be searched, created (**New**: name, reference, one line, and the people ticked from the customer list) and opened. An organisation shows its pinned instructions, active SOPs, links and people; **Add people** ticks several at once, and × takes someone out. |
+| **Mobile app → a customer, or conversation details** | The customer's organisations. **Add to an organisation** searches the existing ones, or creates one under the typed name (a name that already exists is offered back to link instead). **Change** in the conversation details adds or removes. |
+| **Mobile app → conversation details** | The organisation, its pinned instructions and active SOPs (warnings and steps), plus links and apps. Writing alerts, SOPs, notes and resources is done on the web. |
 
 ## The model
 
@@ -144,12 +147,15 @@ All routes are under `/api/accounts` and act in the signed-in user's workspace.
 
 ```
 GET    /accounts?q=&status=&archived=1         directory
-POST   /accounts                               create (409 on a duplicate; force: true to override)
+POST   /accounts                               create (409 on a duplicate; force: true to override;
+                                               contactId and/or contactIds link people as it's made)
 GET    /accounts/:id                           profile: account, contacts, alerts, sops, notes, resources
 PATCH  /accounts/:id
 POST   /accounts/:id/archive | /restore        managers/admins
 GET    /accounts/:id/activity
 POST   /accounts/:id/contacts                  link { contactId, role, department, isPrimary, notes }
+POST   /accounts/:id/contacts/many             link several { contactIds } (already linked or unknown ids are skipped;
+                                               the first becomes primary if there was none)
 PATCH  /accounts/:id/contacts/:contactId
 DELETE /accounts/:id/contacts/:contactId       unlink (the contact stays)
 POST|PATCH|DELETE /accounts/:id/alerts[/:alertId]
@@ -169,7 +175,10 @@ PUT    /accounts/conversation/:conversationId  { accountId | null }
 | `packages/schemas/src/accounts.ts` | Types, input validation and `accountNameKey`. |
 | `apps/api/src/accounts/` | The module, with its own small store (`AccountStore`). It has a Postgres implementation, which is tenant-scoped, and an in-memory one for dev and the checks, so the core `Store` isn't enlarged. The service holds permissions, duplicate detection, the inbox rules and the activity log. |
 | `apps/web/src/components/organisations/` | The directory, profile, forms, editor, SOP reader and inbox block. |
-| `apps/mobile/src/components/OrganisationCard.tsx` | The mobile app's card. |
+| `apps/mobile/src/components/OrganisationCard.tsx` | The card in conversation details. |
+| `apps/mobile/src/components/OrganisationScreen.tsx` | The organisation screen and the New organisation form, over the Customers tab. |
+| `apps/mobile/src/components/ContactOrganisations.tsx` | A customer's organisations: add, create, remove. Inline, because it also renders inside the details sheet. |
+| `apps/mobile/src/components/PeoplePicker.tsx` | Tick-several customer picker. |
 
 ## Checks
 

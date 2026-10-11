@@ -3415,7 +3415,12 @@ button.tpl-row:active{transform:scale(.97)}
 .org-pick__row:hover{background:var(--surface-2)}
 .org-pick__row .av{width:30px;height:30px;flex:none}
 .org-pick__row small{display:block;color:var(--text-muted);font-size:var(--fs-sm)}
-.org-pick__chosen{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:var(--r-8);background:var(--surface-2)}
+.org-multipick{display:flex;flex-direction:column}
+.org-multipick .org-pick{max-height:280px;border:1px solid var(--border);border-radius:var(--r-8);padding:4px}
+.org-pick__row input[type=checkbox]{width:16px;height:16px;flex:none;margin:0;accent-color:var(--brand)}
+.org-pick__row.on{background:var(--brand-tint)}
+.org-pick__row > span{min-width:0;flex:1}
+.org-pick__row small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .org-dupe{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border-radius:var(--r-8);background:var(--amber-tint);font-size:var(--fs-sm)}
 .org-dupe__acts{display:flex;gap:8px;flex-wrap:wrap}
 
@@ -3496,3 +3501,6 @@ button.tpl-row:active{transform:scale(.97)}
 :is(.org-profile,.org-psec,.org-picker,.org-form,.org-sopmodal,.setzero,.org-contactorgs) :is(.btn-primary,.btn-ghost){display:inline-flex;align-items:center;justify-content:center;gap:6px}
 :is(.org-profile,.org-psec,.org-picker,.org-form,.org-sopmodal,.setzero,.org-contactorgs) :is(.btn-primary,.btn-ghost) svg{width:15px;height:15px;flex:none}
 .org-person__acts .btn-ghost{white-space:nowrap}
+/* The picker's search sits inside a form field: one box, not a box in a box. */
+.org-multipick .setsearch{margin-bottom:8px}
+.org-multipick .setsearch input{background:none;border:0;box-shadow:none;padding:0;min-height:0;flex:1;outline:none}

@@ -184,6 +184,21 @@ async function main() {
     ok("every change is in its history, with who did it", log.length >= 10 && log.every((a) => !!a.actor?.name));
     ok("newest first", log[0]?.action === "account.restored");
 
+    console.log("\nPeople added from the organisation's side\n");
+    const fresh = await svc.create(AGENT, { name: "Bloom & Ivy Florists", contactIds: ["ct_bloom", "ct_ivy", "ct_nobody"] });
+    const freshPeople = (await svc.detail(fresh.id)).contacts;
+    ok("created with the people ticked", freshPeople.map((l) => l.contactId).sort().join() === "ct_bloom,ct_ivy");
+    ok("an unknown id is skipped, not an error", !freshPeople.some((l) => l.contactId === "ct_nobody"));
+    ok("the first becomes the primary contact", freshPeople.filter((l) => l.isPrimary).length === 1);
+    const more = await svc.linkMany(AGENT, fresh.id, ["ct_ivy", "ct_north", "ct_north"]);
+    ok("adding several at once skips who's already there", more.length === 3 && more.filter((l) => l.contactId === "ct_north").length === 1);
+    ok("and doesn't move the primary", more.filter((l) => l.isPrimary).map((l) => l.contactId).join() === freshPeople.find((l) => l.isPrimary)?.contactId);
+    ok("each shows the organisation", (await svc.forContact("ct_north")).some((a) => a.account.id === fresh.id));
+    ok("one line in its history", (await svc.activity(fresh.id)).filter((a) => a.action === "contact.linked").length === 2);
+    await svc.setArchived(ADMIN, fresh.id, true);
+    ok("not into an archived organisation", await refuses(svc.linkMany(AGENT, fresh.id, ["ct_acme"]), 400));
+    await svc.setArchived(ADMIN, fresh.id, false);
+
     console.log("\nSearch\n");
     ok("by name", (await svc.list({ search: "magazines" })).some((a) => a.id === abc.id));
     ok("by reference", (await svc.list({ search: "SW-1042" })).some((a) => a.id === abc.id));
