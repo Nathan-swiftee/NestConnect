@@ -111,6 +111,12 @@ export class AccountsController {
     return this.accounts.setArchived(userId, id, false);
   }
 
+  @Delete(":id")
+  async remove(@CurrentUserId() userId: string, @Param("id") id: string): Promise<{ ok: true }> {
+    await this.accounts.remove(userId, id);
+    return { ok: true };
+  }
+
   @Get(":id/activity")
   activity(@Param("id") id: string): Promise<AccountActivity[]> {
     return this.accounts.activity(id);

@@ -522,6 +522,7 @@ export const api = {
   updateAccount: (id: string, input: UpdateAccountInput) => patch<Account>(`/accounts/${encodeURIComponent(id)}`, input),
   archiveAccount: (id: string, archived: boolean) =>
     post<Account>(`/accounts/${encodeURIComponent(id)}/${archived ? "archive" : "restore"}`, {}),
+  deleteAccount: (id: string) => del<{ ok: true }>(`/accounts/${encodeURIComponent(id)}`),
   accountActivity: (id: string) => get<AccountActivity[]>(`/accounts/${encodeURIComponent(id)}/activity`),
   contactAccounts: (contactId: string) => get<ContactAccount[]>(`/accounts/by-contact/${encodeURIComponent(contactId)}`),
   conversationAccount: (conversationId: string) =>

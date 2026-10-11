@@ -157,7 +157,14 @@ export function AlertRow({ alert: a }: { alert: AccountAlert }) {
 }
 
 /** One SOP: its title, opening to the warnings and the steps to tick through. */
-export function SopRow({ sop, open, onToggle }: { sop: AccountSop; open: boolean; onToggle: () => void }) {
+export function SopRow({ sop, open, onToggle, full }: {
+  sop: AccountSop;
+  open: boolean;
+  onToggle: () => void;
+  /** In the full SOP reader: the title is above already, and the detailed
+   *  instructions follow, so this is only the warnings and the checklist. */
+  full?: boolean;
+}) {
   const { c } = useTheme();
   const [done, setDone] = useState<Set<number>>(new Set());
   const tick = (i: number) =>
@@ -168,7 +175,8 @@ export function SopRow({ sop, open, onToggle }: { sop: AccountSop; open: boolean
       return n;
     });
   return (
-    <View style={{ borderTopColor: c.border }} className="border-t">
+    <View style={{ borderTopColor: c.border }} className={full ? "pt-3" : "border-t"}>
+      {full ? null : (
       <Touchable
         feel="row"
         onPress={onToggle}
@@ -186,6 +194,7 @@ export function SopRow({ sop, open, onToggle }: { sop: AccountSop; open: boolean
           <ChevronRight size={14} color={c.textFaint} />
         </View>
       </Touchable>
+      )}
       {open ? (
         <View className="px-4 pb-3">
           {sop.warnings ? (
@@ -216,7 +225,9 @@ export function SopRow({ sop, open, onToggle }: { sop: AccountSop; open: boolean
               </Text>
             </Touchable>
           ))}
-          {sop.body ? <Text className="mt-1 text-2xs text-muted">Detailed instructions and documents: open the organisation on the web.</Text> : null}
+          {sop.body && !full ? (
+            <Text className="mt-1 text-2xs text-muted">Detailed instructions and documents: Customers → Organisations → {sop.title}.</Text>
+          ) : null}
         </View>
       ) : null}
     </View>

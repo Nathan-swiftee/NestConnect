@@ -107,6 +107,7 @@ async function main(): Promise<void> {
       ok("its SOP can't be changed via B's", await refuses(() => svc.updateSop(b.user.id, b.account.id, a.sop.id, { title: "x" })));
       ok("A's contact can't be linked to B's organisation", await refuses(() => svc.link(b.user.id, b.account.id, { contactId: a.contact.id })));
       ok("B's contact can't be linked to A's", await refuses(() => svc.link(b.user.id, a.account.id, { contactId: b.contact.id })));
+      ok("nor deleted", await refuses(() => svc.remove(b.user.id, a.account.id)));
       ok("nor added in bulk to B's", !(await svc.linkMany(b.user.id, b.account.id, [a.contact.id])).some((l) => l.contactId === a.contact.id));
       ok("nor to A's in bulk", await refuses(() => svc.linkMany(b.user.id, a.account.id, [b.contact.id])));
       const sneaky = await svc.create(b.user.id, { name: "Sneaky Ltd", contactIds: [a.contact.id] });
@@ -169,6 +170,23 @@ async function main(): Promise<void> {
       ok("their conversations go with them, as before (the organisation stays)", (await root.conversation.findUnique({ where: { id: a.conversation.id } })) === null);
       const log = await svc.activity(a.account.id);
       ok("the history records it all, newest first", log.length >= 6 && log[0]!.createdAt >= log[log.length - 1]!.createdAt);
+
+      // Deleting for good: everything that belongs to it goes, in one cascade.
+      const keep = await store.upsertContactByIdentity({ orgId: A, kind: "email", value: "keep@a.example", displayName: "a Keep" });
+      await svc.link(a.user.id, a.account.id, { contactId: keep.id });
+      await svc.remove(a.user.id, a.account.id);
+      const left = await Promise.all([
+        root.account.count({ where: { id: a.account.id } }),
+        root.accountContact.count({ where: { accountId: a.account.id } }),
+        root.accountAlert.count({ where: { accountId: a.account.id } }),
+        root.accountSop.count({ where: { accountId: a.account.id } }),
+        root.accountSopRevision.count({ where: { sopId: a.sop.id } }),
+        root.accountResource.count({ where: { accountId: a.account.id } }),
+        root.accountActivity.count({ where: { accountId: a.account.id } }),
+      ]);
+      ok("deleting an organisation removes it and everything it held", left.every((n) => n === 0), left.join(","));
+      ok("but not its people", !!(await store.getContact(keep.id)));
+      ok("nor B's organisation", (await root.account.count({ where: { id: b.account.id } })) === 1);
     });
   } finally {
     await cleanup(root);

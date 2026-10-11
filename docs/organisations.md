@@ -19,9 +19,9 @@ it doesn't talk to dispatch or any other system.
 | **Inbox → the details panel** | An **Organisation** section directly under the contact's header. It shows the organisation, the contact's role there, the pinned instructions, the active SOPs (each opens a reader), the resources, and a link to the full profile. |
 | **Customers → a customer's profile** | The customer's organisations, with options to add to an existing one, create a new one, or remove the link. |
 | **Organisations → a profile → Contacts → Add people** | Tick any number of customers and add them in one go. **New organisation** has the same picker, so the people can be added as it's created. |
-| **Mobile app → Customers → Organisations** | A People / Organisations switch at the top of the tab. Organisations can be searched, created (**New**: name, reference, one line, and the people ticked from the customer list) and opened. An organisation shows its pinned instructions, active SOPs, links and people; **Add people** ticks several at once, and × takes someone out. |
+| **Mobile app → Customers → Organisations** | The same organisation as on the web, on a phone. A People / Organisations switch sits at the top of the tab. The directory searches and filters by status, and can show archived ones. **New** opens the full form, including ticking the people who work there. An organisation opens to the same five sections as the web: **Overview** (pinned instructions added and edited in place, overview, details, at a glance), **People** (add several at once, edit roles, remove), **Knowledge & SOPs** (write and edit SOPs with ordered steps, read them as a checklist, see earlier versions; add, edit and delete notes), **Resources** (links, external apps, and documents uploaded from the phone) and **Activity**. **Edit** changes the details. Managers and admins also get **⋯**: archive, restore or delete. |
 | **Mobile app → a customer, or conversation details** | The customer's organisations. **Add to an organisation** searches the existing ones, or creates one under the typed name (a name that already exists is offered back to link instead). **Change** in the conversation details adds or removes. |
-| **Mobile app → conversation details** | The organisation, its pinned instructions and active SOPs (warnings and steps), plus links and apps. Writing alerts, SOPs, notes and resources is done on the web. |
+| **Mobile app → conversation details** | The organisation, its pinned instructions and active SOPs (warnings and steps), plus links and apps. |
 
 ## The model
 
@@ -49,9 +49,14 @@ adds one nullable column to `Conversation`, and drops and rewrites nothing.
 - Deleting a contact removes only their links. This is a database-level
   cascade; the organisation stays.
 - Merging contacts moves the loser's links to the winner.
-- Organisations are archived, not deleted. Archiving leaves contacts and
+- Archiving is the normal way to retire an organisation. It leaves contacts and
   conversations alone, and a conversation that chose an organisation simply
-  keeps the reference.
+  keeps the reference. It can be restored.
+- Deleting is for good, and managers and admins only. It removes the
+  organisation and everything it holds: links, alerts, SOPs and their history,
+  notes, resources and activity. The people and their conversations stay, and a
+  conversation that had chosen it no longer has an organisation. Uploaded files
+  are left in storage.
 
 **Duplicates:** names are compared without case, punctuation or the legal
 suffix, so "ABC Magazines Ltd", "abc magazines limited" and "A.B.C. Magazines"
@@ -123,6 +128,7 @@ These are the workspace's existing roles; no new permission system is added.
 | Delete an alert, note or resource | Their own | Anyone's |
 | Archive or restore an SOP | — | ✓ |
 | Archive or restore an organisation | — | ✓ |
+| Delete an organisation for good | — | ✓ |
 
 Agents can write knowledge because the people who know how a customer is
 served are usually the ones doing the work. Nothing is lost in exchange:
@@ -131,6 +137,13 @@ served are usually the ones doing the work. Nothing is lost in exchange:
 - an archived organisation is read-only until restored.
 
 ## Rich text and files
+
+On the phone, SOP instructions and notes are read with the formatting the web
+gave them. They are edited as plain text with two conventions: a blank line
+starts a paragraph, and "- " starts a bullet ("1. " a numbered item). Bold,
+links and headings can't be typed that way. So the form says when a piece has
+them, and saving keeps them if the text wasn't changed. See
+`apps/mobile/src/knowledge-text.ts`.
 
 SOP instructions and notes use the same TipTap editor as the reply box,
 limited to structure: headings, lists, bold, italic, underline, quotes and
@@ -151,6 +164,7 @@ POST   /accounts                               create (409 on a duplicate; force
                                                contactId and/or contactIds link people as it's made)
 GET    /accounts/:id                           profile: account, contacts, alerts, sops, notes, resources
 PATCH  /accounts/:id
+DELETE /accounts/:id                           delete for good (managers/admins)
 POST   /accounts/:id/archive | /restore        managers/admins
 GET    /accounts/:id/activity
 POST   /accounts/:id/contacts                  link { contactId, role, department, isPrimary, notes }
@@ -176,7 +190,8 @@ PUT    /accounts/conversation/:conversationId  { accountId | null }
 | `apps/api/src/accounts/` | The module, with its own small store (`AccountStore`). It has a Postgres implementation, which is tenant-scoped, and an in-memory one for dev and the checks, so the core `Store` isn't enlarged. The service holds permissions, duplicate detection, the inbox rules and the activity log. |
 | `apps/web/src/components/organisations/` | The directory, profile, forms, editor, SOP reader and inbox block. |
 | `apps/mobile/src/components/OrganisationCard.tsx` | The card in conversation details. |
-| `apps/mobile/src/components/OrganisationScreen.tsx` | The organisation screen and the New organisation form, over the Customers tab. |
+| `apps/mobile/src/components/OrganisationScreen.tsx` | The organisation on the phone: the five sections, the SOP reader with its history, archive and delete. |
+| `apps/mobile/src/components/OrganisationForms.tsx` | Its forms: organisation, SOP, note, resource (including uploading a document), and a person's role. |
 | `apps/mobile/src/components/ContactOrganisations.tsx` | A customer's organisations: add, create, remove. Inline, because it also renders inside the details sheet. |
 | `apps/mobile/src/components/PeoplePicker.tsx` | Tick-several customer picker. |
 

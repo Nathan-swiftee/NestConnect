@@ -121,6 +121,21 @@ export class MemoryAccountStore extends AccountStore {
     return { ...a };
   }
 
+  async remove(id: string): Promise<boolean> {
+    if (!this.owned(id)) return false;
+    const sopIds = new Set(this.sops.filter((x) => x.accountId === id).map((x) => x.id));
+    this.accounts = this.accounts.filter((x) => x.id !== id);
+    this.links = this.links.filter((x) => x.accountId !== id);
+    this.alerts = this.alerts.filter((x) => x.accountId !== id);
+    this.sops = this.sops.filter((x) => x.accountId !== id);
+    this.revisions = this.revisions.filter((x) => !sopIds.has(x.sopId));
+    this.notes = this.notes.filter((x) => x.accountId !== id);
+    this.resources = this.resources.filter((x) => x.accountId !== id);
+    this.activity = this.activity.filter((x) => x.accountId !== id);
+    for (const [conv, acc] of this.conversationAccount) if (acc === id) this.conversationAccount.set(conv, null);
+    return true;
+  }
+
   async listLinks(accountId: string): Promise<LinkRow[]> {
     if (!this.owned(accountId)) return [];
     return this.links

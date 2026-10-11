@@ -107,6 +107,10 @@ export abstract class AccountStore {
   abstract create(fields: AccountFields, actor: Actor): Promise<AccountRow>;
   abstract update(id: string, patch: Partial<AccountFields>, actor: Actor): Promise<AccountRow | undefined>;
   abstract setArchived(id: string, archived: boolean, actor: Actor): Promise<AccountRow | undefined>;
+  /** Remove it and everything that belongs to it: links, alerts, SOPs and
+   *  their history, notes, resources and activity. Contacts and conversations
+   *  stay; a conversation that chose it simply has no organisation now. */
+  abstract remove(id: string): Promise<boolean>;
 
   abstract listLinks(accountId: string): Promise<LinkRow[]>;
   abstract linksForContact(contactId: string): Promise<LinkRow[]>;

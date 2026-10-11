@@ -2,7 +2,7 @@ import { useDeferredValue, useMemo, useState } from "react";
 import { FlatList, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import { relativeTime, useAccounts, useContact, useContacts } from "@ding/client";
-import type { AccountListItem, Contact } from "@ding/schemas";
+import type { AccountListItem, AccountStatus, Contact } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
@@ -46,7 +46,13 @@ export default function Customers() {
   const q = useDeferredValue(query.trim().toLowerCase());
   const push = (layer: Layer) => setStack((s) => [...s.filter((l) => !(l.kind === layer.kind && l.id === layer.id)), layer]);
   const pop = () => setStack((s) => s.slice(0, -1));
-  const orgs = useAccounts(mode === "orgs" && q ? { search: q } : {});
+  const [orgStatus, setOrgStatus] = useState<AccountStatus | undefined>();
+  const [orgArchived, setOrgArchived] = useState(false);
+  const orgs = useAccounts({
+    ...(mode === "orgs" && q ? { search: q } : {}),
+    ...(orgStatus ? { status: orgStatus } : {}),
+    ...(orgArchived ? { archived: true } : {}),
+  });
 
   const items = useMemo(() => {
     const all = data ?? [];
@@ -58,6 +64,13 @@ export default function Customers() {
 
   return (
     <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1">
+      {/* What's underneath an open customer or organisation is hidden from
+          screen readers, which would otherwise read both screens at once. */}
+      <View
+        className="flex-1"
+        importantForAccessibility={stack.length || creating ? "no-hide-descendants" : "auto"}
+        accessibilityElementsHidden={stack.length > 0 || creating}
+      >
       <View className="flex-row items-end px-4 pb-2 pt-2">
         <View className="flex-1">
           <Text accessibilityRole="header" className="text-2xl font-semibold tracking-tight text-fg">
@@ -117,6 +130,19 @@ export default function Customers() {
         </View>
       </View>
 
+      {mode === "orgs" ? (
+        <View className="flex-row flex-wrap gap-1.5 px-4 pb-2">
+          {([
+            ["active", "Active"],
+            ["prospect", "Prospect"],
+            ["inactive", "Inactive"],
+          ] as const).map(([value, label]) => (
+            <FilterChip key={value} label={label} on={orgStatus === value} onPress={() => setOrgStatus(orgStatus === value ? undefined : value)} />
+          ))}
+          <FilterChip label="Show archived" on={orgArchived} onPress={() => setOrgArchived((v) => !v)} />
+        </View>
+      ) : null}
+
       {mode === "people" ? (
       <FlatList
         style={{ flex: 1 }}
@@ -154,8 +180,8 @@ export default function Customers() {
               query={orgs}
               what="your organisations"
               empty={
-                q ? (
-                  <EmptyState icon="search" title="No matches" body={`No organisation matching “${query.trim()}”.`} />
+                q || orgStatus || orgArchived ? (
+                  <EmptyState icon="search" title="No matches" body={q ? `No organisation matching “${query.trim()}”.` : "None with that status."} />
                 ) : (
                   <EmptyState title="No organisations yet" body="Tap New to add the first, and tick the people who work there." />
                 )
@@ -165,13 +191,31 @@ export default function Customers() {
         />
       )}
 
-      {stack.map((l) =>
-        l.kind === "contact" ? (
-          <CustomerSheet key={`c:${l.id}`} id={l.id} onClose={pop} onOpenOrg={(id) => push({ kind: "org", id })} />
-        ) : (
-          <OrganisationScreen key={`o:${l.id}`} id={l.id} onClose={pop} onOpenContact={(id) => push({ kind: "contact", id })} />
-        ),
-      )}
+      </View>
+
+      {stack.map((l, i) => {
+        const covered = i < stack.length - 1 || creating;
+        return (
+          <View
+            key={`${l.kind}:${l.id}`}
+            className="absolute inset-0"
+            pointerEvents="box-none"
+            importantForAccessibility={covered ? "no-hide-descendants" : "auto"}
+            accessibilityElementsHidden={covered}
+          >
+            {l.kind === "contact" ? (
+              <CustomerSheet id={l.id} onClose={pop} onOpenOrg={(id) => push({ kind: "org", id })} />
+            ) : (
+              <OrganisationScreen
+                id={l.id}
+                onClose={pop}
+                onOpenContact={(id) => push({ kind: "contact", id })}
+                onOpenOrganisation={(id) => push({ kind: "org", id })}
+              />
+            )}
+          </View>
+        );
+      })}
       <NewOrganisationScreen
         visible={creating}
         onClose={() => setCreating(false)}
@@ -217,6 +261,21 @@ function Row({ contact, onPress }: { contact: Contact; onPress: () => void }) {
   );
 }
 
+function FilterChip({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  const { c } = useTheme();
+  return (
+    <Touchable feel="chip"
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: on }}
+      style={{ backgroundColor: on ? c.brandTint : c.surface2 }}
+      className="rounded-full px-3 py-1"
+    >
+      <Text style={{ color: on ? c.brandStrong : c.textMuted }} className="text-sm font-medium">{label}</Text>
+    </Touchable>
+  );
+}
+
 function OrgRow({ account: a, onPress }: { account: AccountListItem; onPress: () => void }) {
   const { c } = useTheme();
   return (
@@ -232,6 +291,7 @@ function OrgRow({ account: a, onPress }: { account: AccountListItem; onPress: ()
         </Text>
         <Text numberOfLines={1} className="text-sm text-muted">
           {[
+            a.archivedAt ? "Archived" : a.status === "active" ? null : a.status === "prospect" ? "Prospect" : "Inactive",
             `${a.contactCount} ${a.contactCount === 1 ? "person" : "people"}`,
             a.reference,
             a.summary,
@@ -352,7 +412,7 @@ function CustomerSheet({
                 </Text>
                 <Text className="text-2xs text-faint">
                   {item.status === "closed" ? "Resolved · " : item.status === "snoozed" ? "Snoozed · " : ""}
-                  {relativeTime(item.lastActivityAt)} ago
+                  {relativeTime(item.lastActivityAt) === "now" ? "just now" : `${relativeTime(item.lastActivityAt)} ago`}
                 </Text>
               </View>
               <ChevronRight size={15} color={c.textFaint} />

@@ -235,6 +235,15 @@ export class PrismaAccountStore extends AccountStore {
     return mapAccount(r);
   }
 
+  async remove(id: string): Promise<boolean> {
+    // Scoped by the tenant client, so another workspace's id finds nothing.
+    // Every child row cascades in the schema; Conversation.accountId is set null.
+    const found = await this.prisma.account.findUnique({ where: { id }, select: { id: true } });
+    if (!found) return false;
+    await this.prisma.account.delete({ where: { id } });
+    return true;
+  }
+
   async listLinks(accountId: string): Promise<LinkRow[]> {
     const rows = await this.prisma.accountContact.findMany({
       where: { accountId },
