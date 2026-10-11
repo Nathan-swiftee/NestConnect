@@ -1432,6 +1432,51 @@ export const broadcastResultSchema = z.object({
 });
 export type BroadcastResult = z.infer<typeof broadcastResultSchema>;
 
+/**
+ * Moving a team from working in Gmail to working in Nest, in one step: the
+ * email conversations Nest holds are deleted, and every Gmail thread with an
+ * unread message from the last EMAIL_CUTOVER_DAYS days is brought in, history
+ * and all, as an open conversation.
+ */
+export const EMAIL_CUTOVER_DAYS = 90;
+/** What the admin types to confirm the deletion. */
+export const EMAIL_CUTOVER_CONFIRM = "DELETE";
+
+export const emailCutoverPreviewSchema = z.object({
+  /** Email conversations that would be deleted. */
+  emailConversations: z.number().int().nonnegative(),
+  mailboxes: z.array(
+    z.object({
+      inboxId: z.string(),
+      name: z.string(),
+      address: z.string(),
+      /** Gmail threads with an unread message in the window. */
+      unreadThreads: z.number().int().nonnegative(),
+      /** Set when the mailbox couldn't be read (e.g. its Google access lapsed). */
+      error: z.string().optional(),
+    }),
+  ),
+  days: z.number().int().positive(),
+});
+export type EmailCutoverPreview = z.infer<typeof emailCutoverPreviewSchema>;
+
+export const emailCutoverJobSchema = z.object({
+  status: z.enum(["idle", "running", "done", "failed"]),
+  /** What it's doing now, in words. */
+  step: z.string().optional(),
+  deleted: z.number().int().nonnegative(),
+  /** Threads found to import, across mailboxes. */
+  total: z.number().int().nonnegative(),
+  imported: z.number().int().nonnegative(),
+  /** Already in Nest (arrived since the clear-out) or from a blocked sender. */
+  skipped: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+  error: z.string().optional(),
+});
+export type EmailCutoverJob = z.infer<typeof emailCutoverJobSchema>;
+
 export const sendMessageInputSchema = z
   .object({
     body: z.string().default(""),

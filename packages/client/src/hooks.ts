@@ -1214,6 +1214,31 @@ export function useSendBroadcast() {
   });
 }
 
+/* ---- Move from Gmail ---- */
+/** What a cutover would do: email conversations to delete, unread threads per
+ *  mailbox. Fetched on demand (it reads every mailbox), not on mount. */
+export function useEmailCutoverPreview(enabled: boolean) {
+  return useQuery({ queryKey: ["email-cutover"], queryFn: api.emailCutoverPreview, enabled, staleTime: 0 });
+}
+
+/** A run's progress, polled while it's going. */
+export function useEmailCutoverStatus(polling: boolean) {
+  return useQuery({
+    queryKey: ["email-cutover-status"],
+    queryFn: api.emailCutoverStatus,
+    enabled: polling,
+    refetchInterval: polling ? 1500 : false,
+  });
+}
+
+export function useRunEmailCutover() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (confirm: string) => api.runEmailCutover(confirm),
+    onSuccess: (job) => qc.setQueryData(["email-cutover-status"], job),
+  });
+}
+
 export function useAssign() {
   const qc = useQueryClient();
   return useMutation({

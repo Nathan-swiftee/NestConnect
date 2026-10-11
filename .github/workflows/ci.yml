@@ -185,6 +185,11 @@ jobs:
       - name: Availability, working hours and visitor email
         run: pnpm check:availability
 
+      # Moving from Gmail: only email conversations are deleted, and an unread
+      # thread comes in once, whole, at the times it was really written.
+      - name: Move from Gmail (email cutover)
+        run: pnpm check:email-cutover
+
       # The app surface on a live-chat channel. Two things here are worth a
       # build failing over: the identity secret must never reach a browser (it
       # is what signs "this really is that customer", so anyone holding it can

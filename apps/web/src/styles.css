@@ -3261,3 +3261,8 @@ button.tpl-row:active{transform:scale(.97)}
   .ncwopt select{grid-column:2 / span 2}
   .ncwopt--head{display:none}
 }
+
+/* Settings → Move from Gmail */
+.cutover__list{margin:0 0 var(--sp-3);padding-left:18px;display:flex;flex-direction:column;gap:6px;line-height:1.45}
+.cutover__err{color:var(--danger)}
+.cutover__job{display:flex;flex-direction:column;gap:4px}

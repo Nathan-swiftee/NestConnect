@@ -22,6 +22,8 @@ import { GoogleOAuthService } from "./google/google-oauth.service";
 import { GoogleController } from "./google/google.controller";
 import { GmailProvider } from "./google/gmail.provider";
 import { GmailSyncService } from "./google/gmail-sync.service";
+import { GmailCutoverService } from "./google/gmail-cutover.service";
+import { GmailCutoverController } from "./google/gmail-cutover.controller";
 import { MetaOAuthService } from "./meta/meta-oauth.service";
 import { MetaController } from "./meta/meta.controller";
 import { CustomerPushService } from "./nestchat/customer-push.service";
@@ -40,6 +42,7 @@ import { IntegrationsController } from "../settings/integrations.controller";
     EmailController,
     GroupsController,
     GoogleController,
+    GmailCutoverController,
     MetaController,
     NestChatController,
     NestChatAdminController,
@@ -70,6 +73,7 @@ import { IntegrationsController } from "../settings/integrations.controller";
     GroupsService,
     GoogleOAuthService,
     GmailSyncService,
+    GmailCutoverService,
     MetaOAuthService,
     ChannelDispatcher,
     OutboundDeliveryService,

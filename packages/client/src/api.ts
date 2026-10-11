@@ -61,6 +61,8 @@ import type {
   WhatsAppRegisterResult,
   SendBroadcastInput,
   BroadcastResult,
+  EmailCutoverJob,
+  EmailCutoverPreview,
   AnalyticsResult,
   AnalyticsRange,
   DeviceInfo,
@@ -470,6 +472,11 @@ export const api = {
     post<WhatsAppRegisterResult>(`/channels/${channelId}/whatsapp/register`, { pin }),
   // WhatsApp broadcast — send an approved template to many recipients at once
   sendBroadcast: (input: SendBroadcastInput) => post<BroadcastResult>("/whatsapp/broadcast", input),
+  // Settings → Move from Gmail (admins): preview, run (deletes email
+  // conversations, imports unread Gmail threads), and progress.
+  emailCutoverPreview: () => get<EmailCutoverPreview & { job: EmailCutoverJob }>("/settings/email-cutover"),
+  emailCutoverStatus: () => get<EmailCutoverJob>("/settings/email-cutover/status"),
+  runEmailCutover: (confirm: string) => post<EmailCutoverJob>("/settings/email-cutover", { confirm }),
   assign: (
     id: string,
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },

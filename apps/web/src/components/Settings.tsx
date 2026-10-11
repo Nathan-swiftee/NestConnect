@@ -92,6 +92,9 @@ import {
   useUpdateWhatsappProfile,
   useSetWhatsappProfilePhoto,
   useSendBroadcast,
+  useEmailCutoverPreview,
+  useEmailCutoverStatus,
+  useRunEmailCutover,
 } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
 import { api } from "../lib/api";
@@ -129,6 +132,7 @@ type Leaf =
   | "templates"
   | "profile"
   | "broadcast"
+  | "gmail"
   | "teams"
   | "people"
   | "labels"
@@ -167,6 +171,7 @@ const NAV: NavSection[] = [
       { key: "templates", label: "Templates" },
       { key: "profile", label: "Business profile" },
       { key: "broadcast", label: "Broadcast" },
+      { key: "gmail", label: "Move from Gmail" },
     ],
   },
   {
@@ -240,6 +245,10 @@ function summariseTeams(names: string[], max = 2): string {
 
 export function Settings({ onClose, onToast }: Props) {
   const [active, setActive] = useState<Leaf>("channels");
+  // Moving from Gmail deletes conversations — admins only, so only they see it.
+  const me = useMe();
+  const isAdmin = me.data?.user.role === "admin";
+  const leafShown = (key: Leaf) => key !== "gmail" || isAdmin;
   // The active primary section is whichever one owns the active leaf.
   const section = NAV.find((s) => s.leaves.some((l) => l.key === active)) ?? NAV[0];
   // Keep one pane key per section so switching *sub*-tabs within Integrations
@@ -278,7 +287,7 @@ export function Settings({ onClose, onToast }: Props) {
 
         <div className="settings__main">
           <nav className="settings__sub" aria-label={`${section.label} settings`}>
-            {section.leaves.map((l) => (
+            {section.leaves.filter((l) => leafShown(l.key)).map((l) => (
               <button
                 key={l.key}
                 type="button"
@@ -297,6 +306,7 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "templates" && <TemplatesPane onToast={onToast} />}
             {active === "profile" && <ProfilePane onToast={onToast} />}
             {active === "broadcast" && <BroadcastPane onToast={onToast} />}
+            {active === "gmail" && isAdmin && <GmailCutoverPane onToast={onToast} />}
             {active === "teams" && <TeamsPane onToast={onToast} />}
             {active === "people" && <PeoplePane onToast={onToast} />}
             {active === "labels" && <LabelsPane onToast={onToast} />}
@@ -4408,6 +4418,134 @@ function parseRecipients(raw: string): { phone: string; name?: string }[] {
     out.push({ phone, name: name || undefined });
   }
   return out;
+}
+
+/**
+ * Settings → Move from Gmail. One step from "the team works in Gmail" to "the
+ * team works in Nest": delete the email conversations Nest is holding (a trial
+ * left hundreds open that were finished in Gmail), then bring in every Gmail
+ * thread with an unread message as an open conversation. Preview first; the
+ * run needs DELETE typed, because nothing brings the deleted ones back.
+ */
+function GmailCutoverPane({ onToast }: { onToast: (msg: string) => void }) {
+  const [checked, setChecked] = useState(false);
+  const preview = useEmailCutoverPreview(checked);
+  const run = useRunEmailCutover();
+  const [confirm, setConfirm] = useState("");
+  // A run started earlier (or in another tab) is picked up from the preview.
+  const startedHere = run.data?.status === "running";
+  const previewJob = preview.data?.job;
+  const polling = startedHere || previewJob?.status === "running";
+  const status = useEmailCutoverStatus(polling);
+  const job = status.data ?? run.data ?? previewJob;
+  const running = job?.status === "running";
+  const p = preview.data;
+  const totalThreads = (p?.mailboxes ?? []).reduce((n, m) => n + m.unreadThreads, 0);
+
+  useEffect(() => {
+    if (job?.status === "done") onToast(`Imported ${job.imported} conversation${job.imported === 1 ? "" : "s"} from Gmail`);
+    if (job?.status === "failed") onToast(job.error ?? "The move from Gmail stopped");
+    // Toast once per finish, not on every poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.status]);
+
+  return (
+    <div className="setpane">
+      <div className="setpane__head">
+        <div>
+          <h2>Move from Gmail</h2>
+          <p>
+            Start the team working in Nest with an inbox that holds only what still needs an answer. Every email
+            conversation in Nest is deleted, then each Gmail thread with an unread message from the last{" "}
+            {p?.days ?? 90} days is brought in — full history, as an open conversation, shared out by your routing
+            rules. Nobody is notified for the imported ones. WhatsApp and website chats aren’t touched.
+          </p>
+        </div>
+      </div>
+
+      {!checked && (
+        <div className="setform">
+          <button type="button" className="btn-primary" onClick={() => setChecked(true)}>
+            Check what would happen
+          </button>
+        </div>
+      )}
+
+      {checked && preview.isLoading && <div className="setempty">Reading your mailboxes…</div>}
+      {checked && preview.isError && (
+        <div className="setempty">{(preview.error as Error)?.message ?? "Couldn’t read the mailboxes"}</div>
+      )}
+
+      {p && (
+        <div className="setform">
+          <ul className="cutover__list">
+            <li>
+              <strong>{p.emailConversations}</strong> email conversation{p.emailConversations === 1 ? "" : "s"} in Nest
+              will be <strong>deleted</strong>
+            </li>
+            {p.mailboxes.length === 0 && <li>No Gmail mailboxes are connected — connect them under Channels first.</li>}
+            {p.mailboxes.map((m) => (
+              <li key={m.inboxId}>
+                {m.error ? (
+                  <>
+                    {m.address}: <span className="cutover__err">couldn’t be read — {m.error}</span>
+                  </>
+                ) : (
+                  <>
+                    <strong>{m.unreadThreads}</strong> unread thread{m.unreadThreads === 1 ? "" : "s"} will be imported
+                    from {m.address}
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+
+          {!running && job?.status !== "done" && (
+            <>
+              <label className="field">
+                <span>
+                  Type <strong>DELETE</strong> to delete {p.emailConversations} conversation
+                  {p.emailConversations === 1 ? "" : "s"} and import {totalThreads}
+                </span>
+                <input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="DELETE" autoComplete="off" />
+              </label>
+              <div>
+                <button
+                  type="button"
+                  className="btn-primary btn-danger"
+                  disabled={confirm !== "DELETE" || run.isPending || p.mailboxes.length === 0}
+                  onClick={() =>
+                    run.mutate(confirm, {
+                      onError: (err) => onToast((err as Error)?.message ?? "Couldn’t start the move"),
+                    })
+                  }
+                >
+                  Delete and import
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {job && job.status !== "idle" && (
+        <div className="setform cutover__job" aria-live="polite">
+          <div>
+            <strong>
+              {job.status === "running" ? job.step ?? "Working…" : job.status === "done" ? "Done" : "Stopped"}
+            </strong>
+          </div>
+          <div>
+            Deleted {job.deleted} · Imported {job.imported}
+            {job.total ? ` of ${job.total}` : ""}
+            {job.skipped ? ` · ${job.skipped} already in Nest` : ""}
+            {job.failed ? ` · ${job.failed} couldn’t be imported` : ""}
+          </div>
+          {job.error && <div className="cutover__err">{job.error}</div>}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function BroadcastPane({ onToast }: { onToast: (msg: string) => void }) {
