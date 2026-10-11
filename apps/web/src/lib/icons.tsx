@@ -51,6 +51,7 @@ const g =
 export const InboxIcon = g(icons.inbox);
 export const ContactsIcon = g(icons.contacts);
 export const InsightsIcon = g(icons.insights);
+export const OrganisationsIcon = g(icons.organisations);
 export const SettingsIcon = g(icons.settings);
 /** Moon — shown in light mode (click to go dark). */
 export const ThemeIcon = g(icons.theme);

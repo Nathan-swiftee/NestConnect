@@ -14,6 +14,8 @@ const providers: Provider[] = env.usingDatabase
 @Global()
 @Module({
   providers,
-  exports: [Store],
+  // PrismaService too, for modules with their own tenant-scoped store
+  // (accounts/prisma-account.store.ts).
+  exports: env.usingDatabase ? [Store, PrismaService] : [Store],
 })
 export class DataModule {}

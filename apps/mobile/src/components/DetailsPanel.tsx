@@ -16,6 +16,7 @@ import { Avatar } from "./Avatar";
 import { ChannelDot } from "./ChannelDot";
 import { ContactEditor } from "./ContactEditor";
 import { CustomFieldsCard } from "./CustomFieldsCard";
+import { OrganisationCard } from "./OrganisationCard";
 import { TagEditor } from "./TagEditor";
 import { BellIcon, CheckIcon, ChevronRight, TeamGlyph, XIcon, channelMeta } from "../icons";
 import { useTheme } from "../theme";
@@ -121,6 +122,11 @@ export function DetailsPanel({
                 for a group: `conv.contact` there is the group itself, and
                 "company" and "email" mean nothing on one. */}
             {!isGroup && contact ? <ContactEditor contact={contact} /> : null}
+
+            {/* The customer's organisation and its instructions — before
+                anything else about the thread, because they decide how it's
+                handled. */}
+            {!isGroup ? <OrganisationCard conversationId={conv.id} visible={visible} /> : null}
 
             {/* This conversation */}
             <Section>This conversation</Section>

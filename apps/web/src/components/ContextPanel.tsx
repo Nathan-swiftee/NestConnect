@@ -31,6 +31,7 @@ import { Avatar } from "./Avatar";
 import { api } from "../lib/api";
 import { TagEditor } from "./TagEditor";
 import { channelMeta, CheckIcon, ChevronDown, ChevronRight, PhoneIcon, MailIcon, ProfileIcon, SnoozeIcon, XIcon } from "../lib/icons";
+import { OrganisationBlock } from "./organisations/OrganisationPanel";
 
 /** The NestChat mark, for the "website visitor" chip below the customer's name. */
 const NestChatChip = channelMeta("nestchat").Glyph;
@@ -41,6 +42,8 @@ interface Props {
   onClose?: () => void;
   onOpenConversation?: (id: string) => void;
   onOpenProfile?: (contactId: string) => void;
+  /** Open an organisation's full profile. */
+  onOpenOrganisation?: (accountId: string) => void;
 }
 
 /** Section header used across the panel blocks. */
@@ -584,7 +587,7 @@ function RoutingBlock({ contact, isGroup, onToast }: { contact: Contact; isGroup
   );
 }
 
-export function ContextPanel({ conversationId, onToast, onClose, onOpenConversation, onOpenProfile }: Props) {
+export function ContextPanel({ conversationId, onToast, onClose, onOpenConversation, onOpenProfile, onOpenOrganisation }: Props) {
   const { data: conv } = useConversation(conversationId);
   const qc = useQueryClient();
   const teams = useTeams();
@@ -784,6 +787,9 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
           </>
         ) : (
           <>
+            {/* First: who this customer is and what everyone must know before
+                acting for them — pinned instructions are no use below the fold. */}
+            <OrganisationBlock conversationId={conv.id} onOpenOrganisation={(id) => onOpenOrganisation?.(id)} onToast={onToast} />
             <StatsBlock contactId={conv.contact.id} />
             <AssignmentBlock conv={conv} teamName={teamName} onToast={onToast} />
             {/* High, because an agent on a call is reading an order number off

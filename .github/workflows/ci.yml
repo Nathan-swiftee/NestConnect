@@ -53,6 +53,7 @@ jobs:
         run: |
           pnpm --filter @ding/api exec prisma migrate deploy
           pnpm check:tenant-isolation
+          pnpm check:organisations-pg
 
       - name: Tenant isolation (HTTP, Postgres)
         env:
@@ -189,6 +190,12 @@ jobs:
       # thread comes in once, whole, at the times it was really written.
       - name: Move from Gmail (email cutover)
         run: pnpm check:email-cutover
+
+      # Organisations: the acceptance scenarios (a new customer, linked
+      # contacts, an incoming message, a handover, a contact at two companies,
+      # updated instructions) and who may change what.
+      - name: Organisations and customer knowledge
+        run: pnpm check:organisations
 
       # The app surface on a live-chat channel. Two things here are worth a
       # build failing over: the identity secret must never reach a browser (it

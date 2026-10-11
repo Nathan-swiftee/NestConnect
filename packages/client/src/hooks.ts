@@ -12,6 +12,7 @@ import {
   ServerEvent,
   type Conversation,
   type ConversationStatus,
+  type AccountStatus,
   type ConversationWithMessages,
   type Label,
   type Priority,
@@ -1236,6 +1237,62 @@ export function useRunEmailCutover() {
   return useMutation({
     mutationFn: (confirm: string) => api.runEmailCutover(confirm),
     onSuccess: (job) => qc.setQueryData(["email-cutover-status"], job),
+  });
+}
+
+/* ---- Organisations (customer accounts) ---- */
+
+export function useAccounts(q: { search?: string; status?: AccountStatus; archived?: boolean } = {}) {
+  return useQuery({ queryKey: ["accounts", q], queryFn: () => api.accounts(q), staleTime: 15_000 });
+}
+
+export function useAccount(id: string | null | undefined) {
+  return useQuery({ queryKey: ["account", id], queryFn: () => api.account(id!), enabled: !!id, staleTime: 10_000 });
+}
+
+export function useAccountActivity(id: string | null | undefined) {
+  return useQuery({ queryKey: ["account-activity", id], queryFn: () => api.accountActivity(id!), enabled: !!id });
+}
+
+export function useSopRevisions(accountId: string | null | undefined, sopId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["sop-revisions", accountId, sopId],
+    queryFn: () => api.accountSopRevisions(accountId!, sopId!),
+    enabled: !!accountId && !!sopId,
+  });
+}
+
+/** A contact's organisations. */
+export function useContactAccounts(contactId: string | null | undefined) {
+  return useQuery({ queryKey: ["contact-accounts", contactId], queryFn: () => api.contactAccounts(contactId!), enabled: !!contactId });
+}
+
+/** The organisation beside a conversation (see ConversationAccountContext). */
+export function useConversationAccount(conversationId: string | null | undefined) {
+  return useQuery({
+    queryKey: ["conversation-account", conversationId],
+    queryFn: () => api.conversationAccount(conversationId!),
+    enabled: !!conversationId,
+    // Instructions change; someone opening a conversation should see today's.
+    staleTime: 15_000,
+    refetchInterval: 120_000,
+  });
+}
+
+/**
+ * One mutation hook for every change to organisations: whatever changed, the
+ * directory, the profile, a contact's organisations and the inbox panels are
+ * refreshed — the same knowledge shows in all of them.
+ */
+export function useAccountMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      for (const key of ["accounts", "account", "account-activity", "sop-revisions", "contact-accounts", "conversation-account"]) {
+        qc.invalidateQueries({ queryKey: [key] });
+      }
+    },
   });
 }
 

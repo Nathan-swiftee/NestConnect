@@ -11,6 +11,7 @@ import { Settings } from "./Settings";
 import { PersonalSettings } from "./PersonalSettings";
 import { Customers } from "./Customers";
 import { Analytics } from "./Analytics";
+import { Organisations } from "./organisations/Organisations";
 import { useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
 import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/layout";
@@ -29,7 +30,8 @@ export function Workspace() {
   const [cmdkOpen, setCmdkOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
-  const [section, setSection] = useState<"inbox" | "customers" | "settings" | "insights">("inbox");
+  const [section, setSection] = useState<"inbox" | "customers" | "organisations" | "settings" | "insights">("inbox");
+  const [focusAccount, setFocusAccount] = useState<string | null>(null);
   const [focusContact, setFocusContact] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [personalOpen, setPersonalOpen] = useState(false);
@@ -153,7 +155,7 @@ export function Workspace() {
         <div className={"app" + (drawerOpen ? " drawer-open" : "")} data-pane={pane}>
           <IconRail
             section={section}
-            onSection={(s) => { setSection(s); setFocusContact(null); }}
+            onSection={(s) => { setSection(s); setFocusContact(null); setFocusAccount(null); }}
             onOpenPersonalSettings={() => setPersonalOpen(true)}
           />
 
@@ -167,6 +169,7 @@ export function Workspace() {
                 onClose={isCompact ? () => setDrawerOpen(false) : undefined}
                 onOpenSettings={() => { setSection("settings"); setDrawerOpen(false); }}
                 onOpenCustomers={() => { setSection("customers"); setDrawerOpen(false); }}
+                onOpenOrganisations={() => { setSection("organisations"); setDrawerOpen(false); }}
                 onOpenInsights={() => { setSection("insights"); setDrawerOpen(false); }}
                 onOpenPersonalSettings={() => { setPersonalOpen(true); setDrawerOpen(false); }}
                 isCollapsed={sidebarHidden}
@@ -203,6 +206,7 @@ export function Workspace() {
                     onClose={isPanelOverlay ? () => setShowPanel(false) : undefined}
                     onOpenConversation={selectConversation}
                     onOpenProfile={(cid) => { setFocusContact(cid); setSection("customers"); }}
+                    onOpenOrganisation={(aid) => { setFocusAccount(aid); setSection("organisations"); }}
                   />
                 </>
               )}
@@ -215,6 +219,16 @@ export function Workspace() {
               onToast={notify}
               onOpenConversation={(id) => { setSection("inbox"); setFocusContact(null); selectConversation(id); }}
               focusContactId={focusContact}
+              onOpenOrganisation={(aid) => { setFocusContact(null); setFocusAccount(aid); setSection("organisations"); }}
+            />
+          )}
+
+          {section === "organisations" && (
+            <Organisations
+              focusAccountId={focusAccount}
+              onClose={() => { setSection("inbox"); setFocusAccount(null); }}
+              onToast={notify}
+              onOpenContact={(cid) => { setFocusContact(cid); setSection("customers"); }}
             />
           )}
 

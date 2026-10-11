@@ -75,6 +75,14 @@ export const icons = {
       "M3.4 19.7a5.8 5.8 0 0 1 11.6 0" +
       "M16.6 6.1a3.4 3.4 0 0 1 0 6.6M18 19.7a5.5 5.5 0 0 0-2.7-4.6",
   },
+  /** A building with windows and a door — a customer company, not a person. */
+  organisations: {
+    d:
+      box(4, 3.5, 11, 17, 2) +
+      "M15 9.5h3a2 2 0 0 1 2 2v9H15" +
+      "M7.6 7.6h.01M11.4 7.6h.01M7.6 11.2h.01M11.4 11.2h.01M7.6 14.8h.01M11.4 14.8h.01" +
+      "M8.8 20.5v-2.6h1.4v2.6",
+  },
   /** Three bars. Round caps turn them into pills, which is the whole point. */
   insights: { d: "M6 19.6v-6.2M12 19.6V5.4M18 19.6v-9.4" },
   /**

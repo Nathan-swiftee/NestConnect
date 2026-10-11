@@ -84,6 +84,7 @@ model Organization {
   templates     Template[]
   auditLogs     AuditLog[]
   customFields  CustomField[]
+  accounts      Account[]
 }
 
 /// A fact a workspace wants to record that we did not think of.
@@ -396,6 +397,7 @@ model Contact {
   conversations Conversation[]
   participations Participant[]
   devices        CustomerDevice[]
+  accountLinks   AccountContact[]
 
   @@index([orgId])
 }
@@ -472,6 +474,9 @@ model Conversation {
   /// Website chat: the highest message seq already emailed to a visitor who
   /// had left before reading it. Claimed atomically, so a reply is emailed once.
   visitorEmailedSeq Int              @default(0)
+  /// The organisation this conversation is about, when someone chose one —
+  /// a contact who works for several companies can't decide it on their own.
+  accountId      String?
   inviteLink     String?
   channelRef     String?
   status         ConversationStatus @default(open)
@@ -500,10 +505,12 @@ model Conversation {
   labels           ConversationLabel[]
   participants     Participant[]
   assignmentEvents AssignmentEvent[]
+  account          Account?            @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([orgId, inboxId, status, lastActivityAt])
   @@index([orgId, assigneeUserId, status, lastActivityAt])
   @@index([channelRef])
+  @@index([accountId])
 }
 
 model Participant {
@@ -782,4 +789,202 @@ model WebhookDiagnostic {
 
   @@index([createdAt])
   @@index([orgId, createdAt])
+}
+
+/// ─── Organisations ───────────────────────────────────────────────────────
+/// A customer company and what it takes to serve it. Shown as "Organisation";
+/// called Account here because Organization is the workspace. Every account
+/// belongs to one workspace — one business's customer knowledge is never
+/// another's. Archived, never deleted: contacts and conversations outlive it.
+enum AccountStatus {
+  active
+  prospect
+  inactive
+}
+
+model Account {
+  id            String        @id @default(cuid())
+  orgId         String
+  name          String
+  /// Lower-cased, punctuation and legal suffix stripped — spots a duplicate.
+  nameKey       String
+  legalName     String?
+  reference     String?
+  summary       String        @default("")
+  overview      String        @default("")
+  status        AccountStatus @default(active)
+  tags          String[]      @default([])
+  ownerUserId   String?
+  phone         String?
+  email         String?
+  website       String?
+  address       String?
+  archivedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  createdById   String?
+  createdByName String?
+  updatedById   String?
+  updatedByName String?
+
+  org           Organization      @relation(fields: [orgId], references: [id])
+  contacts      AccountContact[]
+  alerts        AccountAlert[]
+  sops          AccountSop[]
+  notes         AccountNote[]
+  resources     AccountResource[]
+  activity      AccountActivity[]
+  conversations Conversation[]
+
+  @@index([orgId, archivedAt, name])
+  @@index([orgId, nameKey])
+}
+
+/// A contact's place in an organisation. Many-to-many: a person can work for
+/// several companies. Removing the link never touches the contact.
+model AccountContact {
+  id         String   @id @default(cuid())
+  accountId  String
+  contactId  String
+  role       String?
+  department String?
+  isPrimary  Boolean  @default(false)
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, contactId])
+  @@index([contactId])
+}
+
+/// Something everyone must see before acting for this customer.
+model AccountAlert {
+  id            String   @id @default(cuid())
+  accountId     String
+  body          String
+  /// critical | important | info
+  priority      String   @default("important")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdById   String?
+  createdByName String?
+  updatedById   String?
+  updatedByName String?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+}
+
+/// A standard operating procedure. Every saved change keeps the version it
+/// replaced (AccountSopRevision), so an instruction can always be traced.
+model AccountSop {
+  id            String   @id @default(cuid())
+  accountId     String
+  title         String
+  category      String   @default("General")
+  summary       String   @default("")
+  warnings      String   @default("")
+  /// [{ text }] — the procedure in order.
+  steps         Json     @default("[]")
+  /// Sanitized HTML.
+  body          String   @default("")
+  /// active | draft | archived
+  status        String   @default("active")
+  version       Int      @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdById   String?
+  createdByName String?
+  updatedById   String?
+  updatedByName String?
+
+  account   Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  revisions AccountSopRevision[]
+  resources AccountResource[]
+
+  @@index([accountId, status])
+}
+
+model AccountSopRevision {
+  id           String   @id @default(cuid())
+  sopId        String
+  version      Int
+  title        String
+  category     String
+  summary      String
+  warnings     String
+  steps        Json
+  body         String
+  status       String
+  editedAt     DateTime
+  editedById   String?
+  editedByName String?
+  createdAt    DateTime @default(now())
+
+  sop AccountSop @relation(fields: [sopId], references: [id], onDelete: Cascade)
+
+  @@index([sopId, version])
+}
+
+/// Lasting customer knowledge that isn't a procedure. Not a conversation note.
+model AccountNote {
+  id            String   @id @default(cuid())
+  accountId     String
+  title         String   @default("")
+  /// Sanitized HTML.
+  body          String
+  category      String   @default("General")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdById   String?
+  createdByName String?
+  updatedById   String?
+  updatedByName String?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+}
+
+/// A document, link or external app the team needs for this customer.
+model AccountResource {
+  id            String   @id @default(cuid())
+  accountId     String
+  /// link | file | app
+  kind          String
+  title         String
+  description   String   @default("")
+  category      String   @default("General")
+  url           String?
+  instructions  String   @default("")
+  /// A stored upload (Attachment with no message), served by /api/media/:id.
+  attachmentId  String?
+  sopId         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdById   String?
+  createdByName String?
+
+  account Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  sop     AccountSop? @relation(fields: [sopId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+}
+
+/// What changed on an organisation, by whom and when.
+model AccountActivity {
+  id        String   @id @default(cuid())
+  accountId String
+  actorId   String?
+  actorName String?
+  action    String
+  summary   String
+  createdAt DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
 }
