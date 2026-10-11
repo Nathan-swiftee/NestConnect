@@ -131,6 +131,23 @@ export const gmail = {
     return gmailFetch<GmailMessage>(accessToken, `/messages/${encodeURIComponent(id)}?format=full`);
   },
 
+  /** One page of message ids matching a Gmail search (`q`, as typed in Gmail's
+   *  search box). Ids and thread ids only — fetch the content separately. */
+  listMessages(
+    accessToken: string,
+    q: string,
+    pageToken?: string,
+  ): Promise<{ messages?: Array<{ id: string; threadId: string }>; nextPageToken?: string }> {
+    const params = new URLSearchParams({ q, maxResults: "500" });
+    if (pageToken) params.set("pageToken", pageToken);
+    return gmailFetch(accessToken, `/messages?${params.toString()}`);
+  },
+
+  /** A whole thread, every message in full, oldest first. */
+  getThread(accessToken: string, id: string): Promise<{ id: string; messages?: GmailMessage[] }> {
+    return gmailFetch(accessToken, `/threads/${encodeURIComponent(id)}?format=full`);
+  },
+
   /** Fetch an attachment's bytes (base64url) by its part id. */
   getAttachment(
     accessToken: string,

@@ -153,6 +153,29 @@ export interface AppendInboundInput {
   forwarded?: boolean;
 }
 
+/** One email thread brought in from a mailbox (see `importEmailThread`). */
+export interface ImportEmailThreadInput {
+  orgId: string;
+  inboxId: string;
+  contactId: string;
+  subject?: string;
+  /** The mailbox's own thread id, so replies go back into the same thread. */
+  channelRef?: string;
+  assigneeUserId?: string | null;
+  assignedTeamId?: string | null;
+  /** Oldest first. */
+  messages: Array<{
+    direction: "in" | "out";
+    authorName: string;
+    body: string;
+    /** Already sanitized. */
+    bodyHtml?: string;
+    channelMsgId?: string;
+    sentAt: Date;
+    attachments?: AttachmentInput[];
+  }>;
+}
+
 /** What the media-serving endpoint needs to stream a stored file. */
 export interface StoredAttachmentRef {
   storageKey: string;
@@ -1048,6 +1071,22 @@ export abstract class Store {
       attachments?: AttachmentInput[];
     },
   ): Promise<Message | undefined>;
+
+  /** How many email conversations the current workspace holds. */
+  abstract countEmailConversations(): Promise<number>;
+
+  /** Delete every email conversation in the current workspace, with its
+   *  messages, notes, labels and notifications. Contacts stay. Returns how many
+   *  conversations went. Part of the Gmail cutover; never anything else. */
+  abstract deleteEmailConversations(): Promise<number>;
+
+  /**
+   * Write a whole email thread brought in from a mailbox as one open
+   * conversation, each message at the time it was actually sent. Quiet by
+   * design: nothing is delivered, nobody is notified. Returns the new
+   * conversation's id.
+   */
+  abstract importEmailThread(input: ImportEmailThreadInput): Promise<string>;
 
   /** Backend-only: the storage key + mime of an attachment, for serving media. */
   abstract getAttachment(id: string): Promise<StoredAttachmentRef | undefined>;

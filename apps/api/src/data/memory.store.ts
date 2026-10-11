@@ -63,6 +63,7 @@ import {
   type AnalyticsQuery,
   type AppendInboundInput,
   type AttachmentInput,
+  type ImportEmailThreadInput,
   type MessageStatusChange,
   type OutboundDeliveryMeta,
   type EmailRecipientInput,
@@ -1987,6 +1988,64 @@ export class MemoryStore extends Store {
   }
 
   /** Persist attachment refs (for serving) and return the client-facing shape. */
+  async countEmailConversations(): Promise<number> {
+    return this.conversations.filter((c) => c.channel === "email").length;
+  }
+
+  async deleteEmailConversations(): Promise<number> {
+    const before = this.conversations.length;
+    this.conversations = this.conversations.filter((c) => c.channel !== "email");
+    return before - this.conversations.length;
+  }
+
+  async importEmailThread(input: ImportEmailThreadInput): Promise<string> {
+    const contact = this.contacts.find((c) => c.id === input.contactId);
+    if (!contact) throw new Error(`No contact ${input.contactId}`);
+    const id = `conv_${++this.idSeq}`;
+    const messages: Message[] = input.messages.map((m, i) => ({
+      id: `msg_imp_${++this.idSeq}`,
+      conversationId: id,
+      seq: i + 1,
+      direction: m.direction,
+      authorType: m.direction === "in" ? "contact" : "system",
+      authorName: m.authorName,
+      body: m.body,
+      bodyHtml: m.bodyHtml,
+      status: m.direction === "in" ? "delivered" : "sent",
+      internal: false,
+      channelMsgId: m.channelMsgId,
+      channel: "email",
+      messageType: "text",
+      attachments: this.storeAttachments(m.attachments),
+      reactions: [],
+      createdAt: m.sentAt.toISOString(),
+    }));
+    const last = messages[messages.length - 1];
+    const lastOut = messages.reduce((n, m, i) => (m.direction === "out" ? i : n), -1);
+    this.conversations.push({
+      id,
+      orgId: input.orgId,
+      inboxId: input.inboxId,
+      channel: "email",
+      contact,
+      subject: input.subject,
+      status: "open",
+      assigneeUserId: input.assigneeUserId ?? null,
+      assignedTeamId: input.assignedTeamId ?? null,
+      priority: "normal",
+      labels: [],
+      unread: true,
+      unreadCount: messages.slice(lastOut + 1).filter((m) => m.direction === "in").length,
+      slaDueAt: null,
+      ...(input.channelRef ? { channelRef: input.channelRef } : {}),
+      lastActivityAt: last?.createdAt ?? new Date().toISOString(),
+      seq: messages.length,
+      preview: last ? previewFromBody(last.body) || "Email" : "",
+      messages,
+    });
+    return id;
+  }
+
   private storeAttachments(inputs?: AttachmentInput[]): Attachment[] {
     if (!inputs?.length) return [];
     return inputs.map((a) => {

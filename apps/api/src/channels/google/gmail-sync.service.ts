@@ -333,8 +333,9 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     return true;
   }
 
-  /** Download + store any real attachment parts on a Gmail message. */
-  private async fetchAttachments(
+  /** Download + store any real attachment parts on a Gmail message (the cutover
+   *  import uses it too). */
+  async fetchAttachments(
     token: string,
     messageId: string,
     msg: Parameters<typeof collectAttachmentParts>[0],

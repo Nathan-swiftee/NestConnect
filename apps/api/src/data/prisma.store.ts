@@ -97,6 +97,7 @@ import {
   type AnalyticsQuery,
   type AppendInboundInput,
   type AttachmentInput,
+  type ImportEmailThreadInput,
   type MessageStatusChange,
   type OutboundDeliveryMeta,
   type EmailRecipientInput,
@@ -2397,6 +2398,91 @@ export class PrismaStore extends Store {
       }),
     ]);
     return mapMessage(message);
+  }
+
+  async countEmailConversations(): Promise<number> {
+    return this.prisma.conversation.count({ where: { channel: "email" } });
+  }
+
+  async deleteEmailConversations(): Promise<number> {
+    let deleted = 0;
+    // In batches: a workspace can hold thousands, and one statement with tens
+    // of thousands of bound ids is past what Postgres will take.
+    for (;;) {
+      const batch = await this.prisma.conversation.findMany({
+        where: { channel: "email" },
+        select: { id: true },
+        take: 200,
+      });
+      if (!batch.length) return deleted;
+      const convIds = batch.map((c) => c.id);
+      await this.prisma.$transaction(async (tx) => {
+        const msgs = await tx.message.findMany({ where: { conversationId: { in: convIds } }, select: { id: true } });
+        const msgIds = msgs.map((m) => m.id);
+        // By message id on the unscoped client: these are this workspace's own
+        // messages (just read through the scoped one), and an attachment stored
+        // before attachments carried an orgId is invisible to the scoped client
+        // yet still holds its message in place.
+        if (msgIds.length) await this.root.attachment.deleteMany({ where: { messageId: { in: msgIds } } });
+        await tx.message.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.note.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.conversationLabel.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.assignmentEvent.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.participant.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.notification.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.conversation.deleteMany({ where: { id: { in: convIds } } });
+      });
+      deleted += convIds.length;
+    }
+  }
+
+  async importEmailThread(input: ImportEmailThreadInput): Promise<string> {
+    const msgs = input.messages;
+    const last = msgs[msgs.length - 1];
+    const lastOut = msgs.reduce((n, m, i) => (m.direction === "out" ? i : n), -1);
+    const conv = await this.prisma.conversation.create({
+      data: {
+        orgId: input.orgId,
+        inboxId: input.inboxId,
+        contactId: input.contactId,
+        channel: "email",
+        subject: input.subject,
+        channelRef: input.channelRef ?? null,
+        status: "open",
+        assigneeUserId: input.assigneeUserId ?? null,
+        assignedTeamId: input.assignedTeamId ?? null,
+        priority: "normal",
+        unread: true,
+        // What the customer has written since we last did.
+        unreadCount: msgs.slice(lastOut + 1).filter((m) => m.direction === "in").length,
+        seq: msgs.length,
+        preview: last ? previewFromBody(last.body) || "Email" : "",
+        lastActivityAt: last?.sentAt ?? new Date(),
+        createdAt: msgs[0]?.sentAt ?? new Date(),
+      },
+    });
+    for (const [i, m] of msgs.entries()) {
+      await this.prisma.message.create({
+        data: {
+          conversationId: conv.id,
+          seq: i + 1,
+          direction: m.direction,
+          // A reply from the mailbox is recorded the way a reply sent straight
+          // from Gmail is: by name, not as a Nest user.
+          authorType: m.direction === "in" ? "contact" : "system",
+          authorName: m.authorName,
+          body: m.body,
+          bodyHtml: m.bodyHtml ?? null,
+          status: m.direction === "in" ? "delivered" : "sent",
+          channelMsgId: m.channelMsgId,
+          channel: "email",
+          messageType: "text",
+          createdAt: m.sentAt,
+          ...(m.attachments?.length ? { attachments: { create: m.attachments.map(toAttachmentCreate) } } : {}),
+        },
+      });
+    }
+    return conv.id;
   }
 
   async getAttachment(id: string): Promise<StoredAttachmentRef | undefined> {
