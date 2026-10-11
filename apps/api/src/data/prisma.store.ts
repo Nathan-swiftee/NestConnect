@@ -3354,6 +3354,17 @@ export class PrismaStore extends Store {
           },
         });
 
+        // Their organisations come with them (the links would otherwise go with
+        // the deleted contacts), unless the winner is already linked there.
+        const winnerAccounts = new Set(
+          (await tx.accountContact.findMany({ where: { contactId: params.winnerId }, select: { accountId: true } })).map((l) => l.accountId),
+        );
+        for (const link of await tx.accountContact.findMany({ where: { contactId: { in: loserIds } } })) {
+          if (winnerAccounts.has(link.accountId)) continue;
+          await tx.accountContact.update({ where: { id: link.id }, data: { contactId: params.winnerId } });
+          winnerAccounts.add(link.accountId);
+        }
+
         await tx.contact.deleteMany({ where: { id: { in: loserIds } } });
       });
     }

@@ -56,6 +56,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
       statusCode: status,
       error: outOfReach ? "NotFoundException" : exception instanceof HttpException ? exception.name : "InternalServerError",
       message,
+      // A 4xx may name what the client needs to act on — the record that
+      // already exists, say — under `details`, and only there. Nothing else
+      // from the exception reaches the client.
+      ...(status < 500 && !outOfReach ? detailsOf(exception) : {}),
     });
   }
 }
@@ -65,4 +69,12 @@ function isOutOfReach(exception: unknown): boolean {
   if (!exception || typeof exception !== "object") return false;
   const e = exception as { name?: string; code?: string };
   return e.name === "TenantViolationError" || e.code === "P2025";
+}
+
+/** The `details` an HttpException was raised with, if any. */
+function detailsOf(exception: unknown): { details?: unknown } {
+  if (!(exception instanceof HttpException)) return {};
+  const body = exception.getResponse();
+  if (body && typeof body === "object" && "details" in body) return { details: (body as { details: unknown }).details };
+  return {};
 }

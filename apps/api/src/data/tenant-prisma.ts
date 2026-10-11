@@ -29,6 +29,7 @@ import { currentOrgId } from "../tenancy/tenant-scope";
 type Filter = Record<string, unknown>;
 
 const DIRECT = new Set<string>([
+  "Account",
   "AppSetting",
   "Attachment",
   "AuditLog",
@@ -60,6 +61,14 @@ const VIA: Record<string, (orgId: string) => Filter> = {
   Device: (orgId) => ({ user: { orgId } }),
   Notification: (orgId) => ({ user: { orgId } }),
   RecoveryCode: (orgId) => ({ user: { orgId } }),
+  // An organisation's knowledge belongs to whoever owns the organisation.
+  AccountContact: (orgId) => ({ account: { orgId } }),
+  AccountAlert: (orgId) => ({ account: { orgId } }),
+  AccountSop: (orgId) => ({ account: { orgId } }),
+  AccountSopRevision: (orgId) => ({ sop: { account: { orgId } } }),
+  AccountNote: (orgId) => ({ account: { orgId } }),
+  AccountResource: (orgId) => ({ account: { orgId } }),
+  AccountActivity: (orgId) => ({ account: { orgId } }),
 };
 
 /**
@@ -86,6 +95,9 @@ const REFERENCES: Record<string, string> = {
   assignedTeamId: "Team",
   fieldId: "CustomField",
   sessionId: "Session",
+  accountId: "Account",
+  sopId: "AccountSop",
+  attachmentId: "Attachment",
 };
 /** The same, for relation fields written as `{ connect: { id } }`. */
 const RELATIONS: Record<string, string> = {
@@ -101,6 +113,8 @@ const RELATIONS: Record<string, string> = {
   author: "User",
   field: "CustomField",
   session: "Session",
+  account: "Account",
+  sop: "AccountSop",
 };
 
 const FILTERED_OPS = new Set([

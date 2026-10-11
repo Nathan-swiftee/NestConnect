@@ -62,6 +62,29 @@ import type {
   SendBroadcastInput,
   BroadcastResult,
   EmailCutoverJob,
+  Account,
+  AccountActivity,
+  AccountAlert,
+  AccountContact,
+  AccountDetail,
+  AccountListItem,
+  AccountNote,
+  AccountResource,
+  AccountSop,
+  AccountSopRevision,
+  AccountStatus,
+  AlertInput,
+  ContactAccount,
+  ConversationAccountContext,
+  CreateAccountInput,
+  LinkContactInput,
+  NoteInput,
+  ResourceInput,
+  SopInput,
+  UpdateAccountInput,
+  UpdateContactLinkInput,
+  UpdateResourceInput,
+  UpdateSopInput,
   EmailCutoverPreview,
   AnalyticsResult,
   AnalyticsRange,
@@ -107,6 +130,9 @@ export interface CreateUserResult {
 
 export interface ApiError extends Error {
   status: number;
+  /** The error body the server sent, when it was JSON (e.g. a 409 naming the
+   *  record that already exists). */
+  body?: unknown;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -123,8 +149,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // `message` string or array) so callers can show a real explanation — e.g.
     // WhatsApp's "check the Phone number ID" — instead of a bare status code.
     let serverMsg: string | undefined;
+    let errBody: unknown;
     try {
       const body = (await res.clone().json()) as { message?: string | string[] };
+      errBody = body;
       if (typeof body?.message === "string") serverMsg = body.message;
       else if (Array.isArray(body?.message)) serverMsg = body.message.join(", ");
     } catch {
@@ -132,6 +160,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     const err = new Error(serverMsg ?? `${init?.method ?? "GET"} ${path} failed: ${res.status}`) as ApiError;
     err.status = res.status;
+    err.body = errBody;
     throw err;
   }
   return res.json() as Promise<T>;
@@ -477,6 +506,57 @@ export const api = {
   emailCutoverPreview: () => get<EmailCutoverPreview & { job: EmailCutoverJob }>("/settings/email-cutover"),
   emailCutoverStatus: () => get<EmailCutoverJob>("/settings/email-cutover/status"),
   runEmailCutover: (confirm: string) => post<EmailCutoverJob>("/settings/email-cutover", { confirm }),
+
+  // Organisations (customer accounts) and their knowledge.
+  accounts: (q?: { search?: string; status?: AccountStatus; archived?: boolean }) => {
+    const p = new URLSearchParams();
+    if (q?.search) p.set("q", q.search);
+    if (q?.status) p.set("status", q.status);
+    if (q?.archived) p.set("archived", "1");
+    const qs = p.toString();
+    return get<AccountListItem[]>(`/accounts${qs ? `?${qs}` : ""}`);
+  },
+  account: (id: string) => get<AccountDetail>(`/accounts/${encodeURIComponent(id)}`),
+  createAccount: (input: CreateAccountInput) => post<Account>("/accounts", input),
+  updateAccount: (id: string, input: UpdateAccountInput) => patch<Account>(`/accounts/${encodeURIComponent(id)}`, input),
+  archiveAccount: (id: string, archived: boolean) =>
+    post<Account>(`/accounts/${encodeURIComponent(id)}/${archived ? "archive" : "restore"}`, {}),
+  accountActivity: (id: string) => get<AccountActivity[]>(`/accounts/${encodeURIComponent(id)}/activity`),
+  contactAccounts: (contactId: string) => get<ContactAccount[]>(`/accounts/by-contact/${encodeURIComponent(contactId)}`),
+  conversationAccount: (conversationId: string) =>
+    get<ConversationAccountContext>(`/accounts/conversation/${encodeURIComponent(conversationId)}`),
+  setConversationAccount: (conversationId: string, accountId: string | null) =>
+    request<ConversationAccountContext>(`/accounts/conversation/${encodeURIComponent(conversationId)}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId }),
+    }),
+  linkAccountContact: (id: string, input: LinkContactInput) => post<AccountContact>(`/accounts/${encodeURIComponent(id)}/contacts`, input),
+  updateAccountContact: (id: string, contactId: string, input: UpdateContactLinkInput) =>
+    patch<AccountContact>(`/accounts/${encodeURIComponent(id)}/contacts/${encodeURIComponent(contactId)}`, input),
+  unlinkAccountContact: (id: string, contactId: string) =>
+    del<{ ok: true }>(`/accounts/${encodeURIComponent(id)}/contacts/${encodeURIComponent(contactId)}`),
+  createAccountAlert: (id: string, input: AlertInput) => post<AccountAlert>(`/accounts/${encodeURIComponent(id)}/alerts`, input),
+  updateAccountAlert: (id: string, alertId: string, input: Partial<AlertInput>) =>
+    patch<AccountAlert>(`/accounts/${encodeURIComponent(id)}/alerts/${encodeURIComponent(alertId)}`, input),
+  deleteAccountAlert: (id: string, alertId: string) =>
+    del<{ ok: true }>(`/accounts/${encodeURIComponent(id)}/alerts/${encodeURIComponent(alertId)}`),
+  createAccountSop: (id: string, input: SopInput) => post<AccountSop>(`/accounts/${encodeURIComponent(id)}/sops`, input),
+  updateAccountSop: (id: string, sopId: string, input: UpdateSopInput) =>
+    patch<AccountSop>(`/accounts/${encodeURIComponent(id)}/sops/${encodeURIComponent(sopId)}`, input),
+  accountSopRevisions: (id: string, sopId: string) =>
+    get<AccountSopRevision[]>(`/accounts/${encodeURIComponent(id)}/sops/${encodeURIComponent(sopId)}/revisions`),
+  createAccountNote: (id: string, input: NoteInput) => post<AccountNote>(`/accounts/${encodeURIComponent(id)}/notes`, input),
+  updateAccountNote: (id: string, noteId: string, input: Partial<NoteInput>) =>
+    patch<AccountNote>(`/accounts/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`, input),
+  deleteAccountNote: (id: string, noteId: string) =>
+    del<{ ok: true }>(`/accounts/${encodeURIComponent(id)}/notes/${encodeURIComponent(noteId)}`),
+  createAccountResource: (id: string, input: ResourceInput) =>
+    post<AccountResource>(`/accounts/${encodeURIComponent(id)}/resources`, input),
+  updateAccountResource: (id: string, resourceId: string, input: UpdateResourceInput) =>
+    patch<AccountResource>(`/accounts/${encodeURIComponent(id)}/resources/${encodeURIComponent(resourceId)}`, input),
+  deleteAccountResource: (id: string, resourceId: string) =>
+    del<{ ok: true }>(`/accounts/${encodeURIComponent(id)}/resources/${encodeURIComponent(resourceId)}`),
   assign: (
     id: string,
     input: { assigneeUserId?: string | null; assignedTeamId?: string | null },

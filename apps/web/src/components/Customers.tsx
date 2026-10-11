@@ -33,6 +33,7 @@ import {
   TrashIcon,
   XIcon,
 } from "../lib/icons";
+import { ContactOrganisations } from "./organisations/OrganisationPanel";
 
 interface Props {
   onClose: () => void;
@@ -40,6 +41,8 @@ interface Props {
   onOpenConversation: (id: string) => void;
   /** When opened from a chat's "profile" action, edit this customer. */
   focusContactId?: string | null;
+  /** Open an organisation's profile (from a customer's organisations). */
+  onOpenOrganisation?: (accountId: string) => void;
 }
 
 /** The team-routing + person-routing controls that pin a customer's new
@@ -112,12 +115,14 @@ function CustomerModal({
   onClose,
   onToast,
   onOpenConversation,
+  onOpenOrganisation,
 }: {
   contact: Contact | null;
   suggestions: string[];
   onClose: () => void;
   onToast: (msg: string) => void;
   onOpenConversation: (id: string) => void;
+  onOpenOrganisation?: (accountId: string) => void;
 }) {
   const isEdit = !!contact;
   const teams = useTeams();
@@ -235,6 +240,13 @@ function CustomerModal({
             onTeam={setOwnerTeamId}
             onUser={setOwnerUserId}
           />
+          {isEdit && contact && (
+            <ContactOrganisations
+              contactId={contact.id}
+              onOpenOrganisation={(id) => { onClose(); onOpenOrganisation?.(id); }}
+              onToast={onToast}
+            />
+          )}
           {isEdit && (
             <div className="field">
               <span>Conversations {convos.length > 0 && `· ${convos.length}`}</span>
@@ -349,7 +361,7 @@ function DuplicateGroupCard({
   );
 }
 
-export function Customers({ onClose, onToast, onOpenConversation, focusContactId }: Props) {
+export function Customers({ onClose, onToast, onOpenConversation, focusContactId, onOpenOrganisation }: Props) {
   const contacts = useContacts();
   const teams = useTeams();
   const [q, setQ] = useState("");
@@ -669,6 +681,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
           onClose={() => setModal(null)}
           onToast={onToast}
           onOpenConversation={onOpenConversation}
+          onOpenOrganisation={onOpenOrganisation}
         />
       )}
 

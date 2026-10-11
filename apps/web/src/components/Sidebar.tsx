@@ -4,6 +4,7 @@ import {
   ChevronRight,
   ChevronsLeftIcon,
   ContactsIcon,
+  OrganisationsIcon,
   InboxIcon,
   InsightsIcon,
   SnoozeIcon,
@@ -27,6 +28,7 @@ interface Props {
   onClose?: () => void;
   onOpenSettings?: () => void;
   onOpenCustomers?: () => void;
+  onOpenOrganisations?: () => void;
   /** Opens the insights dashboard (admin/manager only — the button self-hides
    *  for agents). The desktop route is the icon rail; this is the drawer route. */
   onOpenInsights?: () => void;
@@ -39,7 +41,7 @@ interface Props {
   onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenInsights, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
+export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenOrganisations, onOpenInsights, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
   const { data } = useViews();
   const { data: meData } = useMe();
   const { data: teamList } = useTeams();
@@ -315,6 +317,11 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           {onOpenCustomers && (
             <button className="iconbtn" title="Customers" onClick={onOpenCustomers}>
               <ContactsIcon />
+            </button>
+          )}
+          {onOpenOrganisations && (
+            <button className="iconbtn" title="Organisations" onClick={onOpenOrganisations}>
+              <OrganisationsIcon />
             </button>
           )}
           {onOpenSettings && (

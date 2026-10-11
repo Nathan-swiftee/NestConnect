@@ -23,6 +23,8 @@
     "check:conversation-subjects": "tsx --tsconfig apps/api/tsconfig.json tools/check-conversation-subjects.ts",
     "check:availability": "tsx --tsconfig apps/api/tsconfig.json tools/check-availability.ts",
     "check:email-cutover": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-cutover.ts",
+    "check:organisations": "tsx --tsconfig apps/api/tsconfig.json tools/check-organisations.ts",
+    "check:organisations-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-organisations-pg.ts",
     "check:app-surface": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-surface.ts",
     "check:app-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-identity.ts",
     "check:website-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-website-identity.ts",
