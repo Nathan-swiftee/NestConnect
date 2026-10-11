@@ -4,6 +4,7 @@ import {
   alertInputSchema,
   createAccountInputSchema,
   linkContactInputSchema,
+  linkContactsInputSchema,
   noteInputSchema,
   resourceInputSchema,
   setConversationAccountInputSchema,
@@ -124,6 +125,15 @@ export class AccountsController {
     @Body(new ZodValidationPipe(linkContactInputSchema)) body: z.output<typeof linkContactInputSchema>,
   ): Promise<AccountContact> {
     return this.accounts.link(userId, id, body);
+  }
+
+  @Post(":id/contacts/many")
+  linkMany(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(linkContactsInputSchema)) body: { contactIds: string[] },
+  ): Promise<AccountContact[]> {
+    return this.accounts.linkMany(userId, id, body.contactIds);
   }
 
   @Patch(":id/contacts/:contactId")

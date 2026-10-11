@@ -25,6 +25,7 @@ import {
 } from "@ding/schemas";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
+import { AccountsService } from "../accounts/accounts.service";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
 
@@ -34,6 +35,7 @@ export class ContactsController {
   constructor(
     private readonly store: Store,
     private readonly realtime: RealtimeGateway,
+    private readonly accounts: AccountsService,
   ) {}
 
   @Get()
@@ -99,14 +101,20 @@ export class ContactsController {
     const bulk = body.tags.map((t) => t.trim()).filter(Boolean);
     const result: ImportContactsResult = { created: 0, matched: 0, failed: [] };
 
-    for (const [index, input] of body.contacts.entries()) {
+    for (const [index, row] of body.contacts.entries()) {
       try {
+        // A "Company" column puts the customer in that organisation (made if
+        // it's new) rather than in the retired free-text field.
+        const { company, ...input } = row;
         const tags = [...new Set([...(input.tags ?? []), ...bulk])];
         const { contact, created } = await this.store.createContact({
           orgId: me.orgId,
           ...input,
           ...(tags.length ? { tags } : {}),
         });
+        if (company?.trim()) {
+          await this.accounts.linkByName(userId, contact.id, company).catch(() => undefined);
+        }
         if (created) {
           result.created++;
           continue;
@@ -122,7 +130,7 @@ export class ContactsController {
       } catch (err) {
         result.failed.push({
           index,
-          name: input.displayName,
+          name: row.displayName,
           error: err instanceof Error && err.message ? err.message : "Could not be imported",
         });
       }

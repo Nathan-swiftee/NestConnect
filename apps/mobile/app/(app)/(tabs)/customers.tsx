@@ -1,20 +1,27 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { FlatList, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
-import { relativeTime, useContact, useContacts } from "@ding/client";
-import type { Contact } from "@ding/schemas";
+import { relativeTime, useAccounts, useContact, useContacts } from "@ding/client";
+import type { AccountListItem, Contact } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { ContactEditor } from "../../../src/components/ContactEditor";
-import { ChevronRight, SearchIcon, XIcon } from "../../../src/icons";
+import { ContactOrganisations } from "../../../src/components/ContactOrganisations";
+import { NewOrganisationScreen, OrganisationScreen } from "../../../src/components/OrganisationScreen";
+import { ChevronRight, PlusIcon, SearchIcon, XIcon } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
 import { useInsets } from "../../../src/insets";
 import { Touchable } from "../../../src/components/Touchable";
 
+/** What's open on top of the list: customers and organisations open each
+ *  other, so it's a stack, and closing goes back one step. */
+type Layer = { kind: "contact" | "org"; id: string };
+
 /**
- * The customer directory — the web's Customers section on a phone.
+ * The customer directory — the web's Customers section on a phone — with its
+ * organisations alongside, one switch away.
  *
  * Mostly reading: on a phone you look someone up to find out who they are and
  * jump into the conversation you already have with them. Creating and merging
@@ -23,16 +30,23 @@ import { Touchable } from "../../../src/components/Touchable";
  *
  * Correcting a customer is different, and is here. A name arrives from WhatsApp
  * as whatever the customer set as their profile name; noticing it's wrong
- * happens while reading a thread, which is a phone activity.
+ * happens while reading a thread, which is a phone activity. So is putting
+ * people in an organisation — from the person, or from the organisation by
+ * ticking everyone at once — and starting a new organisation.
  */
 export default function Customers() {
   const insets = useInsets();
   const { c } = useTheme();
   const contacts = useContacts();
   const { data } = contacts;
+  const [mode, setMode] = useState<"people" | "orgs">("people");
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState<string | null>(null);
+  const [stack, setStack] = useState<Layer[]>([]);
+  const [creating, setCreating] = useState(false);
   const q = useDeferredValue(query.trim().toLowerCase());
+  const push = (layer: Layer) => setStack((s) => [...s.filter((l) => !(l.kind === layer.kind && l.id === layer.id)), layer]);
+  const pop = () => setStack((s) => s.slice(0, -1));
+  const orgs = useAccounts(mode === "orgs" && q ? { search: q } : {});
 
   const items = useMemo(() => {
     const all = data ?? [];
@@ -44,13 +58,46 @@ export default function Customers() {
 
   return (
     <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1">
-      <View className="px-4 pb-2 pt-2">
-        <Text accessibilityRole="header" className="text-2xl font-semibold tracking-tight text-fg">
-          Customers
-        </Text>
-        <Text className="text-sm text-muted">
-          {data ? `${data.length} in the directory` : ""}
-        </Text>
+      <View className="flex-row items-end px-4 pb-2 pt-2">
+        <View className="flex-1">
+          <Text accessibilityRole="header" className="text-2xl font-semibold tracking-tight text-fg">
+            Customers
+          </Text>
+          <Text className="text-sm text-muted">
+            {mode === "people"
+              ? data ? `${data.length} in the directory` : ""
+              : orgs.data && !q ? `${orgs.data.length} ${orgs.data.length === 1 ? "organisation" : "organisations"}` : ""}
+          </Text>
+        </View>
+        {mode === "orgs" ? (
+          <Touchable feel="chip"
+            onPress={() => setCreating(true)}
+            accessibilityRole="button"
+            accessibilityLabel="New organisation"
+            style={{ backgroundColor: c.brand }}
+            className="flex-row items-center gap-1.5 rounded-full px-3.5 py-2"
+          >
+            <PlusIcon size={14} color="#fff" />
+            <Text className="text-md font-semibold text-white">New</Text>
+          </Touchable>
+        ) : null}
+      </View>
+
+      <View style={{ backgroundColor: c.surface2 }} className="mx-4 mb-2 flex-row rounded-full p-1" accessibilityRole="tablist">
+        {(["people", "orgs"] as const).map((m) => (
+          <Touchable feel="chip"
+            key={m}
+            onPress={() => setMode(m)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: mode === m }}
+            style={mode === m ? { backgroundColor: c.surface } : undefined}
+            className="flex-1 items-center rounded-full py-1.5"
+          >
+            <Text style={{ color: mode === m ? c.text : c.textMuted }} className="text-md font-semibold">
+              {m === "people" ? "People" : "Organisations"}
+            </Text>
+          </Touchable>
+        ))}
       </View>
 
       <View className="px-4 pb-2">
@@ -59,7 +106,7 @@ export default function Customers() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search name, company, phone or email"
+            placeholder={mode === "people" ? "Search name, organisation, phone or email" : "Search organisations"}
             placeholderTextColor={c.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
@@ -70,11 +117,12 @@ export default function Customers() {
         </View>
       </View>
 
+      {mode === "people" ? (
       <FlatList
         style={{ flex: 1 }}
         data={items}
         keyExtractor={(ct) => ct.id}
-        renderItem={({ item }) => <Row contact={item} onPress={() => setOpen(item.id)} />}
+        renderItem={({ item }) => <Row contact={item} onPress={() => push({ kind: "contact", id: item.id })} />}
         ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-[68px] h-px" />}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 + TAB_BAR_H }}
         keyboardDismissMode="on-drag"
@@ -92,8 +140,46 @@ export default function Customers() {
           />
         }
       />
+      ) : (
+        <FlatList
+          style={{ flex: 1 }}
+          data={orgs.data ?? []}
+          keyExtractor={(a) => a.id}
+          renderItem={({ item }) => <OrgRow account={item} onPress={() => push({ kind: "org", id: item.id })} />}
+          ItemSeparatorComponent={() => <View style={{ backgroundColor: c.border }} className="ml-4 h-px" />}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 24 + TAB_BAR_H }}
+          keyboardDismissMode="on-drag"
+          ListEmptyComponent={
+            <QueryState
+              query={orgs}
+              what="your organisations"
+              empty={
+                q ? (
+                  <EmptyState icon="search" title="No matches" body={`No organisation matching “${query.trim()}”.`} />
+                ) : (
+                  <EmptyState title="No organisations yet" body="Tap New to add the first, and tick the people who work there." />
+                )
+              }
+            />
+          }
+        />
+      )}
 
-      <CustomerSheet id={open} onClose={() => setOpen(null)} />
+      {stack.map((l) =>
+        l.kind === "contact" ? (
+          <CustomerSheet key={`c:${l.id}`} id={l.id} onClose={pop} onOpenOrg={(id) => push({ kind: "org", id })} />
+        ) : (
+          <OrganisationScreen key={`o:${l.id}`} id={l.id} onClose={pop} onOpenContact={(id) => push({ kind: "contact", id })} />
+        ),
+      )}
+      <NewOrganisationScreen
+        visible={creating}
+        onClose={() => setCreating(false)}
+        onCreated={(id) => {
+          setCreating(false);
+          push({ kind: "org", id });
+        }}
+      />
     </View>
   );
 }
@@ -131,11 +217,54 @@ function Row({ contact, onPress }: { contact: Contact; onPress: () => void }) {
   );
 }
 
+function OrgRow({ account: a, onPress }: { account: AccountListItem; onPress: () => void }) {
+  const { c } = useTheme();
+  return (
+    <Touchable feel="row"
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={a.name}
+      className="flex-row items-center gap-3 px-4 py-3"
+    >
+      <View className="flex-1">
+        <Text numberOfLines={1} className="text-lg font-medium text-fg">
+          {a.name}
+        </Text>
+        <Text numberOfLines={1} className="text-sm text-muted">
+          {[
+            `${a.contactCount} ${a.contactCount === 1 ? "person" : "people"}`,
+            a.reference,
+            a.summary,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </Text>
+      </View>
+      {a.alertCount ? (
+        <View style={{ backgroundColor: c.amberTint }} className="rounded-full px-2 py-0.5">
+          <Text style={{ color: c.amber }} className="text-2xs font-semibold">
+            {a.alertCount} pinned
+          </Text>
+        </View>
+      ) : null}
+      <ChevronRight size={15} color={c.textFaint} />
+    </Touchable>
+  );
+}
+
 /**
  * One customer, and every conversation we've had with them. This is the point
  * of the directory on a phone: find the person, open the right thread.
  */
-function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void }) {
+function CustomerSheet({
+  id,
+  onClose,
+  onOpenOrg,
+}: {
+  id: string | null;
+  onClose: () => void;
+  onOpenOrg: (accountId: string) => void;
+}) {
   const insets = useInsets();
   const { c } = useTheme();
   const contact = useContact(id);
@@ -199,6 +328,8 @@ function CustomerSheet({ id, onClose }: { id: string | null; onClose: () => void
                   so they are now the same component — which also means the
                   directory can fix a wrong number, not just display it. */}
               <ContactEditor contact={data} />
+
+              <ContactOrganisations contactId={data.id} onOpen={onOpenOrg} />
 
               <Text style={{ color: c.textFaint }} className="px-5 pb-1.5 pt-6 text-2xs font-semibold uppercase tracking-wider">
                 Conversations

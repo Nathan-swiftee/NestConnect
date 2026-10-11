@@ -11,7 +11,6 @@ import { contactPatch } from "../src/contact";
  */
 const base = {
   displayName: "Northside Logistics",
-  company: "Logistics · Leeds",
   phone: "+44 113 555 0148",
   email: "accounts@northside.io",
 };
@@ -29,9 +28,9 @@ describe("contactPatch", () => {
   });
 
   it("trims, and treats a whitespace-only edit as no change", () => {
-    expect(contactPatch(base, draftOf({ company: "  Logistics · Leeds  " }))).toEqual({});
-    expect(contactPatch(base, draftOf({ company: " Freight · Leeds " }))).toEqual({
-      company: "Freight · Leeds",
+    expect(contactPatch(base, draftOf({ email: "  accounts@northside.io  " }))).toEqual({});
+    expect(contactPatch(base, draftOf({ email: " ops@northside.io " }))).toEqual({
+      email: "ops@northside.io",
     });
   });
 
@@ -43,15 +42,14 @@ describe("contactPatch", () => {
 
   it("leaves an untouched empty field out of the patch entirely", () => {
     // The schema makes these optional, not nullable — a customer with no
-    // company has no `company` key at all rather than a null one.
+    // phone has no `phone` key at all rather than a null one.
     const sparse = {
       displayName: "Tide & Co.",
-      company: undefined,
       phone: undefined,
       email: undefined,
     };
     expect(
-      contactPatch(sparse, { displayName: "Tide & Co.", company: "", phone: "", email: "" }),
+      contactPatch(sparse, { displayName: "Tide & Co.", phone: "", email: "" }),
     ).toEqual({});
   });
 
@@ -61,9 +59,9 @@ describe("contactPatch", () => {
 
   it("handles a contact whose optional fields are absent rather than null", () => {
     const bare = { displayName: "Acme Café" };
-    expect(contactPatch(bare, { displayName: "Acme Café", company: "", phone: "", email: "" })).toEqual({});
+    expect(contactPatch(bare, { displayName: "Acme Café", phone: "", email: "" })).toEqual({});
     expect(
-      contactPatch(bare, { displayName: "Acme Café", company: "", phone: "0117", email: "" }),
+      contactPatch(bare, { displayName: "Acme Café", phone: "0117", email: "" }),
     ).toEqual({ phone: "0117" });
   });
 });

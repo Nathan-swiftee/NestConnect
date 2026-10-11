@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Linking, Text, View } from "react-native";
-import type { AccountSop } from "@ding/schemas";
+import type { AccountAlert, AccountSop } from "@ding/schemas";
 import { api, useAccountMutation, useConversationAccount } from "@ding/client";
-import { AlertIcon, BoltIcon, CheckIcon, ChevronRight, DocIcon } from "../icons";
+import { AlertIcon, BoltIcon, CheckIcon, ChevronRight, DocIcon, EditIcon, PlusIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Touchable } from "./Touchable";
+import { ContactOrganisations, OrganisationLinker } from "./ContactOrganisations";
 
 const PRIORITY = { critical: "Critical", important: "Important", info: "Note" } as const;
 
@@ -12,22 +13,45 @@ const PRIORITY = { critical: "Critical", important: "Important", info: "Note" } 
  * The customer organisation behind a conversation, on the phone: who they are,
  * what everyone must know (pinned instructions, loudest first), and how their
  * work is done — each SOP opens to its warnings and numbered steps. With
- * several organisations and none chosen it asks, the same as the web. Editing
- * the knowledge itself is a desk job, done in Organisations on the web.
+ * several organisations and none chosen it asks, the same as the web. The
+ * customer can be added to an organisation (or a new one) and taken out of one
+ * here; writing the knowledge itself is a desk job, done on the web.
  */
 export function OrganisationCard({ conversationId, visible }: { conversationId: string; visible: boolean }) {
   const { c } = useTheme();
   const { data } = useConversationAccount(visible ? conversationId : null);
   const choose = useAccountMutation((accountId: string) => api.setConversationAccount(conversationId, accountId));
   const [open, setOpen] = useState<string | null>(null);
+  const [managing, setManaging] = useState(false);
+  const [linking, setLinking] = useState(false);
   if (!data) return null;
   const acc = data.account;
 
+  // Adding, creating or removing organisations swaps the card for the same
+  // manager the Customers tab uses, in place.
+  if (managing) return <ContactOrganisations contactId={data.contactId} onDone={() => setManaging(false)} />;
+
   return (
     <>
-      <Text style={{ color: c.textFaint }} className="px-5 pb-1.5 pt-5 text-2xs font-semibold uppercase tracking-wider">
-        Organisation
-      </Text>
+      <View className="flex-row items-center justify-between px-5 pb-1.5 pt-5">
+        <Text style={{ color: c.textFaint }} className="text-2xs font-semibold uppercase tracking-wider">
+          Organisation
+        </Text>
+        {data.linked.length ? (
+          <Touchable
+            feel="chip"
+            borderless
+            onPress={() => setManaging(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Change organisations"
+            hitSlop={10}
+            className="flex-row items-center gap-1.5 py-0.5"
+          >
+            <EditIcon size={13} color={c.brand} />
+            <Text style={{ color: c.brand }} className="text-sm font-semibold">Change</Text>
+          </Touchable>
+        ) : null}
+      </View>
 
       {data.needsChoice ? (
         <View style={{ backgroundColor: c.amberTint, borderColor: c.border }} className="mx-4 rounded-16 border px-4 py-3">
@@ -49,7 +73,24 @@ export function OrganisationCard({ conversationId, visible }: { conversationId: 
           ))}
         </View>
       ) : !acc ? (
-        <Text className="px-5 text-md text-muted">Not linked to an organisation. Link one from the web, under Organisations.</Text>
+        <View style={{ backgroundColor: c.surface2, borderColor: c.border }} className="mx-4 overflow-hidden rounded-16 border">
+          {linking ? (
+            <OrganisationLinker contactId={data.contactId} onClose={() => setLinking(false)} />
+          ) : (
+            <Touchable
+              feel="row"
+              onPress={() => setLinking(true)}
+              accessibilityRole="button"
+              className="flex-row items-center gap-2 px-4 py-3"
+            >
+              <PlusIcon size={15} color={c.brand} />
+              <View className="flex-1">
+                <Text style={{ color: c.brand }} className="text-md font-semibold">Add to an organisation</Text>
+                <Text className="text-2xs text-muted">Not linked yet. Pick one or create it.</Text>
+              </View>
+            </Touchable>
+          )}
+        </View>
       ) : (
         <View style={{ backgroundColor: c.surface2, borderColor: c.border }} className="mx-4 overflow-hidden rounded-16 border">
           <View className="px-4 pb-2 pt-3">
@@ -59,19 +100,9 @@ export function OrganisationCard({ conversationId, visible }: { conversationId: 
             </Text>
           </View>
 
-          {acc.alerts.map((a) => {
-            const tint = a.priority === "critical" ? c.dangerTint : a.priority === "important" ? c.amberTint : c.surface;
-            const tone = a.priority === "critical" ? c.danger : a.priority === "important" ? c.amber : c.textMuted;
-            return (
-              <View key={a.id} style={{ backgroundColor: tint }} className="mx-3 mb-1.5 flex-row gap-2.5 rounded-12 px-3 py-2.5">
-                <AlertIcon size={16} color={tone} />
-                <View className="flex-1">
-                  <Text style={{ color: tone }} className="text-2xs font-bold uppercase tracking-wider">{PRIORITY[a.priority]}</Text>
-                  <Text className="text-md text-fg">{a.body}</Text>
-                </View>
-              </View>
-            );
-          })}
+          {acc.alerts.map((a) => (
+            <AlertRow key={a.id} alert={a} />
+          ))}
 
           {acc.sops.map((s) => (
             <SopRow key={s.id} sop={s} open={open === s.id} onToggle={() => setOpen(open === s.id ? null : s.id)} />
@@ -109,8 +140,24 @@ export function OrganisationCard({ conversationId, visible }: { conversationId: 
   );
 }
 
+/** A pinned instruction, coloured by how much it matters. */
+export function AlertRow({ alert: a }: { alert: AccountAlert }) {
+  const { c } = useTheme();
+  const tint = a.priority === "critical" ? c.dangerTint : a.priority === "important" ? c.amberTint : c.surface;
+  const tone = a.priority === "critical" ? c.danger : a.priority === "important" ? c.amber : c.textMuted;
+  return (
+    <View style={{ backgroundColor: tint }} className="mx-3 mb-1.5 flex-row gap-2.5 rounded-12 px-3 py-2.5">
+      <AlertIcon size={16} color={tone} />
+      <View className="flex-1">
+        <Text style={{ color: tone }} className="text-2xs font-bold uppercase tracking-wider">{PRIORITY[a.priority]}</Text>
+        <Text className="text-md text-fg">{a.body}</Text>
+      </View>
+    </View>
+  );
+}
+
 /** One SOP: its title, opening to the warnings and the steps to tick through. */
-function SopRow({ sop, open, onToggle }: { sop: AccountSop; open: boolean; onToggle: () => void }) {
+export function SopRow({ sop, open, onToggle }: { sop: AccountSop; open: boolean; onToggle: () => void }) {
   const { c } = useTheme();
   const [done, setDone] = useState<Set<number>>(new Set());
   const tick = (i: number) =>

@@ -179,7 +179,10 @@ export function mapTemplate(t: Prisma.TemplateGetPayload<object>): Template {
 
 /* Prisma row → domain type mappers. Includes are typed via Prisma payload helpers. */
 
-type ContactWithIdentities = Prisma.ContactGetPayload<{ include: { identities: true } }>;
+type ContactWithIdentities = Prisma.ContactGetPayload<{ include: { identities: true } }> & {
+  /** The organisation the contact is shown under (see CONTACT_INCLUDE). */
+  accountLinks?: Array<{ account: { name: string } }>;
+};
 type InboxWithTeams = Prisma.InboxGetPayload<{ include: { teams: true } }>;
 type ConversationSummaryRow = Prisma.ConversationGetPayload<{
   include: {
@@ -368,7 +371,9 @@ export function mapContact(c: ContactWithIdentities): Contact {
     id: c.id,
     orgId: c.orgId,
     displayName: c.displayName,
-    company: c.company ?? undefined,
+    // Their organisation's name. The free-text Company column this used to
+    // read is superseded by Organisations and no longer shown.
+    company: c.accountLinks?.[0]?.account.name ?? undefined,
     phone,
     email,
     visitorId,

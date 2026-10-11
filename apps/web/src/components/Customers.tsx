@@ -132,7 +132,6 @@ function CustomerModal({
   const del = useDeleteContact();
   const detail = useContact(contact?.id ?? null);
   const [displayName, setName] = useState(contact?.displayName ?? "");
-  const [company, setCompany] = useState(contact?.company ?? "");
   const [phone, setPhone] = useState(contact?.phone ?? "");
   const [email, setEmail] = useState(contact?.email ?? "");
   const [tags, setTags] = useState<string[]>(contact?.tags ?? []);
@@ -160,7 +159,6 @@ function CustomerModal({
           id: contact.id,
           input: {
             displayName: name,
-            company: company.trim(),
             phone: phone.trim(),
             email: email.trim(),
             tags,
@@ -181,7 +179,6 @@ function CustomerModal({
       create.mutate(
         {
           displayName: name,
-          company: company.trim() || undefined,
           phone: phone.trim() || undefined,
           email: email.trim() || undefined,
           tags,
@@ -214,13 +211,9 @@ function CustomerModal({
         </div>
         <div className="modal__body">
           <div className="setform__grid two">
-            <label className="field">
+            <label className="field" style={{ gridColumn: "1 / -1" }}>
               <span>Name</span>
               <input value={displayName} autoFocus onChange={(e) => setName(e.target.value)} placeholder="The Ivy House" required />
-            </label>
-            <label className="field">
-              <span>Company / label <em>optional</em></span>
-              <input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Venue · Bristol" />
             </label>
             <label className="field">
               <span>Phone <em>optional</em></span>
@@ -471,7 +464,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
           <div className="setbar">
             <div className="setsearch">
               <SearchIcon />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, company, number, email or tag…" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, organisation, number, email or tag…" />
             </div>
             {/* Channels first: two chips, always the same two, so they stay a
                 fixed landmark rather than a list that changes shape. */}
@@ -594,7 +587,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
             <div className="dtable dtable--cust">
               <div className="dtable__head">
                 <span>Name</span>
-                <span>Company</span>
+                <span>Organisation</span>
                 <span>Contact</span>
                 <span>Channels</span>
                 <span>Tags</span>

@@ -1282,14 +1282,15 @@ export function useConversationAccount(conversationId: string | null | undefined
 /**
  * One mutation hook for every change to organisations: whatever changed, the
  * directory, the profile, a contact's organisations and the inbox panels are
- * refreshed — the same knowledge shows in all of them.
+ * refreshed — the same knowledge shows in all of them. Customers too: the
+ * organisation name shown on a customer is their primary organisation's.
  */
 export function useAccountMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: fn,
     onSuccess: () => {
-      for (const key of ["accounts", "account", "account-activity", "sop-revisions", "contact-accounts", "conversation-account"]) {
+      for (const key of ["accounts", "account", "account-activity", "sop-revisions", "contact-accounts", "conversation-account", "contacts", "contact"]) {
         qc.invalidateQueries({ queryKey: [key] });
       }
     },

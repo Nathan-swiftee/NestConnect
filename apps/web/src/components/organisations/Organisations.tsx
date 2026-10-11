@@ -399,7 +399,7 @@ function ContactsTab({ d, readOnly, onToast, onOpenContact }: { d: AccountDetail
     <section className="org-card">
       <h3>
         People at {d.account.name}
-        {!readOnly && <button type="button" className="org-linkbtn" onClick={() => setAdding(true)}><PlusIcon /> Add contact</button>}
+        {!readOnly && <button type="button" className="org-linkbtn" onClick={() => setAdding(true)}><PlusIcon /> Add people</button>}
       </h3>
       {d.contacts.length === 0 ? (
         <p className="org-muted">No contacts linked yet. Add the people who message you from this company — their conversations will then show this organisation.</p>

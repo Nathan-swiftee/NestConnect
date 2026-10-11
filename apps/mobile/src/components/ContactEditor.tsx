@@ -10,7 +10,7 @@ import { Touchable } from "./Touchable";
 import { useToast } from "./Toast";
 
 /**
- * The customer's own details — name, company, phone, email — and a way to fix
+ * The customer's own details — name, phone, email — and a way to fix
  * them.
  *
  * Until now the phone could only read these. The directory said so out loud:
@@ -38,7 +38,6 @@ export function ContactEditor({ contact }: { contact: Contact }) {
 
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState(contact.displayName);
-  const [company, setCompany] = useState(contact.company ?? "");
   const [phone, setPhone] = useState(contact.phone ?? "");
   const [email, setEmail] = useState(contact.email ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +46,6 @@ export function ContactEditor({ contact }: { contact: Contact }) {
    *  state after a previous cancel. */
   const open = () => {
     setDisplayName(contact.displayName);
-    setCompany(contact.company ?? "");
     setPhone(contact.phone ?? "");
     setEmail(contact.email ?? "");
     setError(null);
@@ -60,7 +58,7 @@ export function ContactEditor({ contact }: { contact: Contact }) {
       setError("A customer needs a name.");
       return;
     }
-    const patch = contactPatch(contact, { displayName: name, company, phone, email });
+    const patch = contactPatch(contact, { displayName: name, phone, email });
 
     if (Object.keys(patch).length === 0) {
       setEditing(false);
@@ -112,12 +110,6 @@ export function ContactEditor({ contact }: { contact: Contact }) {
         {editing ? (
           <View className="gap-3 p-4">
             <Input label="Name" value={displayName} onChangeText={setDisplayName} autoFocus />
-            <Input
-              label="Company"
-              value={company}
-              onChangeText={setCompany}
-              placeholder="Venue · Bristol"
-            />
             <Input
               label="Phone"
               value={phone}
@@ -174,7 +166,9 @@ export function ContactEditor({ contact }: { contact: Contact }) {
             {/* The name isn't repeated here — it's the heading directly above
                 this, at four times the size. It appears in the form, because
                 that is where it needs to be fixable. */}
-            <Row label="Company" value={contact.company} />
+            {/* Their organisation (set on the web, under Organisations) — the
+                old free-text Company field is gone. */}
+            <Row label="Organisation" value={contact.company} />
             <Row label="Phone" value={contact.phone} />
             <Row label="Email" value={contact.email} last={!contact.visitorId} />
             {/* Someone who reached us through the website widget has neither,

@@ -155,7 +155,7 @@ export class AccountsService {
 
   async create(
     userId: string,
-    input: AccountInputParsed & { name: string; force?: boolean; contactId?: string },
+    input: AccountInputParsed & { name: string; force?: boolean; contactId?: string; contactIds?: string[] },
   ): Promise<Account> {
     const { actor } = await this.actor(userId);
     await this.validOwner(input.ownerUserId);
@@ -191,6 +191,7 @@ export class AccountsService {
     const row = await this.accounts.create(fields, actor);
     await this.accounts.logActivity(row.id, actor, "account.created", `Created ${row.name}`);
     if (input.contactId) await this.link(userId, row.id, { contactId: input.contactId, isPrimary: true });
+    if (input.contactIds?.length) await this.linkMany(userId, row.id, input.contactIds);
     return this.toAccount(row);
   }
 
@@ -285,6 +286,32 @@ export class AccountsService {
     return (await this.withContact(link))!;
   }
 
+  /**
+   * Add several people at once — picked from the organisation's side rather
+   * than one contact at a time. Anyone already there is left as they are; an
+   * id that isn't a contact in this workspace is skipped. If the organisation
+   * had nobody, the first person added becomes its primary contact.
+   */
+  async linkMany(userId: string, accountId: string, contactIds: string[]): Promise<AccountContact[]> {
+    const { actor } = await this.actor(userId);
+    const account = await this.mustEdit(accountId);
+    const before = await this.accounts.listLinks(accountId);
+    const already = new Set(before.map((l) => l.contactId));
+    const added: string[] = [];
+    for (const id of [...new Set(contactIds)]) {
+      if (already.has(id)) continue;
+      const contact = await this.store.getContact(id);
+      if (!contact) continue;
+      await this.accounts.link(accountId, id, { role: null, department: null, isPrimary: before.length === 0 && added.length === 0, notes: null });
+      added.push(contact.displayName);
+    }
+    if (added.length) {
+      const names = added.length <= 3 ? added.join(", ") : `${added.slice(0, 2).join(", ")} and ${added.length - 2} others`;
+      await this.accounts.logActivity(accountId, actor, "contact.linked", `Linked ${names} to ${account.name}`);
+    }
+    return this.contactsOf(accountId);
+  }
+
   /** One primary contact per organisation. */
   private async onlyPrimary(accountId: string, contactId: string): Promise<void> {
     for (const l of await this.accounts.listLinks(accountId)) {
@@ -316,6 +343,23 @@ export class AccountsService {
     if (!(await this.accounts.unlink(accountId, contactId))) throw new NotFoundException("That contact isn't linked to this organisation");
     // The contact and their conversations stay exactly as they were.
     await this.accounts.logActivity(accountId, actor, "contact.unlinked", `Removed ${contact?.displayName ?? "a contact"} from the organisation`);
+  }
+
+  /**
+   * Put a contact in the organisation with this name, creating it if there's
+   * none — how a "Company" column in a customer import lands now that
+   * organisations replace the free-text field. An organisation that exists
+   * but is archived is left alone (and so is the contact).
+   */
+  async linkByName(userId: string, contactId: string, name: string): Promise<void> {
+    const clean = name.trim().slice(0, 160);
+    if (!clean) return;
+    const nameKey = accountNameKey(clean) || clean.toLowerCase();
+    const same = (await this.accounts.findSimilar(nameKey, null)).filter((a) => a.nameKey === nameKey);
+    if (same.some((a) => a.archivedAt) && !same.some((a) => !a.archivedAt)) return;
+    const accountId = same.find((a) => !a.archivedAt)?.id ?? (await this.create(userId, { name: clean })).id;
+    if ((await this.accounts.linksForContact(contactId)).some((l) => l.accountId === accountId)) return;
+    await this.link(userId, accountId, { contactId });
   }
 
   /** A contact's organisations (archived ones left out). */

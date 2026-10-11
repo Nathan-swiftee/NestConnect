@@ -161,7 +161,7 @@ export function ImportCustomers({
                     ["displayName", "Name"],
                     ["firstName", "First name"],
                     ["lastName", "Last name"],
-                    ["company", "Company"],
+                    ["company", "Organisation"],
                     ["phone", "Phone"],
                     ["email", "Email"],
                     ["tags", "Tags"],
