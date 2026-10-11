@@ -308,13 +308,26 @@ export class IngestService {
     /** Who is writing — `visitorStamp` of their visitor id. Only a thread they
      *  started is joined; otherwise a new one is opened under the contact. */
     startedBy?: string;
+    /**
+     * Where the visitor's session says this goes: the conversation it is
+     * attached to, already checked as theirs, live and on this channel by
+     * `NestChatService.sendTarget`. A customer with two orders open writes in
+     * the one they have in front of them, not in whichever moved last.
+     */
+    conversationId?: string;
+    /** No thread for this yet, and joining another would be wrong (a chat
+     *  keyed per order, about an order with no thread). */
+    forceNew?: boolean;
   }): Promise<{ conversationId: string; created: boolean; message?: Message } | undefined> {
     if (input.contact.blocked) {
       this.logger.log(`Dropped inbound NestChat from blocked contact ${input.contact.id}`);
       return undefined;
     }
 
-    const res = await this.store.findOrCreateOpenConversation({
+    const attached = input.conversationId ? await this.store.getConversation(input.conversationId) : undefined;
+    const res = attached
+      ? { conversation: attached, created: false }
+      : await this.store.findOrCreateOpenConversation({
       orgId: input.inbox.orgId,
       inboxId: input.inbox.id,
       contact: input.contact,
@@ -327,6 +340,7 @@ export class IngestService {
       // That is only its starting topic: Nest writes the subject from here on
       // (custom fields, then an AI topic once the visitor has said something).
       autoSubject: true,
+      forceNew: input.forceNew,
     });
     const conversationId = res.conversation.id;
     if (res.created) {

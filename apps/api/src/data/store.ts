@@ -1051,6 +1051,9 @@ export abstract class Store {
     /** Nest writes this thread's subject (see ConversationSubjectService).
      *  `subject` is then its starting topic, not a fixed subject. */
     autoSubject?: boolean;
+    /** Open a new conversation even though one is live — a chat keyed per
+     *  order, writing about an order that has no thread yet. */
+    forceNew?: boolean;
   }): Promise<{ conversation: Conversation; created: boolean }>;
 
   abstract appendInboundMessage(

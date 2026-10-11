@@ -2261,6 +2261,7 @@ export class PrismaStore extends Store {
     assignedTeamId?: string | null;
     startedBy?: string;
     autoSubject?: boolean;
+    forceNew?: boolean;
   }): Promise<{ conversation: Conversation; created: boolean }> {
     // One open conversation per contact PER INBOX (channel endpoint): an inbound
     // to this inbox threads into the customer's open thread here; a different inbox
@@ -2280,7 +2281,7 @@ export class PrismaStore extends Store {
     // is two implementations of the same rule drifting apart from each other.
     // The candidate set is a single contact's open threads in one inbox, so it
     // is a handful of rows; the take() is a bound, not a page.
-    const candidates = await this.prisma.conversation.findMany({
+    const candidates = params.forceNew ? [] : await this.prisma.conversation.findMany({
       // Snoozed included: a customer writing back is exactly the event that
       // should end a snooze, and `appendInboundMessage` below already wakes the
       // conversation it lands on. Leaving it out of this WHERE made that branch

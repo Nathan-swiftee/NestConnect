@@ -425,15 +425,59 @@ export class NestChatService {
     if (!open.length) return undefined;
     if (!app.threadFieldKey) return open[0]?.id;
 
-    const value = fields[app.threadFieldKey]?.trim();
-    // The channel keys threads on a field the caller didn't name. Starting a
-    // fresh thread is the safe answer: joining whichever one happened to be
-    // open would put this message under an unrelated order.
-    if (!value) return undefined;
+    const key = app.threadFieldKey;
+    const value = fields[key]?.trim();
+    if (!value) {
+      // No order named: general support. That is a thread of its own — the
+      // open one carrying no order — and never an order's thread, which is
+      // where joining "whichever was open" used to put it.
+      const values = await this.store.customFieldValues(inbox.orgId, "conversation", open.map((c) => c.id));
+      return open.find((c) => !(values.get(c.id) ?? []).some((v) => v.key === key && v.value.trim()))?.id;
+    }
     const matching = new Set(
-      await this.store.findByCustomFieldExact(inbox.orgId, "conversation", app.threadFieldKey, value),
+      await this.store.findByCustomFieldExact(inbox.orgId, "conversation", key, value),
     );
     return open.find((c) => matching.has(c.id))?.id;
+  }
+
+  /**
+   * Where a visitor's message goes.
+   *
+   * The session's own conversation, when it has one that is still theirs and
+   * still live. This is what keeps one order's chat from landing in another's:
+   * the session was opened for order B, so B's message goes to B's thread —
+   * it used to go to the customer's most recent open conversation, which was
+   * order A's, and the order fields then relabelled A as B.
+   *
+   * With no conversation yet (or the session's one was closed under them), a
+   * channel that keys threads on a field looks for the open thread for this
+   * order, and otherwise opens a new one rather than joining another. A
+   * channel without a thread key keeps one ongoing conversation, as before.
+   *
+   * `fields` is what to label a new thread with: the session's own values, or
+   * — when the session's thread was closed — the order it was about.
+   */
+  async sendTarget(
+    inbox: Inbox,
+    contactId: string,
+    claims: VisitorClaims,
+  ): Promise<{ conversationId?: string; forceNew?: boolean; fields?: Record<string, string> }> {
+    const attached = claims.conversationId ? await this.store.getConversation(claims.conversationId) : undefined;
+    const theirs = attached && attached.inboxId === inbox.id && attached.contact.id === contactId;
+    if (theirs && attached.status !== "closed") return { conversationId: attached.id };
+
+    const app = await this.appFor(inbox.id);
+    const key = app.threadFieldKey;
+    if (!key) return {};
+
+    let fields = claims.fields;
+    if (!fields && theirs) {
+      const was = (await this.store.customFieldValues(inbox.orgId, "conversation", [attached.id])).get(attached.id) ?? [];
+      const order = was.find((v) => v.key === key)?.value;
+      if (order) fields = { [key]: order };
+    }
+    const existing = await this.threadFor(inbox, contactId, app, fields ?? {}, claims.visitorId);
+    return existing ? { conversationId: existing, fields } : { forceNew: true, fields };
   }
 
   /* ---- attachment tickets ---- */

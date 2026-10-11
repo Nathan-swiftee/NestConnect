@@ -216,6 +216,12 @@ jobs:
       # time. Accepting any well-formed hash fails four of these.
       - name: App identity and thread resolution
         run: pnpm check:app-identity
+      # One chat per order, through the real endpoints: a message goes to the
+      # session's own conversation, never just the customer's latest open one.
+      # Without that, order B's first message joined order A's chat and then
+      # relabelled it as B, and general support shared the same thread.
+      - name: App threads per order
+        run: pnpm check:app-threads
       - name: Signed-in users on a website
         run: pnpm check:website-identity
       - name: Conversation list filter counts
