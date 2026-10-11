@@ -557,6 +557,9 @@ export class NestChatController {
       throw new BadRequestException("Nothing to send");
     }
 
+    // The session's own conversation (or, for a chat keyed per order, this
+    // order's) — never simply the customer's most recent open one.
+    const target = await this.nestchat.sendTarget(inbox, contact.id, claims);
     const result = await this.ingest.ingestNestChat({
       inbox,
       contact,
@@ -566,6 +569,8 @@ export class NestChatController {
       attachments,
       quotedMsgId: body.quotedMsgId,
       startedBy: visitorStamp(claims.visitorId),
+      conversationId: target.conversationId,
+      forceNew: target.forceNew,
     });
     // Blocked contact: accepted and dropped. Telling them they're blocked only
     // teaches them to come back with a fresh visitor id.
@@ -575,12 +580,16 @@ export class NestChatController {
     // there is a conversation to write them on. From the signed token rather
     // than this request, so the order a thread is filed under is the one the
     // app asked for and not one the client edited on the way.
-    if (claims.fields && Object.keys(claims.fields).length) {
+    // These now land on the thread they were for: the new one, or the open one
+    // for the same order. They used to land on whatever thread the message had
+    // joined, which is how order A's chat ended up labelled as order B.
+    const pending = target.fields ?? claims.fields;
+    if (pending && Object.keys(pending).length) {
       await this.store.setCustomFieldValues(
         inbox.orgId,
         "conversation",
         result.conversationId,
-        claims.fields,
+        pending,
       );
       await this.subjects.fieldsChanged(result.conversationId);
     }

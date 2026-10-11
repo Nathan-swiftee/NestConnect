@@ -27,6 +27,7 @@
     "check:organisations-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-organisations-pg.ts",
     "check:app-surface": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-surface.ts",
     "check:app-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-identity.ts",
+    "check:app-threads": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-threads.ts",
     "check:website-identity": "tsx --tsconfig apps/api/tsconfig.json tools/check-website-identity.ts",
     "check:conversation-counts": "tsx --tsconfig apps/api/tsconfig.json tools/check-conversation-counts.ts",
     "check:tenant-isolation": "tsx --tsconfig apps/api/tsconfig.json tools/check-release-tenant.ts && tsx --tsconfig apps/api/tsconfig.json tools/check-tenant-isolation.ts",

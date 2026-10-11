@@ -1836,6 +1836,7 @@ export class MemoryStore extends Store {
     assignedTeamId?: string | null;
     startedBy?: string;
     autoSubject?: boolean;
+    forceNew?: boolean;
   }): Promise<{ conversation: Conversation; created: boolean }> {
     // One live conversation per contact PER INBOX (channel endpoint): a different
     // inbox — another number, email address, or channel — starts a separate
@@ -1852,7 +1853,7 @@ export class MemoryStore extends Store {
     // wrote about. See email-threading.ts — and note this only decides what
     // happens when the mail carried no usable References chain, which the ingest
     // path has already tried.
-    const open = [...this.conversations]
+    const open = params.forceNew ? undefined : [...this.conversations]
       .sort(byRecencyDesc)
       .find(
         (c) =>
