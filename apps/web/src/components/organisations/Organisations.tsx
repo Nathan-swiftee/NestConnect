@@ -194,6 +194,7 @@ function Profile({ id, onBack, onOpen, onToast, onOpenContact }: {
   const [tab, setTab] = useState<Tab>("overview");
   const [editing, setEditing] = useState(false);
   const archive = useAccountMutation((archived: boolean) => api.archiveAccount(id, archived));
+  const remove = useAccountMutation(() => api.deleteAccount(id));
 
   if (detail.isLoading) return <div className="setpane setpane--wide"><div className="setempty">Loading…</div></div>;
   if (detail.isError || !detail.data) {
@@ -242,6 +243,18 @@ function Profile({ id, onBack, onOpen, onToast, onOpenContact }: {
               }}
             >
               {archived ? "Restore" : "Archive"}
+            </button>
+          )}
+          {isManager && (
+            <button
+              className="btn-ghost org-danger"
+              disabled={remove.isPending}
+              onClick={() => {
+                if (!window.confirm(`Delete ${a.name} for good? Its instructions, SOPs and their history, notes, resources and activity are deleted and can't be recovered. The people and their conversations stay. (Archive instead if you might need it again.)`)) return;
+                remove.mutate(undefined, { onSuccess: () => { onToast(`${a.name} deleted`); onBack(); }, onError: (e) => onToast((e as Error).message) });
+              }}
+            >
+              <TrashIcon /> Delete
             </button>
           )}
         </div>

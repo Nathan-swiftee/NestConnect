@@ -230,6 +230,18 @@ export class AccountsService {
     return this.toAccount(row);
   }
 
+  /**
+   * Delete for good. Managers and admins only, as with archiving — and unlike
+   * archiving there's no way back, so the UI asks first and suggests archiving.
+   * The people and their conversations are not touched.
+   */
+  async remove(userId: string, id: string): Promise<void> {
+    const { user } = await this.actor(userId);
+    this.requireManager(user, "delete an organisation");
+    await this.mustGet(id);
+    await this.accounts.remove(id);
+  }
+
   async activity(id: string): Promise<AccountActivity[]> {
     await this.mustGet(id);
     return this.accounts.listActivity(id, 200);

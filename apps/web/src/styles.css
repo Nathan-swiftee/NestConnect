@@ -3504,3 +3504,4 @@ button.tpl-row:active{transform:scale(.97)}
 /* The picker's search sits inside a form field: one box, not a box in a box. */
 .org-multipick .setsearch{margin-bottom:8px}
 .org-multipick .setsearch input{background:none;border:0;box-shadow:none;padding:0;min-height:0;flex:1;outline:none}
+.org-danger{color:var(--danger) !important}

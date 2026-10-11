@@ -199,6 +199,22 @@ async function main() {
     ok("not into an archived organisation", await refuses(svc.linkMany(AGENT, fresh.id, ["ct_acme"]), 400));
     await svc.setArchived(ADMIN, fresh.id, false);
 
+    console.log("\nDeleting one for good\n");
+    const doomed = await svc.create(AGENT, { name: "Short-lived Ltd", contactIds: ["ct_bloom"] });
+    await svc.createAlert(AGENT, doomed.id, { body: "Temporary", priority: "info" });
+    const doomedSop = await svc.createSop(AGENT, doomed.id, { title: "Old way", steps: [{ text: "x" }] });
+    await svc.updateSop(AGENT, doomed.id, doomedSop.id, { title: "Old way v2" });
+    await svc.createNote(AGENT, doomed.id, { title: "", body: "<p>note</p>", category: "General" });
+    await svc.setConversationAccount(AGENT, "conv_harbour", doomed.id).catch(() => undefined);
+    ok("an agent can't delete an organisation", await refuses(svc.remove(AGENT, doomed.id), 403));
+    await svc.remove(ADMIN, doomed.id);
+    ok("an admin can, and it's gone", await refuses(svc.detail(doomed.id), 404));
+    ok("from the directory too", !(await svc.list({ includeArchived: true })).some((a) => a.id === doomed.id));
+    ok("its people are still customers", !!(await store.getContact("ct_bloom")));
+    ok("and no longer list it", !(await svc.forContact("ct_bloom")).some((a) => a.account.id === doomed.id));
+    ok("a conversation that chose it no longer points at it", (await svc.conversationContext("conv_harbour")).selectedAccountId !== doomed.id);
+    ok("deleting it twice is a not-found", await refuses(svc.remove(ADMIN, doomed.id), 404));
+
     console.log("\nSearch\n");
     ok("by name", (await svc.list({ search: "magazines" })).some((a) => a.id === abc.id));
     ok("by reference", (await svc.list({ search: "SW-1042" })).some((a) => a.id === abc.id));
