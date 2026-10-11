@@ -18,13 +18,12 @@ import type { Contact, UpdateContactInput } from "@ding/schemas";
  * pulls in AsyncStorage, which needs a device.
  */
 export function contactPatch(
-  contact: Partial<Pick<Contact, "displayName" | "company" | "phone" | "email">>,
-  draft: { displayName: string; company: string; phone: string; email: string },
+  contact: Partial<Pick<Contact, "displayName" | "phone" | "email">>,
+  draft: { displayName: string; phone: string; email: string },
 ): UpdateContactInput {
   const patch: UpdateContactInput = {};
   const name = draft.displayName.trim();
   if (name && name !== contact.displayName) patch.displayName = name;
-  if (draft.company.trim() !== (contact.company ?? "")) patch.company = draft.company.trim();
   if (draft.phone.trim() !== (contact.phone ?? "")) patch.phone = draft.phone.trim();
   if (draft.email.trim() !== (contact.email ?? "")) patch.email = draft.email.trim();
   return patch;

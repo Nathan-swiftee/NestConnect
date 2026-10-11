@@ -136,6 +136,18 @@ async function main(): Promise<void> {
       const file = (await svc.detail(a.account.id)).resources[0];
       ok("a document carries its file's name", file?.fileName === "a.csv" && file.sopId === a.sop.id);
 
+      // The organisation replaces the old free-text Company field: it's what a
+      // contact shows as their company, and what the inbox search finds.
+      ok("a contact's company is their organisation", (await store.getContact(a.contact.id))?.company === "A Magazines Ltd");
+      const found = await store.searchConversations("A Magazines");
+      ok("searching the inbox by organisation finds their conversation", found.items.some((c) => c.id === a.conversation.id), `${found.items.length} found`);
+      const imported = await store.upsertContactByIdentity({ orgId: A, kind: "email", value: "imp@a.example", displayName: "a Imported" });
+      await svc.linkByName(a.user.id, imported.id, "A Magazines Limited");
+      await svc.linkByName(a.user.id, imported.id, "Brand New Co");
+      const theirs = (await svc.forContact(imported.id)).map((x) => x.account.name).sort();
+      ok("an import's Company joins the existing organisation, or makes a new one", theirs.join() === ["A Magazines Ltd", "Brand New Co"].join(), theirs.join());
+      await store.deleteContact(imported.id); // keep the counts below about Sarah
+
       // Merge: a second contact for the same person, linked elsewhere, folded in.
       const other = await svc.create(a.user.id, { name: "A Other Ltd" });
       const dupe = await store.upsertContactByIdentity({ orgId: A, kind: "email", value: "sarah@a.example", displayName: "a Sarah (email)" });

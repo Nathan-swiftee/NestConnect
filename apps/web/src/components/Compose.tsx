@@ -208,7 +208,7 @@ export function Compose({
               <>
                 <div className="compose__search">
                   <SearchIcon />
-                  <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers by name, company, email or phone…" aria-label="Search customers" />
+                  <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers by name, organisation, email or phone…" aria-label="Search customers" />
                 </div>
                 <div className="compose__list" ref={listRef} {...listHover}>
                   <span className="glide" ref={glideRef} aria-hidden="true" />

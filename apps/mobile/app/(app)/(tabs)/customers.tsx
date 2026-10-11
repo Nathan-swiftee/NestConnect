@@ -59,7 +59,7 @@ export default function Customers() {
           <TextInput
             value={query}
             onChangeText={setQuery}
-            placeholder="Search name, company, phone or email"
+            placeholder="Search name, organisation, phone or email"
             placeholderTextColor={c.textFaint}
             autoCapitalize="none"
             autoCorrect={false}

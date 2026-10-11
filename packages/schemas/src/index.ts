@@ -1022,7 +1022,7 @@ export type Template = z.infer<typeof templateSchema>;
 export const TEMPLATE_TOKENS = [
   { token: "contact.name", label: "Customer name", sample: "Marta Kowalska" },
   { token: "contact.first_name", label: "Customer first name", sample: "Marta" },
-  { token: "contact.company", label: "Customer company", sample: "Northside Logistics" },
+  { token: "contact.company", label: "Customer's organisation", sample: "Northside Logistics" },
   { token: "contact.phone", label: "Customer phone", sample: "+44 7700 900123" },
   { token: "contact.email", label: "Customer email", sample: "marta@example.com" },
   { token: "agent.name", label: "Your name", sample: "Nathan A" },

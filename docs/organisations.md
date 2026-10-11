@@ -75,6 +75,23 @@ which organisation to show:
 Only **active** SOPs are presented as how things are done. Drafts and archived
 SOPs appear on the profile, clearly labelled, and never in the inbox.
 
+## The old Company field
+
+Organisations replace the free-text **Company** field on contacts.
+
+- **Editing:** it's gone from the customer forms, on the web and in the app.
+- **Showing:** wherever a contact's company used to appear, their
+  organisation's name appears instead. That covers the customer list, the
+  inbox side panel, compose and the app. It is their primary organisation,
+  otherwise the first; archived ones don't count.
+- **Template variable:** `{{contact.company}}` reads the organisation name.
+- **Inbox search:** finds conversations by organisation name.
+- **Import:** a *Company* column in a customer import puts each person in that
+  organisation. An existing one is matched by name; otherwise a new one is
+  created.
+- **Old values:** the column is still in the database, so nothing written there
+  is lost. It just isn't shown.
+
 ## Multi-business
 
 Every organisation belongs to exactly one workspace, and businesses (Swiftee,

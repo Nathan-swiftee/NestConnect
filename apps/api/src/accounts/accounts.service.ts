@@ -318,6 +318,23 @@ export class AccountsService {
     await this.accounts.logActivity(accountId, actor, "contact.unlinked", `Removed ${contact?.displayName ?? "a contact"} from the organisation`);
   }
 
+  /**
+   * Put a contact in the organisation with this name, creating it if there's
+   * none — how a "Company" column in a customer import lands now that
+   * organisations replace the free-text field. An organisation that exists
+   * but is archived is left alone (and so is the contact).
+   */
+  async linkByName(userId: string, contactId: string, name: string): Promise<void> {
+    const clean = name.trim().slice(0, 160);
+    if (!clean) return;
+    const nameKey = accountNameKey(clean) || clean.toLowerCase();
+    const same = (await this.accounts.findSimilar(nameKey, null)).filter((a) => a.nameKey === nameKey);
+    if (same.some((a) => a.archivedAt) && !same.some((a) => !a.archivedAt)) return;
+    const accountId = same.find((a) => !a.archivedAt)?.id ?? (await this.create(userId, { name: clean })).id;
+    if ((await this.accounts.linksForContact(contactId)).some((l) => l.accountId === accountId)) return;
+    await this.link(userId, accountId, { contactId });
+  }
+
   /** A contact's organisations (archived ones left out). */
   async forContact(contactId: string): Promise<ContactAccount[]> {
     if (!(await this.store.getContact(contactId))) throw new NotFoundException("Contact not found");

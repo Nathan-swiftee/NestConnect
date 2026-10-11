@@ -112,8 +112,24 @@ import {
   type WebhookDiagnostic,
 } from "./store";
 
+/**
+ * A contact as every read loads it: their identities, and the organisation
+ * they're shown under (their primary one, else the first; archived ones don't
+ * count). That organisation's name is what `contact.company` means now — the
+ * old free-text Company field is no longer read.
+ */
+const CONTACT_INCLUDE = {
+  identities: true,
+  accountLinks: {
+    where: { account: { archivedAt: null } },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    take: 1,
+    select: { account: { select: { name: true } } },
+  },
+} satisfies Prisma.ContactInclude;
+
 const convInclude = {
-  contact: { include: { identities: true } },
+  contact: { include: CONTACT_INCLUDE },
   labels: { include: { label: true } },
   // The assignee's name, so the summary can show the real owner (not just "You").
   assignee: { select: { name: true } },
@@ -1220,7 +1236,7 @@ export class PrismaStore extends Store {
         { subject: { contains: q, mode: "insensitive" } },
         { preview: { contains: q, mode: "insensitive" } },
         { contact: { displayName: { contains: q, mode: "insensitive" } } },
-        { contact: { company: { contains: q, mode: "insensitive" } } },
+        { contact: { accountLinks: { some: { account: { name: { contains: q, mode: "insensitive" } } } } } },
         { messages: { some: { body: { contains: q, mode: "insensitive" } } } },
         ...(convIds.length ? [{ id: { in: convIds } }] : []),
         ...(contactIds.length ? [{ contactId: { in: contactIds } }] : []),
@@ -1344,7 +1360,7 @@ export class PrismaStore extends Store {
       where: { id },
       include: {
         ...convInclude,
-        participants: { include: { contact: { include: { identities: true } } } },
+        participants: { include: { contact: { include: CONTACT_INCLUDE } } },
       },
     });
     if (!row) return undefined;
@@ -2181,7 +2197,7 @@ export class PrismaStore extends Store {
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
     const idents = await this.prisma.contactIdentity.findMany({
       where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },
-      include: { contact: { include: { identities: true } } },
+      include: { contact: { include: CONTACT_INCLUDE } },
     });
     if (idents.length) {
       const byId = new Map<string, (typeof idents)[number]["contact"]>();
@@ -2207,7 +2223,7 @@ export class PrismaStore extends Store {
             create: [{ orgId: params.orgId, kind: params.kind, value: params.value, normalizedValue: normalized }],
           },
         },
-        include: { identities: true },
+        include: CONTACT_INCLUDE,
       });
       return mapContact(contact);
     } catch (err) {
@@ -2217,7 +2233,7 @@ export class PrismaStore extends Store {
       // [orgId,kind,value] unique) — re-fetch and return the contact that won.
       const raced = await this.prisma.contactIdentity.findFirst({
         where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },
-        include: { contact: { include: { identities: true } } },
+        include: { contact: { include: CONTACT_INCLUDE } },
       });
       if (raced) return mapContact(raced.contact);
       // One more look, on the exact row the unique index is over. The lookup
@@ -2226,7 +2242,7 @@ export class PrismaStore extends Store {
       // the re-fetch misses and a working contact is reported as a failure.
       const exact = await this.prisma.contactIdentity.findFirst({
         where: { kind: params.kind, value: params.value },
-        include: { contact: { include: { identities: true } } },
+        include: { contact: { include: CONTACT_INCLUDE } },
       });
       if (exact) return mapContact(exact.contact);
       // The original cause, not a sentence replacing it. Swallowing it is what
@@ -2919,7 +2935,7 @@ export class PrismaStore extends Store {
     const normalized = normalizeIdentity(params.kind, params.value)?.normalized ?? params.value;
     const ident = await this.prisma.contactIdentity.findFirst({
       where: { orgId: params.orgId, kind: { in: matchKinds }, normalizedValue: normalized },
-      include: { contact: { include: { identities: true } } },
+      include: { contact: { include: CONTACT_INCLUDE } },
     });
     return ident ? mapContact(ident.contact) : undefined;
   }
@@ -2945,7 +2961,7 @@ export class PrismaStore extends Store {
     if (or.length) {
       const hit = await this.prisma.contactIdentity.findFirst({
         where: { orgId: params.orgId, OR: or },
-        include: { contact: { include: { identities: true } } },
+        include: { contact: { include: CONTACT_INCLUDE } },
       });
       if (hit) return { contact: mapContact(hit.contact), created: false };
     }
@@ -2966,7 +2982,7 @@ export class PrismaStore extends Store {
     await this.setIdentity(created.id, params.orgId, ["email"], "email", params.email);
     const full = await this.prisma.contact.findUnique({
       where: { id: created.id },
-      include: { identities: true },
+      include: CONTACT_INCLUDE,
     });
     return { contact: mapContact(full!), created: true };
   }
@@ -3287,7 +3303,7 @@ export class PrismaStore extends Store {
   async listContacts(): Promise<Contact[]> {
     const rows = await this.prisma.contact.findMany({
       where: { orgId: currentOrgId() },
-      include: { identities: true },
+      include: CONTACT_INCLUDE,
     });
     return rows.map(mapContact).sort((a, b) => a.displayName.localeCompare(b.displayName));
   }
@@ -3300,9 +3316,9 @@ export class PrismaStore extends Store {
     const loserIds = [...new Set(params.loserIds)].filter((id) => id !== params.winnerId);
     if (loserIds.length) {
       await this.prisma.$transaction(async (tx) => {
-        const winner = await tx.contact.findUnique({ where: { id: params.winnerId }, include: { identities: true } });
+        const winner = await tx.contact.findUnique({ where: { id: params.winnerId }, include: CONTACT_INCLUDE });
         if (!winner) throw new Error("Winner contact not found");
-        const losers = await tx.contact.findMany({ where: { id: { in: loserIds } }, include: { identities: true } });
+        const losers = await tx.contact.findMany({ where: { id: { in: loserIds } }, include: CONTACT_INCLUDE });
         for (const l of losers) {
           if (l.orgId !== winner.orgId) throw new Error("Cannot merge contacts across organisations");
         }
@@ -3368,18 +3384,18 @@ export class PrismaStore extends Store {
         await tx.contact.deleteMany({ where: { id: { in: loserIds } } });
       });
     }
-    const merged = await this.prisma.contact.findUnique({ where: { id: params.winnerId }, include: { identities: true } });
+    const merged = await this.prisma.contact.findUnique({ where: { id: params.winnerId }, include: CONTACT_INCLUDE });
     if (!merged) throw new Error("Winner contact not found");
     return mapContact(merged);
   }
 
   async getContact(id: string): Promise<Contact | undefined> {
-    const row = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
+    const row = await this.prisma.contact.findUnique({ where: { id }, include: CONTACT_INCLUDE });
     return row ? mapContact(row) : undefined;
   }
 
   async getContactWithConversations(id: string): Promise<ContactWithConversations | undefined> {
-    const contact = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
+    const contact = await this.prisma.contact.findUnique({ where: { id }, include: CONTACT_INCLUDE });
     if (!contact) return undefined;
     const convs = await this.prisma.conversation.findMany({
       where: { contactId: id },
@@ -3414,7 +3430,7 @@ export class PrismaStore extends Store {
     if (Object.keys(data).length) await this.prisma.contact.update({ where: { id }, data });
     await this.setIdentity(id, existing.orgId, ["phone", "wa_id"], "phone", params.phone);
     await this.setIdentity(id, existing.orgId, ["email"], "email", params.email);
-    const full = await this.prisma.contact.findUnique({ where: { id }, include: { identities: true } });
+    const full = await this.prisma.contact.findUnique({ where: { id }, include: CONTACT_INCLUDE });
     return full ? mapContact(full) : undefined;
   }
 
@@ -3479,7 +3495,7 @@ export class PrismaStore extends Store {
   async listParticipants(conversationId: string): Promise<Participant[]> {
     const rows = await this.prisma.participant.findMany({
       where: { conversationId },
-      include: { contact: { include: { identities: true } } },
+      include: { contact: { include: CONTACT_INCLUDE } },
       orderBy: { joinedAt: "asc" },
     });
     return rows.map(mapParticipant);
@@ -3492,12 +3508,12 @@ export class PrismaStore extends Store {
   async addParticipant(conversationId: string, contact: Contact, role: ParticipantRole = "member"): Promise<Participant> {
     const existing = await this.prisma.participant.findUnique({
       where: { conversationId_contactId: { conversationId, contactId: contact.id } },
-      include: { contact: { include: { identities: true } } },
+      include: { contact: { include: CONTACT_INCLUDE } },
     });
     if (existing) return mapParticipant(existing);
     const row = await this.prisma.participant.create({
       data: { conversationId, contactId: contact.id, role },
-      include: { contact: { include: { identities: true } } },
+      include: { contact: { include: CONTACT_INCLUDE } },
     });
     return mapParticipant(row);
   }
