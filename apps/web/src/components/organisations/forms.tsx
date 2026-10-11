@@ -37,7 +37,7 @@ function Modal({ title, onClose, children, foot, wide, onSubmit }: {
   // through React — would save that one too.
   return createPortal(
     <div className="modal" onClick={onClose}>
-      <form className={"modal__box modal--form" + (wide ? " org-modal--wide" : "")} onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); onSubmit?.(e); }}>
+      <form className={"modal__box modal--form org-form" + (wide ? " org-modal--wide" : "")} onClick={(e) => e.stopPropagation()} onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); onSubmit?.(e); }}>
         <div className="modal__head">
           <h2>{title}</h2>
           <button type="button" className="modal__x" onClick={onClose} aria-label="Close"><XIcon /></button>

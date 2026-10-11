@@ -3489,3 +3489,10 @@ button.tpl-row:active{transform:scale(.97)}
 .field .org-addorg{align-self:flex-start;margin-top:4px;display:inline-flex;align-items:center;gap:6px;width:auto;height:auto;min-height:0;padding:6px 12px;font-size:var(--fs-sm)}
 .field .org-addorg svg{width:14px;height:14px}
 .field .org-iconbtn svg,.field .org-picker svg{width:15px;height:15px}
+
+/* Buttons with an icon, anywhere in Organisations. The app sizes button icons
+   per container (a pane header does it for its own), so a button outside one
+   drew its icon at full size. */
+:is(.org-profile,.org-psec,.org-picker,.org-form,.org-sopmodal,.setzero,.org-contactorgs) :is(.btn-primary,.btn-ghost){display:inline-flex;align-items:center;justify-content:center;gap:6px}
+:is(.org-profile,.org-psec,.org-picker,.org-form,.org-sopmodal,.setzero,.org-contactorgs) :is(.btn-primary,.btn-ghost) svg{width:15px;height:15px;flex:none}
+.org-person__acts .btn-ghost{white-space:nowrap}
