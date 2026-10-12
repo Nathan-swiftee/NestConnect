@@ -20,7 +20,7 @@
     },
     "ios": {
       "bundleIdentifier": "co.uk.swiftee.nestconnect",
-      "supportsTablet": true,
+      "supportsTablet": false,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": [
