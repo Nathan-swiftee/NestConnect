@@ -53,13 +53,16 @@ export function macroFitsTeams(macro: { teamIds: string[] }, teamIds: string[]):
   return macro.teamIds.length === 0 || macro.teamIds.some((t) => teamIds.includes(t));
 }
 
+/** "Macro 2" before "Macro 10", and case doesn't matter. */
+const byName = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+
 /**
  * The macros matching what's typed after "/" (or into the picker's search):
  * shortcut matches first, exact before prefix, then names, then the text.
  */
 export function searchMacros<T extends { name: string; shortcut: string | null; body: string }>(macros: T[], query: string): T[] {
   const q = query.trim().toLowerCase().replace(/^\/+/, "");
-  if (!q) return [...macros].sort((a, b) => a.name.localeCompare(b.name));
+  if (!q) return [...macros].sort((a, b) => byName(a.name, b.name));
   const rank = (m: T): number => {
     const sc = m.shortcut ?? "";
     if (sc === q) return 0;
@@ -72,7 +75,7 @@ export function searchMacros<T extends { name: string; shortcut: string | null; 
   return macros
     .map((m) => ({ m, r: rank(m) }))
     .filter((x) => x.r < 9)
-    .sort((a, b) => a.r - b.r || a.m.name.localeCompare(b.m.name))
+    .sort((a, b) => a.r - b.r || byName(a.m.name, b.m.name))
     .map((x) => x.m);
 }
 

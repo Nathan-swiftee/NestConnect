@@ -46,6 +46,10 @@ describe("finding one", () => {
   it("searches the text last", () => {
     expect(searchMacros(all, "price").map((x) => x.name)).toEqual(["Pricing"]);
   });
+  it("numbers in names sort as numbers", () => {
+    const numbered = [m("Macro 10", null, "x"), m("macro 2", null, "x"), m("Macro 1", null, "x")];
+    expect(searchMacros(numbered, "").map((x) => x.name)).toEqual(["Macro 1", "macro 2", "Macro 10"]);
+  });
   it("finds nothing for nonsense", () => {
     expect(searchMacros(all, "qqq")).toEqual([]);
   });
