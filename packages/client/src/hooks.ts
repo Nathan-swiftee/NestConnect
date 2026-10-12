@@ -1240,6 +1240,36 @@ export function useRunEmailCutover() {
   });
 }
 
+/* ---- Macros ---- */
+
+/** Every macro in the workspace (Settings › Macros). */
+export function useMacros() {
+  return useQuery({ queryKey: ["macros"], queryFn: () => api.macros(), staleTime: 30_000 });
+}
+
+/** The macros this conversation's composer offers (its team inbox's, plus every team's). */
+export function useConversationMacros(conversationId: string | null | undefined, teamId?: string | null) {
+  return useQuery({
+    // The team is in the key so reassigning the chat swaps the list at once.
+    queryKey: ["conversation-macros", conversationId, teamId ?? null],
+    queryFn: () => api.conversationMacros(conversationId!),
+    enabled: !!conversationId,
+    staleTime: 30_000,
+  });
+}
+
+/** Any change to a macro refreshes both lists. */
+export function useMacroMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["macros"] });
+      qc.invalidateQueries({ queryKey: ["conversation-macros"] });
+    },
+  });
+}
+
 /* ---- Organisations (customer accounts) ---- */
 
 export function useAccounts(q: { search?: string; status?: AccountStatus; archived?: boolean } = {}) {

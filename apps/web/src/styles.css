@@ -3505,3 +3505,30 @@ button.tpl-row:active{transform:scale(.97)}
 .org-multipick .setsearch{margin-bottom:8px}
 .org-multipick .setsearch input{background:none;border:0;box-shadow:none;padding:0;min-height:0;flex:1;outline:none}
 .org-danger{color:var(--danger) !important}
+
+/* ─── Macros (Settings › Macros + the composer's "/" menu) ─── */
+.dtable--macro{--dtable-min:640px}
+.dtable--macro .dtable__head,.dtable--macro .dtable__row{grid-template-columns:minmax(160px,1.2fr) minmax(120px,1fr) minmax(180px,2fr) 112px}
+@media (max-width:820px){.dtable--macro .dtable__row > .dacts{justify-content:flex-start;gap:var(--sp-2)}}
+.macro-sc{margin-left:var(--sp-2);font-size:var(--fs-2xs);font-weight:600;color:var(--brand-strong);background:var(--brand-tint);
+  padding:2px var(--sp-2);border-radius:var(--r-full);vertical-align:middle;white-space:nowrap}
+.macro-teamfilter{flex:none;width:220px;margin:0}
+.macro-teamfilter select{text-transform:none;letter-spacing:normal;font-size:var(--fs-sm)}
+@media (max-width:820px){.setbar:has(.macro-teamfilter){flex-wrap:wrap}.macro-teamfilter{width:100%}}
+.macro-scfield{display:flex;align-items:center;gap:2px}
+.macro-scfield > span{font-weight:600;color:var(--text-faint)}
+.macro-scfield input{flex:1;min-width:0}
+.macro-tokens{display:flex;flex-wrap:wrap;gap:6px;margin:-4px 0 14px}
+.macro-preview{margin-bottom:14px;padding:10px 12px;border-radius:var(--r-8);background:var(--surface-2)}
+.macro-preview span{font-size:var(--fs-2xs);font-weight:600;letter-spacing:var(--ls-caps);text-transform:uppercase;color:var(--text-faint)}
+.macro-preview p{margin:4px 0 0;font-size:var(--fs-sm);white-space:pre-wrap;line-height:1.45}
+.macro-err{margin:10px 0 0;font-size:var(--fs-sm);color:var(--danger)}
+/* The composer's picker: one row per macro, its name over the first line of text. */
+.macropop .mentionpop__row{align-items:flex-start}
+.macropop__sc{flex:none;font-size:var(--fs-xs);font-weight:600;color:var(--brand-strong);min-width:0;max-width:40%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-top:1px}
+.macropop__search{display:flex;align-items:center;gap:var(--sp-2);padding:4px 8px 6px;color:var(--text-faint)}
+.macropop__search svg{width:15px;height:15px;flex:none}
+.macropop__search input{flex:1;min-width:0;background:transparent;border:0;outline:none;font-size:var(--fs-sm);color:var(--text)}
+.macropop__empty{padding:10px 8px;font-size:var(--fs-sm);color:var(--text-faint)}
+.macropop .mentionpop__meta{flex:1}

@@ -127,6 +127,7 @@ export const ImageIcon = glyph(icons.image);
 /** Four-point sparkle — AI assist (the composer's Polish action). */
 export const SparkleIcon = glyph(icons.sparkle);
 export const BoltIcon = glyph(icons.bolt);
+export const MacroIcon = glyph(icons.macro);
 export const EditIcon = glyph(icons.edit);
 export const TrashIcon = glyph(icons.trash);
 export const DocIcon = glyph(icons.doc);

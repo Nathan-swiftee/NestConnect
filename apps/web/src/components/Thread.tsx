@@ -5,9 +5,9 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import type { Message, Attachment, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
-import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, replyTargetsFor, sendingInbox, templatesForWaba, typingPingMs } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence } from "../hooks";
+import type { Message, Attachment, Macro, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
+import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, macroQueryAt, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, templatesForWaba, typingPingMs } from "@ding/schemas";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence, useConversationMacros } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
@@ -59,6 +59,7 @@ import {
   RefreshIcon,
   EditIcon,
   SearchIcon,
+  MacroIcon,
 } from "../lib/icons";
 
 interface Props {
@@ -1538,6 +1539,43 @@ function StagedChip({
   );
 }
 
+/** One macro in the composer's list: its shortcut, name and opening words. */
+function MacroRow({
+  macro,
+  fill,
+  selected,
+  onHover,
+  onPick,
+}: {
+  macro: Macro;
+  fill: TemplateFillContext;
+  selected: boolean;
+  onHover: () => void;
+  onPick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="option"
+      aria-selected={selected}
+      className={"mentionpop__row" + (selected ? " sel" : "")}
+      onMouseEnter={onHover}
+      // Keep focus in the reply box so the caret lands after the text.
+      onMouseDown={(e) => {
+        e.preventDefault();
+        onPick();
+      }}
+    >
+      <span className="mentionpop__meta">
+        <b>{macro.name}</b>
+        {/* As it will read in this chat, not as written in settings. */}
+        <small>{resolveTemplateDefault(macro.body, fill).replace(/\s+/g, " ")}</small>
+      </span>
+      {macro.shortcut && <span className="macropop__sc">/{macro.shortcut}</span>}
+    </button>
+  );
+}
+
 export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed, active = true }: Props) {
   const { data: conv } = useConversation(conversationId);
   const { loadOlder, loading: loadingOlder } = useLoadOlderMessages(conversationId);
@@ -1558,6 +1596,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // while the conversation loads: a hook below those returns runs on some
   // renders and not others, which is React error #310 and a blank screen.
   const { data: inboxes } = useInboxes();
+  // Saved replies this conversation's team inbox offers (the server decides
+  // which). Up here for the same early-return reason as the inboxes above.
+  const { data: macros } = useConversationMacros(conversationId, conv?.assignedTeamId);
 
   const [text, setText] = useState("");
   // The message being quoted in a reply (shown as a cue above the composer), and
@@ -1606,6 +1647,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // (with the '@' index in `text`), and the highlighted candidate.
   const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   const [mentionSel, setMentionSel] = useState(0);
+  // Macros: the "/shortcut" being typed in a reply (same shape as a mention),
+  // its highlighted row, and the picker the Macros button opens.
+  const [slash, setSlash] = useState<{ query: string; start: number } | null>(null);
+  const [slashSel, setSlashSel] = useState(0);
+  const [macroOpen, setMacroOpen] = useState(false);
+  const [macroQ, setMacroQ] = useState("");
+  const [macroSel, setMacroSel] = useState(0);
   // The channel the composer is currently replying on. null → follow the
   // conversation's own channel; set (via the channel switcher) to reply on
   // another channel the customer is reachable on, within this one open thread.
@@ -1914,6 +1962,23 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       window.removeEventListener("keydown", onKey);
     };
   }, [emojiOpen]);
+
+  // The Macros picker closes the same way.
+  useEffect(() => {
+    if (!macroOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest(".macropop") && !t.closest(".tool--macro")) setMacroOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [macroOpen]);
+
+  // A half-typed "/shortcut" or an open picker doesn't follow you to another chat.
+  useEffect(() => {
+    setSlash(null);
+    setMacroOpen(false);
+  }, [conversationId]);
 
   // Dismiss an open reaction row / actions menu on outside click or Esc.
   useEffect(() => {
@@ -2466,6 +2531,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     } else {
       setMention(null);
     }
+    // "/" in a reply looks up a macro. Not in notes — a note isn't sent to anyone.
+    const sq = !internal && macros?.length ? macroQueryAt(value, caret) : null;
+    setSlash(sq);
+    if (sq) setSlashSel(0);
   };
 
   // Replace the open "@query" with the teammate's handle (@email-local-part —
@@ -2484,6 +2553,42 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         ta.focus();
         ta.setSelectionRange(caret, caret);
       }
+    });
+  };
+
+  // ─── Macros ───
+  // What "/query" matches, best first; empty while no "/" is being typed.
+  const slashList = slash ? searchMacros(macros ?? [], slash.query).slice(0, 6) : [];
+  const macroList = macroOpen ? searchMacros(macros ?? [], macroQ) : [];
+
+  /**
+   * Put a macro in the reply box, its placeholders filled for this chat. From
+   * "/", it replaces what was typed; from the picker it lands at the caret. It
+   * is only a draft: the agent edits it and presses Send as usual — and on a
+   * closed WhatsApp window that send goes out through the default template.
+   */
+  const insertMacro = (m: Macro) => {
+    const filled = resolveTemplateDefault(m.body, templateFill);
+    setSlash(null);
+    setMacroOpen(false);
+    setMacroQ("");
+    if (isRich && editor) {
+      // One paragraph goes in where the caret is; several become paragraphs.
+      const content = /\n{2,}/.test(filled) ? textToHtml(filled) : escapeHtml(filled).replace(/\n/g, "<br>");
+      editor.chain().focus().insertContent(content).run();
+      return;
+    }
+    const ta = taRef.current;
+    const from = slash ? slash.start : (ta?.selectionStart ?? text.length);
+    const to = slash ? slash.start + 1 + slash.query.length : (ta?.selectionEnd ?? text.length);
+    const next = text.slice(0, from) + filled + text.slice(to);
+    setText(next);
+    signalTyping();
+    const caret = from + filled.length;
+    requestAnimationFrame(() => {
+      if (!ta) return;
+      ta.focus();
+      ta.setSelectionRange(caret, caret);
     });
   };
 
@@ -2541,6 +2646,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     clearStaged();
     setInternal(false);
     setMention(null);
+    setSlash(null);
     setReplyTo(null);
     setCc("");
     setBcc("");
@@ -3611,6 +3717,65 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   ))}
                 </div>
               )}
+              {!internal && slash && slashList.length > 0 && (
+                <div className="mentionpop macropop" role="listbox" aria-label="Macros">
+                  {slashList.map((m, i) => (
+                    <MacroRow
+                      key={m.id}
+                      macro={m}
+                      fill={templateFill}
+                      selected={i === slashSel}
+                      onHover={() => setSlashSel(i)}
+                      onPick={() => insertMacro(m)}
+                    />
+                  ))}
+                </div>
+              )}
+              {macroOpen && (
+                <div className="mentionpop macropop" role="dialog" aria-label="Macros">
+                  <div className="macropop__search">
+                    <SearchIcon />
+                    <input
+                      autoFocus
+                      value={macroQ}
+                      placeholder="Search macros…"
+                      aria-label="Search macros"
+                      onChange={(e) => {
+                        setMacroQ(e.target.value);
+                        setMacroSel(0);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "ArrowDown" && macroList.length) {
+                          e.preventDefault();
+                          setMacroSel((i) => (i + 1) % macroList.length);
+                        } else if (e.key === "ArrowUp" && macroList.length) {
+                          e.preventDefault();
+                          setMacroSel((i) => (i - 1 + macroList.length) % macroList.length);
+                        } else if (e.key === "Enter") {
+                          e.preventDefault();
+                          if (macroList[macroSel]) insertMacro(macroList[macroSel]);
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setMacroOpen(false);
+                        }
+                      }}
+                    />
+                  </div>
+                  <div role="listbox" aria-label="Macros">
+                    {macroList.map((m, i) => (
+                      <MacroRow
+                        key={m.id}
+                        macro={m}
+                      fill={templateFill}
+                        selected={i === macroSel}
+                        onHover={() => setMacroSel(i)}
+                        onPick={() => insertMacro(m)}
+                      />
+                    ))}
+                  </div>
+                  {macroList.length === 0 && <div className="macropop__empty">No macro matches “{macroQ}”.</div>}
+                </div>
+              )}
               <button
                 type="button"
                 className={"tool tool--emoji" + (emojiOpen ? " on" : "")}
@@ -3643,6 +3808,29 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   onBlur={stopTyping}
                   onPaste={onTextareaPaste}
                   onKeyDown={(e) => {
+                    // Same for the "/" macro list.
+                    if (!internal && slash && slashList.length > 0) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        setSlashSel((i) => (i + 1) % slashList.length);
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        setSlashSel((i) => (i - 1 + slashList.length) % slashList.length);
+                        return;
+                      }
+                      if (e.key === "Enter" || e.key === "Tab") {
+                        e.preventDefault();
+                        insertMacro(slashList[slashSel] ?? slashList[0]);
+                        return;
+                      }
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setSlash(null);
+                        return;
+                      }
+                    }
                     // While the @-mention picker is open, the arrow/enter/tab keys
                     // drive it instead of the textarea (or sending).
                     if (mention && mentionList.length > 0) {
@@ -3673,7 +3861,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                     }
                   }}
                   placeholder={
-                    internal ? "Write an internal note… use @name to mention" : `Message ${conv.contact.displayName}…`
+                    internal
+                      ? "Write an internal note… use @name to mention"
+                      : `Message ${conv.contact.displayName}…`
                   }
                 />
               )}
@@ -3685,6 +3875,25 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 accept="image/*,video/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
                 onChange={onFileInputChange}
               />
+              {/* Every channel, email included — a macro is just text. Shown
+                  only when this chat's team inbox has some. */}
+              {!internal && (macros?.length ?? 0) > 0 && (
+                <button
+                  type="button"
+                  className={"tool tool--macro" + (macroOpen ? " on" : "")}
+                  title="Insert a macro — or type / in the message"
+                  aria-label="Macros"
+                  aria-expanded={macroOpen}
+                  onClick={() => {
+                    setMacroOpen((v) => !v);
+                    setMacroQ("");
+                    setMacroSel(0);
+                    setSlash(null);
+                  }}
+                >
+                  <MacroIcon />
+                </button>
+              )}
               {isWhatsApp && !internal && (
                 <button
                   className="tool"

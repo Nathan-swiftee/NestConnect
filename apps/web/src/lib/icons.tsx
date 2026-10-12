@@ -106,6 +106,9 @@ export const ImageIcon = g(icons.image);
 /** Four-point sparkle — AI assist (the composer's Polish action). */
 export const SparkleIcon = g(icons.sparkle);
 export const BoltIcon = g(icons.bolt);
+/** Saved reply ("/shortcut") — the composer's Macros button. */
+export const MacroIcon = g(icons.macro);
+export const CopyIcon = g(icons.copy);
 export const ComposeIcon = g(icons.compose);
 export const EditIcon = g(icons.edit);
 export const TrashIcon = g(icons.trash);

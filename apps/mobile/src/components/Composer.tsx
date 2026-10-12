@@ -2,10 +2,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { enter, exit, reflow } from "../motion";
-import type { ChannelType, ConversationWithMessages, Message, TemplateFillContext } from "@ding/schemas";
-import { autoTemplateParams, autoTemplateSlot, inboxLabel, replyTargetsFor, sendingInbox, typingPingMs } from "@ding/schemas";
+import type { ChannelType, ConversationWithMessages, Macro, Message, TemplateFillContext } from "@ding/schemas";
+import {
+  autoTemplateParams,
+  autoTemplateSlot,
+  inboxLabel,
+  macroQueryAt,
+  replyTargetsFor,
+  resolveTemplateDefault,
+  searchMacros,
+  sendingInbox,
+  typingPingMs,
+} from "@ding/schemas";
 import {
   api,
+  useConversationMacros,
   useIntegrations,
   useInboxes,
   useMe,
@@ -21,6 +32,7 @@ import { Avatar } from "./Avatar";
 import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
 import { TemplateSheet } from "./TemplateSheet";
+import { MacroSheet } from "./MacroSheet";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { HoldMic, HoldOverlay, useHoldToRecord } from "./HoldToRecord";
 import { useVoiceRecording, type RecordedVoice } from "../voice";
@@ -30,6 +42,7 @@ import { haptics } from "../haptics";
 import {
   AttachIcon,
   BoltIcon,
+  MacroIcon,
   ClockIcon,
   EditIcon,
   EmojiIcon,
@@ -208,6 +221,12 @@ export function Composer({
    *  Left uncontrolled the rest of the time — a permanently controlled
    *  `selection` fights the Android keyboard's own cursor handling. */
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>(undefined);
+  // ─── Macros (saved replies) ───
+  // This chat's team inbox's macros plus every team's — the server decides.
+  const { data: macros } = useConversationMacros(conv.id, conv.assignedTeamId);
+  /** The "/shortcut" being typed in a reply, and where its "/" sits. */
+  const [slash, setSlash] = useState<{ query: string; start: number } | null>(null);
+  const [macroSheet, setMacroSheet] = useState(false);
 
   // Which channels this customer is reachable on inside this thread — shared
   // with the web so the phone and the desktop can't drift apart on it.
@@ -276,6 +295,7 @@ export function Composer({
     contactPhone: conv.contact.phone,
     contactEmail: conv.contact.email,
     agentName: me?.user.name,
+    channelName: inboxes.data?.find((i) => i.id === conv.inboxId)?.name,
   };
   const templateFallback = windowClosed && !internal && !!defaultTemplate;
   const locked = windowClosed && !internal && !defaultTemplate;
@@ -299,6 +319,7 @@ export function Composer({
     setEmojiOpen(false);
     setPrePolish(null);
     setMention(null);
+    setSlash(null);
     setEditingSubject(false);
     // The email fields, resolved once so the send and the offline queue agree.
     const email = emailFields();
@@ -434,6 +455,32 @@ export function Composer({
     // into a note shouldn't open a people picker.
     const m = internal ? /(?:^|\s)@([\w.+-]*)$/.exec(next.slice(0, caret)) : null;
     setMention(m ? { query: m[1], start: caret - m[1].length - 1 } : null);
+    // "/" in a reply looks up a macro. Not in a note — nobody is sent a note.
+    setSlash(!internal && macros?.length ? macroQueryAt(next, caret) : null);
+  }
+
+  /** What the open "/query" matches, best first. */
+  const slashList = slash && !internal ? searchMacros(macros ?? [], slash.query).slice(0, 4) : [];
+
+  /**
+   * Put a macro in the reply box with its placeholders filled for this chat.
+   * From "/" it replaces what was typed; from the sheet it goes in at the
+   * caret. It's a draft — read it, change it, then Send as usual (and on a
+   * closed WhatsApp window that Send goes through the default template).
+   */
+  function insertMacro(m: Macro) {
+    const filled = resolveTemplateDefault(m.body, templateFill);
+    const from = slash ? slash.start : Math.min(caretRef.current, body.length);
+    const to = slash ? slash.start + 1 + slash.query.length : from;
+    const next = body.slice(0, from) + filled + body.slice(to);
+    const caret = from + filled.length;
+    setBody(next);
+    setSlash(null);
+    setMacroSheet(false);
+    caretRef.current = caret;
+    setSelection({ start: caret, end: caret });
+    haptics.tap();
+    inputRef.current?.focus();
   }
 
   /**
@@ -647,6 +694,7 @@ export function Composer({
                   setPickedChannel(ch);
                   // A half-typed "@sam" isn't a mention on a customer reply.
                   setMention(null);
+                  setSlash(null);
                 }}
               >
                 <Glyph size={15} color={active ? tint : c.textFaint} />
@@ -912,6 +960,39 @@ export function Composer({
         </View>
       ) : null}
 
+      {/* Macros matching "/…", in the same strip as the people picker. */}
+      {slashList.length ? (
+        <View style={{ backgroundColor: c.surface2, maxHeight: 208 }} className="mb-2 overflow-hidden rounded-16">
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }}>
+            {slashList.map((m, i, arr) => (
+              <Touchable
+                feel="row"
+                key={m.id}
+                onPress={() => insertMacro(m)}
+                accessibilityRole="button"
+                accessibilityLabel={`Insert ${m.name}`}
+                style={{ borderBottomColor: i === arr.length - 1 ? "transparent" : c.border }}
+                className={`px-3 py-2 ${i === arr.length - 1 ? "" : "border-b"}`}
+              >
+                <View className="flex-row items-center gap-2">
+                  <Text numberOfLines={1} className="flex-1 text-md font-medium text-fg">
+                    {m.name}
+                  </Text>
+                  {m.shortcut ? (
+                    <Text style={{ color: c.brandStrong }} className="text-2xs font-semibold">
+                      /{m.shortcut}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text numberOfLines={1} style={{ color: c.textFaint }} className="text-xs">
+                  {resolveTemplateDefault(m.body, templateFill)}
+                </Text>
+              </Touchable>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
       {error ? <Text className="pb-1.5 text-sm text-danger">{error}</Text> : null}
 
       {emojiOpen ? (
@@ -1052,6 +1133,22 @@ export function Composer({
           className="flex-1 px-1 py-2 text-lg"
         />
 
+        {!internal && !locked && macros?.length ? (
+          <Touchable
+            feel="chip"
+            onPress={() => {
+              setSlash(null);
+              setMacroSheet(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Macros"
+            hitSlop={6}
+            className="h-9 w-9 items-center justify-center rounded-full"
+          >
+            <MacroIcon size={19} color={c.textMuted} />
+          </Touchable>
+        ) : null}
+
         {isWhatsApp && !internal ? (
           <Touchable feel="chip"
             onPress={() => setTemplateSheet(true)}
@@ -1122,6 +1219,14 @@ export function Composer({
         onCamera={() => void files.takePhoto()}
         onPhotos={() => void files.pickImages()}
         onFiles={() => void files.pickFiles()}
+      />
+
+      <MacroSheet
+        macros={macros ?? []}
+        fill={templateFill}
+        visible={macroSheet}
+        onPick={insertMacro}
+        onClose={() => setMacroSheet(false)}
       />
 
       {/* `channel` rather than the conversation's own: in a cross-channel thread

@@ -85,6 +85,7 @@ model Organization {
   auditLogs     AuditLog[]
   customFields  CustomField[]
   accounts      Account[]
+  macros        Macro[]
 }
 
 /// A fact a workspace wants to record that we did not think of.
@@ -318,6 +319,7 @@ model Team {
   members       TeamMember[]
   inboxes       InboxTeam[]
   conversations Conversation[] @relation("assignedTeam")
+  macros        MacroTeam[]
 
   @@index([orgId])
 }
@@ -987,4 +989,39 @@ model AccountActivity {
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   @@index([accountId, createdAt])
+}
+
+/// A saved reply an agent drops into the composer and edits before sending.
+/// Belongs to team inboxes through MacroTeam; none means every team.
+/// See docs/macros.md.
+model Macro {
+  id            String   @id @default(cuid())
+  orgId         String
+  name          String
+  /// Typed after "/" in the composer. Unique within a workspace when set.
+  shortcut      String?
+  body          String
+  createdById   String?
+  createdByName String?
+  updatedById   String?
+  updatedByName String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  org   Organization @relation(fields: [orgId], references: [id])
+  teams MacroTeam[]
+
+  @@unique([orgId, shortcut])
+  @@index([orgId])
+}
+
+model MacroTeam {
+  macroId String
+  teamId  String
+
+  macro Macro @relation(fields: [macroId], references: [id], onDelete: Cascade)
+  team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([macroId, teamId])
+  @@index([teamId])
 }
