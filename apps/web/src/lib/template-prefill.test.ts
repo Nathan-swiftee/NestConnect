@@ -4,6 +4,9 @@ import {
   TEMPLATE_TOKENS,
   templateDefaults,
   type TemplateFillContext,
+  autoTemplateParams,
+  autoTemplateSlot,
+  fillTemplatePreview,
 } from "@ding/schemas";
 
 /**
@@ -109,5 +112,40 @@ describe("the form's starting values", () => {
       "Northside Logistics",
       "",
     ]);
+  });
+});
+
+describe("the closed-window send (the starred template)", () => {
+  const tpl = (variableCount: number, variableDefaults: string[] = []) => ({ variableCount, variableDefaults });
+
+  it("puts the message in the only variable, as it always has", () => {
+    expect(autoTemplateSlot(tpl(1))).toBe(0);
+    expect(autoTemplateParams(tpl(1), "Your parcel is out for delivery", CTX)).toEqual(["Your parcel is out for delivery"]);
+  });
+
+  it("puts the message in the one variable left without a default", () => {
+    // "Hi, {{1}} — {{2}} at Swiftee", with {{2}} defaulting to the agent's name.
+    const t = tpl(2, ["", "{{agent.first_name}}"]);
+    expect(autoTemplateSlot(t)).toBe(0);
+    expect(autoTemplateParams(t, "your driver is 5 minutes away", CTX)).toEqual(["your driver is 5 minutes away", CTX.agentName!.split(" ")[0]]);
+  });
+
+  it("works with the open slot anywhere", () => {
+    expect(autoTemplateSlot(tpl(3, ["{{contact.first_name}}", "", "{{agent.name}}"]))).toBe(1);
+  });
+
+  it("refuses a template with no variable, or several left open", () => {
+    expect(autoTemplateSlot(tpl(0))).toBeNull();
+    expect(autoTemplateSlot(tpl(2))).toBeNull();
+    expect(autoTemplateSlot(tpl(3, ["{{agent.name}}"]))).toBeNull();
+    expect(autoTemplateParams(tpl(2), "hello", CTX)).toBeNull();
+  });
+
+  it("and one with every variable defaulted has nowhere for the message", () => {
+    expect(autoTemplateSlot(tpl(2, ["{{contact.first_name}}", "{{agent.name}}"]))).toBeNull();
+  });
+
+  it("previews what the customer will read", () => {
+    expect(fillTemplatePreview("Hi {{1}}, {{2}} here.", ["Marta", "Sam"])).toBe("Hi Marta, Sam here.");
   });
 });

@@ -1118,6 +1118,49 @@ export function templateDefaults(
 }
 
 /**
+ * Which variable the agent's typed message fills when the composer sends the
+ * starred template by itself (a closed WhatsApp window).
+ *
+ * The one variable with no saved default. "Hi {{1}}, {{2}} here from Swiftee"
+ * with {{2}} defaulting to the agent's name is exactly one box short of
+ * complete, and that box is the message. A one-variable template keeps working
+ * as it always has, default or not: its only variable is the message.
+ *
+ * `null` when the template can't be sent this way: no variables (nowhere to
+ * put the message), or several left without a default (they'd go out blank).
+ */
+export function autoTemplateSlot(template: { variableCount: number; variableDefaults?: string[] }): number | null {
+  if (template.variableCount === 1) return 0;
+  const open: number[] = [];
+  for (let i = 0; i < template.variableCount; i++) {
+    if (!template.variableDefaults?.[i]?.trim()) open.push(i);
+  }
+  return open.length === 1 ? open[0]! : null;
+}
+
+/**
+ * The parameters for that automatic send: every saved default filled in for
+ * this conversation, and the agent's message in the open slot. `null` when the
+ * template can't be sent this way (see `autoTemplateSlot`).
+ */
+export function autoTemplateParams(
+  template: { variableCount: number; variableDefaults?: string[] },
+  message: string,
+  ctx: TemplateFillContext,
+): string[] | null {
+  const slot = autoTemplateSlot(template);
+  if (slot === null) return null;
+  const params = templateDefaults(template, ctx);
+  params[slot] = message;
+  return params;
+}
+
+/** The body as the customer will read it, for the composer's preview. */
+export function fillTemplatePreview(body: string, params: string[]): string {
+  return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (whole, n: string) => params[Number(n) - 1] ?? whole);
+}
+
+/**
  * The templates a given WhatsApp account can actually send.
  *
  * Filtered by WABA rather than by channel on purpose: two numbers under one
