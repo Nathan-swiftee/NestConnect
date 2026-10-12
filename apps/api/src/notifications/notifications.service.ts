@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from "@nestjs/common";
 import type { Conversation, Notification, NotificationType } from "@ding/schemas";
+import { mentionHandle, mentionsToNames } from "@ding/schemas";
 import { Store } from "../data/store";
 import { runInTenant } from "../tenancy/tenant-scope";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -79,13 +80,16 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
 
   /** On an internal note, notify every teammate it @-mentions (except the author). */
   async notifyMentions(conversation: Conversation, body: string, authorName: string, authorId: string): Promise<void> {
-    const tokens = new Set((body.toLowerCase().match(/@[\w.+-]+/g) ?? []));
+    // "@nathan." at the end of a sentence still means @nathan.
+    const tokens = new Set((body.toLowerCase().match(/@[\w.+-]+/g) ?? []).map((t) => t.replace(/[.+-]+$/, "")));
     if (!tokens.size) return;
     const members = await this.store.listMembers();
-    const snippet = body.length > 120 ? `${body.slice(0, 117)}…` : body;
+    // Shown by name ("@Nathan A"), the way the note itself reads in the app.
+    const readable = mentionsToNames(body, members.map((m) => m.user));
+    const snippet = readable.length > 120 ? `${readable.slice(0, 117)}…` : readable;
     for (const m of members) {
       if (m.user.id === authorId) continue;
-      const token = "@" + m.user.email.split("@")[0].toLowerCase();
+      const token = mentionHandle(m.user);
       if (!tokens.has(token)) continue;
       await this.create(m.user.id, {
         type: "mention",

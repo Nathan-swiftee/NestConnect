@@ -3564,3 +3564,4 @@ export interface AnalyticsResult {
 export * from "./accounts";
 export * from "./macros";
 export * from "./signatures";
+export * from "./mentions";

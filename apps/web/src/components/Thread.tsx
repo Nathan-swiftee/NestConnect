@@ -5,8 +5,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import type { Message, Attachment, Macro, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
-import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, macroQueryAt, renderEmailSignature, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, signedAsLine, templatesForWaba, typingPingMs } from "@ding/schemas";
+import type { Message, Attachment, Macro, Mentionable, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
+import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, macroQueryAt, mentionLabel, mentionParts, namesToHandles, renderEmailSignature, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, signedAsLine, templatesForWaba, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence, useConversationMacros } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -97,14 +97,16 @@ function textToHtml(text: string): string {
     .join("");
 }
 
-function renderMention(body: string): JSX.Element[] {
-  return body.split(/(@[\w.+-]+)/g).map((part, i) =>
-    part.startsWith("@") ? (
+/** A note's text with its @mentions picked out, shown by name ("@Nathan A")
+ *  rather than the stored handle ("@nathan") the server routes by. */
+function renderMention(body: string, people: Mentionable[]): JSX.Element[] {
+  return mentionParts(body, people).map((part, i) =>
+    part.mention ? (
       <span key={i} className="men">
-        {part}
+        {part.text}
       </span>
     ) : (
-      <span key={i}>{part}</span>
+      <span key={i}>{part.text}</span>
     ),
   );
 }
@@ -1597,6 +1599,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const { mutate: retry } = useRetryMessage();
   const forward = useForwardMessage();
   const { data: people } = usePeople();
+  // Teammates as @mentions: who "@Nathan A" means, and whose name "@nathan" shows as.
+  const mentionPeople = useMemo(() => (people ?? []).map((m) => m.user), [people]);
   // Used far below, for reply-all's "don't copy ourselves" filter. It is called
   // *here* rather than at its use site because this component returns early
   // while the conversation loads: a hook below those returns runs on some
@@ -2558,7 +2562,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // the token the server matches to route the note to their @Mentions inbox).
   const insertMention = (u: { name: string; email: string }) => {
     if (!mention) return;
-    const handle = "@" + u.email.split("@")[0].toLowerCase() + " ";
+    // The name, not the handle: "@Nathan A" reads as a person. It becomes
+    // "@nathan" (what the server routes by) only when the note is sent.
+    const handle = mentionLabel(u, mentionPeople) + " ";
     const before = text.slice(0, mention.start);
     const after = text.slice(mention.start + 1 + mention.query.length);
     setText(before + handle + after);
@@ -2612,7 +2618,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
 
   const handleSend = () => {
     if (!canSend || composeLocked) return;
-    const body = text.trim();
+    // A note's "@Nathan A" goes out as "@nathan", the handle that notifies them.
+    const body = internal ? namesToHandles(text.trim(), mentionPeople) : text.trim();
     const wasInternal = internal;
     // A quote only rides on a real (non-note) reply.
     const quotedMsgId = !internal ? replyTo?.id : undefined;
@@ -3316,7 +3323,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                       <span className="note__tag">Internal</span>
                       <span className="note__t">{relativeTime(m.createdAt)}</span>
                     </div>
-                    <div className="note__body">{renderMention(m.body)}</div>
+                    <div className="note__body">{renderMention(m.body, mentionPeople)}</div>
                   </div>
                 </div>
               ) : (
@@ -3731,10 +3738,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                         insertMention(u);
                       }}
                     >
-                      <Avatar name={u.name} email={u.email} color={u.avatarColor} className="mentionpop__av" />
+                      <Avatar name={u.name} email={u.email} color={u.avatarColor} src={u.avatarUrl} className="av mentionpop__av" />
                       <span className="mentionpop__meta">
                         <b>{u.name}</b>
-                        <small>@{u.email.split("@")[0].toLowerCase()}</small>
+                        <small>{u.position || u.email}</small>
                       </span>
                     </button>
                   ))}
