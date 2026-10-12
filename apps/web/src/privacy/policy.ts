@@ -303,7 +303,7 @@ export function buildPolicy(f: ResolvedOwnerFields): PolicyDocument {
     blocks: [
       sub("Workspace users"),
       list(
-        "Account details: name, email address, role, team memberships, availability and online status, avatar colour, an optional profile photo, and an optional personal email signature.",
+        "Account details: name, email address, role, team memberships, availability and online status, avatar colour, an optional profile photo, and an optional job title (shown in the email signatures of the channels they send from).",
         "Sign-in credentials: your password is stored only as a bcrypt hash. Invitation and password-reset links use single-use tokens that are stored hashed, with an expiry.",
         `Two-step verification: the method you chose, your authenticator (TOTP) secret${f.secretEncryptionEnabledInProduction ? ", which is stored encrypted" : ""}, and hashed one-time email codes and recovery codes. After you complete two-step verification, a "trusted device" cookie (valid for 30 days) can skip the code on that browser or device.`,
         "Sessions: for each sign-in we record the IP address, the browser or device user agent, when it started, when it was last used and when it was signed out, so you can see where you are signed in and sign out remotely.",

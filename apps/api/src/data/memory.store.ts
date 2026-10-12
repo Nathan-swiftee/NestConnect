@@ -270,6 +270,7 @@ export class MemoryStore extends Store {
       // A new channel never steals the default from one already carrying it.
       isDefault: false,
       unread: 0,
+      ...(params.type === "email" ? { signature: { layoutHtml: null, footerHtml: null } } : {}),
     };
     this.inboxes.push(inbox);
     return {
@@ -302,6 +303,16 @@ export class MemoryStore extends Store {
       connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null),
       channelConfigPublic: publicChannelConfig(this.inboxConfig.get(id) ?? null),
     };
+  }
+
+  async setInboxSignature(
+    id: string,
+    signature: { layoutHtml: string | null; footerHtml: string | null },
+  ): Promise<Inbox | undefined> {
+    const inbox = this.inboxes.find((i) => i.id === id);
+    if (!inbox) return undefined;
+    inbox.signature = { ...signature };
+    return this.getInbox(id);
   }
 
   async deleteInbox(id: string): Promise<void> {
@@ -529,6 +540,7 @@ export class MemoryStore extends Store {
     email: string;
     role: Role;
     teamIds: string[];
+    position?: string | null;
     password?: string;
   }): Promise<{ user: User; inviteToken?: string }> {
     const id = `usr_${++this.idSeq}`;
@@ -541,6 +553,7 @@ export class MemoryStore extends Store {
       avatarColor: AVATAR_PALETTE[this.users.length % AVATAR_PALETTE.length],
       online: false,
       available: true,
+      position: params.position ?? null,
     };
     this.users.push(user);
     this.membership[id] = params.teamIds;
@@ -578,10 +591,11 @@ export class MemoryStore extends Store {
 
   async updateUser(
     id: string,
-    params: { name?: string; role?: Role; teamIds?: string[] },
+    params: { name?: string; role?: Role; teamIds?: string[]; position?: string | null },
   ): Promise<User | undefined> {
     const user = this.users.find((u) => u.id === id);
     if (!user) return undefined;
+    if (params.position !== undefined) user.position = params.position;
     if (params.name !== undefined) user.name = params.name;
     if (params.role !== undefined) user.role = params.role;
     if (params.teamIds !== undefined) this.membership[id] = params.teamIds;
@@ -590,22 +604,22 @@ export class MemoryStore extends Store {
 
   async updateMyPreferences(
     userId: string,
-    params: { available?: boolean; schedule?: AvailabilitySchedule | null; emailSignature?: string | null },
+    params: { available?: boolean; schedule?: AvailabilitySchedule | null },
   ): Promise<User | undefined> {
     const user = this.users.find((u) => u.id === userId);
     if (!user) return undefined;
     if (params.available !== undefined) user.available = params.available;
     if (params.schedule !== undefined) user.schedule = params.schedule;
-    if (params.emailSignature !== undefined) user.emailSignature = params.emailSignature ?? undefined;
     return user;
   }
 
   async updateMyProfile(
     userId: string,
-    params: { name?: string; email?: string; avatarUrl?: string | null },
+    params: { name?: string; email?: string; avatarUrl?: string | null; position?: string | null },
   ): Promise<User | undefined> {
     const user = this.users.find((u) => u.id === userId);
     if (!user) return undefined;
+    if (params.position !== undefined) user.position = params.position;
     if (params.name !== undefined) user.name = params.name;
     if (params.email !== undefined) user.email = params.email;
     if (params.avatarUrl !== undefined) user.avatarUrl = params.avatarUrl ?? undefined;

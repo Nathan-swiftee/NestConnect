@@ -23,6 +23,8 @@
     "check:conversation-subjects": "tsx --tsconfig apps/api/tsconfig.json tools/check-conversation-subjects.ts",
     "check:availability": "tsx --tsconfig apps/api/tsconfig.json tools/check-availability.ts",
     "check:email-cutover": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-cutover.ts",
+    "check:email-signature": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-signature.ts",
+    "check:email-signature-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-signature-pg.ts",
     "check:macros": "tsx --tsconfig apps/api/tsconfig.json tools/check-macros.ts",
     "check:macros-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-macros-pg.ts",
     "check:organisations": "tsx --tsconfig apps/api/tsconfig.json tools/check-organisations.ts",

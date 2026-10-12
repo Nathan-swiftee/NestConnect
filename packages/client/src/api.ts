@@ -38,6 +38,7 @@ import type {
   UpdateLabelInput,
   UpdateContactInput,
   UpdateInboxInput,
+  UpdateInboxSignatureInput,
   NestChatPushTest,
   NestChatSettings,
   UpdateIntegrationSettingsInput,
@@ -180,6 +181,8 @@ const post = <T>(path: string, body: unknown) =>
 const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
+const put = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 const isUploadFile = (f: unknown): f is UploadFile =>
   typeof f === "object" && f !== null && typeof (f as UploadFile).uri === "string";
@@ -275,6 +278,8 @@ export const api = {
   inboxes: () => get<Inbox[]>("/inboxes"),
   createInbox: (input: CreateInboxInput) => post<Inbox>("/inboxes", input),
   updateInbox: (id: string, input: UpdateInboxInput) => patch<Inbox>(`/inboxes/${id}`, input),
+  // An email channel's signature design (layout + marketing section).
+  setInboxSignature: (id: string, input: UpdateInboxSignatureInput) => put<Inbox>(`/inboxes/${id}/signature`, input),
   deleteInbox: (id: string) => del<{ ok: boolean }>(`/inboxes/${id}`),
   // Move a channel's still-open conversations onto its (new) routing.
   rerouteInbox: (id: string) => post<{ moved: number }>(`/inboxes/${id}/reroute`, {}),

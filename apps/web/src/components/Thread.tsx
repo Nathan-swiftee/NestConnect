@@ -6,7 +6,7 @@ import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Attachment, Macro, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
-import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, macroQueryAt, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, templatesForWaba, typingPingMs } from "@ding/schemas";
+import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, macroQueryAt, renderEmailSignature, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, signedAsLine, templatesForWaba, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence, useConversationMacros } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -2186,6 +2186,17 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
      with, so the label cannot promise one number and the send use another. */
   const threadInbox = sendingInbox(inboxes ?? [], conv);
   const composeInbox = sendingInbox(inboxes ?? [], conv, { channel: composeChannel });
+  // What the server will append to this email: the sending mailbox's signature
+  // with my details in it. Shown as one quiet line so nobody types their own.
+  const sigContext = {
+    agentName: me?.user.name,
+    agentPosition: me?.user.position,
+    agentEmail: me?.user.email,
+    teamName: teams?.find((t) => t.id === (conv.assignedTeamId ?? composeInbox?.teamIds[0]))?.name,
+    channelName: composeInbox?.name,
+    channelEmail: composeInbox?.handle,
+  };
+  const willSign = composeInbox?.type === "email" && !!renderEmailSignature(composeInbox.signature, sigContext);
   const isEmail = composeChannel === "email";
   const isClosed = conv.status === "closed";
   const owned = !!conv.assigneeUserId;
@@ -3522,6 +3533,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   Cc/Bcc
                 </button>
               </div>
+              {willSign && (
+                <div className="emailhdr__sig" title="Added when the email is sent. Each email channel's signature is set in Settings › Channels.">
+                  Signed as <b>{signedAsLine(sigContext) || "you"}</b> with the {composeInbox!.handle} signature
+                </div>
+              )}
               {showCc && (
                 <>
                   <div className="emailhdr__row">

@@ -34,6 +34,7 @@ import {
   type Notification,
   type UpdateContactInput,
   type UpdateInboxInput,
+  type UpdateInboxSignatureInput,
   type UpdateIntegrationSettingsInput,
   type UpdateNestchatInput,
   type UpdateMyPreferencesInput,
@@ -160,6 +161,15 @@ export function useUpdateInbox() {
       qc.invalidateQueries({ queryKey: ["inboxes"] });
       qc.invalidateQueries({ queryKey: ["views"] });
     },
+  });
+}
+
+/** Save an email channel's signature; every composer's "signed as" follows. */
+export function useSetInboxSignature() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; input: UpdateInboxSignatureInput }) => api.setInboxSignature(v.id, v.input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inboxes"] }),
   });
 }
 

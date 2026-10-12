@@ -187,9 +187,12 @@ model User {
   available    Boolean  @default(true)
   // Working hours (availabilityScheduleSchema). Null: the switch alone decides.
   availabilitySchedule Json?
-  // Personal rich-text (HTML) email signature, appended to outbound email the
-  // agent sends. Never shown on the in-app message bubble.
+  // Retired: the personal signature, replaced by each email channel's own
+  // design (Inbox.signatureHtml). Kept so nothing anyone wrote is lost; no
+  // longer sent or shown.
   emailSignature String?
+  // Job title ("Operations Manager"), filled into email signatures.
+  position     String?
   passwordHash String?
   // Emailed-invite flow: SHA-256 of a single-use token + its expiry. Cleared
   // once the invitee sets their password.
@@ -360,6 +363,11 @@ model Inbox {
   /// workspace that has never touched the arrows keeps exactly the order it
   /// had, and one that has keeps its own.
   order           Int             @default(0)
+  /// An email channel's signature: the layout, with tags like
+  /// {{agent.position}} filled per sender, and the marketing section under it.
+  /// Null layout = never designed, so the default one is used.
+  signatureHtml       String?
+  signatureFooterHtml String?
   createdAt       DateTime        @default(now())
 
   org           Organization     @relation(fields: [orgId], references: [id])
