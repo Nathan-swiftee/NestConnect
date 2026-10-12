@@ -1826,6 +1826,22 @@ export class MemoryStore extends Store {
     return contact;
   }
 
+  async findCrossChannelReplyThread(params: { orgId: string; inboxId: string; contactId: string }): Promise<string | undefined> {
+    const live = (c: ConversationRecord) =>
+      c.orgId === params.orgId && c.contact.id === params.contactId && (THREADABLE_STATUSES as readonly string[]).includes(c.status);
+    let best: { id: string; at: string } | undefined;
+    for (const c of this.conversations) {
+      if (!live(c) || c.inboxId === params.inboxId) continue;
+      for (const m of c.messages) {
+        if (m.direction !== "out" || m.internal || m.channel !== "whatsapp" || m.inboxId !== params.inboxId) continue;
+        if (!best || m.createdAt > best.at) best = { id: c.id, at: m.createdAt };
+      }
+    }
+    if (!best) return undefined;
+    const ownNewer = this.conversations.some((c) => live(c) && c.inboxId === params.inboxId && c.lastActivityAt > best!.at);
+    return ownNewer ? undefined : best.id;
+  }
+
   async findOrCreateOpenConversation(params: {
     orgId: string;
     inboxId: string;

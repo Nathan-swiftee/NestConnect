@@ -170,14 +170,24 @@ export class IngestService {
       return undefined;
     }
 
-    const { conversation, created } = await this.store.findOrCreateOpenConversation({
-      orgId: inbox.orgId,
-      inboxId: inbox.id,
-      contact,
-      channel: inbox.type,
-      // WhatsApp has no subject of its own; Nest writes one (fields + topic).
-      autoSubject: inbox.type === "whatsapp",
-    });
+    // An agent who answered a live-chat (or email) customer on WhatsApp has
+    // made that conversation the one this number is talking to them in: the
+    // customer's WhatsApp reply goes there, not into a new WhatsApp chat.
+    const crossThread =
+      inbox.type === "whatsapp"
+        ? await this.store.findCrossChannelReplyThread({ orgId: inbox.orgId, inboxId: inbox.id, contactId: contact.id })
+        : undefined;
+    const joined = crossThread ? await this.store.getConversation(crossThread) : undefined;
+    const { conversation, created } = joined
+      ? { conversation: joined, created: false }
+      : await this.store.findOrCreateOpenConversation({
+          orgId: inbox.orgId,
+          inboxId: inbox.id,
+          contact,
+          channel: inbox.type,
+          // WhatsApp has no subject of its own; Nest writes one (fields + topic).
+          autoSubject: inbox.type === "whatsapp",
+        });
 
     let conv = conversation;
     if (created) {

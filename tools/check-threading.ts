@@ -22,6 +22,13 @@
  *     pnpm check:threading
  */
 import { MemoryStore } from "../apps/api/src/data/memory.store";
+import { IngestService } from "../apps/api/src/channels/ingest.service";
+import { DEMO_USER_ID, ORG_ID } from "../apps/api/src/data/fixtures";
+import type { RoutingService } from "../apps/api/src/channels/routing.service";
+import type { RealtimeGateway } from "../apps/api/src/realtime/realtime.gateway";
+import type { TenantContext } from "../apps/api/src/tenancy/tenant-context";
+import type { PushService } from "../apps/api/src/push/push.service";
+import type { ConversationSubjectService } from "../apps/api/src/ai/conversation-subject.service";
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -104,6 +111,46 @@ async function main(): Promise<void> {
     channel: inbox.type,
   });
   ok("a closed thread still starts a new conversation", afterClose.created, `created=${afterClose.created}`);
+
+  console.log("\nA live-chat customer answered on WhatsApp, replying on WhatsApp\n");
+  // The bug: the reply opened a brand-new WhatsApp chat, because only this
+  // number's own threads were looked at — and the conversation the agent had
+  // answered from belongs to the live-chat inbox.
+  const ingest = new IngestService(
+    store,
+    { route: async () => ({ assigneeUserId: null, assignedTeamId: null }) } as unknown as RoutingService,
+    { emitConversationAssigned() {}, emitMessageCreated() {}, emitConversationUpdated() {} } as unknown as RealtimeGateway,
+    { bind() {}, orgId: ORG_ID } as unknown as TenantContext,
+    { notify() {} } as unknown as PushService,
+    { customerWrote() {}, fieldsChanged: async () => {} } as unknown as ConversationSubjectService,
+  );
+  const chat = await store.createInbox({
+    orgId: ORG_ID, type: "nestchat", name: "Website chat", handle: "site", teamIds: [], routingStrategy: "manual",
+  });
+  const visitor = await store.upsertContactByIdentity({
+    orgId: ORG_ID, kind: "phone", value: "+447700900777", displayName: "Courier Kim",
+  });
+  const live = await ingest.ingestNestChat({ inbox: chat, contact: visitor, text: "Is my parcel collected?" });
+  const agent = (await store.getUser(DEMO_USER_ID))!;
+  const answered = await store.addMessage(live!.conversationId, { body: "Yes — I'll message you on WhatsApp", internal: false, channel: "whatsapp" }, agent);
+  await store.setMessageInbox(answered!.id, inbox.id);
+  const waReply = await ingest.ingestWhatsApp({ phoneNumberId: "unconfigured", from: "447700900777", text: "Thanks!" });
+  ok("the reply joins the live-chat conversation", waReply?.conversationId === live!.conversationId, `${waReply?.conversationId} vs ${live!.conversationId}`);
+  ok("rather than opening a new WhatsApp chat", waReply?.created === false);
+  const thread = await store.getConversation(live!.conversationId);
+  ok("and arrives there as a WhatsApp message", thread?.messages.at(-1)?.body === "Thanks!" && thread?.messages.at(-1)?.channel === "whatsapp");
+
+  // If this number's own chat with them has moved since, that's where they are.
+  const own = await store.findOrCreateOpenConversation({ orgId: ORG_ID, inboxId: inbox.id, contact: visitor, channel: "whatsapp" });
+  await store.appendInboundMessage(own.conversation.id, { authorName: "Courier Kim", body: "New question", channel: "whatsapp" });
+  const later = await ingest.ingestWhatsApp({ phoneNumberId: "unconfigured", from: "447700900777", text: "About that question…" });
+  ok("a newer WhatsApp chat of their own wins", later?.conversationId === own.conversation.id, `${later?.conversationId}`);
+
+  // A closed live chat isn't joined: that conversation is over.
+  await store.setStatus(own.conversation.id, "closed");
+  await store.setStatus(live!.conversationId, "closed");
+  const fresh = await ingest.ingestWhatsApp({ phoneNumberId: "unconfigured", from: "447700900777", text: "Me again" });
+  ok("a closed one starts a new WhatsApp chat", fresh?.created === true && fresh.conversationId !== live!.conversationId);
 
   console.log(failed ? `\n${failed} failed\n` : "\nall good\n");
   if (failed) process.exit(1);
