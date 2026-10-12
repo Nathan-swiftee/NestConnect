@@ -9,6 +9,7 @@ import {
 } from "../lib/nestchat-embed";
 import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
+import { MacrosPane } from "./MacrosPane";
 import type {
   ChannelType,
   Inbox,
@@ -131,6 +132,7 @@ type Leaf =
   | "channels"
   | "nestchat"
   | "templates"
+  | "macros"
   | "profile"
   | "broadcast"
   | "gmail"
@@ -170,6 +172,7 @@ const NAV: NavSection[] = [
       { key: "channels", label: "Channels" },
       { key: "nestchat", label: "NestChat widget" },
       { key: "templates", label: "Templates" },
+      { key: "macros", label: "Macros" },
       { key: "profile", label: "Business profile" },
       { key: "broadcast", label: "Broadcast" },
       { key: "gmail", label: "Move from Gmail" },
@@ -305,6 +308,7 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "channels" && <ChannelsPane onToast={onToast} />}
             {active === "nestchat" && <NestChatPane onToast={onToast} />}
             {active === "templates" && <TemplatesPane onToast={onToast} />}
+            {active === "macros" && <MacrosPane onToast={onToast} />}
             {active === "profile" && <ProfilePane onToast={onToast} />}
             {active === "broadcast" && <BroadcastPane onToast={onToast} />}
             {active === "gmail" && isAdmin && <GmailCutoverPane onToast={onToast} />}

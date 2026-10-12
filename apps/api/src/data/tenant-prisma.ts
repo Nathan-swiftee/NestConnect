@@ -41,6 +41,7 @@ const DIRECT = new Set<string>([
   "CustomerDevice",
   "Inbox",
   "Label",
+  "Macro",
   "Team",
   "Template",
   "User",
@@ -69,6 +70,7 @@ const VIA: Record<string, (orgId: string) => Filter> = {
   AccountNote: (orgId) => ({ account: { orgId } }),
   AccountResource: (orgId) => ({ account: { orgId } }),
   AccountActivity: (orgId) => ({ account: { orgId } }),
+  MacroTeam: (orgId) => ({ macro: { orgId } }),
 };
 
 /**
@@ -98,6 +100,7 @@ const REFERENCES: Record<string, string> = {
   accountId: "Account",
   sopId: "AccountSop",
   attachmentId: "Attachment",
+  macroId: "Macro",
 };
 /** The same, for relation fields written as `{ connect: { id } }`. */
 const RELATIONS: Record<string, string> = {
@@ -115,6 +118,7 @@ const RELATIONS: Record<string, string> = {
   session: "Session",
   account: "Account",
   sop: "AccountSop",
+  macro: "Macro",
 };
 
 const FILTERED_OPS = new Set([

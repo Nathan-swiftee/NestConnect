@@ -28,6 +28,7 @@ import { TrackingModule } from "./tracking/tracking.module";
 import { AiModule } from "./ai/ai.module";
 import { HealthController } from "./health/health.controller";
 import { AccountsModule } from "./accounts/accounts.module";
+import { MacrosModule } from "./macros/macros.module";
 import { webStaticOptions } from "./web-static";
 
 const imports: ModuleMetadata["imports"] = [
@@ -55,6 +56,7 @@ const imports: ModuleMetadata["imports"] = [
   TrackingModule,
   AiModule,
   AccountsModule,
+  MacrosModule,
 ];
 
 // In production the API serves the built SPA (apps/api/dist/main.js → ../../web/dist),

@@ -54,6 +54,7 @@ jobs:
           pnpm --filter @ding/api exec prisma migrate deploy
           pnpm check:tenant-isolation
           pnpm check:organisations-pg
+          pnpm check:macros-pg
 
       - name: Tenant isolation (HTTP, Postgres)
         env:
@@ -196,6 +197,12 @@ jobs:
       # updated instructions) and who may change what.
       - name: Organisations and customer knowledge
         run: pnpm check:organisations
+
+      # Macros: who may write them, and which a conversation is offered — its
+      # team inbox's (the assigned team, or its channel's teams before anyone
+      # has it) plus the ones every team gets.
+      - name: Macros
+        run: pnpm check:macros
 
       # The app surface on a live-chat channel. Two things here are worth a
       # build failing over: the identity secret must never reach a browser (it

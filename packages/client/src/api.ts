@@ -77,6 +77,9 @@ import type {
   ContactAccount,
   ConversationAccountContext,
   CreateAccountInput,
+  CreateMacroInput,
+  Macro,
+  UpdateMacroInput,
   LinkContactInput,
   LinkContactsInput,
   NoteInput,
@@ -507,6 +510,13 @@ export const api = {
   emailCutoverPreview: () => get<EmailCutoverPreview & { job: EmailCutoverJob }>("/settings/email-cutover"),
   emailCutoverStatus: () => get<EmailCutoverJob>("/settings/email-cutover/status"),
   runEmailCutover: (confirm: string) => post<EmailCutoverJob>("/settings/email-cutover", { confirm }),
+
+  // Macros: saved replies for the composer, by team inbox.
+  macros: () => get<Macro[]>("/macros"),
+  conversationMacros: (conversationId: string) => get<Macro[]>(`/macros/conversation/${encodeURIComponent(conversationId)}`),
+  createMacro: (input: CreateMacroInput) => post<Macro>("/macros", input),
+  updateMacro: (id: string, input: UpdateMacroInput) => patch<Macro>(`/macros/${encodeURIComponent(id)}`, input),
+  deleteMacro: (id: string) => del<{ ok: true }>(`/macros/${encodeURIComponent(id)}`),
 
   // Organisations (customer accounts) and their knowledge.
   accounts: (q?: { search?: string; status?: AccountStatus; archived?: boolean }) => {
