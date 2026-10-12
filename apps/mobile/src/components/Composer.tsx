@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { enter, exit, reflow } from "../motion";
-import type { ChannelType, ConversationWithMessages, Macro, Message, TemplateFillContext } from "@ding/schemas";
+import type { ChannelType, Contact, ConversationWithMessages, Macro, Message, TemplateFillContext } from "@ding/schemas";
 import {
   autoTemplateParams,
   autoTemplateSlot,
   inboxLabel,
+  isEmailAddress,
   macroQueryAt,
   mentionLabel,
   namesToHandles,
@@ -18,6 +19,7 @@ import {
 } from "@ding/schemas";
 import {
   api,
+  useContacts,
   useConversationMacros,
   useIntegrations,
   useInboxes,
@@ -35,6 +37,7 @@ import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
 import { TemplateSheet } from "./TemplateSheet";
 import { MacroSheet } from "./MacroSheet";
+import { RecipientInput } from "./RecipientInput";
 import { mediaSource } from "../api-config";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { HoldMic, HoldOverlay, useHoldToRecord } from "./HoldToRecord";
@@ -62,42 +65,27 @@ import { Touchable } from "./Touchable";
  *  offer the same shortcuts. Deliberately not a picker dependency. */
 const COMPOSER_EMOJIS = ["👍", "🙏", "😀", "😅", "🎉", "❤️", "✅", "👀", "🔥", "😬", "🤝", "📎"];
 
-/**
- * One Cc/Bcc line.
- *
- * `autoCapitalize`/`autoCorrect` off and the email keyboard on: a phone
- * otherwise capitalises the first letter of every address and "corrects"
- * domains into English words, which is how a Cc silently goes nowhere.
- */
+/** One Cc/Bcc line: its label, then the recipient field (with customer suggestions). */
 function AddressRow({
   label,
   value,
   onChange,
+  contacts,
 }: {
   label: string;
-  value: string;
-  onChange: (next: string) => void;
+  value: string[];
+  onChange: (next: string[]) => void;
+  contacts: Contact[];
 }) {
   const { c } = useTheme();
   return (
-    <View className="flex-row items-center gap-2">
-      <Text style={{ color: c.textFaint, width: 34 }} className="text-2xs font-semibold uppercase tracking-wide">
+    <View className="flex-row items-start gap-2">
+      <Text style={{ color: c.textFaint, width: 34, paddingTop: 3 }} className="text-2xs font-semibold uppercase tracking-wide">
         {label}
       </Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        placeholder="name@example.com, …"
-        placeholderTextColor={c.textFaint}
-        keyboardType="email-address"
-        inputMode="email"
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoComplete="email"
-        accessibilityLabel={`${label} recipients`}
-        style={{ color: c.text }}
-        className="min-w-0 flex-1 p-0 text-sm"
-      />
+      <View className="min-w-0 flex-1">
+        <RecipientInput compact value={value} onChange={onChange} contacts={contacts} label={`${label} recipients`} placeholder="Search customers or type an email" />
+      </View>
     </View>
   );
 }
@@ -190,8 +178,10 @@ export function Composer({
   /** Cc/Bcc stay folded away until asked for — most replies need neither, and
    *  two more fields above a phone keyboard is most of the screen. */
   const [showCc, setShowCc] = useState(false);
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
+  const [cc, setCc] = useState<string[]>([]);
+  const [bcc, setBcc] = useState<string[]>([]);
+  // Customers with an email, suggested in Cc/Bcc as you type.
+  const { data: contacts } = useContacts();
   /** From tapping send on a recording until it lands — the recorder is gone by
    *  then, so without this there is nothing on screen saying it's in flight. */
   const [sendingVoice, setSendingVoice] = useState(false);
@@ -278,7 +268,7 @@ export function Composer({
   // second Reply all re-seeds even if the addresses are identical.
   useEffect(() => {
     if (!ccPrefill) return;
-    setCc(ccPrefill.addresses.join(", "));
+    setCc(ccPrefill.addresses.map((a) => a.toLowerCase()));
     setShowCc(true);
   }, [ccPrefill?.at]);
   const windowOpen = conv.waWindow?.open ?? false;
@@ -321,6 +311,13 @@ export function Composer({
       if (locked) haptics.warning();
       return;
     }
+    // A Cc/Bcc chip that isn't an address: said here, not by a bounce later.
+    const badCopy = isEmail && !internal ? [...cc, ...bcc].find((a) => !isEmailAddress(a)) : undefined;
+    if (badCopy) {
+      haptics.warning();
+      setError(`“${badCopy}” isn't a valid email address — fix or remove it in Cc/Bcc.`);
+      return;
+    }
     setError(null);
     setEmojiOpen(false);
     setPrePolish(null);
@@ -353,8 +350,8 @@ export function Composer({
       // Cc/Bcc are per-message, the way they are in a mail client: carrying them
       // into the next reply silently would copy people nobody asked for. The
       // subject stays — it belongs to the thread.
-      setCc("");
-      setBcc("");
+      setCc([]);
+      setBcc([]);
       setShowCc(false);
       haptics.success();
       files.clear();
@@ -390,8 +387,8 @@ export function Composer({
         // of this component's state left.
         ...email,
       });
-      setCc("");
-      setBcc("");
+      setCc([]);
+      setBcc([]);
       setShowCc(false);
       files.clear();
       onClearReply?.();
@@ -407,11 +404,8 @@ export function Composer({
    */
   function emailFields(): { subject?: string; cc?: string[]; bcc?: string[] } {
     if (!isEmail || internal) return {};
-    // Commas or spaces, as typed. A phone keyboard puts a space after the comma
-    // and autocorrect adds its own, so both have to be treated as separators.
-    const addrs = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
-    const ccList = addrs(cc);
-    const bccList = addrs(bcc);
+    const ccList = cc;
+    const bccList = bcc;
     return {
       subject: subject.trim(),
       ...(ccList.length ? { cc: ccList } : {}),
@@ -827,8 +821,8 @@ export function Composer({
 
           {showCc ? (
             <>
-              <AddressRow label="Cc" value={cc} onChange={setCc} />
-              <AddressRow label="Bcc" value={bcc} onChange={setBcc} />
+              <AddressRow label="Cc" value={cc} onChange={setCc} contacts={contacts ?? []} />
+              <AddressRow label="Bcc" value={bcc} onChange={setBcc} contacts={contacts ?? []} />
             </>
           ) : null}
         </View>

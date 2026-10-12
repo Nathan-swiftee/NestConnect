@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { ScrollView, Text, TextInput, View } from "react-native";
 import type { Message } from "@ding/schemas";
+import { isEmailAddress } from "@ding/schemas";
+import { useContacts } from "@ding/client";
 import { haptics } from "../haptics";
 import { ForwardIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
+import { RecipientInput } from "./RecipientInput";
 import { Sheet } from "./Sheet";
 import { Touchable } from "./Touchable";
 
@@ -12,9 +15,10 @@ import { Touchable } from "./Touchable";
  *
  * The WhatsApp forward picks *customers* — you already know who they are, and
  * the point is to drop a message into an existing chat. An email forward picks
- * *addresses*, most of which belong to nobody in the CRM: a colleague, an
- * accountant, a supplier. So it's a typed field rather than a contact list, and
- * it is why this is a second sheet instead of a mode on `ForwardSheet`.
+ * *addresses*: often a customer already in the directory (suggested as you
+ * type), as often somebody who isn't — an accountant, a supplier — typed in
+ * full. That's why it's an address field with suggestions rather than a contact
+ * list, and a second sheet instead of a mode on `ForwardSheet`.
  *
  * It used to be web-only, on the reasoning that an addressed forward wants a
  * keyboard. It wants a keyboard on a phone too, and the phone has one — what it
@@ -34,27 +38,23 @@ export function EmailForwardSheet({
   onClose: () => void;
 }) {
   const { c } = useTheme();
-  const [to, setTo] = useState("");
+  const [to, setTo] = useState<string[]>([]);
+  const { data: contacts } = useContacts();
   const [note, setNote] = useState("");
 
   // Each opening is a fresh forward. Carrying the last one's recipients over is
   // a way to send a customer's email to the wrong person.
   useEffect(() => {
     if (message) {
-      setTo("");
+      setTo([]);
       setNote("");
     }
   }, [message?.id]);
 
-  const addresses = to
-    .split(/[,;\s]+/)
-    .map((a) => a.trim())
-    .filter(Boolean);
-  // Deliberately loose: an address is anything with an @ and a dot after it.
-  // A stricter pattern rejects real addresses, and the mail server is the thing
-  // that actually knows — this only exists to catch a half-typed one.
-  const valid = addresses.filter((a) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(a));
-  const bad = addresses.filter((a) => !valid.includes(a));
+  // Deliberately loose (see isEmailAddress): the mail server is the thing that
+  // actually knows — this only exists to catch a half-typed one.
+  const valid = to.filter(isEmailAddress);
+  const bad = to.filter((a) => !isEmailAddress(a));
   const canSend = valid.length > 0 && bad.length === 0 && !busy;
 
   return (
@@ -87,18 +87,12 @@ export function EmailForwardSheet({
         <View className="gap-3 px-4 pt-3">
           <View>
             <Text className="pb-1 text-2xs font-semibold uppercase tracking-wide text-faint">To</Text>
-            <TextInput
+            <RecipientInput
               value={to}
-              onChangeText={setTo}
-              placeholder="name@company.com, another@company.com"
-              placeholderTextColor={c.textFaint}
-              autoCapitalize="none"
-              autoCorrect={false}
-              inputMode="email"
-              keyboardType="email-address"
-              multiline
-              style={{ backgroundColor: c.surface2, borderColor: bad.length ? c.danger : c.border, color: c.text }}
-              className="min-h-[44px] rounded-12 border px-3 py-2.5 text-md"
+              onChange={setTo}
+              contacts={contacts ?? []}
+              label="Forward to"
+              placeholder="Search customers, or type an email"
             />
             {bad.length ? (
               <Text style={{ color: c.danger }} className="pt-1 text-2xs">
