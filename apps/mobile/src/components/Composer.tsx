@@ -460,7 +460,8 @@ export function Composer({
   }
 
   /** What the open "/query" matches, best first. */
-  const slashList = slash && !internal ? searchMacros(macros ?? [], slash.query).slice(0, 4) : [];
+  // All of them, in a strip that scrolls — "/" alone shows every macro this chat has.
+  const slashList = slash && !internal ? searchMacros(macros ?? [], slash.query) : [];
 
   /**
    * Put a macro in the reply box with its placeholders filled for this chat.
@@ -962,8 +963,8 @@ export function Composer({
 
       {/* Macros matching "/…", in the same strip as the people picker. */}
       {slashList.length ? (
-        <View style={{ backgroundColor: c.surface2, maxHeight: 208 }} className="mb-2 overflow-hidden rounded-16">
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ flexShrink: 1 }}>
+        <View style={{ backgroundColor: c.surface2, maxHeight: 232 }} className="mb-2 overflow-hidden rounded-16">
+          <ScrollView keyboardShouldPersistTaps="handled" nestedScrollEnabled style={{ flexShrink: 1 }}>
             {slashList.map((m, i, arr) => (
               <Touchable
                 feel="row"

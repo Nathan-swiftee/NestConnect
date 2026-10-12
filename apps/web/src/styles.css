@@ -3556,3 +3556,4 @@ button.tpl-row:active{transform:scale(.97)}
 .dname__pos{font-size:var(--fs-xs);color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .emailhdr__sig{font-size:var(--fs-xs);color:var(--text-faint);padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .emailhdr__sig b{font-weight:600;color:var(--text-muted)}
+.macropop .mentionpop__row{flex:none}

@@ -1553,8 +1553,14 @@ function MacroRow({
   onHover: () => void;
   onPick: () => void;
 }) {
+  // Keep the highlighted row in view as the arrow keys walk a long list.
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (selected) ref.current?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
   return (
     <button
+      ref={ref}
       type="button"
       role="option"
       aria-selected={selected}
@@ -2569,7 +2575,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
 
   // ─── Macros ───
   // What "/query" matches, best first; empty while no "/" is being typed.
-  const slashList = slash ? searchMacros(macros ?? [], slash.query).slice(0, 6) : [];
+  // All of them: the list scrolls, so "/" on its own shows every macro this chat has.
+  const slashList = slash ? searchMacros(macros ?? [], slash.query) : [];
   const macroList = macroOpen ? searchMacros(macros ?? [], macroQ) : [];
 
   /**
