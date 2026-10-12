@@ -11,7 +11,7 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
-    "check:threading": "tsx tools/check-threading.ts",
+    "check:threading": "tsx --tsconfig apps/api/tsconfig.json tools/check-threading.ts",
     "check:routing": "tsx tools/check-routing.ts",
     "check:whatsapp-register": "tsx tools/check-whatsapp-register.ts",
     "check:whatsapp-delivery": "tsx tools/check-whatsapp-delivery.ts",

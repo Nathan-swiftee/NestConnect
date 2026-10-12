@@ -347,6 +347,21 @@ async function main(): Promise<void> {
     ok("…but not another workspace's own", !diag.some((d) => d.reference === "b"));
   });
 
+  console.log("\nA WhatsApp reply to a live-chat thread finds it (Postgres)\n");
+  await runInTenant(A, async () => {
+    const live = await store.findOrCreateOpenConversation({ orgId: A, inboxId: a.chat.id, contact: a.contact, channel: "nestchat" });
+    ok("nothing to join before an agent has written from the number",
+      (await store.findCrossChannelReplyThread({ orgId: A, inboxId: a.wa.id, contactId: a.contact.id })) === undefined);
+    const sent = await store.addMessage(live.conversation.id, { body: "I'll reply on WhatsApp", internal: false, channel: "whatsapp" } as never, a.user);
+    await store.setMessageInbox(sent!.id, a.wa.id);
+    ok("the live-chat thread an agent answered from this number is found",
+      (await store.findCrossChannelReplyThread({ orgId: A, inboxId: a.wa.id, contactId: a.contact.id })) === live.conversation.id);
+  });
+  await runInTenant(B, async () => {
+    ok("…and never from another workspace",
+      (await store.findCrossChannelReplyThread({ orgId: B, inboxId: a.wa.id, contactId: a.contact.id })) === undefined);
+  });
+
   await cleanup(root);
   await root.$disconnect();
   console.log(failed === 0 ? "\nAll good\n" : `\n${failed} check(s) failed\n`);

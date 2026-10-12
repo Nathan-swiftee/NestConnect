@@ -1031,6 +1031,23 @@ export abstract class Store {
    * thread starts a new one — only one open per (contact, inbox) at a time.
    * (Agents can still reply cross-channel within a thread; that's the send path.)
    */
+  /**
+   * The open conversation a WhatsApp customer's message belongs in when it
+   * isn't this number's own thread with them: the one where an agent last
+   * wrote to them *from this number* as a cross-channel reply.
+   *
+   * A customer who came in on live chat and was answered on WhatsApp replies on
+   * WhatsApp — and that reply belongs under the live-chat conversation it
+   * answers, not in a brand-new WhatsApp chat. Undefined when there is no such
+   * thread, or when this number's own open thread with them has moved more
+   * recently (then that is the conversation they are in).
+   */
+  abstract findCrossChannelReplyThread(params: {
+    orgId: string;
+    inboxId: string;
+    contactId: string;
+  }): Promise<string | undefined>;
+
   abstract findOrCreateOpenConversation(params: {
     orgId: string;
     inboxId: string;

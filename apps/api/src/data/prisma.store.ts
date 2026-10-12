@@ -2251,6 +2251,37 @@ export class PrismaStore extends Store {
     }
   }
 
+  async findCrossChannelReplyThread(params: { orgId: string; inboxId: string; contactId: string }): Promise<string | undefined> {
+    const sent = await this.prisma.message.findFirst({
+      where: {
+        direction: "out",
+        internal: false,
+        channel: { in: ["whatsapp"] },
+        inboxId: params.inboxId,
+        conversation: {
+          orgId: params.orgId,
+          contactId: params.contactId,
+          inboxId: { not: params.inboxId },
+          status: { in: [...THREADABLE_STATUSES] },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { conversationId: true, createdAt: true },
+    });
+    if (!sent) return undefined;
+    const ownNewer = await this.prisma.conversation.findFirst({
+      where: {
+        orgId: params.orgId,
+        contactId: params.contactId,
+        inboxId: params.inboxId,
+        status: { in: [...THREADABLE_STATUSES] },
+        lastActivityAt: { gt: sent.createdAt },
+      },
+      select: { id: true },
+    });
+    return ownNewer ? undefined : sent.conversationId;
+  }
+
   async findOrCreateOpenConversation(params: {
     orgId: string;
     inboxId: string;
