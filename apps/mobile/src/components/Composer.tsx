@@ -8,6 +8,8 @@ import {
   autoTemplateSlot,
   inboxLabel,
   macroQueryAt,
+  mentionLabel,
+  namesToHandles,
   replyTargetsFor,
   resolveTemplateDefault,
   searchMacros,
@@ -33,6 +35,7 @@ import { StagedAttachments } from "./StagedAttachments";
 import { AttachSheet } from "./AttachSheet";
 import { TemplateSheet } from "./TemplateSheet";
 import { MacroSheet } from "./MacroSheet";
+import { mediaSource } from "../api-config";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { HoldMic, HoldOverlay, useHoldToRecord } from "./HoldToRecord";
 import { useVoiceRecording, type RecordedVoice } from "../voice";
@@ -204,6 +207,8 @@ export function Composer({
 
   // ─── @-mention autocomplete (internal notes) ───
   const { data: people } = usePeople();
+  // Teammates as @mentions: who "@Nathan A" means when the note is sent.
+  const mentionPeople = useMemo(() => (people ?? []).map((m) => m.user), [people]);
   /** The "@query" currently being typed, and where its "@" sits in the draft. */
   const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
   /**
@@ -308,7 +313,8 @@ export function Composer({
   const showMic = isWhatsApp && !internal && !hasContent;
 
   async function submit() {
-    const text = body.trim();
+    // A note's "@Nathan A" goes out as "@nathan", the handle that notifies them.
+    const text = internal ? namesToHandles(body.trim(), mentionPeople) : body.trim();
     if ((!text && !files.readyIds.length) || locked) {
       // Refused rather than ignored: outside the WhatsApp window there *is* a
       // reason, and a dead button with no feedback reads as a broken one.
@@ -494,7 +500,9 @@ export function Composer({
    */
   function insertMention(u: { name: string; email: string }) {
     if (!mention) return;
-    const handle = "@" + u.email.split("@")[0].toLowerCase() + " ";
+    // The name, not the handle: "@Nathan A" reads as a person. It becomes
+    // "@nathan" (what the server routes by) only when the note is sent.
+    const handle = mentionLabel(u, mentionPeople) + " ";
     const before = body.slice(0, mention.start);
     const after = body.slice(mention.start + 1 + mention.query.length);
     const next = before + handle + after;
@@ -948,13 +956,15 @@ export function Composer({
                 style={{ borderBottomColor: i === arr.length - 1 ? "transparent" : c.border }}
                 className={`flex-row items-center gap-2.5 px-3 py-2 ${i === arr.length - 1 ? "" : "border-b"}`}
               >
-                <Avatar name={u.name} color={u.avatarColor} size={28} />
+                <Avatar name={u.name} color={u.avatarColor} photo={u.avatarUrl ? mediaSource(u.avatarUrl) : null} size={28} />
                 <Text numberOfLines={1} className="flex-1 text-md font-medium text-fg">
                   {u.name}
                 </Text>
-                <Text style={{ color: c.textFaint }} className="text-2xs">
-                  @{u.email.split("@")[0].toLowerCase()}
-                </Text>
+                {u.position ? (
+                  <Text numberOfLines={1} style={{ color: c.textFaint, maxWidth: "40%" }} className="text-2xs">
+                    {u.position}
+                  </Text>
+                ) : null}
               </Touchable>
             ))}
           </ScrollView>

@@ -29,7 +29,7 @@ import {
   useTypingPresence,
   type TypingPresence,
 } from "@ding/client";
-import { inboxLabel, sendingInbox, type ChannelType, type ConversationWithMessages, type Message } from "@ding/schemas";
+import { inboxLabel, mentionParts, sendingInbox, type ChannelType, type ConversationWithMessages, type Message } from "@ding/schemas";
 import { ActionSheet, LEADING, type SheetAction } from "../../../src/components/ActionSheet";
 import { Attachments } from "../../../src/components/Attachments";
 import { Avatar } from "../../../src/components/Avatar";
@@ -100,23 +100,26 @@ const SNOOZE = [
 ];
 
 /**
- * A note body with its @handles picked out.
+ * A note body with its @mentions picked out, by name.
  *
- * Same split as the web's, on the same character class, so a note written on a
- * laptop and read on a phone highlights the same words. The point isn't
- * decoration: a note is often addressed to one person in a team of six, and the
- * handle is the only thing that says which.
+ * The same `mentionParts` the web uses, so a note written on a laptop and read
+ * on a phone highlights the same people. The point isn't decoration: a note is
+ * often addressed to one person in a team of six, and the mention is the only
+ * thing that says which.
  */
 function NoteBody({ body, color }: { body: string; color: string }) {
+  // Shown by name ("@Nathan A"); the stored "@nathan" is only what routes it.
+  const { data: people } = usePeople();
+  const parts = mentionParts(body, (people ?? []).map((m) => m.user));
   return (
     <Text className="text-lg leading-snug text-fg">
-      {body.split(/(@[\w.+-]+)/g).map((part, i) =>
-        part.startsWith("@") ? (
+      {parts.map((part, i) =>
+        part.mention ? (
           <Text key={i} style={{ color }} className="font-semibold">
-            {part}
+            {part.text}
           </Text>
         ) : (
-          part
+          part.text
         ),
       )}
     </Text>
