@@ -10,6 +10,7 @@ import {
 import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
 import { MacrosPane } from "./MacrosPane";
+import { ChannelSignature, signatureDraftFor, signatureInput, type SignatureDraft } from "./ChannelSignature";
 import type {
   ChannelType,
   Inbox,
@@ -81,6 +82,7 @@ import {
   useRegisterWhatsappNumber,
   useRerouteInbox,
   useSetDefaultInbox,
+  useSetInboxSignature,
   useSetDefaultTemplate,
   useSyncTemplates,
   useTeams,
@@ -546,6 +548,12 @@ function ChannelEditor({
   // verifiable; secret fields (tokens) stay blank and are kept unless re-entered.
   const [cfg, setCfg] = useState<Record<string, string>>(inbox.channelConfigPublic ?? {});
   const [moveOpen, setMoveOpen] = useState(false);
+  // Email channels sign their mail; the design lives on its own tab and is
+  // saved by the same button as everything else here.
+  const isEmail = inbox.type === "email";
+  const [tab, setTab] = useState<"settings" | "signature">("settings");
+  const [sig, setSig] = useState<SignatureDraft>(() => signatureDraftFor(inbox));
+  const saveSig = useSetInboxSignature();
 
   const setField = (k: string, v: string) => setCfg((c) => ({ ...c, [k]: v }));
   const toggleTeam = (id: string) =>
@@ -554,7 +562,16 @@ function ChannelEditor({
   // Did the team routing actually change? (order-independent)
   const teamsChanged = [...teamIds].sort().join(",") !== [...inbox.teamIds].sort().join(",");
 
-  const save = () => {
+  const save = async () => {
+    if (isEmail && sig.dirty) {
+      try {
+        await saveSig.mutateAsync({ id: inbox.id, input: signatureInput(sig) });
+        setSig((d) => ({ ...d, dirty: false }));
+      } catch (err) {
+        onToast(err instanceof Error ? err.message : "Couldn’t save the signature");
+        return;
+      }
+    }
     const channelConfig: Record<string, string> = {};
     for (const f of kind?.fields ?? []) {
       const v = (cfg[f.key] ?? "").trim();
@@ -599,7 +616,19 @@ function ChannelEditor({
           <h2>Edit channel</h2>
           <button type="button" className="modal__x" onClick={onDone} aria-label="Close"><XIcon /></button>
         </div>
+        {isEmail && (
+          <div className="pers-tabs" role="tablist" aria-label="Channel sections">
+            <button type="button" role="tab" aria-selected={tab === "settings"} className={"pers-tab" + (tab === "settings" ? " on" : "")} onClick={() => setTab("settings")}>
+              Settings
+            </button>
+            <button type="button" role="tab" aria-selected={tab === "signature"} className={"pers-tab" + (tab === "signature" ? " on" : "")} onClick={() => setTab("signature")}>
+              Signature
+            </button>
+          </div>
+        )}
         <div className="modal__body">
+      {tab === "signature" && <ChannelSignature inbox={inbox} draft={sig} onChange={setSig} onToast={onToast} />}
+      <div hidden={tab !== "settings"}>
       <div className="setform__grid two">
         <label className="field">
           <span>Display name</span>
@@ -696,6 +725,7 @@ function ChannelEditor({
           </div>
         </div>
       )}
+      </div>
         </div>
         <div className="modal__foot modal__foot--split">
           <button className="btn-ghost btn-danger" type="button" onClick={onDelete}>
@@ -703,7 +733,7 @@ function ChannelEditor({
           </button>
           <div className="setform__footactions">
             <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
-            <button className="btn-primary" type="button" onClick={save} disabled={update.isPending || reroute.isPending || !valid}>
+            <button className="btn-primary" type="button" onClick={() => void save()} disabled={update.isPending || reroute.isPending || saveSig.isPending || !valid}>
               Save changes
             </button>
           </div>
@@ -1726,6 +1756,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("agent");
+  const [position, setPosition] = useState("");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   // The most recent invite's set-password link, shown so the admin can share it
   // when no transactional email is connected yet.
@@ -1735,6 +1766,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [eName, setEName] = useState("");
   const [eRole, setERole] = useState<Role>("agent");
+  const [ePosition, setEPosition] = useState("");
   const [eTeams, setETeams] = useState<string[]>([]);
 
   const toggleTeam = (id: string) => setTeamIds((t) => (t.includes(id) ? t.filter((x) => x !== id) : [...t, id]));
@@ -1747,7 +1779,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
     if (!valid) return;
     const who = name.trim();
     create.mutate(
-      { name: who, email: email.trim(), role, teamIds },
+      { name: who, email: email.trim(), role, teamIds, position: position.trim() },
       {
         onSuccess: (result) => {
           if (result.invite) {
@@ -1757,7 +1789,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
           } else {
             onToast(`Invited ${who}`);
           }
-          setName(""); setEmail(""); setRole("agent"); setTeamIds([]); setOpen(false);
+          setName(""); setEmail(""); setRole("agent"); setPosition(""); setTeamIds([]); setOpen(false);
         },
         onError: () => onToast("Only admins/managers can add people"),
       },
@@ -1776,15 +1808,15 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
     }
   };
 
-  const startEdit = (id: string, n: string, r: Role, t: string[]) => {
+  const startEdit = (id: string, n: string, r: Role, t: string[], pos?: string | null) => {
     setOpen(false);
-    setEditId(id); setEName(n); setERole(r); setETeams(t);
+    setEditId(id); setEName(n); setERole(r); setETeams(t); setEPosition(pos ?? "");
   };
   const saveEdit = (id: string) => {
     const trimmed = eName.trim();
     if (!trimmed) return;
     update.mutate(
-      { id, input: { name: trimmed, role: eRole, teamIds: eTeams } },
+      { id, input: { name: trimmed, role: eRole, teamIds: eTeams, position: ePosition.trim() } },
       {
         onSuccess: () => { setEditId(null); onToast("Member updated"); },
         onError: () => onToast("Couldn't update member"),
@@ -1853,8 +1885,8 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
                 key={m.user.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => startEdit(m.user.id, m.user.name, m.user.role, m.teamIds)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); startEdit(m.user.id, m.user.name, m.user.role, m.teamIds); } }}
+                onClick={() => startEdit(m.user.id, m.user.name, m.user.role, m.teamIds, m.user.position)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); startEdit(m.user.id, m.user.name, m.user.role, m.teamIds, m.user.position); } }}
               >
                 <span className="dcell dname">
                   <span className="av dname__av" style={{ background: avatarBg(m.user.name, m.user.avatarColor) }}>
@@ -1862,6 +1894,7 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
                   </span>
                   <span className="dname__x">
                     <span className="dcell__t">{m.user.name}{isSelf && <span className="youtag">You</span>}</span>
+                    {m.user.position && <span className="dname__pos">{m.user.position}</span>}
                   </span>
                 </span>
                 <span className="dcell dcell--muted">{m.user.email}</span>
@@ -1892,12 +1925,18 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
                   <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@swiftee.co.uk" required />
                 </label>
               </div>
-              <label className="field">
-                <span>Role</span>
-                <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                  {ROLES.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
-                </select>
-              </label>
+              <div className="setform__grid two">
+                <label className="field">
+                  <span>Position <em>optional</em></span>
+                  <input value={position} maxLength={80} onChange={(e) => setPosition(e.target.value)} placeholder="e.g. Operations Manager" />
+                </label>
+                <label className="field">
+                  <span>Role</span>
+                  <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
+                    {ROLES.map((r) => (<option key={r.value} value={r.value}>{r.label}</option>))}
+                  </select>
+                </label>
+              </div>
               <div className="field">
                 <span>Teams</span>
                 <div className="checks">
@@ -1938,6 +1977,11 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
                   </select>
                 </label>
               </div>
+              <label className="field">
+                <span>Position</span>
+                <input value={ePosition} maxLength={80} onChange={(e) => setEPosition(e.target.value)} placeholder="e.g. Operations Manager" />
+                <small className="fieldhint">Shown in the signature of every email channel they send from.</small>
+              </label>
               <div className="field">
                 <span>Teams</span>
                 <div className="checks">

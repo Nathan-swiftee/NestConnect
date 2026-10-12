@@ -305,7 +305,7 @@ export function mapUser(u: Prisma.UserGetPayload<object>): User {
     online: u.online,
     available: u.available,
     schedule: readSchedule(u.availabilitySchedule),
-    emailSignature: u.emailSignature ?? undefined,
+    position: u.position ?? null,
     twoFactorEnabled: u.twoFactorEnabled,
     twoFactorMethod: (u.twoFactorMethod as "totp" | "email" | null) ?? null,
   };
@@ -350,6 +350,7 @@ export function mapInbox(i: InboxWithTeams): Inbox {
     unread: 0,
     connected: isInboxConnected(type, i.channelConfig as Record<string, string> | null),
     channelConfigPublic: publicChannelConfig(i.channelConfig as Record<string, string> | null),
+    ...(type === "email" ? { signature: { layoutHtml: i.signatureHtml, footerHtml: i.signatureFooterHtml } } : {}),
   };
 }
 

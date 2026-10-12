@@ -324,6 +324,20 @@ export class PrismaStore extends Store {
     return mapInbox(updated);
   }
 
+  async setInboxSignature(
+    id: string,
+    signature: { layoutHtml: string | null; footerHtml: string | null },
+  ): Promise<Inbox | undefined> {
+    const existing = await this.prisma.inbox.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return undefined;
+    const updated = await this.prisma.inbox.update({
+      where: { id },
+      data: { signatureHtml: signature.layoutHtml, signatureFooterHtml: signature.footerHtml },
+      include: { teams: true },
+    });
+    return mapInbox(updated);
+  }
+
   async deleteInbox(id: string): Promise<void> {
     const convs = await this.prisma.conversation.findMany({ where: { inboxId: id }, select: { id: true } });
     const convIds = convs.map((c) => c.id);
@@ -615,6 +629,7 @@ export class PrismaStore extends Store {
     email: string;
     role: Role;
     teamIds: string[];
+    position?: string | null;
     password?: string;
   }): Promise<{ user: User; inviteToken?: string }> {
     // With a password → loginable now (seeding). Without → mint an invite token
@@ -626,6 +641,7 @@ export class PrismaStore extends Store {
         name: params.name,
         email: params.email,
         role: params.role,
+        position: params.position ?? null,
         passwordHash: bcrypt.hashSync(params.password ?? randomBytes(24).toString("hex"), 8),
         inviteTokenHash: invite?.hash ?? null,
         inviteExpiresAt: invite?.expiresAt ?? null,
@@ -665,12 +681,13 @@ export class PrismaStore extends Store {
 
   async updateUser(
     id: string,
-    params: { name?: string; role?: Role; teamIds?: string[] },
+    params: { name?: string; role?: Role; teamIds?: string[]; position?: string | null },
   ): Promise<User | undefined> {
     try {
       await this.prisma.$transaction(async (tx) => {
         const data: Prisma.UserUpdateInput = {};
         if (params.name !== undefined) data.name = params.name;
+        if (params.position !== undefined) data.position = params.position;
         if (params.role !== undefined) data.role = params.role;
         if (Object.keys(data).length) await tx.user.update({ where: { id }, data });
         if (params.teamIds !== undefined) {
@@ -692,7 +709,7 @@ export class PrismaStore extends Store {
 
   async updateMyPreferences(
     userId: string,
-    params: { available?: boolean; schedule?: AvailabilitySchedule | null; emailSignature?: string | null },
+    params: { available?: boolean; schedule?: AvailabilitySchedule | null },
   ): Promise<User | undefined> {
     try {
       const data: Prisma.UserUpdateInput = {};
@@ -700,7 +717,6 @@ export class PrismaStore extends Store {
       if (params.schedule !== undefined) {
         data.availabilitySchedule = params.schedule === null ? Prisma.DbNull : (params.schedule as Prisma.InputJsonValue);
       }
-      if (params.emailSignature !== undefined) data.emailSignature = params.emailSignature;
       const u = await this.prisma.user.update({ where: { id: userId }, data });
       return mapUser(u);
     } catch {
@@ -710,11 +726,12 @@ export class PrismaStore extends Store {
 
   async updateMyProfile(
     userId: string,
-    params: { name?: string; email?: string; avatarUrl?: string | null },
+    params: { name?: string; email?: string; avatarUrl?: string | null; position?: string | null },
   ): Promise<User | undefined> {
     try {
       const data: Prisma.UserUpdateInput = {};
       if (params.name !== undefined) data.name = params.name;
+      if (params.position !== undefined) data.position = params.position;
       if (params.email !== undefined) data.email = params.email;
       if (params.avatarUrl !== undefined) data.avatarUrl = params.avatarUrl;
       const u = await this.prisma.user.update({ where: { id: userId }, data });

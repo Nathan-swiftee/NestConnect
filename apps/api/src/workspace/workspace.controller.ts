@@ -10,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
 } from "@nestjs/common";
 import {
   createInboxInputSchema,
@@ -19,6 +20,7 @@ import {
   reorderInboxesInputSchema,
   reorderTeamsInputSchema,
   updateInboxInputSchema,
+  updateInboxSignatureInputSchema,
   setDefaultInboxInputSchema,
   updateLabelInputSchema,
   updateMyPreferencesInputSchema,
@@ -34,6 +36,7 @@ import {
   type ReorderInboxesInput,
   type ReorderTeamsInput,
   type UpdateInboxInput,
+  type UpdateInboxSignatureInput,
   type SetDefaultInboxInput,
   type UpdateLabelInput,
   type UpdateMyPreferencesInput,
@@ -82,13 +85,13 @@ export class WorkspaceController {
     return { ...me, twoFactorEnforced: await this.sandbox.twoFactorRequired(me.user?.orgId) };
   }
 
-  /** A user updating their OWN availability + email signature (no admin rights). */
+  /** A user updating their OWN availability (no admin rights). */
   @Patch("me/preferences")
   async updateMyPreferences(
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(updateMyPreferencesInputSchema)) body: UpdateMyPreferencesInput,
   ): Promise<User> {
-    const params: { available?: boolean; schedule?: AvailabilitySchedule | null; emailSignature?: string | null } = {};
+    const params: { available?: boolean; schedule?: AvailabilitySchedule | null } = {};
     if (body.available !== undefined) params.available = body.available;
     if (body.schedule !== undefined) {
       // A zone the server can't read would be quietly read as UTC — hours an
@@ -97,12 +100,6 @@ export class WorkspaceController {
         throw new BadRequestException(`“${body.schedule.timezone}” isn't a time zone we recognise`);
       }
       params.schedule = body.schedule;
-    }
-    if (body.emailSignature !== undefined) {
-      // Sanitize the agent's rich signature (keeps formatting + inline images,
-      // strips scripts) — the same treatment an outbound email body gets.
-      const clean = body.emailSignature ? sanitizeOutboundHtml(body.emailSignature) : "";
-      params.emailSignature = clean || null;
     }
     const user = await this.store.updateMyPreferences(userId, params);
     if (!user) throw new NotFoundException("Current user not found");
@@ -116,8 +113,10 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(updateMyProfileInputSchema)) body: UpdateMyProfileInput,
   ): Promise<User> {
     await this.sandbox.assertLive("Changing the demo account");
-    const params: { name?: string; email?: string; avatarUrl?: string | null } = {};
+    const params: { name?: string; email?: string; avatarUrl?: string | null; position?: string | null } = {};
     if (body.name !== undefined) params.name = body.name.trim();
+    // Their own job title, for email signatures. Trimmed by the schema; blank is none.
+    if (body.position !== undefined) params.position = body.position || null;
     if (body.email !== undefined) {
       const email = body.email.trim().toLowerCase();
       // Login is by email alone, before anything says which workspace — so an
@@ -204,6 +203,28 @@ export class WorkspaceController {
     const inbox = await this.store.updateInbox(id, body);
     if (!inbox) throw new NotFoundException("Channel not found");
     await this.subscribeWhatsAppWebhook(inbox.id, inbox.type);
+    return inbox;
+  }
+
+  /**
+   * An email channel's signature: the layout (tags filled per sender) and the
+   * marketing section under it. Sanitised like an outbound body — formatting,
+   * links and hosted images stay, scripts don't. A null layout puts the
+   * default back.
+   */
+  @Put("inboxes/:id/signature")
+  async setInboxSignature(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(updateInboxSignatureInputSchema)) body: UpdateInboxSignatureInput,
+  ) {
+    await this.requireManager(userId);
+    const current = await this.store.getInbox(id);
+    if (!current) throw new NotFoundException("Channel not found");
+    if (current.type !== "email") throw new BadRequestException("Only an email channel has a signature");
+    const clean = (html: string | null) => (html === null ? null : sanitizeOutboundHtml(html));
+    const inbox = await this.store.setInboxSignature(id, { layoutHtml: clean(body.layoutHtml), footerHtml: clean(body.footerHtml) });
+    if (!inbox) throw new NotFoundException("Channel not found");
     return inbox;
   }
 
@@ -343,7 +364,7 @@ export class WorkspaceController {
     // No password → the store mints an invite token; email the "set your
     // password" link, and return it so the admin can share it by hand when no
     // transactional email is connected yet.
-    const { user, inviteToken } = await this.store.createUser({ orgId: me.orgId, ...body });
+    const { user, inviteToken } = await this.store.createUser({ orgId: me.orgId, ...body, position: body.position || null });
     if (!inviteToken) return { user };
     const url = `${env.appUrl}/?invite=${inviteToken}`;
     const { sent } = await this.mailer.sendInvite(user.email, user.name, url);
@@ -357,7 +378,10 @@ export class WorkspaceController {
     @Body(new ZodValidationPipe(updateUserInputSchema)) body: UpdateUserInput,
   ) {
     await this.requireManager(userId);
-    const user = await this.store.updateUser(id, body);
+    const user = await this.store.updateUser(id, {
+      ...body,
+      ...(body.position !== undefined ? { position: body.position || null } : {}),
+    });
     if (!user) throw new NotFoundException("Person not found");
     return user;
   }

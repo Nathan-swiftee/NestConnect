@@ -6,6 +6,7 @@
  * so validation and types can never drift apart.
  */
 import { z } from "zod";
+import { positionInputSchema } from "./signatures";
 
 /* ------------------------------------------------------------------ */
 /* Enums                                                               */
@@ -378,8 +379,8 @@ export const userSchema = z.object({
   available: z.boolean().default(true),
   /** Working hours. Null or disabled: the switch alone decides. See availableNow. */
   schedule: availabilityScheduleSchema.nullable().optional(),
-  /** Personal HTML email signature, appended to outbound email this user sends. */
-  emailSignature: z.string().nullable().optional(),
+  /** Job title, e.g. "Operations Manager" — filled into email signatures. */
+  position: z.string().nullable().optional(),
   /** Two-factor status, surfaced so the UI can show it + gate mandatory setup.
    *  The secret itself is never sent to the client. */
   twoFactorEnabled: z.boolean().optional(),
@@ -467,6 +468,9 @@ export const inboxSchema = z.object({
   /** Non-secret channelConfig values (e.g. the Phone number ID) surfaced so the
    *  channel editor can show what's configured. Access tokens are NEVER included. */
   channelConfigPublic: z.record(z.string()).optional(),
+  /** An email channel's signature design (layout with tags + marketing
+   *  section). Absent on other channels. See signatures.ts. */
+  signature: z.object({ layoutHtml: z.string().nullable(), footerHtml: z.string().nullable() }).optional(),
 });
 export type Inbox = z.infer<typeof inboxSchema>;
 
@@ -2850,6 +2854,8 @@ export const createUserInputSchema = z.object({
   email: z.string().email(),
   role: roleSchema.default("agent"),
   teamIds: z.array(z.string()).default([]),
+  /** Job title for signatures. Optional; blank is none. */
+  position: positionInputSchema.optional(),
 });
 export type CreateUserInput = z.infer<typeof createUserInputSchema>;
 
@@ -2857,6 +2863,7 @@ export const updateUserInputSchema = z.object({
   name: z.string().min(1).optional(),
   role: roleSchema.optional(),
   teamIds: z.array(z.string()).optional(),
+  position: positionInputSchema.optional(),
 });
 export type UpdateUserInput = z.infer<typeof updateUserInputSchema>;
 
@@ -2865,10 +2872,6 @@ export const updateMyPreferencesInputSchema = z.object({
   available: z.boolean().optional(),
   /** Working hours; null clears them (the switch alone decides again). */
   schedule: availabilityScheduleSchema.nullable().optional(),
-  /** Rich-text (HTML) signature; empty string clears it. Images are hosted (a
-   *  short https URL, not inline base64), so this only needs headroom for
-   *  formatting markup and the occasional pasted data-URL. */
-  emailSignature: z.string().max(200000).nullable().optional(),
 });
 export type UpdateMyPreferencesInput = z.infer<typeof updateMyPreferencesInputSchema>;
 
@@ -2878,6 +2881,8 @@ export const updateMyProfileInputSchema = z.object({
   email: z.string().email().optional(),
   /** Uploaded photo URL (from POST /media). Empty string / null clears it. */
   avatarUrl: z.string().max(2000).nullable().optional(),
+  /** Their own job title; blank clears it. */
+  position: positionInputSchema.optional(),
 });
 export type UpdateMyProfileInput = z.infer<typeof updateMyProfileInputSchema>;
 
@@ -3558,3 +3563,4 @@ export interface AnalyticsResult {
 }
 export * from "./accounts";
 export * from "./macros";
+export * from "./signatures";

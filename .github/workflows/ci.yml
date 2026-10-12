@@ -55,6 +55,7 @@ jobs:
           pnpm check:tenant-isolation
           pnpm check:organisations-pg
           pnpm check:macros-pg
+          pnpm check:email-signature-pg
 
       - name: Tenant isolation (HTTP, Postgres)
         env:
@@ -203,6 +204,12 @@ jobs:
       # has it) plus the ones every team gets.
       - name: Macros
         run: pnpm check:macros
+
+      # Email signatures: each email channel's design, filled in per sender —
+      # a missing position drops its line, and an email signs as the mailbox it
+      # really leaves from.
+      - name: Email signatures
+        run: pnpm check:email-signature
 
       # The app surface on a live-chat channel. Two things here are worth a
       # build failing over: the identity secret must never reach a browser (it

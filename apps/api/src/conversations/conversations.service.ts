@@ -12,8 +12,10 @@ import type {
   SendMessageInput,
   UpdatePriorityInput,
   UpdateStatusInput,
+  User,
+  ChannelType,
 } from "@ding/schemas";
-import { FORWARD_MAX_TARGETS } from "@ding/schemas";
+import { FORWARD_MAX_TARGETS, renderEmailSignature, sendingInbox } from "@ding/schemas";
 import { Store, type OutboundDeliveryMeta } from "../data/store";
 import { currentOrgId } from "../tenancy/tenant-scope";
 import { isWaChannel } from "../data/mappers";
@@ -245,10 +247,12 @@ export class ConversationsService {
         ? forwardSubject(conv.subject)
         : conv.subject ?? undefined
       : undefined;
-    // Snapshot the sender's signature so the outbound email carries it — appended
-    // to the wire body only, never stored on the shown message.
+    // Snapshot the signature so the outbound email carries it — appended to the
+    // wire body only, never stored on the shown message. It's the design of the
+    // mailbox this goes out from (the same one the dispatcher will pick), filled
+    // in with the sender's own name and position.
     const signatureHtml =
-      !input.internal && sendingEmail ? author.emailSignature?.trim() || undefined : undefined;
+      !input.internal && sendingEmail ? (await this.signatureFor(conv, effectiveChannel, author)) || undefined : undefined;
     const deliveryMeta: OutboundDeliveryMeta | undefined = input.internal
       ? undefined
       : buildDeliveryMeta(template, emailSubject, cc, bcc, signatureHtml, forwardTo);
@@ -552,5 +556,26 @@ export class ConversationsService {
       .reverse()
       .find((m) => m.direction === "in" && m.channelMsgId);
     if (lastInbound?.channelMsgId) await this.dispatcher.sendTyping(conv, lastInbound.channelMsgId);
+  }
+
+  /**
+   * The signature an email from this agent carries: the sending mailbox's
+   * design (or the default, until one is made), with their name, position and
+   * team filled in. The mailbox is chosen exactly as the dispatcher chooses it,
+   * so a reply switched onto email signs as the mailbox it really leaves from.
+   */
+  private async signatureFor(conv: ConversationWithMessages, channel: ChannelType, author: User): Promise<string> {
+    const inbox = sendingInbox(await this.store.listInboxes(), conv, { channel });
+    if (!inbox) return "";
+    const teamId = conv.assignedTeamId ?? inbox.teamIds[0];
+    const team = teamId ? (await this.store.listTeams()).find((t) => t.id === teamId) : undefined;
+    return renderEmailSignature(inbox.signature, {
+      agentName: author.name,
+      agentPosition: author.position,
+      agentEmail: author.email,
+      teamName: team?.name,
+      channelName: inbox.name,
+      channelEmail: inbox.handle,
+    });
   }
 }

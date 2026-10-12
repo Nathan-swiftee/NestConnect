@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import {
   useLogout,
   useMe,
   usePushPreferences,
   useTestPush,
   useUpdateMyPreferences,
+  useUpdateMyProfile,
   useUpdatePushPreferences,
 } from "@ding/client";
 import { availableNow, type PushPreferences } from "@ding/schemas";
@@ -41,6 +42,20 @@ export default function Settings() {
   const { data } = useMe();
   const me = data?.user;
   const prefs = useUpdateMyPreferences();
+  const profile = useUpdateMyProfile();
+  // Position (job title): it goes into the signature of every email channel
+  // you send from, so it's worth being able to fix from the phone.
+  const [position, setPosition] = useState("");
+  const [editingPosition, setEditingPosition] = useState(false);
+  useEffect(() => {
+    if (me && !editingPosition) setPosition(me.position ?? "");
+  }, [me?.position, editingPosition]);
+  function savePosition() {
+    setEditingPosition(false);
+    const next = position.trim();
+    if (next === (me?.position ?? "")) return;
+    profile.mutate({ position: next }, { onError: () => setPosition(me?.position ?? "") });
+  }
   const pushPrefs = usePushPreferences();
   const updatePush = useUpdatePushPreferences();
   const logout = useLogout();
@@ -122,6 +137,34 @@ export default function Settings() {
             <Text numberOfLines={1} className="text-sm text-muted">
               {me?.email ?? ""}
             </Text>
+            {editingPosition ? (
+              <TextInput
+                value={position}
+                onChangeText={setPosition}
+                onBlur={savePosition}
+                onSubmitEditing={savePosition}
+                autoFocus
+                maxLength={80}
+                returnKeyType="done"
+                placeholder="e.g. Operations Manager"
+                placeholderTextColor={c.textFaint}
+                accessibilityLabel="Position"
+                style={{ color: c.text, borderColor: c.brand }}
+                className="mt-1 rounded-8 border px-2 py-1 text-sm"
+              />
+            ) : (
+              <Pressable
+                onPress={() => setEditingPosition(true)}
+                accessibilityRole="button"
+                accessibilityLabel={position ? `Position: ${position}. Change it` : "Add your position"}
+                hitSlop={6}
+                className="mt-0.5 self-start"
+              >
+                <Text style={{ color: position ? c.textMuted : c.brandStrong }} className="text-sm">
+                  {position || "Add your position"}
+                </Text>
+              </Pressable>
+            )}
           </View>
           <View style={{ backgroundColor: c.surface2 }} className="rounded-full px-2.5 py-1">
             <Text style={{ color: c.textMuted }} className="text-2xs font-semibold capitalize">

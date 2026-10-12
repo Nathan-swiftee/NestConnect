@@ -378,6 +378,11 @@ export abstract class Store {
       channelConfig?: Record<string, string>;
     },
   ): Promise<Inbox | undefined>;
+  /** Save an email channel's signature design (already sanitised). */
+  abstract setInboxSignature(
+    id: string,
+    signature: { layoutHtml: string | null; footerHtml: string | null },
+  ): Promise<Inbox | undefined>;
   /** Delete a channel and the conversations that belong to it. */
   abstract deleteInbox(id: string): Promise<void>;
   /** A single inbox by id (includes orgId/type; channelConfig stays backend-only). */
@@ -472,6 +477,7 @@ export abstract class Store {
     email: string;
     role: Role;
     teamIds: string[];
+    position?: string | null;
     password?: string;
   }): Promise<{ user: User; inviteToken?: string }>;
   /** Consume an invite token, set the user's password, and return the user. */
@@ -485,18 +491,18 @@ export abstract class Store {
   abstract createPasswordResetToken(email: string): Promise<{ user: User; token: string } | null>;
   abstract updateUser(
     id: string,
-    params: { name?: string; role?: Role; teamIds?: string[] },
+    params: { name?: string; role?: Role; teamIds?: string[]; position?: string | null },
   ): Promise<User | undefined>;
-  /** A user updating their OWN personal settings (availability + signature). */
+  /** A user updating their OWN personal settings (availability). */
   abstract updateMyPreferences(
     userId: string,
-    params: { available?: boolean; schedule?: AvailabilitySchedule | null; emailSignature?: string | null },
+    params: { available?: boolean; schedule?: AvailabilitySchedule | null },
   ): Promise<User | undefined>;
-  /** A user updating their OWN profile (name, login email, photo). Email
+  /** A user updating their OWN profile (name, login email, photo, position). Email
    *  uniqueness within the org is enforced by the caller. */
   abstract updateMyProfile(
     userId: string,
-    params: { name?: string; email?: string; avatarUrl?: string | null },
+    params: { name?: string; email?: string; avatarUrl?: string | null; position?: string | null },
   ): Promise<User | undefined>;
   /** Set a user's password to a new plaintext value (hashed in the store). */
   abstract setUserPassword(userId: string, password: string): Promise<void>;
