@@ -1117,8 +1117,11 @@ export class PrismaStore extends Store {
     if (view === "inbound") return { OR: [mine, grabs] };
     if (view === "snoozed") return { ...org, status: "snoozed" };
     if (view === "mentions") {
+      // Like every other queue: the badge counts open work only, so a mention
+      // in a chat that has since been closed doesn't keep it lit.
       return {
         ...org,
+        ...activeOnly,
         messages: { some: { internal: true, body: { contains: token, mode: "insensitive" } } },
       };
     }

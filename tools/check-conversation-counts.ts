@@ -93,6 +93,26 @@ async function main(): Promise<void> {
     }
   }
 
+  // The @ Mentions badge: open work only, like every other queue. A mention in
+  // a chat that has since been closed used to keep the badge at 1 for good.
+  console.log("\n@ Mentions badge\n");
+  const fresh = new MemoryStore();
+  const me = (await fresh.getUser(fresh.demoUserId))!;
+  const james = (await fresh.getUser("usr_james"))!;
+  const handle = "@" + me.email.split("@")[0]!.toLowerCase();
+  const mentionsBadge = async () => (await fresh.views(me.id)).my.find((v) => v.key === "mentions")?.count ?? -1;
+  const before = await mentionsBadge();
+  await fresh.addMessage("conv_north", { body: `${handle} can you look at this?`, internal: true }, james);
+  ok("a note mentioning me lights the badge", (await mentionsBadge()) === before + 1, `${before} → ${await mentionsBadge()}`);
+  await fresh.setStatus("conv_north", "closed");
+  ok("closing that chat clears it", (await mentionsBadge()) === before, String(await mentionsBadge()));
+  ok(
+    "the chat is still in the Mentions list, under Closed",
+    (await everything(fresh, "mentions", me.id)).some((c) => c.id === "conv_north" && c.status === "closed"),
+  );
+  await fresh.setStatus("conv_north", "open");
+  ok("reopening it brings it back", (await mentionsBadge()) === before + 1);
+
   console.log(failed === 0 ? "\nAll good\n" : `\n${failed} check(s) failed\n`);
   process.exit(failed === 0 ? 0 : 1);
 }
