@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, TextInput, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { enter, exit, reflow } from "../motion";
-import type { ChannelType, ConversationWithMessages, Message } from "@ding/schemas";
-import { inboxLabel, replyTargetsFor, sendingInbox, typingPingMs } from "@ding/schemas";
+import type { ChannelType, ConversationWithMessages, Message, TemplateFillContext } from "@ding/schemas";
+import { autoTemplateParams, autoTemplateSlot, inboxLabel, replyTargetsFor, sendingInbox, typingPingMs } from "@ding/schemas";
 import {
   api,
   useIntegrations,
@@ -267,7 +267,16 @@ export function Composer({
   // because another account's default is one Meta would reject — chosen
   // automatically, with nobody having picked it. `useTemplatesForInbox` has
   // already narrowed the list to this conversation's account.
-  const defaultTemplate = templates?.find((t) => t.isDefault && t.variableCount === 1) ?? null;
+  // It needs exactly one variable without a saved default — that one is the
+  // message; the others (the agent's name, say) fill themselves in.
+  const defaultTemplate = templates?.find((t) => t.isDefault && autoTemplateSlot(t) !== null) ?? null;
+  const templateFill: TemplateFillContext = {
+    contactName: conv.contact.displayName,
+    contactCompany: conv.contact.company,
+    contactPhone: conv.contact.phone,
+    contactEmail: conv.contact.email,
+    agentName: me?.user.name,
+  };
   const templateFallback = windowClosed && !internal && !!defaultTemplate;
   const locked = windowClosed && !internal && !defaultTemplate;
 
@@ -306,7 +315,9 @@ export function Composer({
         body: text,
         internal,
         ...(internal ? {} : { channel }),
-        ...(templateFallback ? { template: { id: defaultTemplate!.id, params: [text || "(attachment)"] } } : {}),
+        ...(templateFallback
+          ? { template: { id: defaultTemplate!.id, params: autoTemplateParams(defaultTemplate!, text || "(attachment)", templateFill)! } }
+          : {}),
         // A note goes to the team, so it can't quote a customer message out.
         ...(replyTo && !internal ? { quotedMsgId: replyTo.id } : {}),
         ...(files.readyIds.length ? { attachmentIds: files.readyIds } : {}),
@@ -342,7 +353,9 @@ export function Composer({
         body: text,
         internal,
         ...(internal ? {} : { channel }),
-        ...(templateFallback ? { template: { id: defaultTemplate!.id, params: [text || "(attachment)"] } } : {}),
+        ...(templateFallback
+          ? { template: { id: defaultTemplate!.id, params: autoTemplateParams(defaultTemplate!, text || "(attachment)", templateFill)! } }
+          : {}),
         ...(replyTo && !internal ? { quotedMsgId: replyTo.id } : {}),
         ...(files.readyIds.length ? { attachmentIds: files.readyIds } : {}),
         // The subject and recipients have to survive on the queue too: a reply

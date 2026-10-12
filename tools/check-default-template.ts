@@ -31,7 +31,9 @@ import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { ORG_ID } from "../apps/api/src/data/fixtures";
 import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 import { TemplatesService } from "../apps/api/src/templates/templates.service";
-import { setDefaultTemplateInputSchema } from "../packages/schemas/src/index";
+import { ConversationsService } from "../apps/api/src/conversations/conversations.service";
+import { DEMO_USER_ID } from "../apps/api/src/data/fixtures";
+import { autoTemplateParams, autoTemplateSlot, setDefaultTemplateInputSchema } from "../packages/schemas/src/index";
 import type { SandboxPolicy } from "../apps/api/src/tenancy/sandbox";
 
 /** An ordinary (not demo) workspace — see tenancy/sandbox.ts. */
@@ -48,8 +50,8 @@ const WABA_B = "waba_other_brand";
 
 /** The template this number would re-open a closed chat with, as the composer
  *  resolves it: this account's templates, then the starred one. */
-function forAccount(templates: Array<{ wabaId?: string; isDefault: boolean; variableCount: number; id: string }>, wabaId: string) {
-  return templates.find((t) => (!t.wabaId || t.wabaId === wabaId) && t.isDefault && t.variableCount === 1) ?? null;
+function forAccount(templates: Array<{ wabaId?: string; isDefault: boolean; variableCount: number; variableDefaults?: string[]; id: string }>, wabaId: string) {
+  return templates.find((t) => (!t.wabaId || t.wabaId === wabaId) && t.isDefault && autoTemplateSlot(t) !== null) ?? null;
 }
 
 async function main(): Promise<void> {
@@ -82,6 +84,39 @@ async function main(): Promise<void> {
     forAccount(list, WABA_B)?.id === theirs.id,
     String(forAccount(list, WABA_B)?.name),
   );
+
+  console.log("\nTwo variables, one filled in by itself\n");
+  // "Hi, {{1}} — {{2}} at Swiftee": {{2}} defaults to the agent's name, so the
+  // agent's message has exactly one place to go. It used to be refused for
+  // having two variables, and a closed window locked the composer instead.
+  const signed = await mk("signed_update", "Hi, {{1}} — {{2}} at Swiftee", WABA_A);
+  await store.updateTemplate(signed.id, { variableDefaults: ["", "{{agent.first_name}}"] });
+  await templates.setDefault(signed.id, true);
+  list = await templates.list();
+  const chosen = forAccount(list, WABA_A);
+  ok("it can be the closed-window template", chosen?.id === signed.id, String(chosen?.name));
+  const sent = chosen ? autoTemplateParams(chosen, "your parcel is on its way", { agentName: "Nathan A" }) : null;
+  ok("the message goes in {{1}}, the agent's name in {{2}}", sent?.join("|") === "your parcel is on its way|Nathan", String(sent));
+  const twoOpen = await mk("two_open", "{{1}} and {{2}}", WABA_A);
+  ok("one with two variables left open still can't", autoTemplateSlot(twoOpen) === null);
+  await templates.setDefault(signed.id, false);
+
+  console.log("\nA template with a value missing is refused before it's queued\n");
+  // Meta refuses it too (#132000), but only after it has gone on the queue
+  // and shown as sent — which is what happened with the agent-name template.
+  const convs = new ConversationsService(store, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+  const refused = async (params: string[]) => {
+    try {
+      await convs.sendMessage("conv_harbour", { body: "", template: { id: signed.id, params } } as never, DEMO_USER_ID);
+      return "";
+    } catch (err) {
+      return (err as { getStatus?: () => number }).getStatus?.() === 400 ? (err as Error).message : `unexpected: ${String(err)}`;
+    }
+  };
+  const short = await refused(["your parcel is on its way"]);
+  ok("one value for a two-variable template", short.includes("needs 2 values"), short);
+  const blank = await refused(["your parcel is on its way", " "]);
+  ok("or a blank one", blank.includes("1 is empty"), blank);
 
   console.log("\nThe pre-accounts workspace setting still holds\n");
   const fresh = new MemoryStore();

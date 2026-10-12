@@ -5,8 +5,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import type { Message, Attachment, MessageStatus, ChannelType, WaWindow } from "@ding/schemas";
-import { ClientEvent, FORWARD_MAX_TARGETS, inboxLabel, replyTargetsFor, sendingInbox, templatesForWaba, typingPingMs } from "@ding/schemas";
+import type { Message, Attachment, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
+import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, replyTargetsFor, sendingInbox, templatesForWaba, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -2231,8 +2231,18 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // itself once the window closes, so another account's default here would be a
   // template Meta rejects, chosen automatically, at the moment an agent is
   // trying to get back to somebody.
+  // It needs exactly one variable without a saved default — that one is the
+  // message; the others (the agent's name, say) fill themselves in.
   const defaultTemplate =
-    templatesForWaba(templates ?? [], ourWabaId).find((t) => t.isDefault && t.variableCount === 1) ?? null;
+    templatesForWaba(templates ?? [], ourWabaId).find((t) => t.isDefault && autoTemplateSlot(t) !== null) ?? null;
+  const templateFill: TemplateFillContext = {
+    contactName: conv.contact.displayName,
+    contactCompany: conv.contact.company,
+    contactPhone: conv.contact.phone,
+    contactEmail: conv.contact.email,
+    agentName: me?.user.name,
+    channelName: inboxes?.find((i) => i.id === conv.inboxId)?.name,
+  };
   const templateFallback = windowClosed && !internal && !!defaultTemplate;
   // Free-form replies are blocked when the window is closed — but internal notes
   // bypass the window, and the template fallback keeps the composer usable, so
@@ -2497,9 +2507,10 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       {
         id: conv.id,
         // The window is shut: this goes as the default template, with the
-        // agent's text as {{1}}. The server renders the body from the template,
-        // so `body` is ignored on this path.
-        ...(templateFallback ? { template: { id: defaultTemplate!.id, params: [body] } } : {}),
+        // agent's text in its open variable and the rest from their defaults.
+        // The server renders the body from the template, so `body` is ignored
+        // on this path.
+        ...(templateFallback ? { template: { id: defaultTemplate!.id, params: autoTemplateParams(defaultTemplate!, body, templateFill)! } } : {}),
         body,
         internal,
         attachmentIds: attachmentIds.length ? attachmentIds : undefined,
@@ -3543,7 +3554,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <ClockIcon />
                 <span className="tplfallback__txt">
                   Window closed — sending as <b>{defaultTemplate!.name}</b>
-                  <em>{defaultTemplate!.body.replace("{{1}}", text.trim() || "your message")}</em>
+                  <em>{fillTemplatePreview(defaultTemplate!.body, autoTemplateParams(defaultTemplate!, text.trim() || "your message", templateFill)!)}</em>
                 </span>
                 <button type="button" className="tplfallback__btn" onClick={() => setPicker(true)}>
                   Change

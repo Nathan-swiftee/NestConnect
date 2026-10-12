@@ -173,6 +173,17 @@ export class ConversationsService {
             "Pick one of this number's own templates.",
         );
       }
+      // Meta refuses a template whose variables don't all arrive filled
+      // (#132000), but only after it has been queued and shown as sent — so a
+      // short or blank set is refused here, while the agent is still looking.
+      const params = input.template.params;
+      if (params.length !== tpl.variableCount || params.some((p) => !p.trim())) {
+        const missing = Math.max(tpl.variableCount - params.filter((p) => p.trim()).length, 1);
+        throw new BadRequestException(
+          `The template “${tpl.name}” needs ${tpl.variableCount} value${tpl.variableCount === 1 ? "" : "s"} filled in` +
+            ` — ${missing} ${missing === 1 ? "is" : "are"} empty. Fill ${missing === 1 ? "it" : "them"} in, or give ${missing === 1 ? "it" : "them"} a default in Settings › Templates.`,
+        );
+      }
       body = fillTemplate(tpl.body, input.template.params);
       template = { name: tpl.name, language: tpl.language, params: input.template.params };
     }

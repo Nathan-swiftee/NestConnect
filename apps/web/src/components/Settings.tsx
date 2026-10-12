@@ -39,6 +39,7 @@ import type {
   NestChatTeam,
 } from "@ding/schemas";
 import {
+  autoTemplateSlot,
   resolveTemplateDefault,
   TEMPLATE_TOKENS,
   templatesForWaba,
@@ -3686,14 +3687,15 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
    * all. That silence is most of what "it doesn't work" was.
    */
   const toggleStar = (t: Template) => {
-    // Only a one-variable template can carry it: what gets sent is the agent's
-    // own typed text poured into {{1}}, so a template with none has nowhere to
-    // put it and one with several would go out with the rest blank.
-    if (!t.isDefault && t.variableCount !== 1) {
+    // What gets sent is the agent's own typed text poured into the one
+    // variable without a saved default; the others fill themselves in (the
+    // agent's name, the customer's). A template with no variables has nowhere
+    // to put the message, and one with several left open would go out blank.
+    if (!t.isDefault && autoTemplateSlot(t) === null) {
       onToast(
         t.variableCount === 0
           ? `“${t.name}” has no {{1}} to put the agent's message in, so it can't be the default`
-          : `“${t.name}” has ${t.variableCount} variables — the default needs exactly one, for the agent's own message`,
+          : `“${t.name}” has ${t.variableCount} variables and more than one has no default — give every variable but the message a default (e.g. the agent's name) first`,
       );
       return;
     }
@@ -3814,14 +3816,16 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
                     className={
                       "iconbtn" +
                       (t.isDefault ? " on" : "") +
-                      (!t.isDefault && t.variableCount !== 1 ? " iconbtn--inert" : "")
+                      (!t.isDefault && autoTemplateSlot(t) === null ? " iconbtn--inert" : "")
                     }
                     title={
                       t.isDefault
                         ? "Default template — click to unset"
-                        : t.variableCount === 1
+                        : autoTemplateSlot(t) !== null
                           ? "Use as the default for closed windows"
-                          : `Needs exactly one {{1}} variable to be the default (this has ${t.variableCount})`
+                          : t.variableCount === 0
+                            ? "Needs a variable for the agent's message to be the default"
+                            : "Needs every variable but one to have a default (the one left is the agent's message)"
                     }
                     aria-pressed={t.isDefault}
                     disabled={setDefault.isPending}
