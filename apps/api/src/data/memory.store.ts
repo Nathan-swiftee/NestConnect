@@ -989,7 +989,8 @@ export class MemoryStore extends Store {
     if (view === "snoozed") return rec.status === "snoozed";
     if (view === "mentions") {
       const token = this.mentionToken(userId);
-      return rec.messages.some((m) => m.internal && m.body.toLowerCase().includes(token));
+      // Open work only in the badge, like the other queues (see PrismaStore).
+      return inList && rec.messages.some((m) => m.internal && m.body.toLowerCase().includes(token));
     }
     if (view.startsWith("team:")) {
       const teamId = view.slice(5);
