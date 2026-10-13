@@ -19,9 +19,10 @@ deleted: switching back on brings every chat back as it was.
   number of unread messages (muted chats left out). It **pops up** rather than
   being a page: a panel beside the rail, over the sidebar and the list of
   conversations, leaving the customer thread you're on in view — a quick word
-  with the team is a click away from the conversation it's about. Nothing
-  behind it is blocked (you can keep working the thread), and the rail icon,
-  ✕ or Esc (outside a text box) puts it away; it reopens where you left it,
+  with the team is a click away from the conversation it's about. A click
+  anywhere outside it puts it away (and does what it was for — nothing behind
+  it is blocked), as do the rail icon, ✕ and Esc (outside a text box); it
+  reopens where you left it,
   half-written reply included, and while it's away nothing in it counts as
   read. Two panes inside, like WhatsApp Web: chats, and the open chat (group
   info slides over the chat). A mention in the bell, "Open chat" on a

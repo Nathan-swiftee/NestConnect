@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatMessage, ChatRoomSummary } from "@ding/schemas";
 import {
   chatListTime,
@@ -274,6 +274,7 @@ export function ChatPopup({
   onToast: (m: string) => void;
   onOpenConversation?: (id: string) => void;
 }) {
+  const popup = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -285,11 +286,24 @@ export function ChatPopup({
       if (document.querySelector(".modal, .lightbox")) return;
       onClose();
     };
+    // A press anywhere outside it closes it, the way a menu goes — it's a
+    // quick look, not a place you stay. Not the rail's own Team Chat button,
+    // which toggles it itself, and not a dialog, photo or toast on top.
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (!t || popup.current?.contains(t)) return;
+      if (t.closest("[data-chat-toggle], .modal, .lightbox, .toast")) return;
+      onClose();
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onDown);
+    };
   }, [open, onClose]);
   return (
-    <div className="tc-popup" role="dialog" aria-modal="false" aria-label="Team Chat" hidden={!open}>
+    <div ref={popup} className="tc-popup" role="dialog" aria-modal="false" aria-label="Team Chat" hidden={!open}>
       <TeamChat visible={open} focusRoomId={focusRoomId} focusNonce={focusNonce} onToast={onToast} onOpenConversation={onOpenConversation} onClose={onClose} />
     </div>
   );
