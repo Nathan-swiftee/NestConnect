@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Tabs } from "expo-router";
 import { BlurTargetView } from "expo-blur";
-import { View } from "react-native";
-import { useMe } from "@ding/client";
-import { ContactsIcon, InboxIcon, InsightsIcon, SettingsIcon } from "../../../src/icons";
+import { Text, View } from "react-native";
+import { useMe, useOpsStatus } from "@ding/client";
+import { ContactsIcon, InboxIcon, InsightsIcon, OpsIcon, SettingsIcon } from "../../../src/icons";
 import { TabBar, type Tab } from "../../../src/components/TabBar";
 import { useTheme } from "../../../src/theme";
 
@@ -12,8 +12,9 @@ import { useTheme } from "../../../src/theme";
  * where a thumb can reach it.
  *
  * The destinations are the rail's, in the rail's order: Inbox, Customers,
- * Insights, Settings. Insights is role-gated the same way, so an agent doesn't
- * see a tab that would only refuse them.
+ * Ops, Insights, Settings. Insights is role-gated the same way, so an agent
+ * doesn't see a tab that would only refuse them; Ops only shows while the
+ * workspace has Business Ops switched on, with a badge for must-reads waiting.
  *
  * A thread is deliberately NOT a tab. It lives on the stack above this layout,
  * so opening a conversation takes the whole screen and the tab bar comes back
@@ -52,6 +53,9 @@ export default function TabsLayout() {
   const { data: me } = useMe();
 
   const elevated = me?.user?.role === "admin" || me?.user?.role === "manager";
+  const ops = useOpsStatus();
+  const opsOn = !!ops.data?.enabled;
+  const opsWaiting = ops.data?.pendingAcks ?? 0;
 
   /**
    * The destinations, declared once.
@@ -65,6 +69,7 @@ export default function TabsLayout() {
       [
         { name: "index", label: "Inbox", href: "/", icon: InboxIcon },
         { name: "customers", label: "Customers", href: "/customers", icon: ContactsIcon },
+        ...(opsOn ? [{ name: "ops", label: "Ops", href: "/ops", icon: OpsIcon, badge: opsWaiting }] : []),
         ...(elevated
           ? [{ name: "insights", label: "Insights", href: "/insights", icon: InsightsIcon }]
           : []),
@@ -73,10 +78,13 @@ export default function TabsLayout() {
         ...t,
         // The bar asks for a focused flag and a colour; the icons take both.
         icon: ({ color, size }: { color: string; size: number }) => (
-          <t.icon size={size} color={color} />
+          <View>
+            <t.icon size={size} color={color} />
+            {"badge" in t && t.badge ? <Badge n={t.badge} /> : null}
+          </View>
         ),
       })),
-    [elevated],
+    [elevated, opsOn, opsWaiting],
   );
 
   /**
@@ -120,6 +128,7 @@ export default function TabsLayout() {
         >
           <Tabs.Screen name="index" options={{ title: "Inbox" }} />
           <Tabs.Screen name="customers" options={{ title: "Customers" }} />
+          <Tabs.Screen name="ops" options={{ title: "Ops", href: opsOn ? undefined : null }} />
           <Tabs.Screen
             name="insights"
             options={{
@@ -134,6 +143,20 @@ export default function TabsLayout() {
       </BlurTargetView>
 
       <TabBar tabs={tabs} blurTarget={attached ? blurTarget : undefined} />
+    </View>
+  );
+}
+
+/** Must-reads waiting, on the Ops icon. */
+function Badge({ n }: { n: number }) {
+  const { c } = useTheme();
+  return (
+    <View
+      accessibilityLabel={`${n} to confirm`}
+      style={{ position: "absolute", top: -4, right: -8, backgroundColor: c.amber, borderColor: c.bg, borderWidth: 2 }}
+      className="h-[18px] min-w-[18px] items-center justify-center rounded-full px-1"
+    >
+      <Text className="text-[10px] font-bold text-white">{n > 9 ? "9+" : n}</Text>
     </View>
   );
 }
