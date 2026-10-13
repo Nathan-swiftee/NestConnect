@@ -475,7 +475,7 @@ function Composer({
         <View style={{ backgroundColor: c.elevated, borderColor: c.border }} className="mb-2 rounded-12 border py-1">
           {matches.map((p) => (
             <Touchable key={p.email} feel="row" onPress={() => pick(p)} accessibilityRole="button" accessibilityLabel={`Mention ${p.name}`} className="flex-row items-center gap-2.5 px-3 py-2">
-              <Avatar name={p.name} size={26} photo={(p as Mentionable & { avatarUrl?: string | null }).avatarUrl ? mediaSource((p as Mentionable & { avatarUrl: string }).avatarUrl) : null} />
+              <Avatar name={p.name} size={26} photo={p.avatarUrl ? mediaSource(p.avatarUrl) : null} />
               <Text className="text-md font-medium text-fg">{p.name}</Text>
             </Touchable>
           ))}

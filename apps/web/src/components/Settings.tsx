@@ -36,6 +36,7 @@ import type {
   NestChatIdentityMode,
   NestChatHome,
   NestChatHomeCard,
+  NestChatAway,
   NestChatPreChat,
   NestChatPushTest,
   NestChatRouting,
@@ -54,6 +55,7 @@ import {
   NESTCHAT_MAX_HOME_CARDS,
   NESTCHAT_MAX_ROUTING_OPTIONS,
   fillVisitorName,
+  fillVisitorText,
 } from "@ding/schemas";
 import {
   useContacts,
@@ -2080,14 +2082,14 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
  * menu that decides which team answers it.
  */
 /** The tabs the widget's settings are split across. */
-type SettingsSection = "brand" | "words" | "home" | "prechat" | "behaviour" | "app";
+type SettingsSection = "brand" | "words" | "home" | "prechat" | "away" | "app";
 
 const SETTINGS_SECTIONS: Array<{ key: SettingsSection; label: string }> = [
   { key: "brand", label: "Brand" },
   { key: "words", label: "Words" },
   { key: "home", label: "Home" },
-  { key: "prechat", label: "Before the chat" },
-  { key: "behaviour", label: "Behaviour" },
+  { key: "prechat", label: "Contact details" },
+  { key: "away", label: "When nobody’s online" },
   { key: "app", label: "In-app SDK" },
 ];
 
@@ -2096,6 +2098,7 @@ type WidgetDraft = {
   preChat: NestChatPreChat;
   routing: NestChatRouting;
   home: NestChatHome;
+  away: NestChatAway;
   app: NestChatApp;
 };
 
@@ -2108,8 +2111,7 @@ const NESTCHAT_WORDS: Array<{
 }> = [
   { key: "headline", label: "Header greeting", hint: "The quiet line above the title; {name} becomes their name" },
   { key: "title", label: "Header title", hint: "The bold line — usually a question" },
-  { key: "subtitle", label: "Header subtitle", hint: "Shown while someone is online" },
-  { key: "awayMessage", label: "Away message", hint: "Replaces the subtitle when nobody is", multiline: true },
+  { key: "subtitle", label: "Header subtitle", hint: "While someone is online — see “When nobody’s online” for the rest" },
   {
     key: "closedMessage",
     label: "Closing message",
@@ -2120,8 +2122,6 @@ const NESTCHAT_WORDS: Array<{
   { key: "greeting", label: "Greeting", hint: "The first thing in an empty chat", multiline: true },
   { key: "placeholder", label: "Message box placeholder" },
   { key: "launcherLabel", label: "Launcher tooltip", hint: "On the floating bubble" },
-  { key: "askEmailLabel", label: "Email prompt" },
-  { key: "askPhoneLabel", label: "Phone prompt", hint: "Only shown if you ask for one" },
 ];
 
 /**
@@ -2135,11 +2135,29 @@ const PRECHAT_FIELDS: Array<{
   key: "name" | "email" | "phone";
   labelKey: "nameLabel" | "emailLabel" | "phoneLabel";
   label: string;
+  /** The in-chat ask's toggle and wording, for the fields it can ask for. */
+  inChat?: { toggle: "askEmail" | "askPhone"; labelKey: "askEmailLabel" | "askPhoneLabel" };
 }> = [
-  { key: "name", labelKey: "nameLabel", label: "Ask for their name" },
-  { key: "email", labelKey: "emailLabel", label: "Ask for an email address" },
-  { key: "phone", labelKey: "phoneLabel", label: "Ask for a phone number" },
+  { key: "name", labelKey: "nameLabel", label: "Name" },
+  { key: "email", labelKey: "emailLabel", label: "Email", inChat: { toggle: "askEmail", labelKey: "askEmailLabel" } },
+  { key: "phone", labelKey: "phoneLabel", label: "Phone", inChat: { toggle: "askPhone", labelKey: "askPhoneLabel" } },
 ];
+
+/**
+ * When the widget asks for one detail: not at all, on the form before the
+ * chat, or in the chat after their first message.
+ *
+ * Two stores hold it — the form (`preChat`) and the in-chat card
+ * (`appearance.askEmail` / `askPhone`) — and they used to be set separately,
+ * on different tabs, where both could be on and the card silently gave way.
+ * One choice per field, written to both, makes that impossible.
+ */
+type AskWhen = "off" | "before" | "chat";
+function askWhen(f: (typeof PRECHAT_FIELDS)[number], preChat: NestChatPreChat, appearance: NestChatAppearance): AskWhen {
+  if (preChat.enabled && preChat[f.key].enabled) return "before";
+  if (f.inChat && appearance[f.inChat.toggle]) return "chat";
+  return "off";
+}
 
 /**
  * Where the SDK should point.
@@ -2242,6 +2260,12 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
    * you are editing next to the thing that shows it.
    */
   const [tab, setTab] = useState<SettingsSection>("brand");
+  /** The preview shows the chat as it is with nobody online — on by itself on
+   *  that tab, and switchable anywhere. */
+  const [previewOffline, setPreviewOffline] = useState(false);
+  useEffect(() => {
+    if (tab === "away") setPreviewOffline(true);
+  }, [tab]);
   const logoRef = useRef<HTMLInputElement>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   /** The pasted service-account JSON. Held only while it is being saved — it is
@@ -2313,6 +2337,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
       preChat: data.preChat,
       routing: data.routing,
       home: data.home,
+      away: data.away,
       app: data.app,
     };
     setSaved((m) => ({ ...m, [data.inboxId]: next }));
@@ -2346,6 +2371,29 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
     if (!draft) return;
     const patch = { [key]: value } as Pick<NestChatHome, K>;
     setSection("home", { ...draft.home, ...patch });
+  };
+
+  const setAway = <K extends keyof NestChatAway>(key: K, value: NestChatAway[K]) => {
+    if (!draft) return;
+    const patch = { [key]: value } as Pick<NestChatAway, K>;
+    setSection("away", { ...draft.away, ...patch });
+  };
+
+  /** Set when one detail is asked for, keeping the form and the card in step. */
+  const setAskWhen = (field: (typeof PRECHAT_FIELDS)[number], when: AskWhen) => {
+    if (!draft) return;
+    const whens = Object.fromEntries(
+      PRECHAT_FIELDS.map((f) => [f.key, f.key === field.key ? when : askWhen(f, draft.preChat, draft.appearance)]),
+    ) as Record<(typeof PRECHAT_FIELDS)[number]["key"], AskWhen>;
+    const preChat: NestChatPreChat = { ...draft.preChat, enabled: Object.values(whens).includes("before") };
+    for (const f of PRECHAT_FIELDS) {
+      const before = whens[f.key] === "before";
+      const was = askWhen(f, draft.preChat, draft.appearance) === "before";
+      preChat[f.key] = { enabled: before, required: before && (was ? draft.preChat[f.key].required : f.key !== "phone") };
+    }
+    const appearance = { ...draft.appearance };
+    for (const f of PRECHAT_FIELDS) if (f.inChat) appearance[f.inChat.toggle] = whens[f.key] === "chat";
+    setDrafts((m) => (inboxId && m[inboxId] ? { ...m, [inboxId]: { ...m[inboxId], preChat, appearance } } : m));
   };
 
   const setApp = <K extends keyof NestChatApp>(key: K, value: NestChatApp[K]) => {
@@ -2408,6 +2456,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
             preChat: res.preChat,
             routing: res.routing,
             home: res.home,
+            away: res.away,
             app: res.app,
           };
           setSaved((m) => ({ ...m, [res.inboxId]: next }));
@@ -2684,6 +2733,22 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   </select>
                 </label>
               </div>
+              <label className={"check" + (draft.appearance.showTeam ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.appearance.showTeam}
+                  onChange={(e) => set("showTeam", e.target.checked)}
+                />
+                Show the faces of the team that answers this channel
+              </label>
+              <label className={"check" + (draft.appearance.showBranding ? " on" : "")}>
+                <input
+                  type="checkbox"
+                  checked={draft.appearance.showBranding}
+                  onChange={(e) => set("showBranding", e.target.checked)}
+                />
+                Show “Powered by Nest Connect”
+              </label>
             </section>
 
             <section className="ncw__group" hidden={tab !== "words"}>
@@ -2709,48 +2774,70 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
               ))}
             </section>
 
-            <section className="ncw__group" hidden={tab !== "behaviour"}>
-              <h3>Behaviour</h3>
-              <label className={"check" + (draft.appearance.askEmail ? " on" : "")}>
-                <input
-                  type="checkbox"
-                  checked={draft.appearance.askEmail}
-                  onChange={(e) => set("askEmail", e.target.checked)}
-                />
-                Ask for an email address, so a reply can reach someone who has left
+            <section className="ncw__group" hidden={tab !== "away"}>
+              <h3>When nobody’s online</h3>
+              <p className="fieldhint">
+                Nobody is online when everyone who answers this channel has switched themselves off
+                or is outside their working hours. The preview shows it that way while you’re here.
+              </p>
+              <label className="field">
+                <span>
+                  Header line <em>In place of the subtitle</em>
+                </span>
+                <textarea rows={2} value={draft.appearance.awayMessage} onChange={(e) => set("awayMessage", e.target.value)} />
               </label>
+              {draft.home.enabled && (
+                <label className="field">
+                  <span>
+                    Home screen line <em>Under “{draft.home.chatLabel}”, in place of “{draft.home.chatSublabel}”</em>
+                  </span>
+                  <input value={draft.away.homeLine} onChange={(e) => setAway("homeLine", e.target.value)} />
+                </label>
+              )}
+
+              <label className={"check" + (draft.away.autoReply ? " on" : "")}>
+                <input type="checkbox" checked={draft.away.autoReply} onChange={(e) => setAway("autoReply", e.target.checked)} />
+                Reply automatically when someone writes
+              </label>
+              {draft.away.autoReply && (
+                <div className="ncw__sub">
+                  <p className="fieldhint">
+                    Sent once, into the conversation, so whoever picks the chat up sees what they were told — and
+                    again only after someone has replied. <strong>{"{name}"}</strong> and <strong>{"{email}"}</strong> become
+                    theirs.
+                  </p>
+                  <label className="field">
+                    <span>
+                      When we have their email <em>From the form, a signed-in site, or earlier</em>
+                    </span>
+                    <textarea rows={2} value={draft.away.withEmail} onChange={(e) => setAway("withEmail", e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>
+                      When we don’t <em>An email box goes under it</em>
+                    </span>
+                    <textarea rows={2} value={draft.away.askEmail} onChange={(e) => setAway("askEmail", e.target.value)} />
+                  </label>
+                  <label className="field">
+                    <span>Once they’ve given it</span>
+                    <input value={draft.away.thanks} onChange={(e) => setAway("thanks", e.target.value)} />
+                  </label>
+                </div>
+              )}
+
               <label className={"check" + (draft.appearance.emailReplies ? " on" : "")}>
                 <input
                   type="checkbox"
                   checked={draft.appearance.emailReplies}
                   onChange={(e) => set("emailReplies", e.target.checked)}
                 />
-                Email a reply the visitor hasn’t seen after 5 minutes (when they left an email address)
+                Email them the replies they haven’t seen, 5 minutes after they’re sent
               </label>
-              <label className={"check" + (draft.appearance.askPhone ? " on" : "")}>
-                <input
-                  type="checkbox"
-                  checked={draft.appearance.askPhone}
-                  onChange={(e) => set("askPhone", e.target.checked)}
-                />
-                Ask for a phone number too
-              </label>
-              <label className={"check" + (draft.appearance.showTeam ? " on" : "")}>
-                <input
-                  type="checkbox"
-                  checked={draft.appearance.showTeam}
-                  onChange={(e) => set("showTeam", e.target.checked)}
-                />
-                Show the faces of the team that answers this channel
-              </label>
-              <label className={"check" + (draft.appearance.showBranding ? " on" : "")}>
-                <input
-                  type="checkbox"
-                  checked={draft.appearance.showBranding}
-                  onChange={(e) => set("showBranding", e.target.checked)}
-                />
-                Show “Powered by Nest Connect”
-              </label>
+              {draft.away.autoReply && !draft.appearance.emailReplies && (
+                <p className="ncw__warn">
+                  The automatic reply says you’ll get back to them by email — with this off, that’s on whoever replies.
+                </p>
+              )}
             </section>
 
             {/* The app surface. Same channel as the website above it — same
@@ -3163,83 +3250,68 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
             </section>
 
             <section className="ncw__group" hidden={tab !== "prechat"}>
-              <h3>Before the chat</h3>
+              <h3>Contact details</h3>
               <p className="fieldhint">
-                Ask who someone is before they write, and let them say what it’s about. Details
-                given here are matched against your customers, so a chat from someone you already
-                know opens on <strong>their</strong> record — with their history and their name in
-                the queue — instead of on an anonymous visitor.
+                What to ask for, and when — on a form before the chat, or in the chat after their first
+                message. Details are matched against your customers, so a chat from someone you already
+                know opens on <strong>their</strong> record. Nothing is asked twice: not what the form
+                took, not what a signed-in site sent, not what they gave before.
               </p>
 
-              <label className={"check" + (draft.preChat.enabled ? " on" : "")}>
-                <input
-                  type="checkbox"
-                  checked={draft.preChat.enabled}
-                  onChange={(e) => setPreChat("enabled", e.target.checked)}
-                />
-                Ask for their details before the first message
-              </label>
+              {PRECHAT_FIELDS.map((f) => {
+                const when = askWhen(f, draft.preChat, draft.appearance);
+                return (
+                  <div className="ncwfield ncwfield--when" key={f.key}>
+                    <span className="ncwfield__name">{f.label}</span>
+                    <select
+                      aria-label={`When to ask for their ${f.label.toLowerCase()}`}
+                      value={when}
+                      onChange={(e) => setAskWhen(f, e.target.value as AskWhen)}
+                    >
+                      <option value="off">Don’t ask</option>
+                      <option value="before">On the form before the chat</option>
+                      {f.inChat && <option value="chat">In the chat, after their first message</option>}
+                    </select>
+                    {when === "before" && (
+                      <>
+                        <input
+                          className="ncwfield__label"
+                          aria-label={`${f.label} — what the visitor sees`}
+                          value={draft.preChat[f.labelKey]}
+                          onChange={(e) => setPreChat(f.labelKey, e.target.value)}
+                        />
+                        <label className="ncwfield__req">
+                          <input
+                            type="checkbox"
+                            checked={draft.preChat[f.key].required}
+                            onChange={(e) => setPreChat(f.key, { enabled: true, required: e.target.checked })}
+                          />
+                          Required
+                        </label>
+                      </>
+                    )}
+                    {when === "chat" && f.inChat && (
+                      <input
+                        className="ncwfield__label"
+                        aria-label={`${f.label} — what the visitor sees`}
+                        value={draft.appearance[f.inChat.labelKey]}
+                        onChange={(e) => set(f.inChat!.labelKey, e.target.value)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
 
               {draft.preChat.enabled && (
                 <div className="ncw__sub">
                   <label className="field">
-                    <span>Intro</span>
+                    <span>Form intro</span>
                     <textarea
                       rows={2}
                       value={draft.preChat.intro}
                       onChange={(e) => setPreChat("intro", e.target.value)}
                     />
                   </label>
-
-                  {/* One row per field, because "asked" and "must answer" are
-                      different decisions and a business will want them set
-                      differently — an optional email converts better than a
-                      required one, and some businesses need the address more
-                      than they need the conversation. */}
-                  {PRECHAT_FIELDS.map((f) => (
-                    <div className="ncwfield" key={f.key}>
-                      <label className={"check" + (draft.preChat[f.key].enabled ? " on" : "")}>
-                        <input
-                          type="checkbox"
-                          checked={draft.preChat[f.key].enabled}
-                          onChange={(e) =>
-                            setPreChat(f.key, {
-                              enabled: e.target.checked,
-                              // Turning a field off drops its requirement with
-                              // it: a hidden field nobody can fill in must not
-                              // stay on a list of things they have to.
-                              required: e.target.checked && draft.preChat[f.key].required,
-                            })
-                          }
-                        />
-                        {f.label}
-                      </label>
-                      {draft.preChat[f.key].enabled && (
-                        <>
-                          <input
-                            className="ncwfield__label"
-                            aria-label={`${f.label} — what the visitor sees`}
-                            value={draft.preChat[f.labelKey]}
-                            onChange={(e) => setPreChat(f.labelKey, e.target.value)}
-                          />
-                          <label className="ncwfield__req">
-                            <input
-                              type="checkbox"
-                              checked={draft.preChat[f.key].required}
-                              onChange={(e) =>
-                                setPreChat(f.key, {
-                                  enabled: true,
-                                  required: e.target.checked,
-                                })
-                              }
-                            />
-                            Required
-                          </label>
-                        </>
-                      )}
-                    </div>
-                  ))}
-
                   <div className="setform__grid two">
                     <label className="field">
                       <span>Button</span>
@@ -3261,6 +3333,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                 </div>
               )}
 
+              <h4 className="ncw__h4">What it’s about</h4>
               <label className={"check" + (draft.routing.enabled ? " on" : "")}>
                 <input
                   type="checkbox"
@@ -3390,10 +3463,20 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
           </div>
 
           <div className="ncw__side">
+            <div className="ncw__prevmode" role="group" aria-label="Preview">
+              <button type="button" className={"setfilterchip" + (previewOffline ? "" : " on")} onClick={() => setPreviewOffline(false)}>
+                Someone’s online
+              </button>
+              <button type="button" className={"setfilterchip" + (previewOffline ? " on" : "")} onClick={() => setPreviewOffline(true)}>
+                Nobody’s online
+              </button>
+            </div>
             <NestChatPreview
               appearance={draft.appearance}
               preChat={draft.preChat}
               routing={draft.routing}
+              away={draft.away}
+              offline={previewOffline}
               team={settings.data?.team}
             />
 
@@ -3610,11 +3693,16 @@ function NestChatPreview({
   appearance,
   preChat,
   routing,
+  away,
+  offline,
   team,
 }: {
   appearance: NestChatAppearance;
   preChat: NestChatPreChat;
   routing: NestChatRouting;
+  away: NestChatAway;
+  /** As it is with nobody online: after they've written, the automatic reply. */
+  offline: boolean;
   team?: NestChatTeam;
 }) {
   const dark = appearance.theme === "dark";
@@ -3628,7 +3716,7 @@ function NestChatPreview({
    * for the form. A routing menu with nothing in it is not a form: it renders
    * as nothing in the widget too.
    */
-  const gate = preChat.enabled || (routing.enabled && routing.options.length > 0);
+  const gate = !offline && (preChat.enabled || (routing.enabled && routing.options.length > 0));
   return (
     <div
       className={"ncprev" + (dark ? " ncprev--dark" : "")}
@@ -3675,7 +3763,7 @@ function NestChatPreview({
             </div>
           )}
           <div className="ncprev__title">{fillVisitorName(appearance.title, "Sam Whitfield")}</div>
-          <div className="ncprev__sub">{appearance.subtitle}</div>
+          <div className="ncprev__sub">{fillVisitorName(offline ? appearance.awayMessage : appearance.subtitle, "Sam Whitfield")}</div>
         </div>
       </div>
       <div className="ncprev__thread">
@@ -3715,6 +3803,19 @@ function NestChatPreview({
             )}
             <div className="ncprev__gatego">{preChat.submitLabel}</div>
           </div>
+        ) : offline ? (
+          <>
+            <div className="ncprev__out">Hi — do you deliver on Saturdays?</div>
+            {away.autoReply && (
+              <>
+                <div className="ncprev__in ncprev__auto">{fillVisitorText(away.askEmail, { name: "Sam" })}</div>
+                <div className="ncprev__gatefield ncprev__awaybox">
+                  <span>Your email</span>
+                  <i />
+                </div>
+              </>
+            )}
+          </>
         ) : (
           <>
             <div className="ncprev__out">Hi — do you deliver on Saturdays?</div>

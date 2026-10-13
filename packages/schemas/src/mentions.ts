@@ -13,6 +13,9 @@
 export interface Mentionable {
   name: string;
   email: string;
+  /** Their profile photo and colour, for the pickers that show a face. */
+  avatarUrl?: string | null;
+  avatarColor?: string | null;
 }
 
 /** "@nathan" — the stored, routed form. */

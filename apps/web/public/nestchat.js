@@ -169,6 +169,10 @@
     } else if (type === "nestchat:close") {
       // The minimise button inside the full-screen chat.
       setOpen(false);
+    } else if (type === "nestchat:launcher") {
+      // The live settings, from the chat itself: the snippet only carries what
+      // they were when it was copied.
+      applyLauncher(event.data);
     }
   });
 
@@ -188,12 +192,15 @@
     return !!(window.matchMedia && window.matchMedia(SMALL).matches);
   }
 
-  var CARD = [
+  // Built on demand: the side can change once the chat says where it lives now.
+  function card() {
+    return CARD_BASE.concat([side + ":20px"]);
+  }
+  var CARD_BASE = [
     "top:auto",
     "left:auto",
     "right:auto",
     "bottom:88px",
-    side + ":20px",
     "width:380px",
     "height:min(620px, calc(100vh - 120px))",
     "max-width:calc(100vw - 40px)",
@@ -220,7 +227,7 @@
 
   /** Put the frame in the shape this screen gets, keeping everything else. */
   function shape() {
-    var rules = small() && (open || leaving) ? FULL : CARD;
+    var rules = small() && (open || leaving) ? FULL : card();
     for (var i = 0; i < rules.length; i++) {
       var at = rules[i].indexOf(":");
       frame.style.setProperty(rules[i].slice(0, at), rules[i].slice(at + 1));
@@ -454,6 +461,29 @@
     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
     '<path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
   button.innerHTML = bubbleIcon;
+
+  /** Corner, colour and label as Settings has them now. */
+  function applyLauncher(live) {
+    if (!live) return;
+    if (live.position === "left" || live.position === "right") {
+      side = live.position;
+      button.style.left = side === "left" ? "20px" : "auto";
+      button.style.right = side === "right" ? "20px" : "auto";
+      layout();
+    }
+    if (typeof live.accent === "string" && /^#[0-9a-f]{3,8}$/i.test(live.accent)) {
+      button.style.background = live.accent;
+    }
+    if (typeof live.accentText === "string" && /^#[0-9a-f]{3,8}$/i.test(live.accentText)) {
+      button.style.color = live.accentText;
+    }
+    if (typeof live.label === "string" && live.label.trim()) {
+      label = live.label.trim().slice(0, 40);
+      button.setAttribute("aria-label", label);
+      button.title = label;
+      frame.title = label;
+    }
+  }
 
   function setOpen(next) {
     leaving = open && !next && small();

@@ -22,6 +22,7 @@ import type {
   Label,
   Member,
   Message,
+  MessageAuto,
   MessagePage,
   MessageStatus,
   MessageType,
@@ -658,6 +659,17 @@ export abstract class Store {
     conversationId: string,
     opts?: { before?: string; limit?: number },
   ): Promise<MessagePage>;
+
+  /**
+   * A message Nest sends itself (`auto`) — outbound, visible to the customer,
+   * with no person behind it. Unlike `addMessage` it claims nothing: the chat
+   * stays unassigned and unread, its preview stays what the customer said, and
+   * it is delivered as it is written (there's no provider to wait on).
+   */
+  abstract addAutoMessage(
+    conversationId: string,
+    input: { body: string; auto: MessageAuto; authorName?: string },
+  ): Promise<Message | undefined>;
 
   abstract addMessage(
     conversationId: string,

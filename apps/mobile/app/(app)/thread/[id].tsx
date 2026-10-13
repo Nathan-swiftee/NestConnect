@@ -1444,6 +1444,15 @@ const Bubble = memo(function Bubble({
             </Text>
           </View>
         ) : null}
+        {/* Nest said this, not a person: the website chat's reply while nobody
+            was online. */}
+        {message.auto ? (
+          <View className="flex-row items-center gap-1 pb-1">
+            <Text style={{ color: c.textFaint }} className="text-2xs italic">
+              Automatic reply · nobody was online
+            </Text>
+          </View>
+        ) : null}
 
         {/* Tap to go to what's being quoted. It has always looked like a link
             and done nothing, which is the one behaviour a quote in a chat app

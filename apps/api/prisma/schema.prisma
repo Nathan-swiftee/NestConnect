@@ -594,6 +594,9 @@ model Message {
   // Passed on from elsewhere rather than written here: set when an agent forwards
   // a message, and when WhatsApp flags an inbound one as forwarded to us.
   forwarded      Boolean          @default(false)
+  // Sent by Nest itself, not a person: "away" (the website chat's reply while
+  // nobody is online) or "away_ask" (that reply, asking for an email).
+  auto           String?
   // ---- durable outbound delivery bookkeeping (out messages only) ----
   // How many provider send attempts have been made, and when the last one ran.
   attemptCount   Int              @default(0)

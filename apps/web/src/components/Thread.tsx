@@ -1087,6 +1087,9 @@ function MessageBubble({
               Forwarded
             </span>
           )}
+          {/* Nest said this, not a person: the website chat's reply while
+              nobody was online — what the customer was told before you came. */}
+          {m.auto && <span className="fwdmark automark">Automatic reply · nobody was online</span>}
           {hasMedia && atts.map((a) => <AttachmentView key={a.id} att={a} onImage={onImage} />)}
           {isEmailHtml ? (
             <EmailHtml html={m.bodyHtml as string} />

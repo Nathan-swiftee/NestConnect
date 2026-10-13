@@ -290,7 +290,7 @@ export const ChatComposer = forwardRef<
                     pickMention(p);
                   }}
                 >
-                  <Avatar name={p.name} email={p.email} size={22} fontSize={9} />
+                  <Avatar name={p.name} email={p.email} color={p.avatarColor} src={p.avatarUrl} size={22} fontSize={9} />
                   <span>{p.name}</span>
                 </button>
               ))}

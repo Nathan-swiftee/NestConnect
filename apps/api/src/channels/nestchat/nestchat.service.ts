@@ -7,6 +7,10 @@ import {
   DEFAULT_NESTCHAT_APPEARANCE,
   LEGACY_AWAY_MESSAGE,
   DEFAULT_NESTCHAT_HOME,
+  DEFAULT_NESTCHAT_AWAY,
+  fillVisitorText,
+  nestchatAwaySchema,
+  type NestChatAway,
   DEFAULT_NESTCHAT_PRECHAT,
   DEFAULT_NESTCHAT_ROUTING,
   fieldsForInbox,
@@ -675,6 +679,70 @@ export class NestChatService {
     await this.store.updateInbox(inboxId, { channelConfig: { home: JSON.stringify(parsed) } });
   }
 
+  /* ---- when nobody's online ---- */
+
+  /** What the chat does while nobody who answers it is available. */
+  async awayFor(inboxId: string): Promise<NestChatAway> {
+    const config = await this.store.getInboxConfig(inboxId);
+    return parseBlob(config?.away, nestchatAwaySchema, DEFAULT_NESTCHAT_AWAY);
+  }
+
+  async updateAway(inboxId: string, away: NestChatAway): Promise<void> {
+    await this.requireNestChatInbox(inboxId);
+    const parsed = nestchatAwaySchema.parse(away);
+    await this.store.updateInbox(inboxId, { channelConfig: { away: JSON.stringify(parsed) } });
+  }
+
+  /**
+   * What we already have for a visitor — so neither the card in the thread nor
+   * the away reply asks them for something they've given us.
+   */
+  async knownFor(contactId: string): Promise<{ name: boolean; email: boolean; phone: boolean }> {
+    const c = await this.store.getContact(contactId);
+    return {
+      name: !!c && !isPlaceholderName(c.displayName, c.email),
+      email: !!c?.email?.trim(),
+      phone: !!c?.phone?.trim(),
+    };
+  }
+
+  /**
+   * The automatic reply when somebody writes and nobody is online: that we'll
+   * email them, when we have their address; when we don't, asking for it (the
+   * widget puts an email box under that one). Stored as a real message, so
+   * whoever picks the chat up sees what was said, and pushed to the open
+   * widget like any reply.
+   *
+   * Once per stretch nobody is there: not again until a person has replied
+   * since the last one. Returns the reply as the visitor sees it, or nothing.
+   */
+  async awayReply(inbox: Inbox, conversationId: string): Promise<NestChatMessage | undefined> {
+    const away = await this.awayFor(inbox.id);
+    if (!away.autoReply) return undefined;
+    if (await this.channelOnline(inbox)) return undefined;
+    const conversation = await this.store.getConversation(conversationId);
+    if (!conversation || conversation.status === "closed") return undefined;
+    const thread = conversation.messages;
+    let lastAway = -1;
+    thread.forEach((m, i) => {
+      if (m.auto) lastAway = i;
+    });
+    const answeredSince =
+      lastAway >= 0 && thread.slice(lastAway + 1).some((m) => m.direction === "out" && !m.internal && !m.auto && m.authorType === "user");
+    if (lastAway >= 0 && !answeredSince) return undefined;
+
+    const contact = conversation.contact;
+    const email = contact.email?.trim() || null;
+    const name = isPlaceholderName(contact.displayName, contact.email) ? null : contact.displayName.split(/\s+/)[0];
+    const auto = email ? ("away" as const) : ("away_ask" as const);
+    const body = fillVisitorText(email ? away.withEmail : away.askEmail, { name, email });
+    const stored = await this.store.addAutoMessage(conversationId, { body, auto });
+    if (!stored) return undefined;
+    const visible = toVisitorMessage(stored, [...thread, stored]);
+    if (visible) this.bus.publish(conversationId, { kind: "message", payload: visible });
+    return visible;
+  }
+
   /* ---- the routing menu ---- */
 
   /** The menu of things a visitor can say they're here about. */
@@ -767,6 +835,7 @@ export class NestChatService {
       preChat: await this.preChatFor(inboxId),
       routing: await this.routingFor(inboxId),
       home: await this.homeFor(inboxId),
+      away: await this.awayFor(inboxId),
       teams: await this.teamsFor(inbox),
       embedUrl: `${base}/widget.html?key=${widgetKey}`,
       scriptUrl: `${base}/nestchat.js`,

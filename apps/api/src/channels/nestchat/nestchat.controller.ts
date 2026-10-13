@@ -139,6 +139,7 @@ export class NestChatController {
     const preChat = await this.nestchat.preChatFor(inbox.id);
     const routing = await this.nestchat.routingFor(inbox.id);
     const home = await this.nestchat.homeFor(inbox.id);
+    const away = await this.nestchat.awayFor(inbox.id);
     return {
       appearance: {
         ...appearance,
@@ -168,6 +169,7 @@ export class NestChatController {
       // Sent whole: unlike the routing menu, nothing on a home card is internal
       // — a label, a line of text and a link the business wants people to use.
       home: home.enabled ? home : undefined,
+      away: { homeLine: away.homeLine, thanks: away.thanks },
     };
   }
 
@@ -307,6 +309,7 @@ export class NestChatController {
       token,
       hasConversation: Boolean(conversationId),
       messages: conversationId ? await this.nestchat.visitorHistory(conversationId) : [],
+      known: await this.nestchat.knownFor(contact.id),
       ...(externalId ? { identified: false } : {}),
       ...(unknown.length ? { unknownFields: unknown } : {}),
     };
@@ -355,6 +358,7 @@ export class NestChatController {
       }),
       hasConversation: Boolean(conversationId),
       messages: conversationId ? await this.nestchat.visitorHistory(conversationId) : [],
+      known: await this.nestchat.knownFor(contact.id),
       identified: true,
       unknownFields: unknown,
     };
@@ -459,6 +463,7 @@ export class NestChatController {
       }),
       hasConversation: Boolean(conversationId),
       messages: conversationId ? await this.nestchat.visitorHistory(conversationId) : [],
+      known: await this.nestchat.knownFor(contact.id),
       identified,
       unknownFields: unknown,
     };
@@ -600,9 +605,12 @@ export class NestChatController {
           (await this.store.getConversation(result.conversationId))?.messages,
         )
       : undefined;
+    // Nobody online: tell them so, in the thread (once per stretch).
+    const away = await this.nestchat.awayReply(inbox, result.conversationId);
     return {
       ok: true,
       message,
+      ...(away ? { away } : {}),
       // The first message is what creates the conversation, so the token the
       // widget holds doesn't name one yet. Hand back the one that does — with
       // the pending fields dropped, now that they have somewhere to live. A
