@@ -1,21 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Tabs } from "expo-router";
+import { Tabs, router, useSegments } from "expo-router";
 import { BlurTargetView } from "expo-blur";
 import { Text, View } from "react-native";
 import { useChatStatus, useMe, useOpsStatus } from "@ding/client";
-import { ContactsIcon, InboxIcon, InsightsIcon, OpsIcon, SettingsIcon, TeamChatIcon } from "../../../src/icons";
+import { ContactsIcon, InboxIcon, InsightsIcon, MoreIcon, OpsIcon, SettingsIcon, TeamChatIcon } from "../../../src/icons";
 import { TabBar, type Tab } from "../../../src/components/TabBar";
+import { ActionSheet, type SheetAction } from "../../../src/components/ActionSheet";
 import { useTheme } from "../../../src/theme";
 
 /**
  * The app's primary navigation — the web's icon rail, laid along the bottom
  * where a thumb can reach it.
  *
- * The destinations are the rail's, in the rail's order: Inbox, Chat,
- * Customers, Ops, Insights, Settings. Chat only shows while Team Chat is on,
- * with its unread count. Insights is role-gated the same way, so an agent
- * doesn't see a tab that would only refuse them; Ops only shows while the
- * workspace has Business Ops switched on, with a badge for must-reads waiting.
+ * Three destinations and More: Inbox, Chat, Customers — what you're in all
+ * day — then More, which opens a menu of Ops, Insights and Settings. Six tabs
+ * was too many to read at a glance. Chat only shows while Team Chat is on,
+ * with its unread count. Insights is role-gated, so an agent isn't offered
+ * something that would only refuse them; Ops only shows while the workspace
+ * has Business Ops switched on, and its must-reads badge rides on More.
+ * More is lit while any of its destinations is showing.
  *
  * A thread is deliberately NOT a tab. It lives on the stack above this layout,
  * so opening a conversation takes the whole screen and the tab bar comes back
@@ -68,17 +71,35 @@ export default function TabsLayout() {
    * the router mounts, this is what the bar draws — so they live next to each
    * other rather than in two files that can drift apart.
    */
+  const [moreOpen, setMoreOpen] = useState(false);
+  const segments = useSegments();
+  const here = segments[segments.length - 1];
+
+  /** What More holds — in the order the rail has them. */
+  const more = useMemo(
+    () => [
+      ...(opsOn ? [{ name: "ops", label: "Ops", href: "/ops" as const, icon: OpsIcon, detail: opsWaiting ? `${opsWaiting} to confirm` : "Procedures and checklists" }] : []),
+      ...(elevated ? [{ name: "insights", label: "Insights", href: "/insights" as const, icon: InsightsIcon, detail: "How the team is doing" }] : []),
+      { name: "settings", label: "Settings", href: "/settings" as const, icon: SettingsIcon, detail: "You, your hours and notifications" },
+    ],
+    [opsOn, opsWaiting, elevated],
+  );
+
   const tabs = useMemo<Tab[]>(
     () =>
       [
         { name: "index", label: "Inbox", href: "/", icon: InboxIcon },
         ...(chatOn ? [{ name: "chat", label: "Chat", href: "/chat", icon: TeamChatIcon, badge: chatUnread, badgeColor: "wa" as const }] : []),
         { name: "customers", label: "Customers", href: "/customers", icon: ContactsIcon },
-        ...(opsOn ? [{ name: "ops", label: "Ops", href: "/ops", icon: OpsIcon, badge: opsWaiting }] : []),
-        ...(elevated
-          ? [{ name: "insights", label: "Insights", href: "/insights", icon: InsightsIcon }]
-          : []),
-        { name: "settings", label: "Settings", href: "/settings", icon: SettingsIcon },
+        {
+          name: "more",
+          label: "More",
+          href: "/settings",
+          icon: MoreIcon,
+          badge: opsWaiting,
+          covers: more.map((m) => m.name),
+          onPress: () => setMoreOpen(true),
+        },
       ].map((t) => ({
         ...t,
         // The bar asks for a focused flag and a colour; the icons take both.
@@ -89,8 +110,17 @@ export default function TabsLayout() {
           </View>
         ),
       })),
-    [elevated, opsOn, opsWaiting, chatOn, chatUnread],
+    [opsWaiting, chatOn, chatUnread, more],
   );
+
+  const moreActions: SheetAction[] = more.map((m) => ({
+    key: m.name,
+    label: m.label,
+    detail: m.detail,
+    selected: here === m.name,
+    leading: <m.icon size={22} color={here === m.name ? c.brand : c.textMuted} />,
+    onPress: () => router.navigate(m.href),
+  }));
 
   /**
    * What the glass is a picture of, and why the ref is gated on `attached`.
@@ -149,6 +179,7 @@ export default function TabsLayout() {
       </BlurTargetView>
 
       <TabBar tabs={tabs} blurTarget={attached ? blurTarget : undefined} />
+      <ActionSheet visible={moreOpen} title="More" actions={moreActions} onClose={() => setMoreOpen(false)} />
     </View>
   );
 }

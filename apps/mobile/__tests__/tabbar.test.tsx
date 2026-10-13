@@ -35,6 +35,7 @@ jest.mock("expo-router", () => ({
   router: { navigate: () => {} },
 }));
 import { render } from "nativewind/dist/test";
+import { fireEvent } from "@testing-library/react-native";
 import "../src/animated";
 import { PILL_METRICS, TabBar } from "../src/components/TabBar";
 
@@ -209,5 +210,33 @@ describe("the tab bar's selected-tab pill", () => {
     // read as one object inside the pill rather than two stacked ones.
     const iconToLabel = aboveIcon + m.labelGap + m.labelLeading;
     expect(iconToLabel).toBeLessThan(aboveIcon + belowLabel);
+  });
+});
+
+/**
+ * More: a tab that opens a menu instead of going somewhere, and stands for the
+ * destinations in it — so it's the one lit while any of them is showing.
+ */
+describe("the More tab", () => {
+  const opened: string[] = [];
+  const MORE = [
+    { name: "index", label: "Inbox", href: "/", icon: () => null },
+    { name: "customers", label: "Customers", href: "/customers", icon: () => null },
+    { name: "more", label: "More", href: "/settings", icon: () => null, covers: ["ops", "insights", "settings"], onPress: () => opened.push("more") },
+  ];
+
+  it("is lit while one of its destinations is showing", async () => {
+    mockSegments.at = ["(app)", "(tabs)", "insights"];
+    const r = await render(<TabBar tabs={MORE} />, { config: { safelist: [] } });
+    expect(r.getByLabelText("More").props.accessibilityState).toMatchObject({ selected: true });
+    expect(r.getByLabelText("Inbox").props.accessibilityState).toMatchObject({ selected: false });
+  });
+
+  it("opens its menu when tapped — even while lit", async () => {
+    mockSegments.at = ["(app)", "(tabs)", "settings"];
+    const r = await render(<TabBar tabs={MORE} />, { config: { safelist: [] } });
+    opened.length = 0;
+    fireEvent.press(r.getByLabelText("More"));
+    expect(opened).toEqual(["more"]);
   });
 });
