@@ -1280,6 +1280,49 @@ export function useMacroMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TR
   });
 }
 
+/* ---- Business Ops ---- */
+
+/** Whether the module is on, whether I write SOPs, and my waiting must-reads. */
+export function useOpsStatus() {
+  return useQuery({ queryKey: ["ops", "status"], queryFn: () => api.opsStatus(), staleTime: 30_000 });
+}
+
+/** The library: collections and the SOPs I can see, optionally searched. */
+export function useOpsLibrary(q = "", enabled = true) {
+  return useQuery({
+    queryKey: ["ops", "library", q],
+    queryFn: () => api.opsLibrary(q || undefined),
+    enabled,
+    staleTime: 15_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+export function useOpsSop(id: string | null | undefined) {
+  return useQuery({ queryKey: ["ops", "sop", id], queryFn: () => api.opsSop(id!), enabled: !!id, staleTime: 10_000 });
+}
+
+export function useOpsVersions(id: string | null | undefined, enabled = true) {
+  return useQuery({ queryKey: ["ops", "versions", id], queryFn: () => api.opsVersions(id!), enabled: !!id && enabled });
+}
+
+export function useOpsAcks(id: string | null | undefined, enabled = true) {
+  return useQuery({ queryKey: ["ops", "acks", id], queryFn: () => api.opsAcks(id!), enabled: !!id && enabled });
+}
+
+/** Any Ops change: the SOP it returns is put straight in place, and everything else refreshes. */
+export function useOpsMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: (result) => {
+      const sop = result as { id?: string; steps?: unknown } | undefined;
+      if (sop && typeof sop === "object" && sop.id && Array.isArray(sop.steps)) qc.setQueryData(["ops", "sop", sop.id], sop);
+      qc.invalidateQueries({ queryKey: ["ops"] });
+    },
+  });
+}
+
 /* ---- Organisations (customer accounts) ---- */
 
 export function useAccounts(q: { search?: string; status?: AccountStatus; archived?: boolean } = {}) {
@@ -1511,6 +1554,8 @@ export function useRealtime(openConversationId: string | null) {
       qc.setQueryData<Notification[]>(["notifications"], (cur) =>
         [p.notification, ...(cur ?? []).filter((n) => n.id !== p.notification.id)].slice(0, 50),
       );
+      // A must-read or review reminder: the Ops badge and library are out of date.
+      if (p.notification.opsSopId) qc.invalidateQueries({ queryKey: ["ops"] });
       playReceived();
     };
     socket.on(ServerEvent.MessageCreated, onCreated);

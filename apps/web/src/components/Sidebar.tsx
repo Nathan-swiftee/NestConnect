@@ -1,10 +1,11 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
-import { useLogout, useMe, useSound, useTeams, useTheme, useViews } from "../hooks";
+import { useLogout, useMe, useOpsStatus, useSound, useTeams, useTheme, useViews } from "../hooks";
 import {
   ChevronRight,
   ChevronsLeftIcon,
   ContactsIcon,
   OrganisationsIcon,
+  OpsIcon,
   InboxIcon,
   InsightsIcon,
   SnoozeIcon,
@@ -29,6 +30,8 @@ interface Props {
   onOpenSettings?: () => void;
   onOpenCustomers?: () => void;
   onOpenOrganisations?: () => void;
+  /** Business Ops — shown only while the module is switched on. */
+  onOpenOps?: () => void;
   /** Opens the insights dashboard (admin/manager only — the button self-hides
    *  for agents). The desktop route is the icon rail; this is the drawer route. */
   onOpenInsights?: () => void;
@@ -41,8 +44,9 @@ interface Props {
   onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenOrganisations, onOpenInsights, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
+export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenOrganisations, onOpenOps, onOpenInsights, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
   const { data } = useViews();
+  const opsOn = !!useOpsStatus().data?.enabled;
   const { data: meData } = useMe();
   const { data: teamList } = useTeams();
   const logout = useLogout();
@@ -322,6 +326,11 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           {onOpenOrganisations && (
             <button className="iconbtn" title="Organisations" onClick={onOpenOrganisations}>
               <OrganisationsIcon />
+            </button>
+          )}
+          {onOpenOps && opsOn && (
+            <button className="iconbtn" title="Business Ops" onClick={onOpenOps}>
+              <OpsIcon />
             </button>
           )}
           {onOpenSettings && (

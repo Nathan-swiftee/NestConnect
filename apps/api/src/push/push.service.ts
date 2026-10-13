@@ -24,6 +24,8 @@ export interface PushRequest {
   title: string;
   body: string;
   conversationId?: string;
+  /** A Business Ops SOP the tap should open. */
+  opsSopId?: string;
   /** Whoever caused this. Never notified about their own action. */
   actorUserId?: string;
 }
@@ -273,6 +275,7 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
       data: {
         kind: req.kind,
         ...(req.conversationId ? { conversationId: req.conversationId } : {}),
+        ...(req.opsSopId ? { opsSopId: req.opsSopId } : {}),
       },
       ...(badges.has(d.userId) ? { badge: badges.get(d.userId) } : {}),
       channelId: ANDROID_CHANNEL[req.kind],

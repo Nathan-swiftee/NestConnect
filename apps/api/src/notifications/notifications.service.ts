@@ -14,6 +14,8 @@ const SNOOZE_SWEEP_MS = 30_000;
 const PUSH_KIND: Record<NotificationType, PushKind> = {
   mention: "mention",
   snooze_due: "reminder",
+  ops_review: "reminder",
+  ops_must_read: "assignment",
 };
 
 /**
@@ -59,6 +61,8 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
       title: string;
       body?: string;
       conversationId?: string | null;
+      /** A Business Ops SOP to open instead of a conversation. */
+      opsSopId?: string | null;
       /** Whoever caused this, so they're never notified about their own action. */
       actorUserId?: string;
       /** Overrides the kind inferred from `type` (a mention is not a message). */
@@ -74,6 +78,7 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
       title: row.title,
       body: row.body ?? "",
       conversationId: row.conversationId ?? undefined,
+      opsSopId: row.opsSopId ?? undefined,
       actorUserId,
     });
   }

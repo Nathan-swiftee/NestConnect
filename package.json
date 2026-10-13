@@ -27,6 +27,8 @@
     "check:email-signature-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-signature-pg.ts",
     "check:macros": "tsx --tsconfig apps/api/tsconfig.json tools/check-macros.ts",
     "check:macros-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-macros-pg.ts",
+    "check:business-ops": "tsx --tsconfig apps/api/tsconfig.json tools/check-business-ops.ts",
+    "check:business-ops-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-business-ops-pg.ts",
     "check:organisations": "tsx --tsconfig apps/api/tsconfig.json tools/check-organisations.ts",
     "check:organisations-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-organisations-pg.ts",
     "check:app-surface": "tsx --tsconfig apps/api/tsconfig.json tools/check-app-surface.ts",

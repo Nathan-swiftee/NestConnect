@@ -56,6 +56,7 @@ jobs:
           pnpm check:organisations-pg
           pnpm check:macros-pg
           pnpm check:email-signature-pg
+          pnpm check:business-ops-pg
 
       - name: Tenant isolation (HTTP, Postgres)
         env:
@@ -210,6 +211,12 @@ jobs:
       # really leaves from.
       - name: Email signatures
         run: pnpm check:email-signature
+
+      # Business Ops: the module switch, who reads which SOP (its teams, or all
+      # of them; never a draft), versions, must-read confirmations, checklists
+      # and review reminders.
+      - name: Business Ops
+        run: pnpm check:business-ops
 
       # The app surface on a live-chat channel. Two things here are worth a
       # build failing over: the identity secret must never reach a browser (it

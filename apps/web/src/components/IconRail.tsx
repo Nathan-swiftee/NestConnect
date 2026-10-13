@@ -1,6 +1,6 @@
 import { availableNow } from "@ding/schemas";
 import { useEffect, useState } from "react";
-import { useLogout, useMe, useSound, useTheme, useUpdateMyPreferences } from "../hooks";
+import { useLogout, useMe, useOpsStatus, useSound, useTheme, useUpdateMyPreferences } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 import {
@@ -9,6 +9,7 @@ import {
   ContactsIcon,
   InsightsIcon,
   OrganisationsIcon,
+  OpsIcon,
   SettingsIcon,
   ThemeIcon,
   SunIcon,
@@ -16,7 +17,7 @@ import {
   SoundOffIcon,
 } from "../lib/icons";
 
-type Section = "inbox" | "customers" | "organisations" | "settings" | "insights";
+type Section = "inbox" | "customers" | "organisations" | "ops" | "settings" | "insights";
 
 export function IconRail({
   section,
@@ -33,6 +34,8 @@ export function IconRail({
   const sound = useSound();
   const theme = useTheme();
   const prefs = useUpdateMyPreferences();
+  const ops = useOpsStatus();
+  const opsWaiting = ops.data?.pendingAcks ?? 0;
   const [menu, setMenu] = useState(false);
   // Availability, tracked locally for an instant toggle; synced from the server.
   const [available, setAvailable] = useState(true);
@@ -77,6 +80,17 @@ export function IconRail({
       >
         <OrganisationsIcon />
       </button>
+      {ops.data?.enabled && (
+        <button
+          className={"railbtn" + (section === "ops" ? " active" : "")}
+          title={opsWaiting ? `Business Ops — ${opsWaiting} to confirm` : "Business Ops"}
+          aria-label={opsWaiting ? `Business Ops, ${opsWaiting} must-read${opsWaiting === 1 ? "" : "s"} to confirm` : "Business Ops"}
+          onClick={() => onSection("ops")}
+        >
+          <OpsIcon />
+          {opsWaiting > 0 && <span className="railbtn__badge">{opsWaiting > 9 ? "9+" : opsWaiting}</span>}
+        </button>
+      )}
       {(me?.role === "admin" || me?.role === "manager") && (
         <button
           className={"railbtn" + (section === "insights" ? " active" : "")}

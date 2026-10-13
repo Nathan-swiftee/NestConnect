@@ -1537,6 +1537,7 @@ export class MemoryStore extends Store {
     title: string;
     body?: string;
     conversationId?: string | null;
+    opsSopId?: string | null;
   }): Promise<Notification> {
     const notif: Notification & { userId: string } = {
       id: `notif_${++this.idSeq}`,
@@ -1545,6 +1546,7 @@ export class MemoryStore extends Store {
       title: input.title,
       body: input.body ?? "",
       conversationId: input.conversationId ?? undefined,
+      opsSopId: input.opsSopId ?? undefined,
       read: false,
       createdAt: new Date().toISOString(),
     };

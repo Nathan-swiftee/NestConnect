@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNotifications, useMarkNotificationsRead } from "../hooks";
 import { relativeTime } from "../lib/format";
-import { BellIcon, AtIcon, SnoozeIcon } from "../lib/icons";
+import { BellIcon, AtIcon, OpsIcon, SnoozeIcon } from "../lib/icons";
 import type { Notification } from "@ding/schemas";
 
 /**
@@ -9,7 +9,14 @@ import type { Notification } from "@ding/schemas";
  * due). High-frequency events like a brand-new inbound chat stay sound-only and
  * never appear here. Opening a notification jumps to its conversation.
  */
-export function NotificationBell({ onOpenConversation }: { onOpenConversation: (id: string) => void }) {
+export function NotificationBell({
+  onOpenConversation,
+  onOpenOpsSop,
+}: {
+  onOpenConversation: (id: string) => void;
+  /** A must-read or review reminder opens its SOP in Business Ops. */
+  onOpenOpsSop?: (id: string) => void;
+}) {
   const { data } = useNotifications();
   const markRead = useMarkNotificationsRead();
   const [open, setOpen] = useState(false);
@@ -19,6 +26,7 @@ export function NotificationBell({ onOpenConversation }: { onOpenConversation: (
   const openNotif = (n: Notification) => {
     if (!n.read) markRead.mutate([n.id]);
     if (n.conversationId) onOpenConversation(n.conversationId);
+    else if (n.opsSopId) onOpenOpsSop?.(n.opsSopId);
     setOpen(false);
   };
 
@@ -57,7 +65,7 @@ export function NotificationBell({ onOpenConversation }: { onOpenConversation: (
                     onClick={() => openNotif(n)}
                   >
                     <span className={"notif__ic notif__ic--" + n.type}>
-                      {n.type === "mention" ? <AtIcon /> : <SnoozeIcon />}
+                      {n.type === "mention" ? <AtIcon /> : n.opsSopId ? <OpsIcon /> : <SnoozeIcon />}
                     </span>
                     <span className="notif__meta">
                       <b>{n.title}</b>

@@ -786,6 +786,7 @@ export abstract class Store {
     title: string;
     body?: string;
     conversationId?: string | null;
+    opsSopId?: string | null;
   }): Promise<Notification>;
   /** A user's recent notifications, newest first (capped). */
   abstract listNotifications(userId: string, limit?: number): Promise<Notification[]>;
