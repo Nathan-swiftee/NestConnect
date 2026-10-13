@@ -802,6 +802,10 @@ export const reactionSchema = z.object({
 });
 export type Reaction = z.infer<typeof reactionSchema>;
 
+/** What an automatic message is. */
+export const messageAutoSchema = z.enum(["away", "away_ask"]);
+export type MessageAuto = z.infer<typeof messageAutoSchema>;
+
 export const messageSchema = z.object({
   id: z.string(),
   conversationId: z.string(),
@@ -842,6 +846,9 @@ export const messageSchema = z.object({
    *  when WhatsApp tells us the customer forwarded it to us. Rendered as the
    *  "Forwarded" label WhatsApp users already read as "this isn't their words". */
   forwarded: z.boolean().optional(),
+  /** Sent by Nest itself rather than a person: the website chat's reply when
+   *  nobody is online ("away"), or that reply asking for an email ("away_ask"). */
+  auto: messageAutoSchema.optional(),
   /** Outbound send attempts made so far (absent for inbound/internal). */
   attemptCount: z.number().int().nonnegative().optional(),
   /** Human-readable reason shown in the UI once an outbound send has failed. */
@@ -1971,6 +1978,50 @@ export type NestChatHome = z.infer<typeof nestchatHomeSchema>;
 export const DEFAULT_NESTCHAT_HOME: NestChatHome = nestchatHomeSchema.parse({});
 
 /**
+ * What the website chat does when nobody who answers it is available —
+ * switched off, or outside their hours.
+ *
+ * The header's line for it is `appearance.awayMessage`, and keeping the
+ * promise is `appearance.emailReplies`; this is the rest. The automatic reply
+ * is a real message in the conversation, sent once per stretch nobody is
+ * there (again only after a person has replied since), so the agent who picks
+ * the chat up sees what the visitor was told.
+ *
+ * `{name}` and `{email}` are the visitor's, when we have them.
+ */
+export const nestchatAwaySchema = z.object({
+  autoReply: z.boolean().default(true),
+  /** We already have their email. */
+  withEmail: z
+    .string()
+    .trim()
+    .min(1)
+    .max(300)
+    .default("There's nobody online right now — we'll get back to you by email at {email}."),
+  /** We don't: the reply asks for it, with an email box under it. */
+  askEmail: z
+    .string()
+    .trim()
+    .min(1)
+    .max(300)
+    .default("There's nobody online right now. Leave your email and we'll get back to you there."),
+  /** Once they've given it. */
+  thanks: z.string().trim().min(1).max(200).default("Thanks — we'll reply to {email}."),
+  /** The home screen's line under "Send us a message", in place of the usual one. */
+  homeLine: z.string().max(80).default("We're away — we'll reply by email"),
+});
+export type NestChatAway = z.infer<typeof nestchatAwaySchema>;
+export const DEFAULT_NESTCHAT_AWAY: NestChatAway = nestchatAwaySchema.parse({});
+
+/** Fill `{name}` and `{email}`; a blank one takes the space before it with it. */
+export function fillVisitorText(text: string, v: { name?: string | null; email?: string | null }): string {
+  return text
+    .replace(/\s*\{name\}/g, (m) => (v.name ? m.replace("{name}", v.name) : ""))
+    .replace(/\s*\{email\}/g, (m) => (v.email ? m.replace("{email}", v.email) : ""))
+    .trim();
+}
+
+/**
  * How many past conversations a visitor is offered.
  *
  * A cap rather than a page, because this is a person's own history with one
@@ -2305,6 +2356,8 @@ export const nestchatSettingsSchema = z.object({
   preChat: nestchatPreChatSchema,
   routing: nestchatRoutingSchema,
   home: nestchatHomeSchema,
+  /** When nobody's online. */
+  away: nestchatAwaySchema,
   /**
    * The teams this channel routes to — the only teams a routing option may
    * name, so the pane can offer exactly those and no more.
@@ -2374,6 +2427,7 @@ export const updateNestchatInputSchema = z.object({
   preChat: nestchatPreChatSchema.optional(),
   routing: nestchatRoutingSchema.optional(),
   home: nestchatHomeSchema.optional(),
+  away: nestchatAwaySchema.optional(),
   /** Replaced whole, like the others: it is a handful of interdependent
    *  settings, and a patch that could set `enabled` without saying what
    *  identity mode it meant would be a surface turned on by accident. */
@@ -2405,6 +2459,9 @@ export const nestchatConfigSchema = z.object({
   /** The cards to show before the conversation. Absent when the channel has no
    *  home screen, so the widget's question stays "is there one?". */
   home: nestchatHomeSchema.optional(),
+  /** What the widget says itself while nobody is online (the automatic reply
+   *  is the server's). Absent from an older server. */
+  away: nestchatAwaySchema.pick({ homeLine: true, thanks: true }).optional(),
 });
 export type NestChatConfig = z.infer<typeof nestchatConfigSchema>;
 
@@ -2473,6 +2530,8 @@ export const nestchatMessageSchema = z.object({
   reactions: z.array(z.object({ emoji: z.string(), by: z.enum(["visitor", "agent"]) })).default([]),
   /** The message this one is answering. */
   quote: nestchatQuoteSchema.optional(),
+  /** Sent by Nest itself while nobody was online; "away_ask" wants their email. */
+  auto: messageAutoSchema.optional(),
 });
 export type NestChatMessage = z.infer<typeof nestchatMessageSchema>;
 
@@ -2546,6 +2605,8 @@ export const nestchatAppSessionSchema = z.object({
   identified: z.boolean(),
   /** Field keys this channel has never heard of. */
   unknownFields: z.array(z.string()).default([]),
+  /** What we already have for this person (see the website session). */
+  known: z.object({ name: z.boolean(), email: z.boolean(), phone: z.boolean() }).optional(),
 });
 export type NestChatAppSession = z.infer<typeof nestchatAppSessionSchema>;
 
@@ -2562,6 +2623,8 @@ export const nestchatSessionSchema = z.object({
   identified: z.boolean().optional(),
   /** Field keys this channel has never heard of. */
   unknownFields: z.array(z.string()).optional(),
+  /** What we already have for this visitor, so the widget doesn't ask again. */
+  known: z.object({ name: z.boolean(), email: z.boolean(), phone: z.boolean() }).optional(),
 });
 export type NestChatSession = z.infer<typeof nestchatSessionSchema>;
 

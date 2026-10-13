@@ -53,6 +53,7 @@ export class NestChatAdminController {
     await this.requireManager(userId);
     if (body.routing) await this.nestchat.updateRouting(inboxId, body.routing);
     if (body.home) await this.nestchat.updateHome(inboxId, body.home);
+    if (body.away) await this.nestchat.updateAway(inboxId, body.away);
     if (body.preChat) await this.nestchat.updatePreChat(inboxId, body.preChat);
     if (body.app) await this.nestchat.updateApp(inboxId, body.app);
     if (body.appearance) return this.nestchat.updateAppearance(inboxId, body.appearance);

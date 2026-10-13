@@ -144,6 +144,8 @@ export function unseenReplies(messages: Message[], emailedThrough: number, sentB
         m.direction === "out" &&
         !m.internal &&
         m.authorType !== "system" &&
+        // Nest's own "nobody's online" reply isn't a reply to send on.
+        !m.auto &&
         m.seq > Math.max(emailedThrough, lastVisitor) &&
         (m.status === "sent" || m.status === "delivered") &&
         new Date(m.createdAt).getTime() <= sentBefore.getTime(),

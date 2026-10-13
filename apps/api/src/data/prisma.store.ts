@@ -28,6 +28,7 @@ import type {
   Label,
   Member,
   Message,
+  MessageAuto,
   MessagePage,
   MessageStatus,
   Notification,
@@ -1501,6 +1502,37 @@ export class PrismaStore extends Store {
           ...(assignOnReply ? { assigneeUserId: author.id } : {}),
         },
       }),
+    ]);
+    return mapMessage(message);
+  }
+
+  async addAutoMessage(
+    conversationId: string,
+    input: { body: string; auto: MessageAuto; authorName?: string },
+  ): Promise<Message | undefined> {
+    const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
+    if (!conv) return undefined;
+    const seq = conv.seq + 1;
+    const [message] = await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          conversationId,
+          seq,
+          direction: "out",
+          authorType: "user",
+          authorName: input.authorName ?? null,
+          body: input.body,
+          status: "delivered",
+          internal: false,
+          messageType: "text",
+          channel: conv.channel,
+          auto: input.auto,
+        },
+        include: { attachments: true },
+      }),
+      // Only the sequence moves: unread, preview, time and owner are the
+      // customer's message's, which is still the one waiting for a person.
+      this.prisma.conversation.update({ where: { id: conversationId }, data: { seq } }),
     ]);
     return mapMessage(message);
   }

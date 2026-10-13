@@ -44,7 +44,7 @@ export function sendMessage(
   body: string,
   pageUrl?: string,
   extra?: { attachments?: string[]; quotedMsgId?: string },
-): Promise<{ ok: boolean; message?: NestChatMessage; token?: string }> {
+): Promise<{ ok: boolean; message?: NestChatMessage; token?: string; away?: NestChatMessage }> {
   return fetch(`${base}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -54,7 +54,7 @@ export function sendMessage(
       attachments: extra?.attachments ?? [],
       quotedMsgId: extra?.quotedMsgId,
     }),
-  }).then(json<{ ok: boolean; message?: NestChatMessage; token?: string }>);
+  }).then(json<{ ok: boolean; message?: NestChatMessage; token?: string; away?: NestChatMessage }>);
 }
 
 /**

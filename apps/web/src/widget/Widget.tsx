@@ -12,6 +12,7 @@ import type {
 } from "@ding/schemas";
 import {
   fillVisitorName,
+  fillVisitorText,
   nestchatHeaderBackground,
   nestchatHeaderRing,
   TYPING_PREVIEW_MS,
@@ -284,6 +285,11 @@ export function Widget({
   /* ---- the pre-chat form ---- */
 
   const [home, setHome] = useState<NestChatHome>();
+  const [away, setAway] = useState<NestChatConfig["away"]>();
+  /** What the server already has for this visitor: nothing is asked twice. */
+  const [known, setKnown] = useState<{ name: boolean; email: boolean; phone: boolean }>({ name: false, email: false, phone: false });
+  /** The email they gave under the "nobody's online" reply, for the thanks. */
+  const [awayEmail, setAwayEmail] = useState<string | null>(null);
   /**
    * Which screen is up.
    *
@@ -395,6 +401,7 @@ export function Widget({
       setToken(session.token);
       setLive(session.hasConversation);
       setMessages(session.messages);
+      if (session.known) setKnown(session.known);
     },
     [widgetKey],
   );
@@ -470,11 +477,25 @@ export function Widget({
         if (!alive) return;
         applyAppearance(config.appearance);
         setAppearance(config.appearance);
+        // The launcher on the host page is drawn by the loader from the
+        // snippet; tell it the live settings, so a change in Settings shows up
+        // without anyone re-pasting the snippet.
+        window.parent?.postMessage(
+          {
+            type: "nestchat:launcher",
+            position: config.appearance.position,
+            accent: config.appearance.accent,
+            accentText: config.appearance.accentText,
+            label: config.appearance.launcherLabel,
+          },
+          "*",
+        );
         setOnline(config.online);
         setTeam(config.team);
         setPreChat(config.preChat);
         setRouting(config.routing);
         setHome(config.home);
+        setAway(config.away);
 
         const who = await heard;
         hostRef.current = who;
@@ -692,9 +713,11 @@ export function Widget({
       });
       if (res.token) setToken(res.token);
       setLive(true);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === optimistic.id && res.message ? res.message : m)),
-      );
+      setMessages((prev) => {
+        const next = prev.map((m) => (m.id === optimistic.id && res.message ? res.message : m));
+        // Nobody online: the automatic reply, unless the stream got here first.
+        return res.away && !next.some((m) => m.id === res.away!.id) ? [...next, res.away] : next;
+      });
       // The server's copy has its own address for each picture; the ones in
       // memory go once nothing on screen could still be drawing them.
       const shown = optimistic.attachments ?? [];
@@ -1032,6 +1055,7 @@ export function Widget({
       setToken(session.token);
       setLive(session.hasConversation);
       setMessages(session.messages);
+      if (session.known) setKnown(session.known);
     } catch {
       setPhase("unavailable");
     }
@@ -1047,8 +1071,26 @@ export function Widget({
         // A match merged this visitor onto a customer we already had, which
         // deletes the contact the old token named — take the new one.
         if (res.token) setToken(res.token);
-        if (res.saved.length) setDetailsSaved({ linked: res.linked });
-        else setDetailsError(true);
+        if (res.saved.length) {
+          setDetailsSaved({ linked: res.linked });
+          setKnown((k) => ({ ...k, email: k.email || !!e, phone: k.phone || !!p }));
+        } else setDetailsError(true);
+      })
+      .catch(() => setDetailsError(true));
+  };
+
+  /** The email box under the "nobody's online" reply. */
+  const saveAwayEmail = () => {
+    const e = email.trim();
+    if (!e || !token) return;
+    setDetailsError(false);
+    void identify(token, { email: e })
+      .then((res) => {
+        if (res.token) setToken(res.token);
+        if (res.saved.length) {
+          setAwayEmail(e);
+          setKnown((k) => ({ ...k, email: true }));
+        } else setDetailsError(true);
       })
       .catch(() => setDetailsError(true));
   };
@@ -1077,10 +1119,18 @@ export function Widget({
   // channels that don't put a form in front of the chat. A channel that has a
   // pre-chat form has already asked, and asking twice reads as the first one
   // having failed.
+  //
+  // Field by field: one the form asks for isn't asked again here, and neither
+  // is one we already have — from the form, a signed-in site, or earlier.
+  // While the "nobody's online" reply is asking for an email, that's the ask.
+  const awayAsking =
+    !closed && !signedIn && !known.email && !awayEmail && messages.some((m) => m.auto === "away_ask");
+  const askEmailHere =
+    appearance.askEmail && !preChat?.email.enabled && !known.email && !awayAsking;
+  const askPhoneHere = appearance.askPhone && !preChat?.phone.enabled && !known.phone;
   const asking =
     !closed &&
-    !preChat &&
-    (appearance.askEmail || appearance.askPhone) &&
+    (askEmailHere || askPhoneHere) &&
     !detailsSaved &&
     !signedIn &&
     messages.length > 0;
@@ -1240,7 +1290,7 @@ export function Widget({
             <div className="nc__headline">{fillVisitorName(appearance.headline, visitorName)}</div>
           ) : null}
           <div className="nc__title">{fillVisitorName(appearance.title, visitorName)}</div>
-          <div className="nc__sub">{online ? appearance.subtitle : appearance.awayMessage}</div>
+          <div className="nc__sub">{fillVisitorName(online ? appearance.subtitle : appearance.awayMessage, visitorName)}</div>
         </div>
         )}
       </header>
@@ -1260,7 +1310,9 @@ export function Widget({
           >
             <span className="nc__cardtext">
               <b>{home.chatLabel}</b>
-              {home.chatSublabel ? <small>{home.chatSublabel}</small> : null}
+              {(online ? home.chatSublabel : away?.homeLine || home.chatSublabel) ? (
+                <small>{online ? home.chatSublabel : away?.homeLine || home.chatSublabel}</small>
+              ) : null}
             </span>
             <svg className="nc__cardgo" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M2 21l20-9L2 3l0 7 14 2-14 2z" fill="currentColor" />
@@ -1552,7 +1604,7 @@ export function Widget({
             visitor has to look past every time they write. */}
         {asking ? (
           <div className="nc__ask">
-            {appearance.askEmail ? (
+            {askEmailHere ? (
               <>
                 <label htmlFor="nc-email">{appearance.askEmailLabel}</label>
                 <input
@@ -1570,9 +1622,9 @@ export function Widget({
                 />
               </>
             ) : null}
-            {appearance.askPhone ? (
+            {askPhoneHere ? (
               <>
-                <label htmlFor="nc-phone" className="nc__asklabel2">
+                <label htmlFor="nc-phone" className={askEmailHere ? "nc__asklabel2" : undefined}>
                   {appearance.askPhoneLabel}
                 </label>
                 <input
@@ -1602,6 +1654,35 @@ export function Widget({
               <p className="nc__askerr">That didn’t save — check it and try again.</p>
             ) : null}
           </div>
+        ) : null}
+
+        {/* Nobody online, and no email to reach them on: the automatic reply
+            asked for one, and this is where it goes. */}
+        {awayAsking ? (
+          <div className="nc__ask nc__ask--away">
+            <label htmlFor="nc-away-email">Your email</label>
+            <input
+              id="nc-away-email"
+              type="email"
+              value={email}
+              placeholder="you@example.com"
+              autoComplete="email"
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  saveAwayEmail();
+                }
+              }}
+            />
+            <button type="button" className="nc__asksave" onClick={saveAwayEmail} disabled={!/^\S+@\S+\.\S+$/.test(email.trim())}>
+              Send
+            </button>
+            {detailsError ? <p className="nc__askerr">That didn’t save — check it and try again.</p> : null}
+          </div>
+        ) : null}
+        {awayEmail ? (
+          <div className="nc__note">{fillVisitorText(away?.thanks ?? "Thanks — we’ll reply to {email}.", { email: awayEmail })}</div>
         ) : null}
 
         {/* The end of the conversation, drawn as an event in it rather than as a

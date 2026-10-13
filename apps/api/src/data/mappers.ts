@@ -441,6 +441,7 @@ export function mapMessage(m: MessageRow): Message {
     // Only sent when true: the label is the exception, and every message
     // carrying `forwarded: false` would be noise on the wire.
     forwarded: m.forwarded ? true : undefined,
+    auto: m.auto === "away" || m.auto === "away_ask" ? m.auto : undefined,
     bodyHtml: m.bodyHtml ?? undefined,
     attemptCount: m.attemptCount ?? 0,
     failureReason: m.failureReason ?? undefined,

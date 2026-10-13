@@ -34,6 +34,7 @@
     "check:business-ops-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-business-ops-pg.ts",
     "check:gmail-reauth": "tsx --tsconfig apps/api/tsconfig.json tools/check-gmail-reauth.ts",
     "check:customer-bulk": "tsx --tsconfig apps/api/tsconfig.json tools/check-customer-bulk.ts",
+    "check:nestchat-away": "tsx --tsconfig apps/api/tsconfig.json tools/check-nestchat-away.ts",
     "check:team-chat": "tsx --tsconfig apps/api/tsconfig.json tools/check-team-chat.ts",
     "check:team-chat-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-team-chat-pg.ts",
     "check:organisations": "tsx --tsconfig apps/api/tsconfig.json tools/check-organisations.ts",

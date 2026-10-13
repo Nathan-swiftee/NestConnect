@@ -44,6 +44,7 @@ export function toVisitorMessage(message: Message, thread?: Message[]): NestChat
       by: r.by === "contact" ? ("visitor" as const) : ("agent" as const),
     })),
     ...(quote ? { quote } : {}),
+    ...(message.auto ? { auto: message.auto } : {}),
   };
 }
 

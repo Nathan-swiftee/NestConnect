@@ -26,6 +26,7 @@ import type {
   Label,
   Member,
   Message,
+  MessageAuto,
   MessagePage,
   MessageStatus,
   Notification,
@@ -1304,6 +1305,34 @@ export class MemoryStore extends Store {
       // Replying to an unclaimed chat takes ownership of it.
       if (!rec.assigneeUserId && rec.status !== "closed") rec.assigneeUserId = author.id;
     }
+    return message;
+  }
+
+  async addAutoMessage(
+    conversationId: string,
+    input: { body: string; auto: MessageAuto; authorName?: string },
+  ): Promise<Message | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    const message: Message = {
+      id: `msg_live_${++this.idSeq}`,
+      conversationId,
+      seq: ++rec.seq,
+      direction: "out",
+      authorType: "user",
+      authorName: input.authorName,
+      authorUserId: null,
+      body: input.body,
+      status: "delivered",
+      internal: false,
+      messageType: "text",
+      channel: rec.channel,
+      attachments: [],
+      reactions: [],
+      auto: input.auto,
+      createdAt: new Date().toISOString(),
+    };
+    rec.messages.push(message);
     return message;
   }
 

@@ -235,6 +235,12 @@ jobs:
       - name: Customer bulk actions
         run: pnpm check:customer-bulk
 
+      # The website chat when nobody's online: one automatic reply per stretch
+      # (asking for an email, or saying we'll use the one we have), never
+      # claiming the chat, never emailed on as a reply.
+      - name: Website chat away reply
+        run: pnpm check:nestchat-away
+
       # Email signatures: each email channel's design, filled in per sender —
       # a missing position drops its line, and an email signs as the mailbox it
       # really leaves from.
