@@ -5,6 +5,7 @@ import { Store, type AttachmentInput } from "../data/store";
 import { StorageService } from "./storage.service";
 import { SandboxPolicy } from "../tenancy/sandbox";
 import { currentOrgId } from "../tenancy/tenant-scope";
+import { phoneAudioKey, toAac } from "./audio-convert";
 
 interface MediaMeta {
   filename?: string;
@@ -27,6 +28,38 @@ export class MediaService {
     private readonly dataStore: Store,
     private readonly sandbox: SandboxPolicy,
   ) {}
+
+  /** Copies already made (or in the making), so a play doesn't re-check storage. */
+  private readonly phoneCopies = new Map<string, Promise<string | null>>();
+
+  /**
+   * The key of a phone-playable (AAC) copy of a stored recording, making it
+   * the first time anyone asks and keeping it beside the original. Null if it
+   * can't be made — the caller serves the original, as before.
+   */
+  phoneAudio(storageKey: string): Promise<string | null> {
+    const key = phoneAudioKey(storageKey);
+    const known = this.phoneCopies.get(key);
+    if (known) return known;
+    const making = (async () => {
+      if (await this.storage.get(key)) return key;
+      const original = await this.storage.get(storageKey);
+      if (!original) return null;
+      const aac = await toAac(original);
+      if (!aac) {
+        this.logger.warn(`Couldn't make a phone copy of ${storageKey}`);
+        return null;
+      }
+      await this.storage.put(key, aac, "audio/mp4");
+      return key;
+    })().catch(() => null);
+    this.phoneCopies.set(key, making);
+    // A failure is worth trying again later, not remembering.
+    void making.then((k) => {
+      if (!k) this.phoneCopies.delete(key);
+    });
+    return making;
+  }
 
   /** Load a stored attachment's bytes by id (for outbound delivery). */
   async load(attachmentId: string): Promise<{ bytes: Buffer; mime: string; filename: string } | null> {

@@ -23,6 +23,7 @@ import { Store } from "../data/store";
 import { CurrentUserId } from "../auth/current-user.decorator";
 import { MediaService } from "./media.service";
 import { StorageService } from "./storage.service";
+import { needsPhoneAudio } from "./audio-convert";
 
 /** The subset of a multer file we rely on (avoids an Express.Multer.File dep). */
 interface UploadedFileLike {
@@ -38,6 +39,9 @@ interface UploadedFileLike {
  * `GET /media/:id` streams a stored file. Authenticated (the global guard
  * applies) — same-origin `<img src>` / `<audio src>` / download links send the
  * session cookie, so this Just Works from the thread. `?dl=1` forces a download.
+ * `?as=m4a` asks for an AAC copy of a browser-recorded (WebM/Ogg) voice note,
+ * for the iPhone app, whose player can't open either; anything else is served
+ * as it is.
  *
  * `POST /media` stages an uploaded file (multipart) as an attachment not yet
  * tied to a message; the returned id is referenced on send.
@@ -88,6 +92,7 @@ export class MediaController {
     @Req() req: Request,
     @Res() res: Response,
     @Query("dl") dl?: string,
+    @Query("as") as?: string,
   ): Promise<void> {
     const access = await this.store.getAttachmentAccess(id);
     if (!access) throw new NotFoundException("Attachment not found");
@@ -104,10 +109,21 @@ export class MediaController {
 
     const downloadName = dl ? access.filename : undefined;
 
+    // The phone-playable copy, when one was asked for and is needed.
+    let key = access.storageKey;
+    let mime = access.mime;
+    if (as === "m4a" && needsPhoneAudio(access.mime)) {
+      const copy = await this.media.phoneAudio(access.storageKey);
+      if (copy) {
+        key = copy;
+        mime = "audio/mp4";
+      }
+    }
+
     // R2: hand the client a short-lived presigned URL and redirect. The bytes
     // stream straight from R2 (Range + CDN), never through this process — so a
     // 100MB object is never loaded into Node memory, and the URL expires.
-    const presigned = await this.storage.presignedGetUrl(access.storageKey, {
+    const presigned = await this.storage.presignedGetUrl(key, {
       expiresSeconds: 900, // 15 min — long enough to seek a video, short enough to stay private
       downloadName,
     });
@@ -117,9 +133,9 @@ export class MediaController {
     }
 
     // Local disk (dev): stream with proper Range support, never buffering whole.
-    const stat = await this.storage.diskStat(access.storageKey);
+    const stat = await this.storage.diskStat(key);
     if (!stat) throw new NotFoundException("File not found");
-    res.set("Content-Type", access.mime || "application/octet-stream");
+    res.set("Content-Type", mime || "application/octet-stream");
     res.set("Accept-Ranges", "bytes");
     res.set("Cache-Control", "private, max-age=86400");
     if (downloadName) {
@@ -140,10 +156,10 @@ export class MediaController {
       res.status(206);
       res.set("Content-Range", `bytes ${start}-${end}/${stat.size}`);
       res.set("Content-Length", String(end - start + 1));
-      this.storage.diskReadStream(access.storageKey, start, end).pipe(res);
+      this.storage.diskReadStream(key, start, end).pipe(res);
     } else {
       res.set("Content-Length", String(stat.size));
-      this.storage.diskReadStream(access.storageKey).pipe(res);
+      this.storage.diskReadStream(key).pipe(res);
     }
   }
 }
