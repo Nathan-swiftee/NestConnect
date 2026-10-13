@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { attachmentSchema, type Attachment } from "./index";
+import { attachmentSchema, type Attachment, type ChannelType, type ConversationStatus } from "./index";
 
 /*
  * Team Chat — the team talking to itself.
@@ -102,6 +102,8 @@ export interface ChatMessage {
   attachments: ChatAttachment[];
   /** A preview of the first link in it, once fetched. */
   link: ChatLinkPreview | null;
+  /** A customer conversation brought into the chat to discuss ("Discuss…"). */
+  shared: ChatSharedConversation | null;
   /** Who it @-mentions, resolved when it was sent. */
   mentions: string[];
   editedAt: string | null;
@@ -191,6 +193,51 @@ export const sendChatMessageInputSchema = z
 export type SendChatMessageInput = z.infer<typeof sendChatMessageInputSchema>;
 
 export const starChatMessageInputSchema = z.object({ starred: z.boolean() });
+
+/* ---- customer conversations, discussed ---- */
+
+/**
+ * The card a shared customer conversation makes in a chat. Who, on which
+ * channel and about what are kept as they were when it was shared; its status
+ * and who has it are read fresh, and follow the conversation live.
+ */
+export interface ChatSharedConversation {
+  conversationId: string;
+  contactName: string;
+  contactAvatarColor: string | null;
+  channel: ChannelType;
+  subject: string | null;
+  /** Null once the conversation itself has gone. */
+  status: ConversationStatus | null;
+  assigneeName: string | null;
+  /** The one message it was shared from, if it was ("Discuss…" on a message, or a note sent on). */
+  quote: { messageId: string; authorName: string; body: string; internal: boolean; at: string } | null;
+}
+
+export const shareConversationInputSchema = z.object({
+  roomId: z.string().min(1),
+  conversationId: z.string().min(1),
+  messageId: z.string().min(1).nullish(),
+  /** A line to go with it: "Can someone check stock for this?" */
+  body: z.string().max(CHAT_MESSAGE_MAX).default(""),
+});
+export type ShareConversationInput = z.infer<typeof shareConversationInputSchema>;
+
+/** Where a customer conversation is being discussed: the card, and the replies to it. */
+export interface ChatDiscussion {
+  roomId: string;
+  roomName: string;
+  roomKind: ChatRoomKind;
+  canPost: boolean;
+  card: ChatMessage;
+  replies: number;
+  latest: ChatMessage | null;
+}
+
+/** One discussion, in full: the card and everything said in reply to it. */
+export interface ChatDiscussionThread extends Omit<ChatDiscussion, "latest" | "replies"> {
+  replies: ChatMessage[];
+}
 
 /** A message I starred, with where it is. */
 export interface ChatStarred {
@@ -360,6 +407,11 @@ export function chatAttachmentLabel(atts: Array<Pick<Attachment, "kind" | "filen
     default:
       return `📄 ${a.filename || "File"}${more}`;
   }
+}
+
+/** How a shared customer conversation reads in a list or a push: "💬 Golden Screen". */
+export function chatSharedLabel(s: Pick<ChatSharedConversation, "contactName">): string {
+  return `💬 ${s.contactName}`;
 }
 
 /** "Amara", "Amara and James", "Amara, James and Sam". */

@@ -13,12 +13,16 @@ import {
   canEditChatMessage,
   chatAttachmentLabel,
   chatMentionTokens,
+  chatSharedLabel,
   directChatKey,
   mentionHandle,
   mentionsToNames,
   type AddChatMembersInput,
   type ChatAttachment,
+  type ChatDiscussion,
+  type ChatDiscussionThread,
   type ChatSearchHit,
+  type ChatSharedConversation,
   type ChatStarred,
   type ChatMember,
   type ChatMemberRole,
@@ -33,12 +37,17 @@ import {
   type ChatStatusInfo,
   type ChatSystemData,
   type CreateChatGroupInput,
+  type ConversationStatus,
+  type ConversationWithMessages,
+  type Message,
   type SendChatMessageInput,
+  type ShareConversationInput,
   type Team,
   type UpdateChatGroupInput,
   type User,
 } from "@ding/schemas";
 import { Store } from "../data/store";
+import { ConversationLog, agent } from "../conversations/conversation-log";
 import { NotificationsService } from "../notifications/notifications.service";
 import { PushService } from "../push/push.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -54,6 +63,9 @@ export const CHAT_MODULE_KEY = "module.team_chat";
 const MUTED_FOREVER = "2100-01-01T00:00:00.000Z";
 /** An admin reading the same chat again within this is one look, not several. */
 const AUDIT_DEDUPE_MS = 10 * 60_000;
+/** Per conversation: how it is now, or null once it's gone. */
+type LiveCards = Map<string, { status: ConversationStatus; assigneeName: string | null } | null>;
+
 const QUOTE_MAX = 160;
 const PREVIEW_MAX = 120;
 
@@ -176,7 +188,9 @@ export class ChatService implements OnModuleInit {
     for (const room of await this.chat.listRooms()) {
       const team = room.teamId ? teamById.get(room.teamId) : undefined;
       const inTeam = room.kind === "team" && !!team && myTeams.has(team.id);
-      const isMember = room.kind === "team" && team ? inTeam : mine.has(room.id);
+      // A team chat's members are its team, whatever rows of markers it holds — so
+      // once the team is gone, nobody is in it (admins can still read it).
+      const isMember = room.kind === "team" ? inTeam : mine.has(room.id);
       if (!isMember && !(all && user.role === "admin")) continue;
       visible.push({
         room,
@@ -238,6 +252,163 @@ export class ChatService implements OnModuleInit {
     });
   }
 
+  /* ---- customer conversations, discussed ---- */
+
+  /**
+   * Bring a customer conversation into a chat: its card, and a line to go
+   * with it. From the thread's Discuss…, from Discuss… on one message, or as
+   * a note sent on to a chat. Anyone in the workspace can open any
+   * conversation, so anyone in the chat may see the card.
+   */
+  async share(userId: string, input: ShareConversationInput): Promise<ChatMessage> {
+    const user = await this.open(userId);
+    const a = await this.writable(user, input.roomId);
+    const conv = await this.store.getConversation(input.conversationId);
+    if (!conv) throw new NotFoundException("Conversation not found");
+    let quote: ChatSharedConversation["quote"] = null;
+    if (input.messageId) {
+      const msg = await this.conversationMessage(conv, input.messageId);
+      if (!msg) throw new NotFoundException("That message isn't in this conversation");
+      quote = {
+        messageId: msg.id,
+        authorName: msg.authorName || (msg.direction === "in" ? conv.contact.displayName : "Teammate"),
+        body: trim((msg.body.replace(/\s+/g, " ").trim() || chatAttachmentLabel(msg.attachments ?? [])), QUOTE_MAX),
+        internal: !!msg.internal,
+        at: msg.createdAt,
+      };
+    }
+    const shared: ChatSharedConversation = {
+      conversationId: conv.id,
+      contactName: conv.contact.displayName,
+      contactAvatarColor: conv.contact.avatarColor ?? null,
+      channel: conv.channel,
+      subject: conv.subject ?? null,
+      status: conv.status,
+      assigneeName: conv.assigneeName ?? null,
+      quote,
+    };
+    const people = await this.people();
+    const body = input.body.trim();
+    const rec = await this.chat.createMessage({
+      roomId: a.room.id,
+      authorUserId: userId,
+      kind: "text",
+      body,
+      data: null,
+      replyToId: null,
+      mentions: this.mentionsIn(body, a.memberIds, people, userId),
+      conversationId: conv.id,
+      shared,
+    });
+    await this.chat.upsertMember(a.room.id, userId, { lastReadAt: chatClock() });
+    const message = this.message(rec, people, new Map());
+    this.emit(a, ChatServerEvent.Message, { roomId: a.room.id, message });
+    this.emitReceipt(a, userId, await this.chat.getMember(a.room.id, userId));
+    void this.tell(a, user, rec, people).catch((err) => this.logger.warn(`Chat notify failed: ${String(err)}`));
+    // The customer's thread remembers where it was taken.
+    const other = a.room.kind === "direct" ? a.memberIds.find((id) => id !== userId) : undefined;
+    await new ConversationLog(this.store).record(conv.id, "shared_to_chat", agent(userId), {
+      roomId: a.room.id,
+      ...(other ? { withUserId: other } : { roomName: this.roomName(a, userId, people) }),
+      ...(input.messageId ? { messageId: input.messageId } : {}),
+      ...(body ? { line: trim(body, QUOTE_MAX) } : {}),
+    });
+    return message;
+  }
+
+  /** Where a customer conversation is being discussed, in the chats I can open. */
+  async discussions(userId: string, conversationId: string): Promise<ChatDiscussion[]> {
+    const user = await this.open(userId);
+    const cards = await this.chat.sharesOf(conversationId);
+    if (!cards.length) return [];
+    const rooms = new Map((await this.visibleRooms(user, user.role === "admin")).map((a) => [a.room.id, a]));
+    const mine = cards.filter((c) => {
+      const a = rooms.get(c.roomId);
+      const from = a ? this.visibleFrom(a) : null;
+      return !!a && (!from || c.createdAt >= from);
+    });
+    const [replies, people, live] = await Promise.all([this.chat.repliesTo(mine.map((c) => c.id)), this.people(), this.liveCards(mine)]);
+    const quotes = await this.quotesFor(replies, people);
+    const out = mine.map((c): ChatDiscussion => {
+      const a = rooms.get(c.roomId)!;
+      const said = replies.filter((r) => r.replyToId === c.id && !r.deletedAt);
+      const latest = said.at(-1);
+      return {
+        roomId: c.roomId,
+        roomName: this.roomName(a, userId, people),
+        roomKind: a.room.kind,
+        canPost: this.canPost(a),
+        card: this.message(c, people, quotes, live),
+        replies: said.length,
+        latest: latest ? this.message(latest, people, quotes) : null,
+      };
+    });
+    const last = (d: ChatDiscussion) => d.latest?.createdAt ?? d.card.createdAt;
+    return out.sort((x, y) => last(y).localeCompare(last(x)));
+  }
+
+  /** One discussion: the card and everything said in reply to it. */
+  async thread(userId: string, cardId: string): Promise<ChatDiscussionThread> {
+    const user = await this.open(userId);
+    const card = await this.chat.getMessage(cardId);
+    if (!card || !card.shared || card.deletedAt) throw new NotFoundException("Discussion not found");
+    const a = await this.access(user, card.roomId);
+    const from = this.visibleFrom(a);
+    if (from && card.createdAt < from) throw new NotFoundException("Discussion not found");
+    if (a.oversight) await this.audit(a.room.id, userId);
+    const [replies, people, live] = await Promise.all([this.chat.repliesTo([card.id]), this.people(), this.liveCards([card])]);
+    const quotes = await this.quotesFor(replies, people);
+    return {
+      roomId: a.room.id,
+      roomName: this.roomName(a, userId, people),
+      roomKind: a.room.kind,
+      canPost: this.canPost(a),
+      card: this.message(card, people, quotes, live),
+      replies: replies.filter((r) => !from || r.createdAt >= from).map((r) => this.message(r, people, quotes)),
+    };
+  }
+
+  /** A message in a customer conversation — usually on its latest page, else a few pages back. */
+  private async conversationMessage(conv: ConversationWithMessages, id: string): Promise<Message | undefined> {
+    const found = conv.messages.find((m) => m.id === id);
+    if (found) return found;
+    let before: string | undefined = conv.messages[0] ? String(conv.messages[0].seq) : undefined;
+    for (let page = 0; page < 10 && before; page++) {
+      const older = await this.store.listMessages(conv.id, { before, limit: 100 });
+      const hit = older.items.find((m) => m.id === id);
+      if (hit) return hit;
+      before = older.nextCursor ?? undefined;
+    }
+    return undefined;
+  }
+
+  /** Each card's conversation as it is now: its status and who has it. */
+  private async liveCards(messages: ChatMessageRecord[]): Promise<LiveCards> {
+    const ids = [...new Set(messages.map((m) => m.conversationId).filter((id): id is string => !!id))];
+    if (!ids.length) return new Map();
+    const people = await this.people();
+    const states = await Promise.all(ids.map((id) => this.store.conversationState(id).catch(() => undefined)));
+    return new Map(
+      ids.map((id, i) => {
+        const st = states[i];
+        return [id, st ? { status: st.status, assigneeName: (st.assigneeUserId && people.get(st.assigneeUserId)?.name) || null } : null];
+      }),
+    );
+  }
+
+  private card(m: ChatMessageRecord, live?: LiveCards): ChatSharedConversation {
+    const snap = m.shared!;
+    // The conversation was deleted: the card stays, saying so.
+    if (!m.conversationId) return { ...snap, status: null, assigneeName: null };
+    const now = live?.get(m.conversationId);
+    if (now === undefined) return snap;
+    return now ? { ...snap, ...now } : { ...snap, status: null, assigneeName: null };
+  }
+
+  private canPost(a: Access): boolean {
+    return a.isMember && !a.archived && !(a.room.kind === "direct" && a.memberIds.length < 2);
+  }
+
   /* ---- one chat ---- */
 
   async room(userId: string, roomId: string): Promise<ChatRoom> {
@@ -262,8 +433,8 @@ export class ChatService implements OnModuleInit {
     const hasMore = rows.length > CHAT_PAGE_SIZE;
     const page = rows.slice(0, CHAT_PAGE_SIZE).reverse();
     const people = await this.people();
-    const quotes = await this.quotesFor(page, people);
-    return { messages: page.map((m) => this.message(m, people, quotes)), hasMore };
+    const [quotes, live] = await Promise.all([this.quotesFor(page, people), this.liveCards(page)]);
+    return { messages: page.map((m) => this.message(m, people, quotes, live)), hasMore };
   }
 
   async send(userId: string, roomId: string, input: SendChatMessageInput): Promise<ChatMessage> {
@@ -362,6 +533,8 @@ export class ChatService implements OnModuleInit {
       mentions: [],
       attachments: [],
       link: null,
+      conversationId: null,
+      shared: null,
       deletedAt: new Date().toISOString(),
     });
     return this.emitUpdated(a, updated!, await this.people());
@@ -736,7 +909,8 @@ export class ChatService implements OnModuleInit {
   private async tell(a: Access, author: User, m: ChatMessageRecord, people: People): Promise<void> {
     const rows = new Map((await this.chat.listMembers(a.room.id)).map((r) => [r.userId, r]));
     const now = new Date().toISOString();
-    const text = trim(mentionsToNames(m.body, [...people.values()]), PREVIEW_MAX) || chatAttachmentLabel(m.attachments);
+    const text =
+      trim(mentionsToNames(m.body, [...people.values()]), PREVIEW_MAX) || chatAttachmentLabel(m.attachments) || (m.shared ? chatSharedLabel(m.shared) : "");
     const title = a.room.kind === "direct" ? author.name : this.roomName(a, author.id, people);
     const body = a.room.kind === "direct" ? text : `${author.name}: ${text}`;
 
@@ -860,7 +1034,7 @@ export class ChatService implements OnModuleInit {
       members,
       myRole: a.isMember ? (a.room.kind === "group" ? (a.me?.role ?? "member") : "member") : null,
       canManage,
-      canPost: a.isMember && !a.archived && !(a.room.kind === "direct" && a.memberIds.length < 2),
+      canPost: this.canPost(a),
       canLeave: a.isMember && a.room.kind === "group",
       oversight: a.oversight,
       createdAt: a.room.createdAt,
@@ -885,7 +1059,7 @@ export class ChatService implements OnModuleInit {
     );
   }
 
-  private message(m: ChatMessageRecord, people: People, quotes: Map<string, ChatQuote>): ChatMessage {
+  private message(m: ChatMessageRecord, people: People, quotes: Map<string, ChatQuote>, live?: LiveCards): ChatMessage {
     const author = m.authorUserId ? people.get(m.authorUserId) : undefined;
     return {
       id: m.id,
@@ -898,6 +1072,7 @@ export class ChatService implements OnModuleInit {
       reactions: Object.entries(m.reactions).map(([emoji, userIds]) => ({ emoji, userIds })),
       attachments: m.deletedAt ? [] : m.attachments,
       link: m.deletedAt ? null : m.link,
+      shared: m.deletedAt || !m.shared ? null : this.card(m, live),
       mentions: m.mentions,
       editedAt: m.editedAt,
       deletedAt: m.deletedAt,

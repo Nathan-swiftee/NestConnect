@@ -14,7 +14,9 @@
  *   I  pinned chats first; a deleted team's chat stays, read-only;
  *   J  photos, voice notes and files (only this workspace's uploads, described
  *      by the server's own record); link cards, fetched safely; search only
- *      where you can read; stars are yours alone.
+ *      where you can read; stars are yours alone;
+ *   K  a customer conversation discussed: its card (and the message it came
+ *      from), live status, the bar back on the thread, the replies, the log.
  *
  * (One workspace not seeing another's chats is proven on Postgres, in
  * check-tenant-isolation.)
@@ -25,6 +27,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { ChatService } from "../apps/api/src/chat/chat.service";
 import { LinkPreviewService, firstLink, isPublicAddress, parsePreview } from "../apps/api/src/chat/link-preview";
+import { renderConversationEvents } from "../apps/api/src/conversations/conversation-log";
 import { MemoryChatStore } from "../apps/api/src/chat/memory-chat.store";
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { DEMO_USER_ID, ORG_ID } from "../apps/api/src/data/fixtures";
@@ -256,6 +259,8 @@ async function main() {
     await svc.setPrefs(JAMES, ops.id, { pinned: true });
     ok("pinned first", (await svc.rooms(JAMES))[0]?.id === ops.id);
     await svc.setPrefs(JAMES, ops.id, { pinned: false });
+    // Having opened it leaves a row of read markers behind; that mustn't keep anyone in it.
+    await svc.room(NATHAN, sales.id);
     await store.deleteTeam("team_sales");
     ok("a deleted team's chat leaves everyone's list", !(await svc.rooms(NATHAN)).some((x) => x.id === sales.id));
     const old = (await svc.rooms(NATHAN, true)).find((x) => x.id === sales.id);
@@ -327,6 +332,54 @@ async function main() {
     ok("including from before you joined", !!before && (await refuses(svc.star(JAMES, before.id, true), 404)));
     await svc.leave(JAMES, ops.id);
     ok("leave the chat, and its stars go quiet", (await svc.starred(JAMES)).length === 0);
+
+    console.log("\nK — customer conversations, discussed\n");
+    const conv = (await store.getConversation("conv_north"))!;
+    const first = conv.messages[0]!;
+    const share = (roomId: string, body = "", messageId?: string) => ({ roomId, conversationId: conv.id, body, messageId: messageId ?? null });
+    pushes.length = 0;
+    const cardMsg = await svc.share(NATHAN, share(support.id, "Can someone check the VAT on this?", first.id));
+    ok("the card says who, where and what", cardMsg.shared?.contactName === "Northside Logistics" && cardMsg.shared.channel === "whatsapp" && cardMsg.shared.status === "open");
+    ok("with the message it was shared from", cardMsg.shared?.quote?.messageId === first.id && cardMsg.shared.quote.authorName === "Northside Logistics" && cardMsg.shared.quote.body.startsWith("Hi team"));
+    ok("and the line that goes with it", cardMsg.body === "Can someone check the VAT on this?");
+    ok("everyone else in the chat hears about it", pushes[0]?.userIds.join() === JAMES && pushes[0]?.body === "Nathan A: Can someone check the VAT on this?");
+    pushes.length = 0;
+    const bare = await svc.share(NATHAN, share(support.id));
+    ok("shared on its own, it reads as the customer", pushes[0]?.body === "Nathan A: 💬 Northside Logistics" && bare.shared?.quote === null);
+    ok("not into a chat you aren't in", await refuses(svc.share(AMARA, share(support.id)), 404));
+    ok("nor one you're only reading as an admin", await refuses(svc.share(NATHAN, share(dm.id)), 403));
+    ok("nor a conversation that isn't there", await refuses(svc.share(NATHAN, { ...share(support.id), conversationId: "conv_nope" }), 404));
+    ok("nor a message from another conversation", await refuses(svc.share(NATHAN, share(support.id, "", "msg_nope")), 404));
+
+    const rows = await store.listConversationEvents(conv.id);
+    const people = new Map((await store.listMembers()).map((m) => [m.user.id, m.user]));
+    const log = renderConversationEvents(rows, people, new Map()).filter((e) => e.type === "shared_to_chat");
+    ok("the thread's log says where it went", log.some((e) => e.text === "Nathan A shared it with Support team" && e.detail === "One message · “Can someone check the VAT on this?”"), log.map((e) => `${e.text} | ${e.detail}`).join(" / "));
+    await svc.share(JAMES, share(dm.id, "Seen this one?"));
+    const log2 = renderConversationEvents(await store.listConversationEvents(conv.id), people, new Map()).filter((e) => e.type === "shared_to_chat");
+    ok("a direct chat is named by the person", log2.some((e) => e.text === "James shared it with Amara"), log2.map((e) => e.text).join(" / "));
+
+    let found2 = await svc.discussions(JAMES, conv.id);
+    ok("the thread knows where it's discussed", found2.length === 3 && found2.every((d) => d.card.shared?.conversationId === conv.id), String(found2.length));
+    await svc.send(JAMES, support.id, say("Zero-rated is right, I'll reissue it", cardMsg.id));
+    found2 = await svc.discussions(JAMES, conv.id);
+    const here = found2.find((d) => d.card.id === cardMsg.id)!;
+    ok("with the replies to each card, newest discussion first", found2[0]!.card.id === cardMsg.id && here.replies === 1 && here.latest?.body === "Zero-rated is right, I'll reissue it" && here.roomName === "Support team" && here.canPost);
+    ok("only in chats you can open", (await svc.discussions(AMARA, conv.id)).map((d) => d.roomKind).join() === "direct");
+    const t = await svc.thread(NATHAN, cardMsg.id);
+    ok("a discussion in full: the card and what was said to it", t.card.id === cardMsg.id && t.replies.length === 1 && t.replies[0]!.replyTo?.id === cardMsg.id);
+    ok("somebody not in the chat can't open it", await refuses(svc.thread(AMARA, cardMsg.id), 404));
+    ok("an ordinary message isn't a discussion", await refuses(svc.thread(NATHAN, t.replies[0]!.id), 404));
+
+    await store.setStatus(conv.id, "closed");
+    await store.assign(conv.id, { assigneeUserId: AMARA });
+    const fresh = (await svc.messages(JAMES, support.id)).messages.find((m) => m.id === cardMsg.id)!;
+    ok("the card follows the conversation: closed, and Amara has it", fresh.shared?.status === "closed" && fresh.shared.assigneeName === "Amara", JSON.stringify(fresh.shared && { s: fresh.shared.status, a: fresh.shared.assigneeName }));
+    ok("…in the discussion too", (await svc.discussions(JAMES, conv.id))[0]!.card.shared?.status === "closed");
+    await svc.remove(NATHAN, bare.id);
+    ok("deleting a card takes it out of the discussions", (await svc.discussions(NATHAN, conv.id)).every((d) => d.card.id !== bare.id));
+    ok("and leaves no card behind", (await svc.messages(NATHAN, support.id)).messages.find((m) => m.id === bare.id)?.shared === null);
+    ok("a chat list says what was shared", (await svc.rooms(AMARA)).find((r) => r.id === dm.id)?.lastMessage?.shared?.contactName === "Northside Logistics");
   });
   server.close();
 
