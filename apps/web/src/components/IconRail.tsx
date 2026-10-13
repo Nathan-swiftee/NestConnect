@@ -1,6 +1,6 @@
 import { availableNow } from "@ding/schemas";
 import { useEffect, useState } from "react";
-import { useLogout, useMe, useOpsStatus, useSound, useTheme, useUpdateMyPreferences } from "../hooks";
+import { useChatStatus, useLogout, useMe, useOpsStatus, useSound, useTheme, useUpdateMyPreferences } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 import {
@@ -15,9 +15,10 @@ import {
   SunIcon,
   SoundOnIcon,
   SoundOffIcon,
+  TeamChatIcon,
 } from "../lib/icons";
 
-type Section = "inbox" | "customers" | "organisations" | "ops" | "settings" | "insights";
+type Section = "inbox" | "chat" | "customers" | "organisations" | "ops" | "settings" | "insights";
 
 export function IconRail({
   section,
@@ -36,6 +37,8 @@ export function IconRail({
   const prefs = useUpdateMyPreferences();
   const ops = useOpsStatus();
   const opsWaiting = ops.data?.pendingAcks ?? 0;
+  const chat = useChatStatus();
+  const chatUnread = chat.data?.unread ?? 0;
   const [menu, setMenu] = useState(false);
   // Availability, tracked locally for an instant toggle; synced from the server.
   const [available, setAvailable] = useState(true);
@@ -66,6 +69,17 @@ export function IconRail({
       >
         <InboxIcon />
       </button>
+      {chat.data?.enabled && (
+        <button
+          className={"railbtn" + (section === "chat" ? " active" : "")}
+          title={chatUnread ? `Team Chat — ${chatUnread} unread` : "Team Chat"}
+          aria-label={chatUnread ? `Team Chat, ${chatUnread} unread` : "Team Chat"}
+          onClick={() => onSection("chat")}
+        >
+          <TeamChatIcon />
+          {chatUnread > 0 && <span className="railbtn__badge">{chatUnread > 99 ? "99+" : chatUnread}</span>}
+        </button>
+      )}
       <button
         className={"railbtn" + (section === "customers" ? " active" : "")}
         title="Customers"

@@ -1,0 +1,131 @@
+import { describe, expect, it } from "vitest";
+import { chatTicks, chatSystemText, canEditChatMessage, type ChatMember, type ChatMessage } from "@ding/schemas";
+import { chatDayLabel, chatItems, chatLastSeen, chatListTime, chatPreview, isJumboEmoji } from "@ding/client";
+
+const NOW = new Date(2026, 9, 13, 15, 0); // Tue 13 Oct 2026, 15:00 local
+
+const msg = (id: string, authorId: string | null, at: Date, over: Partial<ChatMessage> = {}): ChatMessage => ({
+  id,
+  roomId: "r",
+  kind: "text",
+  author: authorId ? { id: authorId, name: authorId === "me" ? "Nathan A" : "Amara Jones", avatarColor: null, avatarUrl: null } : null,
+  body: "hi",
+  system: null,
+  replyTo: null,
+  reactions: [],
+  mentions: [],
+  editedAt: null,
+  deletedAt: null,
+  createdAt: at.toISOString(),
+  ...over,
+});
+const at = (d: number, h: number, m = 0) => new Date(2026, 9, d, h, m);
+const member = (id: string, read: Date | null, delivered: Date | null = null): ChatMember => ({
+  id,
+  name: id,
+  avatarColor: null,
+  avatarUrl: null,
+  role: "member",
+  lastReadAt: read?.toISOString() ?? null,
+  lastDeliveredAt: delivered?.toISOString() ?? null,
+  online: false,
+  lastSeenAt: null,
+});
+
+describe("Team Chat: dates as people say them", () => {
+  it("day lines", () => {
+    expect(chatDayLabel(at(13, 9).toISOString(), NOW)).toBe("Today");
+    expect(chatDayLabel(at(12, 23).toISOString(), NOW)).toBe("Yesterday");
+    expect(chatDayLabel(at(9, 10).toISOString(), NOW)).toBe("Friday");
+    expect(chatDayLabel(at(1, 10).toISOString(), NOW)).toBe("1 Oct");
+    expect(chatDayLabel(new Date(2025, 2, 3).toISOString(), NOW)).toBe("3 Mar 2025");
+  });
+  it("list times", () => {
+    expect(chatListTime(at(13, 9, 5).toISOString(), NOW)).toBe("9:05");
+    expect(chatListTime(at(12, 9).toISOString(), NOW)).toBe("Yesterday");
+    expect(chatListTime(at(10, 9).toISOString(), NOW)).toBe("Sat");
+    expect(chatListTime(at(1, 9).toISOString(), NOW)).toBe("01/10/26");
+  });
+  it("last seen", () => {
+    expect(chatLastSeen({ online: true, lastSeenAt: null }, NOW)).toBe("online");
+    expect(chatLastSeen({ online: false, lastSeenAt: at(13, 14, 2).toISOString() }, NOW)).toBe("last seen today at 14:02");
+    expect(chatLastSeen({ online: false, lastSeenAt: at(12, 8).toISOString() }, NOW)).toBe("last seen yesterday at 8:00");
+    expect(chatLastSeen({ online: false, lastSeenAt: null }, NOW)).toBe("");
+  });
+});
+
+describe("Team Chat: the thread as rows", () => {
+  it("a day line wherever the date changes, and runs per person", () => {
+    const items = chatItems(
+      [
+        msg("1", "amara", at(12, 10, 0)),
+        msg("2", "me", at(13, 9, 0)),
+        msg("3", "me", at(13, 9, 2)),
+        msg("4", "me", at(13, 9, 20)),
+        msg("5", "amara", at(13, 9, 21)),
+      ],
+      { meId: "me", now: NOW },
+    );
+    expect(items.filter((i) => i.kind === "day").map((i) => (i.kind === "day" ? i.label : ""))).toEqual(["Yesterday", "Today"]);
+    const runs = items.flatMap((i) => (i.kind === "message" ? [`${i.message.id}:${i.first ? "F" : ""}${i.last ? "L" : ""}`] : []));
+    // 2 and 3 are one run; 4 is 18 minutes later, so it starts another.
+    expect(runs).toEqual(["1:FL", "2:F", "3:L", "4:FL", "5:FL"]);
+  });
+  it("an unread line before the first message from someone else I haven't read", () => {
+    const items = chatItems([msg("1", "amara", at(13, 9)), msg("2", "me", at(13, 10)), msg("3", "amara", at(13, 11)), msg("4", "amara", at(13, 12))], {
+      meId: "me",
+      unreadAfter: at(13, 10, 30).toISOString(),
+      now: NOW,
+    });
+    const idx = items.findIndex((i) => i.kind === "unread");
+    expect(items[idx]).toMatchObject({ kind: "unread", count: 2 });
+    expect(items[idx + 1]).toMatchObject({ kind: "message", message: { id: "3" } });
+  });
+  it("system messages never join a run", () => {
+    const sys = msg("s", null, at(13, 9, 1), { kind: "system", system: { event: "added", actorName: "Nathan A", targetNames: ["Amara"] } });
+    const items = chatItems([msg("1", "me", at(13, 9)), sys, msg("2", "me", at(13, 9, 2))], { meId: "me", now: NOW });
+    expect(items.filter((i) => i.kind === "message").every((i) => i.kind === "message" && i.first && i.last)).toBe(true);
+  });
+});
+
+describe("Team Chat: ticks from read markers", () => {
+  const sent = msg("m", "me", at(13, 10));
+  it("one grey, two grey, blue", () => {
+    expect(chatTicks(sent, [member("me", null), member("amara", null)], "me")).toBe("sent");
+    expect(chatTicks(sent, [member("me", null), member("amara", null, at(13, 10, 1))], "me")).toBe("delivered");
+    expect(chatTicks(sent, [member("me", null), member("amara", at(13, 10, 5))], "me")).toBe("read");
+  });
+  it("in a group, blue only once everyone else has read it", () => {
+    const members = [member("me", null), member("a", at(13, 11)), member("b", null, at(13, 11))];
+    expect(chatTicks(sent, members, "me")).toBe("delivered");
+    expect(chatTicks(sent, [...members.slice(0, 2), member("b", at(13, 11))], "me")).toBe("read");
+  });
+  it("edits only for 15 minutes", () => {
+    const now = at(13, 10).getTime();
+    expect(canEditChatMessage(msg("m", "me", at(13, 9, 50)), now)).toBe(true);
+    expect(canEditChatMessage(msg("m", "me", at(13, 9, 40)), now)).toBe(false);
+  });
+});
+
+describe("Team Chat: previews", () => {
+  const people = [{ name: "Nathan A", email: "nathan@swiftee.co.uk" }];
+  it("says who, in a group", () => {
+    expect(chatPreview(msg("1", "amara", NOW, { body: "On my way" }), { meId: "me", group: true, people })).toBe("Amara: On my way");
+    expect(chatPreview(msg("1", "me", NOW, { body: "Thanks" }), { meId: "me", group: true, people })).toBe("You: Thanks");
+    expect(chatPreview(msg("1", "amara", NOW, { body: "On my way" }), { meId: "me", group: false, people })).toBe("On my way");
+  });
+  it("shows mentions by name, and deleted as deleted", () => {
+    expect(chatPreview(msg("1", "amara", NOW, { body: "@nathan can you?" }), { meId: "me", group: false, people })).toBe("@Nathan A can you?");
+    expect(chatPreview(msg("1", "amara", NOW, { deletedAt: NOW.toISOString(), body: "" }), { meId: "me", group: false, people })).toBe("This message was deleted");
+  });
+  it("system lines read as sentences", () => {
+    expect(chatSystemText({ event: "added", actorName: "Nathan A", targetNames: ["Amara", "James", "Sam"] })).toBe("Nathan A added Amara, James and Sam");
+    expect(chatSystemText({ event: "created", actorName: "Amara", value: "Dispatch London" })).toBe("Amara created the group “Dispatch London”");
+  });
+  it("big emoji only for a few emoji on their own", () => {
+    expect(isJumboEmoji("👍")).toBe(true);
+    expect(isJumboEmoji("🎉🎉")).toBe(true);
+    expect(isJumboEmoji("ok 👍")).toBe(false);
+    expect(isJumboEmoji("123")).toBe(false);
+  });
+});

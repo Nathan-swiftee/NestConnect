@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNotifications, useMarkNotificationsRead } from "../hooks";
 import { relativeTime } from "../lib/format";
-import { BellIcon, AtIcon, InboxIcon, OpsIcon, SnoozeIcon } from "../lib/icons";
+import { BellIcon, AtIcon, InboxIcon, OpsIcon, SnoozeIcon, TeamChatIcon } from "../lib/icons";
 import type { Notification } from "@ding/schemas";
 
 /**
@@ -12,10 +12,13 @@ import type { Notification } from "@ding/schemas";
 export function NotificationBell({
   onOpenConversation,
   onOpenOpsSop,
+  onOpenChat,
 }: {
   onOpenConversation: (id: string) => void;
   /** A must-read or review reminder opens its SOP in Business Ops. */
   onOpenOpsSop?: (id: string) => void;
+  /** An @mention in Team Chat opens that chat. */
+  onOpenChat?: (roomId: string) => void;
 }) {
   const { data } = useNotifications();
   const markRead = useMarkNotificationsRead();
@@ -27,6 +30,7 @@ export function NotificationBell({
     if (!n.read) markRead.mutate([n.id]);
     if (n.conversationId) onOpenConversation(n.conversationId);
     else if (n.opsSopId) onOpenOpsSop?.(n.opsSopId);
+    else if (n.chatRoomId) onOpenChat?.(n.chatRoomId);
     setOpen(false);
   };
 
@@ -65,7 +69,7 @@ export function NotificationBell({
                     onClick={() => openNotif(n)}
                   >
                     <span className={"notif__ic notif__ic--" + n.type}>
-                      {n.type === "mention" ? <AtIcon /> : n.type === "team_transfer" ? <InboxIcon /> : n.opsSopId ? <OpsIcon /> : <SnoozeIcon />}
+                      {n.type === "mention" ? <AtIcon /> : n.type === "chat_mention" ? <TeamChatIcon /> : n.type === "team_transfer" ? <InboxIcon /> : n.opsSopId ? <OpsIcon /> : <SnoozeIcon />}
                     </span>
                     <span className="notif__meta">
                       <b>{n.title}</b>

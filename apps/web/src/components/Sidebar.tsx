@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
-import { useLogout, useMe, useOpsStatus, useSound, useTeams, useTheme, useViews } from "../hooks";
+import { useChatStatus, useLogout, useMe, useOpsStatus, useSound, useTeams, useTheme, useViews } from "../hooks";
 import {
   ChevronRight,
   ChevronsLeftIcon,
   ContactsIcon,
   OrganisationsIcon,
   OpsIcon,
+  TeamChatIcon,
   InboxIcon,
   InsightsIcon,
   SnoozeIcon,
@@ -32,6 +33,8 @@ interface Props {
   onOpenOrganisations?: () => void;
   /** Business Ops — shown only while the module is switched on. */
   onOpenOps?: () => void;
+  /** Team Chat — likewise. */
+  onOpenChat?: () => void;
   /** Opens the insights dashboard (admin/manager only — the button self-hides
    *  for agents). The desktop route is the icon rail; this is the drawer route. */
   onOpenInsights?: () => void;
@@ -44,9 +47,10 @@ interface Props {
   onToggleCollapse?: () => void;
 }
 
-export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenOrganisations, onOpenOps, onOpenInsights, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
+export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onOpenSettings, onOpenCustomers, onOpenOrganisations, onOpenOps, onOpenChat, onOpenInsights, onOpenPersonalSettings, isCollapsed, onToggleCollapse }: Props) {
   const { data } = useViews();
   const opsOn = !!useOpsStatus().data?.enabled;
+  const chatStatus = useChatStatus().data;
   const { data: meData } = useMe();
   const { data: teamList } = useTeams();
   const logout = useLogout();
@@ -316,6 +320,12 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
           {onOpenInsights && (me?.role === "admin" || me?.role === "manager") && (
             <button className="iconbtn" title="Insights" onClick={onOpenInsights}>
               <InsightsIcon />
+            </button>
+          )}
+          {onOpenChat && chatStatus?.enabled && (
+            <button className="iconbtn railish" title="Team Chat" aria-label={chatStatus.unread ? `Team Chat, ${chatStatus.unread} unread` : "Team Chat"} onClick={onOpenChat}>
+              <TeamChatIcon />
+              {chatStatus.unread > 0 && <span className="railbtn__badge">{chatStatus.unread > 99 ? "99+" : chatStatus.unread}</span>}
             </button>
           )}
           {onOpenCustomers && (

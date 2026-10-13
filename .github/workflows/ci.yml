@@ -57,6 +57,7 @@ jobs:
           pnpm check:macros-pg
           pnpm check:email-signature-pg
           pnpm check:business-ops-pg
+          pnpm check:team-chat-pg
 
       - name: Tenant isolation (HTTP, Postgres)
         env:
@@ -234,6 +235,13 @@ jobs:
       # and review reminders.
       - name: Business Ops
         run: pnpm check:business-ops
+
+      # Team Chat: the module switch, team chats that follow their team, groups
+      # only managers and admins create, direct chats, replies, edits, deletes
+      # and reactions, ticks from read markers, who's told (mutes, mentions),
+      # and admins reading along read-only, with each look recorded.
+      - name: Team Chat
+        run: pnpm check:team-chat
 
       # The app surface on a live-chat channel. Two things here are worth a
       # build failing over: the identity secret must never reach a browser (it

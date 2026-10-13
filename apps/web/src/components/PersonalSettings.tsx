@@ -9,6 +9,7 @@ import {
   type Weekday,
 } from "@ding/schemas";
 import {
+  useChatStatus,
   useMe,
   useUpdateMyPreferences,
   useUpdateMyProfile,
@@ -61,9 +62,9 @@ function timeAgo(iso: string): string {
  * turned on in a quiet week and blamed in a busy one. Every other entry is
  * about something addressed to this person.
  */
-const ALERT_TOGGLES: { key: keyof Pick<PushPreferences, "assigned" | "mentions" | "assignments" | "reminders" | "teamChats" | "teamInbound">; label: string; detail: string }[] = [
+const ALERT_TOGGLES: { key: keyof Pick<PushPreferences, "assigned" | "mentions" | "assignments" | "reminders" | "teamChats" | "teamInbound" | "chatMessages">; label: string; detail: string }[] = [
   { key: "assigned", label: "My conversations", detail: "A new message on something assigned to me" },
-  { key: "mentions", label: "Mentions", detail: "Someone @mentions me in an internal note" },
+  { key: "mentions", label: "Mentions", detail: "Someone @mentions me in an internal note or in Team Chat" },
   { key: "assignments", label: "Assignments", detail: "A conversation is handed to me" },
   { key: "reminders", label: "Snooze reminders", detail: "Something I snoozed comes due" },
   { key: "teamChats", label: "New chats for my team", detail: "A chat is sent to my team, or a new one arrives with nobody on it" },
@@ -72,12 +73,14 @@ const ALERT_TOGGLES: { key: keyof Pick<PushPreferences, "assigned" | "mentions" 
     label: "Everything in my team's inboxes",
     detail: "Every new message, not just mine — noisy on a busy shift",
   },
+  { key: "chatMessages", label: "Team Chat messages", detail: "A new message in one of my team chats, groups or direct chats" },
 ];
 
 export function PersonalSettings({ onClose, onToast }: { onClose: () => void; onToast: (msg: string) => void }) {
   const { data } = useMe();
   const me = data?.user;
   const update = useUpdateMyPreferences();
+  const chatOn = !!useChatStatus().data?.enabled;
   const profile = useUpdateMyProfile();
   const changePw = useChangePassword();
   const alertPrefs = usePushPreferences();
@@ -330,7 +333,7 @@ export function PersonalSettings({ onClose, onToast }: { onClose: () => void; on
               <small className="pers-field__hint">Couldn’t load your alert settings.</small>
             ) : (
               <div className="pers-alerts">
-                {ALERT_TOGGLES.map(({ key, label, detail }) => {
+                {ALERT_TOGGLES.filter((t) => t.key !== "chatMessages" || chatOn).map(({ key, label, detail }) => {
                   const on = alertPrefs.data[key];
                   return (
                     <div key={key} className="pers-alert">

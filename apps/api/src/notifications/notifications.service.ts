@@ -18,6 +18,7 @@ const PUSH_KIND: Record<NotificationType, PushKind> = {
   team_transfer: "team_chat",
   ops_review: "reminder",
   ops_must_read: "assignment",
+  chat_mention: "chat_mention",
 };
 
 /**
@@ -65,6 +66,8 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
       conversationId?: string | null;
       /** A Business Ops SOP to open instead of a conversation. */
       opsSopId?: string | null;
+      /** A Team Chat chat to open instead. */
+      chatRoomId?: string | null;
       /** Whoever caused this, so they're never notified about their own action. */
       actorUserId?: string;
       /** Overrides the kind inferred from `type` (a mention is not a message). */
@@ -81,6 +84,7 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
       body: row.body ?? "",
       conversationId: row.conversationId ?? undefined,
       opsSopId: row.opsSopId ?? undefined,
+      chatRoomId: row.chatRoomId ?? undefined,
       actorUserId,
       // The bell row reaching the screen plays its own sound.
       cue: false,

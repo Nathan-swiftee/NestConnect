@@ -327,6 +327,7 @@ export function mapNotification(n: Prisma.NotificationGetPayload<object>): Notif
     body: n.body,
     conversationId: n.conversationId ?? undefined,
     opsSopId: n.opsSopId ?? undefined,
+    chatRoomId: n.chatRoomId ?? undefined,
     read: n.read,
     createdAt: n.createdAt.toISOString(),
   };

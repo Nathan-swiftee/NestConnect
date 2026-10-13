@@ -26,6 +26,14 @@ configureClient({
   // clear() re-triggers the active ["session"] query, which can race and bounce
   // you back into the app; a full reload guarantees a clean unauthenticated start.
   onSignedOut: () => window.location.assign("/"),
+  // A chat in a background tab hasn't been read.
+  attention: {
+    isLooking: () => document.visibilityState === "visible" && document.hasFocus(),
+    onReturn: (cb) => {
+      window.addEventListener("focus", cb);
+      return () => window.removeEventListener("focus", cb);
+    },
+  },
 });
 
 syncThemeColor();

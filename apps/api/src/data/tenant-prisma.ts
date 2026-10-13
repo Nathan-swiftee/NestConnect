@@ -33,6 +33,7 @@ const DIRECT = new Set<string>([
   "AppSetting",
   "Attachment",
   "AuditLog",
+  "ChatRoom",
   "Contact",
   "ContactIdentity",
   "Conversation",
@@ -78,6 +79,10 @@ const VIA: Record<string, (orgId: string) => Filter> = {
   OpsSopRevision: (orgId) => ({ opsSop: { orgId } }),
   OpsAck: (orgId) => ({ opsSop: { orgId } }),
   OpsChecklist: (orgId) => ({ opsSop: { orgId } }),
+  ChatMember: (orgId) => ({ room: { orgId } }),
+  ChatMessage: (orgId) => ({ room: { orgId } }),
+  ChatAudit: (orgId) => ({ room: { orgId } }),
+  ChatPresence: (orgId) => ({ user: { orgId } }),
 };
 
 /**
@@ -112,6 +117,9 @@ const REFERENCES: Record<string, string> = {
   routeTeamId: "Team",
   routeUserId: "User",
   collectionId: "OpsCollection",
+  roomId: "ChatRoom",
+  chatRoomId: "ChatRoom",
+  replyToId: "ChatMessage",
 };
 /** The same, for relation fields written as `{ connect: { id } }`. */
 const RELATIONS: Record<string, string> = {
@@ -134,6 +142,9 @@ const RELATIONS: Record<string, string> = {
   routeTeam: "Team",
   routeUser: "User",
   collection: "OpsCollection",
+  room: "ChatRoom",
+  chatRoom: "ChatRoom",
+  replyTo: "ChatMessage",
 };
 
 const FILTERED_OPS = new Set([

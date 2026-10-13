@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { positionInputSchema } from "./signatures";
+import type { ChatClientEvents, ChatServerEvents } from "./chat";
 
 /* ------------------------------------------------------------------ */
 /* Enums                                                               */
@@ -3074,6 +3075,9 @@ export const pushPreferencesSchema = z.object({
   teamChats: z.boolean().default(true),
   /** Any new inbound in an inbox my team owns. Off by default, deliberately. */
   teamInbound: z.boolean().default(false),
+  /** A new message in one of my Team Chat chats. An @mention of me there
+   *  follows `mentions` instead, so it still arrives with this off. */
+  chatMessages: z.boolean().default(true),
   /** Silence non-urgent pushes between these times. `end` before `start` means
    *  the window crosses midnight (22:00 → 07:00), which is the usual case. */
   quietHours: z.object({ start: timeOfDay, end: timeOfDay }).nullable().default(null),
@@ -3400,8 +3404,9 @@ export type ForgotPasswordInput = z.infer<typeof forgotPasswordInputSchema>;
 /* ------------------------------------------------------------------ */
 /** mention / snooze_due / team_transfer (a chat sent to your team) open a
  *  conversation; ops_review (an SOP of yours is due for review) and
- *  ops_must_read (a must-read for your team) open the SOP. */
-export const notificationTypeSchema = z.enum(["mention", "snooze_due", "team_transfer", "ops_review", "ops_must_read"]);
+ *  ops_must_read (a must-read for your team) open the SOP; chat_mention (an
+ *  @mention in Team Chat) opens the chat. */
+export const notificationTypeSchema = z.enum(["mention", "snooze_due", "team_transfer", "ops_review", "ops_must_read", "chat_mention"]);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
 
 export const notificationSchema = z.object({
@@ -3415,6 +3420,8 @@ export const notificationSchema = z.object({
   conversationId: z.string().nullable().optional(),
   /** The Business Ops SOP to open instead. */
   opsSopId: z.string().nullable().optional(),
+  /** The Team Chat chat to open instead. */
+  chatRoomId: z.string().nullable().optional(),
   read: z.boolean().default(false),
   createdAt: z.string(),
 });
@@ -3438,7 +3445,7 @@ export const ServerEvent = {
 } as const;
 export type ServerEventName = (typeof ServerEvent)[keyof typeof ServerEvent];
 
-export interface ServerToClientEvents {
+export interface CoreServerToClientEvents {
   [ServerEvent.MessageCreated]: (p: { conversationId: string; message: Message }) => void;
   /**
    * "This one is for you" — the alert half of a new message, sent only to the
@@ -3482,6 +3489,9 @@ export interface ServerToClientEvents {
   [ServerEvent.Notification]: (p: { notification: Notification }) => void;
 }
 
+/** Everything the server sends, Team Chat included. */
+export interface ServerToClientEvents extends CoreServerToClientEvents, ChatServerEvents {}
+
 /** Event names / payloads the client emits to the server. */
 export const ClientEvent = {
   JoinConversation: "conversation:join",
@@ -3489,7 +3499,7 @@ export const ClientEvent = {
   Typing: "typing",
 } as const;
 
-export interface ClientToServerEvents {
+export interface ClientToServerEvents extends ChatClientEvents {
   [ClientEvent.JoinConversation]: (p: { conversationId: string }) => void;
   [ClientEvent.LeaveConversation]: (p: { conversationId: string }) => void;
   /** `who` is the sender's display name, echoed to other agents on the thread. */
@@ -3579,3 +3589,4 @@ export * from "./mentions";
 export * from "./recipients";
 export * from "./ops";
 export * from "./conversation-log";
+export * from "./chat";
