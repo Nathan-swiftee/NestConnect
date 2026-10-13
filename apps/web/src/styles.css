@@ -4039,7 +4039,6 @@ button.tpl-row:active{transform:scale(.97)}
 .tc-msg.first{margin-top:8px}
 .tc-msg.in{align-self:flex-start;align-items:flex-start;padding-left:36px}
 .tc-msg.out{align-self:flex-end;align-items:flex-end}
-.tc-msg.reacted{margin-bottom:12px}
 .tc-msg__av{position:absolute;left:0;bottom:0}
 .tc-bubble{position:relative;width:fit-content;max-width:100%;padding:6px 9px 7px 10px;border-radius:var(--r-12);font-size:var(--fs-md);line-height:1.42;box-shadow:0 1px 1.5px rgba(13,21,18,.1)}
 .tc-msg.in .tc-bubble{--bub:var(--surface);background:var(--bub)}
@@ -4171,36 +4170,66 @@ button.tc-card:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
 .tc-quote__who{font-size:var(--fs-xs);font-weight:700}
 .tc-quote__text{font-size:var(--fs-xs);color:var(--text-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .tc-msg.out .tc-quote__text{color:rgba(17,27,33,.65)}
-.tc-reacts{position:absolute;bottom:-14px;display:flex;gap:3px;z-index:2}
-.tc-msg.in .tc-reacts{left:46px}
-.tc-msg.out .tc-reacts{right:10px}
-.tc-react{display:inline-flex;align-items:center;gap:3px;height:24px;padding:0 7px;border-radius:var(--r-full);background:var(--surface);box-shadow:0 1px 3px rgba(13,21,18,.18),0 0 0 1px var(--border);font-size:14px}
-.tc-react span{font-size:11px;color:var(--text-muted);font-weight:600}
-.tc-react.mine{box-shadow:0 1px 3px rgba(13,21,18,.18),0 0 0 1.5px var(--wa)}
-.tc-tools{position:absolute;top:-14px;display:flex;gap:2px;padding:2px;border-radius:var(--r-full);background:var(--elevated);box-shadow:0 4px 14px -4px rgba(0,0,0,.3),0 0 0 1px var(--border);opacity:0;pointer-events:none;transition:opacity var(--t-fast);z-index:6}
-.tc-msg.in .tc-tools{right:-8px;transform:translateX(100%)}
-.tc-msg.out .tc-tools{left:-8px;transform:translateX(-100%)}
-.tc-msg:hover .tc-tools,.tc-tools.open,.tc-tools:focus-within{opacity:1;pointer-events:auto}
-/* The inbox's trick (see .bubblewrap::after): an always-there, invisible strip
-   in the gutter beside the message, tall enough to reach the toolbar above its
-   corner. The pointer crosses it on the way from the bubble to the toolbar, so
-   the message stays hovered and the toolbar stays put long enough to click. */
-.tc-msg.in::after{content:"";position:absolute;top:-16px;bottom:0;left:100%;width:120px}
-.tc-msg.out::after{content:"";position:absolute;top:-16px;bottom:0;right:100%;width:120px}
-@media (hover:none){.tc-msg::after{display:none}}
-/* …and the same across the gap between the toolbar and what it opens. */
-.tc-reactpop::before,.menu.tc-moremenu::before{content:"";position:absolute;left:0;right:0;top:-10px;height:10px}
-.tc-tools>button{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:var(--text-muted)}
-.tc-tools>button:hover{background:var(--hover);color:var(--text)}
-.tc-tools>button svg{width:15px;height:15px}
-.tc-reactpop{position:absolute;top:calc(100% + 6px);display:flex;gap:2px;padding:4px;border-radius:var(--r-full);background:var(--elevated);box-shadow:0 10px 26px -8px rgba(0,0,0,.35),0 0 0 1px var(--border);animation:popIn .14s var(--ease)}
-.tc-msg.in .tc-reactpop{left:0}
-.tc-msg.out .tc-reactpop{right:0}
-.tc-reactpop button{width:34px;height:34px;border-radius:50%;font-size:20px;display:grid;place-items:center;transition:transform var(--t-fast) var(--ease),background var(--t-fast)}
-.tc-reactpop button:hover{background:var(--hover);transform:scale(1.2)}
-.menu.tc-moremenu{top:calc(100% + 6px);right:auto;min-width:200px}
-.tc-msg.out .menu.tc-moremenu{right:0}
-.tc-msg.in .menu.tc-moremenu{left:0}
+/* Message actions, the inbox's WhatsApp pattern (see .msg__reactbtn and
+   .msg__menubtn): hovering a bubble shows a smiley in the gutter beside it and a
+   chevron in its top corner. The smiley opens the quick reactions above it; the
+   chevron opens Reply, Copy, Star and the rest. Both stay open until you click
+   elsewhere or press Esc. */
+.tc-wrap{position:relative;display:flex;flex-direction:column;max-width:100%}
+.tc-msg.in .tc-wrap{align-items:flex-start}
+.tc-msg.out .tc-wrap{align-items:flex-end}
+/* Reactions: one small pill hanging off the bubble's bottom edge, below the
+   time so it never covers the message. */
+.tc-reacts{display:inline-flex;align-items:center;gap:1px;position:relative;z-index:3;margin-top:-4px;height:19px;padding:0 3px;border-radius:var(--r-full);background:var(--elevated);border:1.5px solid var(--surface-2);box-shadow:0 1px 2px rgba(0,0,0,.16)}
+.tc-msg.in .tc-reacts{margin-left:9px}
+.tc-msg.out .tc-reacts{margin-right:9px}
+.tc-react{display:inline-flex;align-items:center;gap:2px;height:15px;padding:0 2px;border-radius:var(--r-full);font-size:var(--fs-xs);line-height:1;transition:background var(--t-fast)}
+.tc-react span{font-size:10px;color:var(--text-muted);font-weight:600}
+.tc-react:not(:disabled):hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
+.tc-react.mine{background:color-mix(in srgb,var(--wa) 20%,transparent)}
+/* The corner chevron, fading in over the end of the first line like WhatsApp's. */
+.tc-menubtn{position:absolute;top:2px;right:3px;z-index:4;width:30px;height:22px;display:grid;place-items:center end;padding-right:3px;border-radius:0 var(--r-8) 0 var(--r-12);color:var(--text-muted);background:radial-gradient(ellipse at top right,var(--bub) 55%,transparent 75%);opacity:0;pointer-events:none;transition:opacity var(--t-fast),color var(--t-fast)}
+.tc-menubtn svg{width:16px;height:16px}
+.tc-menubtn:hover{color:var(--text)}
+.tc-msg.out .tc-menubtn{color:rgba(17,27,33,.55)}
+.tc-msg.jumbo .tc-menubtn,.tc-bubble.bare .tc-menubtn{background:radial-gradient(ellipse at top right,rgba(0,0,0,.45),transparent 70%);color:#fff}
+/* The smiley, in the gutter, centred on the bubble (not the bubble + pill). */
+.tc-reactbtn{position:absolute;top:50%;z-index:5;width:30px;height:30px;display:grid;place-items:center;border-radius:var(--r-full);color:var(--text-muted);background:var(--elevated);box-shadow:0 2px 8px -3px rgba(13,21,18,.22),0 0 0 1px var(--border);opacity:0;pointer-events:none;transform:translateY(-50%);transition:opacity var(--t-fast),color var(--t-fast),transform var(--t-fast) var(--ease)}
+.tc-msg.in .tc-reactbtn{right:-38px}
+.tc-msg.out .tc-reactbtn{left:-38px}
+.tc-wrap:has(.tc-reacts) .tc-reactbtn{margin-top:-7.5px}
+.tc-reactbtn svg{width:18px;height:18px}
+.tc-reactbtn:hover{color:var(--wa);transform:translateY(-50%) scale(1.08)}
+/* The inbox's hover bridge: an invisible strip in the gutter, part of the
+   message, so the pointer can cross from the bubble to the smiley. */
+.tc-msg.in .tc-wrap::after{content:"";position:absolute;top:0;bottom:0;left:100%;width:46px}
+.tc-msg.out .tc-wrap::after{content:"";position:absolute;top:0;bottom:0;right:100%;width:46px}
+@media (hover:hover){
+  .tc-msg .tc-wrap:hover .tc-menubtn,.tc-msg .tc-wrap:hover .tc-reactbtn,
+  .tc-wrap.open .tc-menubtn,.tc-wrap.open .tc-reactbtn,
+  .tc-menubtn:focus-visible,.tc-reactbtn:focus-visible{opacity:1;pointer-events:auto}
+}
+@media (hover:none){.tc-reactbtn,.tc-menubtn,.tc-wrap::after{display:none}}
+/* Quick reactions, popping out above the smiley (below it, near the top). */
+.tc-reactpick{position:absolute;bottom:calc(50% + 22px);z-index:20;display:flex;align-items:center;gap:2px;padding:4px;border-radius:var(--r-full);background:var(--elevated);box-shadow:0 10px 26px -8px rgba(0,0,0,.35),0 0 0 1px var(--border);animation:reactIn .19s cubic-bezier(.2,.9,.3,1.1)}
+.tc-msg.in .tc-reactpick{right:-44px;transform-origin:bottom right}
+.tc-msg.out .tc-reactpick{left:-44px;transform-origin:bottom left}
+.tc-wrap:has(.tc-reacts) .tc-reactpick{margin-bottom:7.5px}
+.tc-reactpick.down{bottom:auto;top:calc(50% + 22px)}
+.tc-reactpick button,.tc-msgmenu__reacts button{width:30px;height:30px;border-radius:var(--r-full);display:grid;place-items:center;font-size:19px;line-height:1;transition:background var(--t-fast),transform var(--t-fast) var(--ease)}
+.tc-reactpick button{animation:emojiPop .34s cubic-bezier(.25,.8,.35,1) backwards}
+.tc-reactpick button:hover,.tc-msgmenu__reacts button:hover{background:color-mix(in srgb,var(--text) 10%,transparent);transform:scale(1.18)}
+.tc-reactpick button.sel{background:color-mix(in srgb,var(--wa) 22%,transparent)}
+/* The chevron's menu, dropping from the corner (or rising, near the bottom). */
+.tc-msgmenu{position:absolute;top:26px;right:2px;z-index:30;min-width:180px;padding:5px;border-radius:var(--r-12);background:var(--elevated);box-shadow:0 12px 32px -8px rgba(0,0,0,.4),0 0 0 1px var(--border);animation:popIn .13s var(--ease)}
+.tc-msgmenu.up{top:auto;bottom:calc(100% - 2px)}
+.tc-msgmenu>button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:var(--r-8);font-size:var(--fs-sm);font-weight:500;color:var(--text);text-align:left;transition:background var(--t-fast)}
+.tc-msgmenu>button:hover{background:var(--surface-2)}
+.tc-msgmenu>button svg{width:16px;height:16px;color:var(--text-muted)}
+.tc-msgmenu>button.danger,.tc-msgmenu>button.danger svg{color:var(--danger)}
+/* On a phone the smiley isn't there, so a long press reacts from the menu. */
+.tc-msgmenu__reacts{display:none;gap:2px;padding:2px 2px 6px;margin-bottom:4px;border-bottom:1px solid var(--border)}
+@media (hover:none){.tc-msgmenu__reacts{display:flex}}
 .menu button.danger{color:var(--danger)}
 .tc-typing{align-self:flex-start;display:inline-flex;gap:4px;margin:8px 0 0 36px;padding:11px 13px;border-radius:var(--r-12);background:var(--surface);box-shadow:0 1px 1.5px rgba(13,21,18,.1)}
 .tc-typing span{width:6px;height:6px;border-radius:50%;background:var(--text-faint);animation:typingDot 1.2s infinite ease-in-out}
@@ -4318,7 +4347,5 @@ button.tc-card:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
   .tc-msgs{padding:12px 10px 16px}
   .tc-unreadline{margin:10px -10px}
   .tc-msg{max-width:86%}
-  .tc-tools{display:none}
-  .tc-tools.open{display:flex;opacity:1;pointer-events:auto}
   .tc-infopanel{width:100%}
 }

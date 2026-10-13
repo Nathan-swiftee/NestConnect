@@ -79,10 +79,13 @@ chats."
 
 ## Messages
 
-- **Replies:** hover a message and press reply (or right-click / long-press);
-  in the app, swipe it. The reply quotes it, and tapping the quote scrolls to
-  the original.
+- **Replies:** on the web, hover a message and open the chevron in its corner
+  (or right-click / long-press) for Reply, Copy, Star, Edit, Info and Delete —
+  the same pattern as WhatsApp messages in the inbox. In the app, swipe it. The
+  reply quotes it, and tapping the quote scrolls to the original.
 - **Reactions:** one per person per message; the same emoji again takes it off.
+  On the web, the smiley beside a hovered message opens the quick reactions;
+  they show as a small pill under the bubble.
 - **@mentions:** type `@` for the people in the chat. Stored as handles
   (`@nathan`), shown by name — the same as internal notes.
 - **Edit:** your own, within 15 minutes; it shows "Edited".
