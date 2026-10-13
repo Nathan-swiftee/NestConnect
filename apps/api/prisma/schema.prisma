@@ -86,6 +86,8 @@ model Organization {
   customFields  CustomField[]
   accounts      Account[]
   macros        Macro[]
+  opsCollections OpsCollection[]
+  opsSops        OpsSop[]
 }
 
 /// A fact a workspace wants to record that we did not think of.
@@ -219,6 +221,8 @@ model User {
   messages    Message[]
   notes       Note[]
   notifications Notification[]
+  opsAcks       OpsAck[]
+  opsChecklists OpsChecklist[]
   sessions    Session[]
   devices     Device[]
   recoveryCodes RecoveryCode[]
@@ -301,10 +305,13 @@ model Notification {
   title          String
   body           String   @default("")
   conversationId String?
+  /// A Business Ops SOP to open instead (review reminders, must-reads).
+  opsSopId       String?
   read           Boolean  @default(false)
   createdAt      DateTime @default(now())
 
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opsSop         OpsSop?  @relation(fields: [opsSopId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
@@ -323,6 +330,7 @@ model Team {
   inboxes       InboxTeam[]
   conversations Conversation[] @relation("assignedTeam")
   macros        MacroTeam[]
+  opsSops       OpsSopTeam[]
 
   @@index([orgId])
 }
@@ -1032,4 +1040,134 @@ model MacroTeam {
 
   @@id([macroId, teamId])
   @@index([teamId])
+}
+
+/// Business Ops: the workspace's own standard operating procedures, read by the
+/// teams they're assigned to, written by admins and managers. See
+/// docs/business-ops.md.
+model OpsCollection {
+  id        String   @id @default(cuid())
+  orgId     String
+  name      String
+  /// An emoji.
+  icon      String   @default("📁")
+  color     String   @default("#0FA47A")
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id])
+  sops OpsSop[]
+
+  @@unique([orgId, name])
+  @@index([orgId])
+}
+
+model OpsSop {
+  id                String    @id @default(cuid())
+  orgId             String
+  collectionId      String?
+  title             String
+  icon              String    @default("📘")
+  color             String    @default("#0FA47A")
+  summary           String    @default("")
+  /// "Before you start": what to watch out for.
+  warnings          String    @default("")
+  /// [{ text, imageUrl?, link? }] — the procedure in order.
+  steps             Json      @default("[]")
+  /// Sanitized HTML.
+  body              String    @default("")
+  /// [{ id, kind: link|file, title, url }]
+  resources         Json      @default("[]")
+  /// Every team reads it, now and later.
+  allTeams          Boolean   @default(false)
+  /// draft | published | archived
+  status            String    @default("draft")
+  /// The published version; 0 until it is first published.
+  version           Int       @default(0)
+  /// Readers confirm each new version.
+  mustRead          Boolean   @default(false)
+  reviewEveryMonths Int?
+  reviewDueAt       DateTime?
+  /// When the owner was told this review is due (once per due date).
+  reviewNotifiedAt  DateTime?
+  lastReviewedAt    DateTime?
+  ownerUserId       String?
+  ownerName         String?
+  publishedAt       DateTime?
+  createdById       String?
+  createdByName     String?
+  updatedById       String?
+  updatedByName     String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  org           Organization     @relation(fields: [orgId], references: [id])
+  collection    OpsCollection?   @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  teams         OpsSopTeam[]
+  revisions     OpsSopRevision[]
+  acks          OpsAck[]
+  checklists    OpsChecklist[]
+  notifications Notification[]
+
+  @@index([orgId, status])
+  @@index([reviewDueAt])
+}
+
+model OpsSopTeam {
+  opsSopId String
+  teamId   String
+
+  opsSop OpsSop @relation(fields: [opsSopId], references: [id], onDelete: Cascade)
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([opsSopId, teamId])
+  @@index([teamId])
+}
+
+/// Each publish, as it read then.
+model OpsSopRevision {
+  id              String   @id @default(cuid())
+  opsSopId        String
+  version         Int
+  title           String
+  summary         String
+  warnings        String
+  steps           Json
+  body            String
+  note            String   @default("")
+  publishedAt     DateTime @default(now())
+  publishedById   String?
+  publishedByName String?
+
+  opsSop OpsSop @relation(fields: [opsSopId], references: [id], onDelete: Cascade)
+
+  @@unique([opsSopId, version])
+}
+
+/// "I've read this": the latest version each person confirmed.
+model OpsAck {
+  opsSopId String
+  userId   String
+  version  Int
+  at       DateTime @default(now())
+
+  opsSop OpsSop @relation(fields: [opsSopId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([opsSopId, userId])
+  @@index([userId])
+}
+
+/// One person's ticks on an SOP's steps.
+model OpsChecklist {
+  opsSopId  String
+  userId    String
+  /// Step indexes ticked.
+  done      Json     @default("[]")
+  updatedAt DateTime @updatedAt
+
+  opsSop OpsSop @relation(fields: [opsSopId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([opsSopId, userId])
 }

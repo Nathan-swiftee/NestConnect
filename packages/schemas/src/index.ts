@@ -3392,7 +3392,9 @@ export type ForgotPasswordInput = z.infer<typeof forgotPasswordInputSchema>;
 /* High-frequency events (a new inbound chat) stay sound-only and never */
 /* land here.                                                           */
 /* ------------------------------------------------------------------ */
-export const notificationTypeSchema = z.enum(["mention", "snooze_due"]);
+/** mention / snooze_due open a conversation; ops_review (an SOP of yours is due
+ *  for review) and ops_must_read (a must-read for your team) open the SOP. */
+export const notificationTypeSchema = z.enum(["mention", "snooze_due", "ops_review", "ops_must_read"]);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
 
 export const notificationSchema = z.object({
@@ -3404,6 +3406,8 @@ export const notificationSchema = z.object({
   body: z.string().default(""),
   /** The conversation to open when the notification is tapped. */
   conversationId: z.string().nullable().optional(),
+  /** The Business Ops SOP to open instead. */
+  opsSopId: z.string().nullable().optional(),
   read: z.boolean().default(false),
   createdAt: z.string(),
 });
@@ -3566,3 +3570,4 @@ export * from "./macros";
 export * from "./signatures";
 export * from "./mentions";
 export * from "./recipients";
+export * from "./ops";

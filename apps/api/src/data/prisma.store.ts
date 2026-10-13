@@ -1803,6 +1803,7 @@ export class PrismaStore extends Store {
     title: string;
     body?: string;
     conversationId?: string | null;
+    opsSopId?: string | null;
   }): Promise<Notification> {
     const row = await this.prisma.notification.create({
       data: {
@@ -1811,6 +1812,7 @@ export class PrismaStore extends Store {
         title: input.title,
         body: input.body ?? "",
         conversationId: input.conversationId ?? null,
+        opsSopId: input.opsSopId ?? null,
       },
     });
     return mapNotification(row);

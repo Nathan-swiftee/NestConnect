@@ -42,6 +42,8 @@ const DIRECT = new Set<string>([
   "Inbox",
   "Label",
   "Macro",
+  "OpsCollection",
+  "OpsSop",
   "Team",
   "Template",
   "User",
@@ -71,6 +73,10 @@ const VIA: Record<string, (orgId: string) => Filter> = {
   AccountResource: (orgId) => ({ account: { orgId } }),
   AccountActivity: (orgId) => ({ account: { orgId } }),
   MacroTeam: (orgId) => ({ macro: { orgId } }),
+  OpsSopTeam: (orgId) => ({ opsSop: { orgId } }),
+  OpsSopRevision: (orgId) => ({ opsSop: { orgId } }),
+  OpsAck: (orgId) => ({ opsSop: { orgId } }),
+  OpsChecklist: (orgId) => ({ opsSop: { orgId } }),
 };
 
 /**
@@ -101,6 +107,8 @@ const REFERENCES: Record<string, string> = {
   sopId: "AccountSop",
   attachmentId: "Attachment",
   macroId: "Macro",
+  opsSopId: "OpsSop",
+  collectionId: "OpsCollection",
 };
 /** The same, for relation fields written as `{ connect: { id } }`. */
 const RELATIONS: Record<string, string> = {
@@ -119,6 +127,8 @@ const RELATIONS: Record<string, string> = {
   account: "Account",
   sop: "AccountSop",
   macro: "Macro",
+  opsSop: "OpsSop",
+  collection: "OpsCollection",
 };
 
 const FILTERED_OPS = new Set([
