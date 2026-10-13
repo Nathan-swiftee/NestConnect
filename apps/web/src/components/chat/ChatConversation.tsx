@@ -566,7 +566,9 @@ function Bubble({
         (first ? " first" : "") +
         (last ? " last" : "") +
         (flash ? " flash" : "") +
-        (jumbo ? " jumbo" : "")
+        (jumbo ? " jumbo" : "") +
+        // Room for the sender's face — only a group shows one.
+        (group && !mine ? " grp" : "")
       }
       data-mid={m.id}
       ref={root}

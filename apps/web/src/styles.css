@@ -4100,7 +4100,10 @@ button.tpl-row:active{transform:scale(.97)}
 
 .tc-msg{position:relative;display:flex;flex-direction:column;max-width:min(72%,620px);margin-top:2px;animation:msgIn .16s ease-out}
 .tc-msg.first{margin-top:8px}
-.tc-msg.in{align-self:flex-start;align-items:flex-start;padding-left:36px}
+.tc-msg.in{align-self:flex-start;align-items:flex-start}
+/* A group's incoming messages leave room for the sender's face; a one-to-one
+   chat has none, so its bubbles sit at the edge like WhatsApp's. */
+.tc-msg.in.grp{padding-left:36px}
 .tc-msg.out{align-self:flex-end;align-items:flex-end}
 .tc-msg__av{position:absolute;left:0;bottom:0}
 .tc-bubble{position:relative;width:fit-content;max-width:100%;padding:6px 9px 7px 10px;border-radius:var(--r-12);font-size:var(--fs-md);line-height:1.42;box-shadow:0 1px 1.5px rgba(13,21,18,.1)}
@@ -4143,7 +4146,11 @@ button.tpl-row:active{transform:scale(.97)}
 .tc-files.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px}
 .tc-files.grid .att-img,.tc-files.grid .att-video{height:140px}
 .tc-files .att-file{background:color-mix(in srgb,var(--text) 6%,transparent)}
-.tc-files .voice{min-width:230px}
+.tc-files .voice{width:230px;min-width:0;max-width:100%}
+/* However many bars a recording has, they share the width rather than push
+   past the bubble. */
+.tc-files .voice__wave{overflow:hidden}
+.tc-files .voice__wbar{min-width:1px}
 .tc-bubble.bare{padding:3px}
 .tc-bubble.bare .tc-files{margin:0}
 .tc-bubble.bare .tc-stamp{right:9px;bottom:8px;padding:3px 6px;border-radius:var(--r-full);background:rgba(0,0,0,.42);color:#fff}
@@ -4357,11 +4364,15 @@ button.tc-card:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
 /* Team Chat as a pop-up beside the rail: over the sidebar and the list, the
    customer's thread still in view to the right. Not modal — nothing behind it
    is blocked. Full screen at phone width, where there's no rail. */
-.tc-popup{position:fixed;z-index:45;top:0;bottom:0;left:60px;width:clamp(420px,calc(100vw - 600px),640px);display:flex;background:var(--bg);
+.tc-popup{position:fixed;z-index:45;top:0;bottom:0;left:60px;width:clamp(460px,calc(100vw - 560px),720px);display:flex;background:var(--bg);
   border-right:1px solid var(--border);box-shadow:24px 0 48px -24px rgba(13,21,18,.32);animation:tcPopIn .2s var(--ease)}
 .tc-popup[hidden]{display:none}
 .tc-popup .tc{animation:none}
-.tc-popup .tc-list{width:min(280px,42%)}
+.tc-popup .tc-list{width:min(310px,44%)}
+/* The pop-up's chat is narrow: a slimmer gutter and wider bubbles, so a
+   message isn't squeezed into the middle and a voice note fits its bubble. */
+.tc-popup .tc-msgs{padding-left:16px;padding-right:16px}
+.tc-popup .tc-msg{max-width:min(82%,520px)}
 .tc-popup .tc-main{position:relative}
 /* There's no room for a third column: group info slides over the chat. */
 /* Group or person details open out of the pop-up's right edge, over the inbox
