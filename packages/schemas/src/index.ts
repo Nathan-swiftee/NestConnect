@@ -3066,6 +3066,12 @@ export const pushPreferencesSchema = z.object({
   assignments: z.boolean().default(true),
   /** A conversation I snoozed has come due. */
   reminders: z.boolean().default(true),
+  /**
+   * A chat lands in my team's queue with nobody on it: someone transfers it to
+   * my team, or a brand-new one arrives. On by default — a chat routed to a
+   * team that nobody hears about just sits there.
+   */
+  teamChats: z.boolean().default(true),
   /** Any new inbound in an inbox my team owns. Off by default, deliberately. */
   teamInbound: z.boolean().default(false),
   /** Silence non-urgent pushes between these times. `end` before `start` means
@@ -3392,9 +3398,10 @@ export type ForgotPasswordInput = z.infer<typeof forgotPasswordInputSchema>;
 /* High-frequency events (a new inbound chat) stay sound-only and never */
 /* land here.                                                           */
 /* ------------------------------------------------------------------ */
-/** mention / snooze_due open a conversation; ops_review (an SOP of yours is due
- *  for review) and ops_must_read (a must-read for your team) open the SOP. */
-export const notificationTypeSchema = z.enum(["mention", "snooze_due", "ops_review", "ops_must_read"]);
+/** mention / snooze_due / team_transfer (a chat sent to your team) open a
+ *  conversation; ops_review (an SOP of yours is due for review) and
+ *  ops_must_read (a must-read for your team) open the SOP. */
+export const notificationTypeSchema = z.enum(["mention", "snooze_due", "team_transfer", "ops_review", "ops_must_read"]);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
 
 export const notificationSchema = z.object({

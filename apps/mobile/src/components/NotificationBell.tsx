@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { relativeTime, useMarkNotificationsRead, useNotifications } from "@ding/client";
 import type { Notification } from "@ding/schemas";
 import { haptics } from "../haptics";
-import { AtIcon, BellIcon, OpsIcon, SnoozeIcon, XIcon } from "../icons";
+import { AtIcon, BellIcon, InboxIcon, OpsIcon, SnoozeIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
 import { Touchable } from "./Touchable";
@@ -149,6 +149,8 @@ export function NotificationBell({
               {list.map((n, i) => {
                 const last = i === list.length - 1;
                 const mention = n.type === "mention";
+                // A chat sent to my team is work for me, like a mention: green.
+                const forMe = mention || n.type === "team_transfer";
                 return (
                   <Touchable
                     key={n.id}
@@ -163,11 +165,13 @@ export function NotificationBell({
                         snooze coming due are different *kinds* of interruption,
                         and the colour says which before the words do. */}
                     <View
-                      style={{ backgroundColor: mention ? c.brandTint : c.amberTint }}
+                      style={{ backgroundColor: forMe ? c.brandTint : c.amberTint }}
                       className="h-9 w-9 flex-none items-center justify-center rounded-full"
                     >
                       {mention ? (
                         <AtIcon size={17} color={c.brandStrong} />
+                      ) : n.type === "team_transfer" ? (
+                        <InboxIcon size={17} color={c.brandStrong} />
                       ) : n.opsSopId ? (
                         <OpsIcon size={17} color={c.amber} />
                       ) : (

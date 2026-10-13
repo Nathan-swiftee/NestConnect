@@ -1627,6 +1627,8 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .notif__ic svg{width:16px;height:16px}
 .notif__ic--mention{background:var(--brand)}
 .notif__ic--snooze_due{background:var(--amber)}
+.notif__ic--team_transfer{background:var(--group)}
+.notif__ic--ops_must_read,.notif__ic--ops_review{background:var(--amber)}
 .notif__meta{min-width:0;display:flex;flex-direction:column;gap:1px;flex:1}
 .notif__meta b{font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .notif__meta small{font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -405,6 +405,7 @@ export class ConversationsService {
   }
 
   async assign(id: string, input: AssignConversationInput, byUserId: string): Promise<Conversation> {
+    const before = await this.store.getConversation(id);
     const conv = await this.store.assign(id, input, byUserId);
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     const by = (await this.store.getUser(byUserId))?.name;
@@ -421,6 +422,9 @@ export class ConversationsService {
         conversationId: conv.id,
         actorUserId: byUserId,
       });
+    } else if (conv.assignedTeamId && conv.assignedTeamId !== before?.assignedTeamId) {
+      // Sent to another team with nobody picked: the team is who it's for now.
+      await this.notifications.notifyTeamTransfer(conv, conv.assignedTeamId, byUserId);
     }
     return conv;
   }
