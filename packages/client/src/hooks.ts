@@ -1575,6 +1575,8 @@ export function useRealtime(openConversationId: string | null) {
       );
       // A must-read or review reminder: the Ops badge and library are out of date.
       if (p.notification.opsSopId) qc.invalidateQueries({ queryKey: ["ops"] });
+      // A mailbox signed out: the channel list, banner and composer need to know.
+      if (p.notification.type === "channel_reauth") qc.invalidateQueries({ queryKey: ["inboxes"] });
       playReceived();
     };
     socket.on(ServerEvent.MessageCreated, onCreated);

@@ -65,6 +65,27 @@ export class GmailApiError extends Error {
   }
 }
 
+/**
+ * Google no longer lets us act for this mailbox: the sign-in was revoked,
+ * expired, or never kept a refresh token. Nothing but signing in again fixes
+ * it — retrying only repeats the refusal.
+ */
+export class GmailAuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GmailAuthError";
+  }
+}
+
+/** Does this Gmail API refusal mean the sign-in itself is gone (rather than a blip)? */
+export function isSignedOutError(err: unknown): boolean {
+  if (err instanceof GmailAuthError) return true;
+  if (!(err instanceof GmailApiError)) return false;
+  // 401: the token is dead. 403 is usually a quota, but a scope that was
+  // taken away reads "insufficient" — and that, too, needs a new sign-in.
+  return err.status === 401 || (err.status === 403 && /insufficient|scope/i.test(err.message));
+}
+
 async function gmailFetch<T>(
   accessToken: string,
   path: string,

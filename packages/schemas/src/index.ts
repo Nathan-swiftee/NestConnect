@@ -464,8 +464,13 @@ export const inboxSchema = z.object({
    *  Settings, the same way a team's order is. */
   order: z.number().int().default(0),
   unread: z.number().int().nonnegative().default(0),
-  /** True once the integration credentials needed to send/receive live are set. */
+  /** True once the integration credentials needed to send/receive live are set
+   *  — and still working: a mailbox Google has signed out is not connected. */
   connected: z.boolean().optional(),
+  /** Set when the provider has signed this channel out (a Gmail mailbox whose
+   *  sign-in was revoked or expired): why, and since when. It needs
+   *  reconnecting — in place, keeping its conversations — to work again. */
+  signedOut: z.object({ reason: z.string(), since: z.string().nullable() }).nullable().optional(),
   /** Non-secret channelConfig values (e.g. the Phone number ID) surfaced so the
    *  channel editor can show what's configured. Access tokens are NEVER included. */
   channelConfigPublic: z.record(z.string()).optional(),
@@ -530,8 +535,20 @@ export function isInboxConnected(
   config?: Record<string, string> | null,
 ): boolean {
   if (config == null) return true;
+  if (config.authError) return false;
   const keys = REQUIRED_CHANNEL_KEYS[type] ?? [];
   return keys.every((k) => Boolean(config[k] && config[k].trim()));
+}
+
+/** An inbox's live state, from its (server-side) config: connected, or signed out and why. */
+export function inboxStatus(
+  type: ChannelType,
+  config?: Record<string, string> | null,
+): { connected: boolean; signedOut: { reason: string; since: string | null } | null } {
+  return {
+    connected: isInboxConnected(type, config),
+    signedOut: config?.authError ? { reason: config.authError, since: config.authErrorAt || null } : null,
+  };
 }
 
 export const labelSchema = z.object({
@@ -3406,7 +3423,7 @@ export type ForgotPasswordInput = z.infer<typeof forgotPasswordInputSchema>;
  *  conversation; ops_review (an SOP of yours is due for review) and
  *  ops_must_read (a must-read for your team) open the SOP; chat_mention (an
  *  @mention in Team Chat) opens the chat. */
-export const notificationTypeSchema = z.enum(["mention", "snooze_due", "team_transfer", "ops_review", "ops_must_read", "chat_mention"]);
+export const notificationTypeSchema = z.enum(["mention", "snooze_due", "team_transfer", "ops_review", "ops_must_read", "chat_mention", "channel_reauth"]);
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
 
 export const notificationSchema = z.object({

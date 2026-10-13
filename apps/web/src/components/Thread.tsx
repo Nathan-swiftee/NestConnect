@@ -3272,6 +3272,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             {internal && chatOn && <AlsoSendTo value={alsoTo} onChange={setAlsoTo} />}
             <span className="compctx">{ctxNode}</span>
           </div>
+          {composeInbox?.signedOut && !internal && (
+            /* Said before they write the reply, not after it fails. */
+            <div className="reauth-note" role="note">
+              <AlertIcon />
+              <span>
+                <b>{composeInbox.handle}</b> needs reconnecting — Google signed it out, so replies from it can't be sent.
+                {me?.user.role === "admin" || me?.user.role === "manager" ? " Reconnect it in Settings › Channels." : " An admin or manager can reconnect it."}
+              </span>
+            </div>
+          )}
           {isEmail && !internal && (
             <div className="emailhdr">
               <div className="emailhdr__row">

@@ -15,6 +15,7 @@ import { Organisations } from "./organisations/Organisations";
 import { BusinessOps } from "./ops/BusinessOps";
 import { TeamChat } from "./chat/TeamChat";
 import { DiscussionPanel } from "./chat/Discuss";
+import { SignedOutBanner } from "./ReconnectEmail";
 import { useChatRealtime, useChatStatus, useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
 import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/layout";
@@ -197,6 +198,7 @@ export function Workspace() {
                 onOpenDrawer={() => setDrawerOpen(true)}
                 onOpenOpsSop={(id) => { setFocusOpsSop(id); setSection("ops"); }}
                 onOpenChat={(id) => { setFocusChat(id); setSection("chat"); }}
+                onOpenChannels={() => setSection("settings")}
               />
               <Thread
                 conversationId={selectedId}
@@ -278,6 +280,8 @@ export function Workspace() {
           {section === "insights" && <Analytics />}
         </div>
       </div>
+
+      <SignedOutBanner onToast={notify} onOpenChannels={() => setSection("settings")} />
 
       {personalOpen && <PersonalSettings onClose={() => setPersonalOpen(false)} onToast={notify} />}
 

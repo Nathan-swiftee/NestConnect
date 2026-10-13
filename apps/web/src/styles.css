@@ -2061,6 +2061,24 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .connpill.on{background:color-mix(in srgb,var(--wa) 14%,transparent);color:var(--wa)}
 .connpill.on .connpill__dot{background:var(--wa)}
 .connpill.off{background:color-mix(in srgb,#E68A00 15%,transparent);color:#B36B00}
+.connpill.bad{background:color-mix(in srgb,var(--danger) 14%,transparent);color:var(--danger)}
+.connpill.bad .connpill__dot{background:var(--danger);animation:recPulse 1.6s ease-in-out infinite}
+/* A mailbox Google signed out: in its editor, on the thread, across the top */
+.reauth-box{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:var(--sp-4);padding:12px 14px;border-radius:var(--r-12);background:var(--surface-2);font-size:var(--fs-sm)}
+.reauth-box p{margin:0;color:var(--text-muted);line-height:1.45}
+.reauth-box.bad{background:color-mix(in srgb,var(--danger) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--danger) 30%,transparent)}
+.reauth-box__head{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--danger)}
+.reauth-box__head svg{width:16px;height:16px}
+.reauth-note{display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;padding:8px 12px;border-radius:var(--r-12);font-size:var(--fs-xs);line-height:1.4;
+  background:color-mix(in srgb,var(--danger) 9%,var(--surface));color:var(--text)}
+.reauth-note svg{width:15px;height:15px;flex:none;margin-top:1px;color:var(--danger)}
+.reauth-banner{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;width:min(760px,calc(100vw - 32px));
+  padding:10px 10px 10px 14px;border-radius:var(--r-16);background:var(--elevated);box-shadow:var(--shadow-lg),0 0 0 1px color-mix(in srgb,var(--danger) 35%,transparent);
+  font-size:var(--fs-sm);animation:subIn .2s var(--ease)}
+.reauth-banner>svg{width:18px;height:18px;flex:none;color:var(--danger)}
+.reauth-banner__text{flex:1;min-width:0;line-height:1.4}
+.reauth-banner__go,.reauth-banner__more{flex:none;padding:6px 12px;font-size:var(--fs-xs)}
+@media (max-width:640px){.reauth-banner{flex-wrap:wrap;top:8px}.reauth-banner__text{flex-basis:calc(100% - 60px)}}
 .connpill.off .connpill__dot{background:#E68A00}
 
 /* inline team rename */

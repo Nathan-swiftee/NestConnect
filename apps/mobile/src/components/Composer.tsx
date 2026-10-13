@@ -60,6 +60,7 @@ import {
   NoteIcon,
   SendIcon,
   channelMeta,
+  AlertIcon,
 } from "../icons";
 import { Touchable } from "./Touchable";
 
@@ -1062,6 +1063,15 @@ export function Composer({
         </View>
       ) : (
       <>
+      {!internal && fromInbox?.signedOut ? (
+        // Said before the reply is written, not after it fails.
+        <View style={{ backgroundColor: c.amberTint }} className="mb-2 flex-row items-start gap-2 rounded-12 px-3 py-2">
+          <AlertIcon size={15} color={c.danger} />
+          <Text className="flex-1 text-xs text-fg">
+            {fromInbox.handle} needs reconnecting — Google signed it out, so replies from it can't be sent. An admin can reconnect it on the web, in Settings › Channels.
+          </Text>
+        </View>
+      ) : null}
       <StagedAttachments items={files.staged} onRemove={files.remove} onRetry={files.retry} />
       {internal ? <AlsoSendTo value={alsoTo} onChange={setAlsoTo} /> : null}
 

@@ -23,7 +23,7 @@ import type {
   User,
   WaWindow,
 } from "@ding/schemas";
-import { availabilityScheduleSchema, isInboxConnected, publicChannelConfig, type AvailabilitySchedule } from "@ding/schemas";
+import { availabilityScheduleSchema, inboxStatus, publicChannelConfig, type AvailabilitySchedule } from "@ding/schemas";
 import type { StoredCustomerDevice, StoredDevice, StoredSession } from "./store";
 
 /** A Prisma Session row → the store's StoredSession (dates as ISO strings). */
@@ -350,7 +350,7 @@ export function mapInbox(i: InboxWithTeams): Inbox {
     isDefault: i.isDefault,
     order: i.order,
     unread: 0,
-    connected: isInboxConnected(type, i.channelConfig as Record<string, string> | null),
+    ...inboxStatus(type, i.channelConfig as Record<string, string> | null),
     channelConfigPublic: publicChannelConfig(i.channelConfig as Record<string, string> | null),
     ...(type === "email" ? { signature: { layoutHtml: i.signatureHtml, footerHtml: i.signatureFooterHtml } } : {}),
   };

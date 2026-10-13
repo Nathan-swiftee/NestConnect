@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { relativeTime, useMarkNotificationsRead, useNotifications } from "@ding/client";
 import type { Notification } from "@ding/schemas";
 import { haptics } from "../haptics";
-import { AtIcon, BellIcon, InboxIcon, OpsIcon, SnoozeIcon, TeamChatIcon, XIcon } from "../icons";
+import { AlertIcon, AtIcon, BellIcon, InboxIcon, OpsIcon, SnoozeIcon, TeamChatIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
 import { Touchable } from "./Touchable";
@@ -178,6 +178,9 @@ export function NotificationBell({
                         <TeamChatIcon size={17} color={c.brandStrong} />
                       ) : n.type === "team_transfer" ? (
                         <InboxIcon size={17} color={c.brandStrong} />
+                      ) : n.type === "channel_reauth" ? (
+                        // A mailbox signed out: reconnected on the web, in Settings › Channels.
+                        <AlertIcon size={17} color={c.danger} />
                       ) : n.opsSopId ? (
                         <OpsIcon size={17} color={c.amber} />
                       ) : (
