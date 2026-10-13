@@ -97,9 +97,11 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     try {
       for (const { inbox, config } of await this.gmailInboxes()) {
         if (opts?.skipPushCovered && this.hasActiveWatch(config)) continue; // push covers it
+        // Signed out: asking again only repeats the refusal. It waits to be reconnected.
+        if (config[GMAIL_CONFIG.authError]) continue;
         try {
           // Each mailbox syncs as its own workspace.
-          await runInTenant(inbox.orgId, () => this.syncInbox(inbox, config));
+          await runInTenant(inbox.orgId, () => this.syncOrNote(inbox, config));
           synced++;
         } catch (err) {
           this.logger.warn(`Gmail sync failed for ${inbox.handle}: ${message(err)}`);
@@ -128,7 +130,34 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
       this.logger.warn(`Push for ${emailAddress} but no matching Gmail inbox`);
       return;
     }
-    await runInTenant(match.inbox.orgId, () => this.syncInbox(match.inbox, match.config));
+    if (match.config[GMAIL_CONFIG.authError]) return;
+    await runInTenant(match.inbox.orgId, () => this.syncOrNote(match.inbox, match.config));
+  }
+
+  /**
+   * Catch up on what arrived while a reconnected mailbox was signed out: from
+   * the cursor it stopped at, not from now. (If Gmail no longer keeps history
+   * that far back, the sync starts again from now — see `syncInbox`.)
+   */
+  async catchUp(inbox: Inbox): Promise<void> {
+    if (this.google.isMock) return;
+    const config = (await this.store.getInboxConfig(inbox.id)) ?? {};
+    try {
+      await this.syncOrNote(inbox, config);
+    } catch (err) {
+      // The next poll tries again.
+      this.logger.warn(`Gmail catch-up failed for ${inbox.handle}: ${message(err)}`);
+    }
+  }
+
+  /** Sync, and if it failed because Google signed the mailbox out, mark it so. */
+  private async syncOrNote(inbox: Inbox, config: Record<string, string>): Promise<void> {
+    try {
+      await this.syncInbox(inbox, config);
+    } catch (err) {
+      await this.google.noteFailure(inbox, err);
+      throw err;
+    }
   }
 
   /**

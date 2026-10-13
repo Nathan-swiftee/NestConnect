@@ -20,6 +20,8 @@ interface Props {
   /** Open a Business Ops SOP from a bell notification. */
   onOpenOpsSop?: (id: string) => void;
   onOpenChat?: (roomId: string) => void;
+  /** A channel that needs reconnecting, from the bell. */
+  onOpenChannels?: () => void;
   onOpenCmdk: () => void;
   onCompose: () => void;
   onOpenDrawer?: () => void;
@@ -29,7 +31,7 @@ interface Props {
   onExpandSidebar?: () => void;
 }
 
-export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onCompose, onOpenDrawer, sidebarCollapsed, onExpandSidebar, onOpenOpsSop, onOpenChat }: Props) {
+export function ConversationList({ view, title, count, selectedId, onSelect, onOpenCmdk, onCompose, onOpenDrawer, sidebarCollapsed, onExpandSidebar, onOpenOpsSop, onOpenChat, onOpenChannels }: Props) {
   /**
    * Narrow the list to threads carrying one custom field.
    *
@@ -225,7 +227,7 @@ export function ConversationList({ view, title, count, selectedId, onSelect, onO
           >
             <RefreshIcon />
           </button>
-          <NotificationBell onOpenConversation={onSelect} onOpenOpsSop={onOpenOpsSop} onOpenChat={onOpenChat} />
+          <NotificationBell onOpenConversation={onSelect} onOpenOpsSop={onOpenOpsSop} onOpenChat={onOpenChat} onOpenChannels={onOpenChannels} />
           <button className="kbd" onClick={onOpenCmdk} title="Command menu" aria-label="Command menu">
             <CmdIcon />
             <span>K</span>

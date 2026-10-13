@@ -42,7 +42,7 @@ import type {
 } from "@ding/schemas";
 import {
   CONVERSATIONS_PAGE_SIZE,
-  isInboxConnected,
+  inboxStatus,
   MESSAGES_PAGE_SIZE,
   normalizeCustomFieldValue,
   publicChannelConfig,
@@ -278,7 +278,7 @@ export class MemoryStore extends Store {
     this.inboxes.push(inbox);
     return {
       ...inbox,
-      connected: isInboxConnected(params.type, params.channelConfig ?? null),
+      ...inboxStatus(params.type, params.channelConfig ?? null),
       channelConfigPublic: publicChannelConfig(params.channelConfig ?? null),
     };
   }
@@ -303,7 +303,7 @@ export class MemoryStore extends Store {
     }
     return {
       ...inbox,
-      connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null),
+      ...inboxStatus(inbox.type, this.inboxConfig.get(id) ?? null),
       channelConfigPublic: publicChannelConfig(this.inboxConfig.get(id) ?? null),
     };
   }
@@ -329,7 +329,7 @@ export class MemoryStore extends Store {
     if (!inbox) return undefined;
     return {
       ...inbox,
-      connected: isInboxConnected(inbox.type, this.inboxConfig.get(id) ?? null),
+      ...inboxStatus(inbox.type, this.inboxConfig.get(id) ?? null),
       channelConfigPublic: publicChannelConfig(this.inboxConfig.get(id) ?? null),
     };
   }
@@ -938,7 +938,7 @@ export class MemoryStore extends Store {
       .sort(byChosenOrder)
       .map((i) => ({
         ...i,
-        connected: isInboxConnected(i.type, this.inboxConfig.get(i.id) ?? null),
+        ...inboxStatus(i.type, this.inboxConfig.get(i.id) ?? null),
         channelConfigPublic: publicChannelConfig(this.inboxConfig.get(i.id) ?? null),
       }));
   }

@@ -10,7 +10,7 @@ import {
 } from "../channel-provider";
 import { MediaService } from "../../storage/media.service";
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
-import { buildMime, gmail, GmailApiError } from "./gmail-api";
+import { buildMime, gmail, GmailApiError, GmailAuthError, isSignedOutError } from "./gmail-api";
 import { textToHtml } from "../email/html-sanitize";
 import { appendSignature, appendTrackingPixel, inlineInternalImages, subjectLine } from "../email/email.provider";
 
@@ -98,6 +98,12 @@ export class GmailProvider extends ChannelProvider {
       await gmail.send(accessToken, raw, params.context?.threadId);
       return { ok: true, channelMsgId: messageId };
     } catch (err) {
+      // Signed out: no retry will fix it — fail now, and say what will.
+      if (err instanceof GmailAuthError || isSignedOutError(err)) {
+        const inbox = await this.store.getInbox(inboxId);
+        if (inbox) await this.google.noteFailure(inbox, err);
+        return { ok: false, error: err instanceof Error ? err.message : String(err), errorCode: "reauth_required", retryable: false };
+      }
       if (err instanceof GmailApiError) {
         return { ok: false, error: err.message, errorCode: String(err.status), httpStatus: err.status };
       }

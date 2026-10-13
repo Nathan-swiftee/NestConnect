@@ -33,6 +33,8 @@ interface OAuthMessage {
   ok: boolean;
   provider?: string;
   email?: string;
+  /** An existing channel signed in again, rather than a new one added. */
+  reconnected?: boolean;
   error?: string;
 }
 
@@ -55,6 +57,8 @@ export class GoogleController {
     @CurrentUserId() userId: string,
     @Req() req: Request,
     @Res() res: Response,
+    /** Sign this existing channel in again, keeping everything on it. */
+    @Query("inboxId") inboxId?: string,
   ): Promise<void> {
     const redirectUri = googleRedirectUri(req);
     const user = await this.store.getUser(userId);
@@ -62,8 +66,20 @@ export class GoogleController {
       this.sendResult(res, { source: "ding-oauth", ok: false, error: "Not signed in" });
       return;
     }
+    // The demo workspace answers first: there, nobody connects anything, and
+    // that's the reason worth giving.
     if (await this.sandbox.current()) {
       this.sendResult(res, { source: "ding-oauth", ok: false, error: "Connecting channels isn't available in the demo workspace" });
+      return;
+    }
+    // Connecting a mailbox is setting up a channel: managers and admins, as adding one is.
+    if (user.role !== "admin" && user.role !== "manager") {
+      this.sendResult(res, { source: "ding-oauth", ok: false, error: "Only managers and admins can connect channels" });
+      return;
+    }
+    const reconnecting = inboxId ? await this.store.getInbox(inboxId) : undefined;
+    if (inboxId && (!reconnecting || reconnecting.type !== "email")) {
+      this.sendResult(res, { source: "ding-oauth", ok: false, error: "That email channel no longer exists" });
       return;
     }
     if (!(await this.google.configured(user.orgId))) {
@@ -74,8 +90,8 @@ export class GoogleController {
       });
       return;
     }
-    const state = this.google.signState({ userId: user.id, orgId: user.orgId });
-    const authUrl = await this.google.authUrl(user.orgId, redirectUri, state);
+    const state = this.google.signState({ userId: user.id, orgId: user.orgId, ...(reconnecting ? { inboxId: reconnecting.id } : {}) });
+    const authUrl = await this.google.authUrl(user.orgId, redirectUri, state, reconnecting?.handle);
     res.redirect(302, authUrl);
   }
 
@@ -94,7 +110,7 @@ export class GoogleController {
     try {
       if (!code) throw new Error("Missing authorization code");
       if (!state) throw new Error("Missing state");
-      const { userId, orgId } = this.google.verifyState(state);
+      const { userId, orgId, inboxId } = this.google.verifyState(state);
       void userId; // bound for CSRF/user verification; teams drive routing below
       // The redirect carries no session; the signed state says whose workspace
       // started the flow, and the rest of it acts there.
@@ -108,6 +124,13 @@ export class GoogleController {
         redirectUri,
       );
       const email = await this.google.getEmail(accessToken);
+      // Reconnecting a channel: it has to be the same mailbox. Signing in as
+      // someone else would quietly turn support@ into somebody's own inbox.
+      const target = inboxId ? await this.store.getInbox(inboxId) : undefined;
+      if (inboxId && !target) throw new Error("That email channel no longer exists");
+      if (target && target.handle.toLowerCase() !== email.toLowerCase()) {
+        throw new Error(`You signed in as ${email}, but this channel is ${target.handle}. Reconnect with ${target.handle}.`);
+      }
       // One mailbox, one workspace: mail to it must never be able to match
       // inboxes in two of them.
       if (await this.store.channelKeyTaken({ emailAddress: email })) {
@@ -120,6 +143,9 @@ export class GoogleController {
         [GMAIL_CONFIG.email]: email,
         [GMAIL_CONFIG.accessToken]: accessToken,
         [GMAIL_CONFIG.tokenExpiry]: tokenExpiry,
+        // Signed in again: whatever signed it out no longer applies.
+        [GMAIL_CONFIG.authError]: "",
+        [GMAIL_CONFIG.authErrorAt]: "",
       };
       // Google only returns a refresh token on first consent — keep the old one
       // (already stored) rather than overwriting it with an empty value.
@@ -127,10 +153,12 @@ export class GoogleController {
 
       // Reconnecting the same address refreshes the existing channel's tokens
       // instead of creating a duplicate inbox.
-      const existing = (await this.store.listInboxes()).find(
-        (i) => i.type === "email" && i.handle.toLowerCase() === email.toLowerCase(),
-      );
+      const existing =
+        target ??
+        (await this.store.listInboxes()).find((i) => i.type === "email" && i.handle.toLowerCase() === email.toLowerCase());
       let inbox;
+      // Where the last sync got to, before this sign-in: a reconnect catches up from there.
+      const resumeFrom = existing ? (await this.store.getInboxConfig(existing.id))?.[GMAIL_CONFIG.historyId] : undefined;
       if (existing) {
         inbox = (await this.store.updateInbox(existing.id, { channelConfig })) ?? existing;
       } else {
@@ -151,12 +179,19 @@ export class GoogleController {
       // Record the history cursor now so the first poll only picks up mail that
       // arrives after connect — no full-mailbox backfill — and arm push if the
       // org has a Pub/Sub topic configured. (Real mode only.)
+      //
+      // A reconnect does neither: it picks up from where the mailbox stopped,
+      // so mail that arrived while it was signed out still comes in.
       if (!this.google.isMock) {
-        await this.gmailSync.establishBaseline(inbox, accessToken);
+        if (resumeFrom) {
+          await this.gmailSync.catchUp(inbox);
+        } else {
+          await this.gmailSync.establishBaseline(inbox, accessToken);
+        }
         await this.gmailSync.armWatch(inbox, accessToken);
       }
 
-      this.sendResult(res, { source: "ding-oauth", ok: true, provider: "gmail", email });
+      this.sendResult(res, { source: "ding-oauth", ok: true, provider: "gmail", email, reconnected: !!existing });
     } catch (err) {
       this.sendResult(res, {
         source: "ding-oauth",

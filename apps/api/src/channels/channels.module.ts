@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { RealtimeModule } from "../realtime/realtime.module";
 import { StorageModule } from "../storage/storage.module";
 import { PushModule } from "../push/push.module";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { CHANNEL_PROVIDERS } from "./channel-provider";
 import { ChannelDispatcher } from "./channel-dispatcher";
 import { OutboundDeliveryService } from "./outbound-delivery.service";
@@ -37,7 +38,7 @@ import { DiagnosticsController } from "./diagnostics.controller";
 import { IntegrationsController } from "../settings/integrations.controller";
 
 @Module({
-  imports: [RealtimeModule, StorageModule, PushModule, AiModule, AccountsModule],
+  imports: [RealtimeModule, StorageModule, PushModule, AiModule, AccountsModule, NotificationsModule],
   controllers: [
     WhatsAppController,
     EmailController,

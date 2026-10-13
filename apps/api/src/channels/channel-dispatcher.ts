@@ -351,6 +351,7 @@ export class ChannelDispatcher {
 function shortReason(channel: string, result: { httpStatus?: number; errorCode?: string }): string {
   const label = channel === "email" ? "Email" : channel === "nestchat" ? "NestChat" : "WhatsApp";
   if (result.errorCode === "not_connected") return `${label} isn’t connected`;
+  if (result.errorCode === "reauth_required") return `${label}: the channel needs reconnecting — Google signed it out`;
   // Graph error 100 on a send means the phone-number-id and access token don't
   // match (wrong/expired token, or a token for a different number).
   if (result.errorCode === "100") return `${label}: this number’s credentials don’t match — re-check its Phone number ID and access token`;

@@ -9,6 +9,7 @@ import {
 } from "../lib/nestchat-embed";
 import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
+import { signedOutSince, useReconnectEmail } from "./ReconnectEmail";
 import { MacrosPane } from "./MacrosPane";
 import { OpsModulesPane } from "./ops/OpsModulesPane";
 import { ChannelSignature, signatureDraftFor, signatureInput, type SignatureDraft } from "./ChannelSignature";
@@ -127,6 +128,7 @@ import {
   TEAM_ICONS,
   TrashIcon,
   XIcon,
+  AlertIcon,
 } from "../lib/icons";
 
 /** A settings destination. Leaves are grouped into the left-rail primary
@@ -491,10 +493,17 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
                 <span className="chcard__route" title={i.teamIds.map(teamName).join(", ")}>
                   {summariseTeams(i.teamIds.map(teamName)) || "Unrouted"} · {i.routingStrategy.replace(/_/g, " ")}
                 </span>
-                <span className={"connpill " + (connected ? "on" : "off")} title={connected ? "Integration live" : "Add credentials to go live"}>
-                  <span className="connpill__dot" />
-                  {connected ? "Connected" : "Setup needed"}
-                </span>
+                {i.signedOut ? (
+                  <span className="connpill bad" title={`${i.signedOut.reason}. Open it to reconnect.`}>
+                    <span className="connpill__dot" />
+                    Reconnect needed
+                  </span>
+                ) : (
+                  <span className={"connpill " + (connected ? "on" : "off")} title={connected ? "Integration live" : "Add credentials to go live"}>
+                    <span className="connpill__dot" />
+                    {connected ? "Connected" : "Setup needed"}
+                  </span>
+                )}
               </div>
             </button>
             </div>
@@ -555,6 +564,8 @@ function ChannelEditor({
   // Email channels sign their mail; the design lives on its own tab and is
   // saved by the same button as everything else here.
   const isEmail = inbox.type === "email";
+  const isGmail = isEmail && inbox.channelConfigPublic?.provider === "gmail";
+  const reconnect = useReconnectEmail(onToast);
   const [tab, setTab] = useState<"settings" | "signature">("settings");
   const [sig, setSig] = useState<SignatureDraft>(() => signatureDraftFor(inbox));
   const saveSig = useSetInboxSignature();
@@ -710,7 +721,33 @@ function ChannelEditor({
           the state everybody gets stuck in. Only for WhatsApp: no other channel
           has a registration step. */}
       {inbox.type === "whatsapp" && <WhatsAppRegistration channelId={inbox.id} onToast={onToast} />}
-      {kind && kind.fields.length > 0 && (
+      {/* A Gmail mailbox is signed in with Google, not set up with a token —
+          so it gets its sign-in state and a way to sign in again, and not the
+          Postmark token field, which would have overwritten its access token. */}
+      {isGmail && (
+        <div className={"reauth-box" + (inbox.signedOut ? " bad" : "")}>
+          {inbox.signedOut ? (
+            <>
+              <div className="reauth-box__head">
+                <AlertIcon /> Google signed this mailbox out{inbox.signedOut.since ? ` ${signedOutSince(inbox.signedOut.since)}` : ""}
+              </div>
+              <p>
+                {inbox.signedOut.reason}. New email isn't arriving and replies can't be sent. Reconnect with{" "}
+                <b>{inbox.handle}</b> — the channel keeps its conversations, routing and signature, and the email that arrived
+                meanwhile is brought in.
+              </p>
+            </>
+          ) : (
+            <p>
+              Signed in with Google as <b>{inbox.handle}</b>. If it ever stops working, reconnect here — nothing on the channel is lost.
+            </p>
+          )}
+          <button type="button" className={inbox.signedOut ? "btn-primary" : "btn-ghost"} onClick={() => reconnect(inbox)}>
+            {inbox.signedOut ? "Reconnect with Google" : "Reconnect"}
+          </button>
+        </div>
+      )}
+      {kind && kind.fields.length > 0 && !isGmail && (
         <div className="connect__creds">
           <div className="connect__credhead">Update credentials <em>— leave blank to keep current</em></div>
           <div className="setform__grid two">

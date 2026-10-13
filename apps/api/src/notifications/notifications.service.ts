@@ -19,6 +19,8 @@ const PUSH_KIND: Record<NotificationType, PushKind> = {
   ops_review: "reminder",
   ops_must_read: "assignment",
   chat_mention: "chat_mention",
+  // A channel that's stopped working: the people who can fix it should hear.
+  channel_reauth: "assignment",
 };
 
 /**

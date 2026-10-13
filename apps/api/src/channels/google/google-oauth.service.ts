@@ -1,8 +1,10 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import jwt from "jsonwebtoken";
 import type { Inbox } from "@ding/schemas";
 import { env } from "../../config/env";
 import { Store } from "../../data/store";
+import { NotificationsService } from "../../notifications/notifications.service";
+import { GmailApiError, GmailAuthError, isSignedOutError } from "./gmail-api";
 
 /** AppSetting keys holding the org's Google OAuth app credentials. */
 export const GOOGLE_CLIENT_ID_KEY = "google_client_id";
@@ -21,6 +23,9 @@ export const GMAIL_CONFIG = {
   historyId: "historyId",
   /** ms-epoch string when the current users.watch push subscription expires. */
   watchExpiry: "watchExpiry",
+  /** Why Google signed this mailbox out, and when — set until it's reconnected. */
+  authError: "authError",
+  authErrorAt: "authErrorAt",
 } as const;
 
 /** Refresh an access token this many ms before it actually expires. */
@@ -39,6 +44,8 @@ const GMAIL_SCOPES = [
 export interface OAuthState {
   userId: string;
   orgId: string;
+  /** Reconnecting this inbox, rather than adding one. */
+  inboxId?: string;
 }
 
 export interface TokenSet {
@@ -58,7 +65,11 @@ export interface TokenSet {
 export class GoogleOAuthService {
   private readonly logger = new Logger(GoogleOAuthService.name);
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    // Optional so the checks can build this without the bell.
+    @Optional() private readonly notifications?: NotificationsService,
+  ) {}
 
   /** True in local/dev mock mode — Google is never actually contacted. */
   private get mock(): boolean {
@@ -91,7 +102,7 @@ export class GoogleOAuthService {
 
   /** Sign a short-lived state token so the (cookieless) callback can recover the user. */
   signState(state: OAuthState): string {
-    return jwt.sign({ userId: state.userId, orgId: state.orgId }, env.auth.jwtSecret, {
+    return jwt.sign({ userId: state.userId, orgId: state.orgId, ...(state.inboxId ? { inboxId: state.inboxId } : {}) }, env.auth.jwtSecret, {
       expiresIn: 600,
     });
   }
@@ -100,7 +111,7 @@ export class GoogleOAuthService {
   verifyState(token: string): OAuthState {
     const payload = jwt.verify(token, env.auth.jwtSecret) as jwt.JwtPayload & Partial<OAuthState>;
     if (!payload.userId || !payload.orgId) throw new Error("Invalid OAuth state");
-    return { userId: payload.userId, orgId: payload.orgId };
+    return { userId: payload.userId, orgId: payload.orgId, ...(payload.inboxId ? { inboxId: payload.inboxId } : {}) };
   }
 
   /**
@@ -108,7 +119,8 @@ export class GoogleOAuthService {
    * and point straight back at our own callback with a fake code, so the popup
    * completes the whole loop locally.
    */
-  async authUrl(orgId: string, redirectUri: string, state: string): Promise<string> {
+  /** `loginHint`: reconnecting a mailbox, Google offers that account first. */
+  async authUrl(orgId: string, redirectUri: string, state: string, loginHint?: string): Promise<string> {
     if (this.mock) {
       return `${redirectUri}?code=mock-code&state=${encodeURIComponent(state)}`;
     }
@@ -122,6 +134,7 @@ export class GoogleOAuthService {
       prompt: "consent",
       include_granted_scopes: "true",
       state,
+      ...(loginHint ? { login_hint: loginHint } : {}),
     });
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   }
@@ -211,6 +224,11 @@ export class GoogleOAuthService {
     }
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
+      // The grant itself is gone — revoked, expired, the password changed, the
+      // app's access removed. Signing in again is the only fix.
+      if ((res.status === 400 || res.status === 401) && /invalid_grant|unauthorized_client/.test(detail)) {
+        throw new GmailAuthError("Google signed this mailbox out — its sign-in was revoked or has expired");
+      }
       throw new Error(`Google token refresh failed (${res.status}): ${detail}`);
     }
     const json = (await res.json()) as { access_token?: string; expires_in?: number };
@@ -225,6 +243,8 @@ export class GoogleOAuthService {
    */
   async accessTokenForInbox(inbox: Inbox, config: Record<string, string>): Promise<string> {
     if (this.mock) return "mock-access-token";
+    // Already known to be signed out: say so at once, rather than asking Google again.
+    if (config[GMAIL_CONFIG.authError]) throw new GmailAuthError(config[GMAIL_CONFIG.authError]);
     const stored = config[GMAIL_CONFIG.accessToken];
     const expiryIso = config[GMAIL_CONFIG.tokenExpiry];
     const expiresAt = expiryIso ? Date.parse(expiryIso) : 0;
@@ -233,14 +253,63 @@ export class GoogleOAuthService {
     }
     const refreshToken = config[GMAIL_CONFIG.refreshToken];
     if (!refreshToken) {
-      throw new Error(`Gmail inbox ${inbox.id} has no refresh token — reconnect the channel`);
+      const reason = "There's no saved Google sign-in for this mailbox";
+      await this.markSignedOut(inbox, reason);
+      throw new GmailAuthError(reason);
     }
-    const { accessToken, expiresIn } = await this.refreshAccessToken(inbox.orgId, refreshToken);
+    let fresh: { accessToken: string; expiresIn: number };
+    try {
+      fresh = await this.refreshAccessToken(inbox.orgId, refreshToken);
+    } catch (err) {
+      if (err instanceof GmailAuthError) await this.markSignedOut(inbox, err.message);
+      throw err;
+    }
+    const { accessToken, expiresIn } = fresh;
     const tokenExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
     await this.store.updateInbox(inbox.id, {
       channelConfig: { [GMAIL_CONFIG.accessToken]: accessToken, [GMAIL_CONFIG.tokenExpiry]: tokenExpiry },
     });
     this.logger.log(`Refreshed Gmail access token for inbox ${inbox.id}`);
     return accessToken;
+  }
+
+  /**
+   * After a Gmail call failed: if it means Google has signed the mailbox out,
+   * mark it so. Anything else (a blip, a quota) is left for the next try.
+   */
+  async noteFailure(inbox: Inbox, err: unknown): Promise<void> {
+    if (err instanceof GmailAuthError) return; // marked where it was raised
+    if (!isSignedOutError(err)) return;
+    const status = err instanceof GmailApiError ? err.status : 0;
+    await this.markSignedOut(
+      inbox,
+      status === 403 ? "Google took away this mailbox's permission to read or send mail" : "Google rejected this mailbox's sign-in",
+    );
+  }
+
+  /**
+   * Mark a Gmail inbox as needing to sign in again — once. Until it's
+   * reconnected it isn't polled and nothing is sent from it, and the people
+   * who can fix it (admins and managers) are told, once, rather than on every
+   * failed poll.
+   */
+  async markSignedOut(inbox: Inbox, reason: string): Promise<void> {
+    const config = (await this.store.getInboxConfig(inbox.id)) ?? {};
+    if (config[GMAIL_CONFIG.authError]) return;
+    await this.store.updateInbox(inbox.id, {
+      channelConfig: { [GMAIL_CONFIG.authError]: reason, [GMAIL_CONFIG.authErrorAt]: new Date().toISOString() },
+    });
+    this.logger.warn(`Gmail inbox ${inbox.handle} needs reconnecting: ${reason}`);
+    if (!this.notifications) return;
+    const fixers = (await this.store.listMembers()).filter((m) => m.user.role === "admin" || m.user.role === "manager");
+    for (const m of fixers) {
+      await this.notifications
+        .create(m.user.id, {
+          type: "channel_reauth",
+          title: `${inbox.name} needs reconnecting`,
+          body: "Google signed this mailbox out, so new email isn't arriving and replies can't be sent. Reconnect it in Settings › Channels.",
+        })
+        .catch((e: unknown) => this.logger.warn(`Couldn't tell ${m.user.id} about ${inbox.handle}: ${String(e)}`));
+    }
   }
 }

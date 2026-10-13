@@ -112,6 +112,39 @@ For addresses Swiftee/clients already run on **Google Workspace** or **Microsoft
 - **Outbound:** send through the same API so replies come *from* the real address and thread correctly in the client's own mailbox too.
 - Least friction — adopt `support@swiftee.co.uk` without changing MX records.
 
+### When Google signs a mailbox out
+
+A Gmail sign-in can stop working on its own: the password changed, someone
+removed the app's access in their Google account, an admin policy, or a grant
+Google expired. Before, nothing noticed — the channel still said Connected,
+polling failed silently every minute, replies retried six times and then failed
+with Google's raw error, and the fix people found was deleting the channel
+(and every conversation on it) and adding it again.
+
+Now:
+
+- **Noticed once.** The first time Google refuses the sign-in (a refused token
+  refresh — `invalid_grant` — no saved refresh token, a 401 from Gmail, or a
+  scope taken away), the inbox is marked signed out, with the reason and when
+  (`authError` / `authErrorAt` on its channel config; `signedOut` on the
+  inbox). Polling and push skip it from then on, and a reply from it fails at
+  once — "the channel needs reconnecting" — instead of retrying.
+- **Flagged.** The channel's card reads **Reconnect needed**; admins and
+  managers get one bell entry and push, and a banner across the top of the app
+  with **Reconnect**; anyone replying on that channel is told before they write.
+- **Reconnected in place.** **Reconnect** (in the banner, or the channel's
+  editor) runs Google's sign-in for *that* channel (`oauth/start?inboxId=…`,
+  with the address offered). It must be the same mailbox — signing in as anyone
+  else is refused. The channel keeps its id, conversations, routing, name and
+  signature, and catches up from the history cursor it stopped at, so the mail
+  that arrived while it was signed out comes in (if Gmail no longer keeps
+  history that far back, it starts again from now). Adding the same address
+  again from Add channel does the same.
+- Starting a Google connection is for managers and admins, like adding any
+  channel. A Gmail channel's editor no longer shows the Postmark token field
+  (typing there would have overwritten its sign-in).
+- `pnpm check:gmail-reauth` covers all of it, with Google faked at the network.
+
 ### Mode B — Host the address (inbound provider)
 
 For addresses we want Nest Connect to fully own, or non-Google/MS domains:
