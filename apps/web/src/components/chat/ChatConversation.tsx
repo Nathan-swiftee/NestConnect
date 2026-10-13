@@ -61,6 +61,7 @@ export function ChatConversation({
   roomId,
   focusMessageId,
   onOpenConversation,
+  visible = true,
   onBack,
   onClosed,
   onOpenRoom,
@@ -70,6 +71,8 @@ export function ChatConversation({
   /** Open at this message — from search or starred. */
   focusMessageId?: string | null;
   onOpenConversation?: (id: string) => void;
+  /** Put away (the pop-up closed): it isn't open, so nothing is read and sounds still play. */
+  visible?: boolean;
   onBack?: () => void;
   onClosed: () => void;
   onOpenRoom: (id: string) => void;
@@ -90,12 +93,12 @@ export function ChatConversation({
   const dragDepth = useRef(0);
   const composer = useRef<ChatComposerHandle>(null);
   const stars = useChatStars();
-  useChatRoomOpen(roomId);
+  useChatRoomOpen(visible ? roomId : null);
 
   const r = room.data;
   const mentionables: Mentionable[] = useMemo(() => (people.data ?? []).map((m) => m.user), [people.data]);
   const newest = msgs.messages.at(-1);
-  useMarkChatRead(roomId, newest?.id, !!r?.isMember);
+  useMarkChatRead(roomId, newest?.id, !!r?.isMember && visible);
 
   // Where "unread messages" goes: fixed when the chat opens, so it doesn't
   // jump away the moment the chat is marked read.

@@ -24,9 +24,12 @@ export function IconRail({
   section,
   onSection,
   onOpenPersonalSettings,
+  chatOpen = false,
 }: {
   section: Section;
   onSection: (s: Section) => void;
+  /** Team Chat pops up over wherever you are, rather than being a page. */
+  chatOpen?: boolean;
   onOpenPersonalSettings: () => void;
 }) {
   const { data } = useMe();
@@ -71,7 +74,8 @@ export function IconRail({
       </button>
       {chat.data?.enabled && (
         <button
-          className={"railbtn" + (section === "chat" ? " active" : "")}
+          className={"railbtn" + (chatOpen ? " active" : "")}
+          aria-pressed={chatOpen}
           title={chatUnread ? `Team Chat — ${chatUnread} unread` : "Team Chat"}
           aria-label={chatUnread ? `Team Chat, ${chatUnread} unread` : "Team Chat"}
           onClick={() => onSection("chat")}
