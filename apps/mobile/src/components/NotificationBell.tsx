@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { relativeTime, useMarkNotificationsRead, useNotifications } from "@ding/client";
 import type { Notification } from "@ding/schemas";
 import { haptics } from "../haptics";
-import { AtIcon, BellIcon, InboxIcon, OpsIcon, SnoozeIcon, XIcon } from "../icons";
+import { AtIcon, BellIcon, InboxIcon, OpsIcon, SnoozeIcon, TeamChatIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
 import { Touchable } from "./Touchable";
@@ -31,12 +31,15 @@ import { Touchable } from "./Touchable";
 export function NotificationBell({
   onOpenConversation,
   onOpenOpsSop,
+  onOpenChat,
 }: {
   /** Where a tapped notification goes. Passed in rather than routed here, so
    *  this doesn't need to know how the app spells its thread route. */
   onOpenConversation: (conversationId: string) => void;
   /** A must-read or review reminder opens its SOP. */
   onOpenOpsSop?: (opsSopId: string) => void;
+  /** An @mention in Team Chat opens the chat. */
+  onOpenChat?: (roomId: string) => void;
 }) {
   const { c } = useTheme();
   const { data } = useNotifications();
@@ -55,6 +58,7 @@ export function NotificationBell({
     setOpen(false);
     if (n.conversationId) onOpenConversation(n.conversationId);
     else if (n.opsSopId) onOpenOpsSop?.(n.opsSopId);
+    else if (n.chatRoomId) onOpenChat?.(n.chatRoomId);
   };
 
   return (
@@ -150,7 +154,7 @@ export function NotificationBell({
                 const last = i === list.length - 1;
                 const mention = n.type === "mention";
                 // A chat sent to my team is work for me, like a mention: green.
-                const forMe = mention || n.type === "team_transfer";
+                const forMe = mention || n.type === "team_transfer" || n.type === "chat_mention";
                 return (
                   <Touchable
                     key={n.id}
@@ -170,6 +174,8 @@ export function NotificationBell({
                     >
                       {mention ? (
                         <AtIcon size={17} color={c.brandStrong} />
+                      ) : n.type === "chat_mention" ? (
+                        <TeamChatIcon size={17} color={c.brandStrong} />
                       ) : n.type === "team_transfer" ? (
                         <InboxIcon size={17} color={c.brandStrong} />
                       ) : n.opsSopId ? (

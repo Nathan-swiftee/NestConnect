@@ -1,0 +1,485 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FlatList, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { router, useLocalSearchParams } from "expo-router";
+import {
+  api,
+  chatItems,
+  chatLastSeen,
+  useChatMessages,
+  useChatMutation,
+  useChatRoom,
+  useChatRoomOpen,
+  useChatTyping,
+  useChatTypingSignal,
+  useMarkChatRead,
+  useMe,
+  usePeople,
+  useRetryChatMessage,
+  useSendChatMessage,
+  type ChatBubble,
+  type ChatItem,
+} from "@ding/client";
+import {
+  CHAT_MESSAGE_MAX,
+  chatSystemText,
+  joinNames,
+  mentionsToNames,
+  namesToHandles,
+  type ChatMember,
+  type ChatMessage,
+  type Mentionable,
+} from "@ding/schemas";
+import { BottomInset } from "../../../src/components/BottomInset";
+import { ChatAvatar } from "../../../src/components/chat/ChatAvatar";
+import { ChatBubbleRow } from "../../../src/components/chat/ChatBubble";
+import { ChatInfoSheet, ChatMessageSheet } from "../../../src/components/chat/ChatSheets";
+import { ErrorState, Loading } from "../../../src/components/States";
+import { useToast } from "../../../src/components/Toast";
+import { Touchable } from "../../../src/components/Touchable";
+import { Avatar } from "../../../src/components/Avatar";
+import { mediaSource } from "../../../src/api-config";
+import { haptics } from "../../../src/haptics";
+import { BackIcon, DetailsIcon, EditIcon, EyeIcon, ReplyIcon, SendIcon, CheckIcon, XIcon } from "../../../src/icons";
+import { useInsets } from "../../../src/insets";
+import { useTheme } from "../../../src/theme";
+
+/**
+ * One Team Chat chat, open. The list is inverted — newest at the bottom, the
+ * way every messaging app reads — so it opens at the latest message and older
+ * pages load as you scroll up. See docs/team-chat.md.
+ */
+export default function ChatScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { c } = useTheme();
+  const insets = useInsets();
+  const toast = useToast();
+  const me = useMe().data?.user;
+  const room = useChatRoom(id);
+  const msgs = useChatMessages(id);
+  const people = usePeople();
+  const typing = useChatTyping(id);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+  const [editing, setEditing] = useState<ChatMessage | null>(null);
+  const [acting, setActing] = useState<ChatBubble | null>(null);
+  const [infoFor, setInfoFor] = useState<ChatMessage | null>(null);
+  const list = useRef<FlatList<ChatItem<ChatBubble>>>(null);
+  useChatRoomOpen(id);
+
+  const r = room.data;
+  const mentionables: Mentionable[] = useMemo(() => (people.data ?? []).map((m) => m.user), [people.data]);
+  const newest = msgs.messages.at(-1);
+  useMarkChatRead(id, newest?.id, !!r?.isMember);
+
+  // Where "unread messages" goes: fixed when the chat opens.
+  const [unreadAfter, setUnreadAfter] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (r && unreadAfter === undefined) {
+      const mine = r.members.find((m) => m.id === me?.id);
+      setUnreadAfter(r.unread > 0 ? (mine?.lastReadAt ?? null) : null);
+    }
+  }, [r, me?.id, unreadAfter]);
+
+  // Inverted: newest first.
+  const items = useMemo(
+    () => chatItems<ChatBubble>(msgs.messages, { meId: me?.id, unreadAfter: unreadAfter ?? null }).reverse(),
+    [msgs.messages, me?.id, unreadAfter],
+  );
+
+  const react = useChatMutation(({ mid, emoji }: { mid: string; emoji: string }) => api.reactChatMessage(mid, emoji));
+  const remove = useChatMutation((mid: string) => api.deleteChatMessage(mid));
+  const mePerson = useMemo(
+    () => (me ? { id: me.id, name: me.name, avatarColor: me.avatarColor ?? null, avatarUrl: me.avatarUrl ?? null } : null),
+    [me],
+  );
+  const retry = useRetryChatMessage(id, mePerson);
+  const fail = useCallback((e: unknown) => toast({ text: (e as Error).message || "Couldn't do that" }), [toast]);
+
+  const goTo = useCallback(
+    (mid: string) => {
+      const index = items.findIndex((it) => it.kind === "message" && it.message.id === mid);
+      if (index < 0) return toast({ text: "That message is further back — scroll up to load it" });
+      list.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true });
+    },
+    [items, toast],
+  );
+
+  if (room.isError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }}>
+        <ErrorState error={room.error} what="this chat" onRetry={() => router.back()} />
+      </View>
+    );
+  }
+  if (!r) {
+    return (
+      <View style={{ flex: 1, backgroundColor: c.bg, paddingTop: insets.top }} className="items-center justify-center">
+        <Loading />
+      </View>
+    );
+  }
+
+  const subline = typing.length
+    ? r.kind === "direct"
+      ? "typing…"
+      : `${joinNames(typing.map((n) => n.split(" ")[0]!))} ${typing.length === 1 ? "is" : "are"} typing…`
+    : r.kind === "direct"
+      ? chatLastSeen(r.other)
+      : membersLine(r.members, me?.id);
+  const group = r.kind !== "direct" || r.oversight;
+  const moderator = me?.role === "admin" || r.canManage;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: c.surface2 }}>
+      <View style={{ borderBottomColor: c.border, backgroundColor: c.surface, paddingTop: insets.top }} className="flex-row items-center gap-2.5 border-b px-2 pb-2 pt-2">
+        <Touchable feel="chip" onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Back to chats" hitSlop={12} className="px-1">
+          <BackIcon size={24} color={c.brand} />
+        </Touchable>
+        <Touchable
+          feel="chip"
+          onPress={() => router.push({ pathname: "/(app)/chat/info", params: { id: r.id } })}
+          accessibilityRole="button"
+          accessibilityLabel={`${r.name}, chat info`}
+          className="flex-1 flex-row items-center gap-2.5"
+        >
+          <ChatAvatar room={r} size={38} />
+          <View className="flex-1">
+            <Text numberOfLines={1} className="text-lg font-semibold leading-tight text-fg">
+              {r.name}
+            </Text>
+            <Text numberOfLines={1} style={typing.length ? { color: c.wa, fontWeight: "600" } : undefined} className="text-2xs leading-snug text-faint">
+              {subline}
+            </Text>
+          </View>
+        </Touchable>
+        <Touchable
+          feel="chip"
+          borderless
+          onPress={() => router.push({ pathname: "/(app)/chat/info", params: { id: r.id } })}
+          accessibilityRole="button"
+          accessibilityLabel={r.kind === "direct" ? "Contact info" : "Group info"}
+          hitSlop={10}
+          className="h-10 w-10 items-center justify-center"
+        >
+          <DetailsIcon size={20} color={c.textMuted} />
+        </Touchable>
+      </View>
+      {r.oversight ? (
+        <View style={{ backgroundColor: c.amberTint }} className="flex-row items-center gap-2 px-4 py-2">
+          <EyeIcon size={15} color={c.amber} />
+          <Text className="flex-1 text-xs text-fg">
+            {r.archived ? "This team was deleted. Its chat is kept here, read-only." : "You're reading this as an admin. You can't write here, and this visit is recorded."}
+          </Text>
+        </View>
+      ) : null}
+
+      <FlatList
+        ref={list}
+        inverted
+        style={{ flex: 1 }}
+        data={items}
+        keyExtractor={(it) => it.key}
+        contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 10 }}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        onEndReached={() => {
+          if (msgs.hasNextPage && !msgs.isFetchingNextPage) void msgs.fetchNextPage();
+        }}
+        onEndReachedThreshold={0.4}
+        onScrollToIndexFailed={() => toast({ text: "Scroll up a little to find that message" })}
+        initialNumToRender={20}
+        renderItem={({ item }) => {
+          if (item.kind === "day") {
+            return (
+              <View className="items-center py-2">
+                <Text style={{ backgroundColor: c.surface, color: c.textMuted }} className="overflow-hidden rounded-8 px-3 py-1 text-2xs font-semibold">
+                  {item.label}
+                </Text>
+              </View>
+            );
+          }
+          if (item.kind === "unread") {
+            return (
+              <View style={{ backgroundColor: c.surface }} className="my-2 items-center py-1">
+                <Text style={{ color: c.wa }} className="text-2xs font-bold uppercase tracking-wide">
+                  {item.count} unread message{item.count === 1 ? "" : "s"}
+                </Text>
+              </View>
+            );
+          }
+          const m = item.message;
+          if (m.kind === "system") {
+            return (
+              <View className="items-center py-1">
+                <Text style={{ backgroundColor: c.surface, color: c.textMuted }} className="overflow-hidden rounded-8 px-3 py-1 text-center text-2xs">
+                  {m.system ? chatSystemText(m.system) : ""}
+                </Text>
+              </View>
+            );
+          }
+          return (
+            <ChatBubbleRow
+              m={m}
+              first={item.first}
+              last={item.last}
+              mine={m.author?.id === me?.id}
+              meId={me?.id}
+              group={group}
+              members={r.members}
+              people={mentionables}
+              canAct={r.canPost}
+              onReply={(x) => {
+                setEditing(null);
+                setReplyTo(x);
+              }}
+              onLongPress={setActing}
+              onReact={(x, emoji) => react.mutate({ mid: x.id, emoji }, { onError: fail })}
+              onQuote={goTo}
+              onRetry={(x) => void retry(x)}
+            />
+          );
+        }}
+        ListHeaderComponent={typing.length ? <TypingDots /> : null}
+        ListFooterComponent={
+          msgs.isFetchingNextPage ? (
+            <Text className="py-3 text-center text-2xs text-muted">Loading earlier messages…</Text>
+          ) : !msgs.hasNextPage && !msgs.isLoading ? (
+            <View className="items-center py-3">
+              <Text style={{ backgroundColor: c.amberTint, color: c.textMuted }} className="overflow-hidden rounded-8 px-3 py-1.5 text-center text-2xs">
+                {r.kind === "direct"
+                  ? r.oversight
+                    ? `This is the start of the chat between ${r.name.replace(" & ", " and ")}.`
+                    : `This is the start of your chat with ${r.name}.`
+                  : r.kind === "team"
+                    ? `Everyone on ${r.name} is in this chat.`
+                    : `Messages in ${r.name} are visible to its members.`}
+              </Text>
+            </View>
+          ) : null
+        }
+      />
+
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
+        {r.canPost ? (
+          <Composer
+            roomId={r.id}
+            members={r.members}
+            meId={me?.id}
+            people={mentionables}
+            replyTo={replyTo}
+            editing={editing}
+            onCancelReply={() => setReplyTo(null)}
+            onCancelEdit={() => setEditing(null)}
+            onError={fail}
+          />
+        ) : (
+          <View style={{ backgroundColor: c.surface, borderTopColor: c.border }} className="border-t px-4 py-3">
+            <Text className="text-center text-md text-muted">
+              {r.oversight ? "Read-only — you aren't in this chat." : r.archived ? "This team was deleted, so its chat is read-only." : "You can't send messages here."}
+            </Text>
+          </View>
+        )}
+        <BottomInset />
+      </KeyboardAvoidingView>
+
+      <ChatMessageSheet
+        message={acting}
+        meId={me?.id}
+        mine={acting?.author?.id === me?.id}
+        canAct={r.canPost}
+        canDelete={!!acting && (acting.author?.id === me?.id || moderator)}
+        onClose={() => setActing(null)}
+        onReact={(emoji) => acting && react.mutate({ mid: acting.id, emoji }, { onError: fail })}
+        onReply={() => {
+          setEditing(null);
+          setReplyTo(acting);
+        }}
+        onEdit={() => {
+          setReplyTo(null);
+          setEditing(acting);
+        }}
+        onInfo={() => setInfoFor(acting)}
+        onDelete={() => acting && remove.mutate(acting.id, { onSuccess: () => haptics.success(), onError: fail })}
+      />
+      <ChatInfoSheet message={infoFor} onClose={() => setInfoFor(null)} />
+    </View>
+  );
+}
+
+function membersLine(members: ChatMember[], meId: string | undefined): string {
+  const others = members.filter((m) => m.id !== meId).map((m) => m.name.split(" ")[0]!);
+  const online = members.filter((m) => m.id !== meId && m.online).length;
+  const names = [...others.slice(0, 5), ...(members.some((m) => m.id === meId) ? ["You"] : [])].join(", ");
+  return `${names}${others.length > 5 ? ` +${others.length - 5}` : ""}${online ? ` · ${online} online` : ""}`;
+}
+
+function TypingDots() {
+  const { c } = useTheme();
+  return (
+    <View style={{ backgroundColor: c.surface }} className="ml-1 mt-2 flex-row gap-1 self-start rounded-12 px-3.5 py-3">
+      {[0, 1, 2].map((i) => (
+        <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.textFaint, opacity: 0.4 + i * 0.2 }} />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Write, reply, edit. Return sends on a hardware keyboard; on a phone the
+ * green button does. `@` suggests the people in this chat.
+ */
+function Composer({
+  roomId,
+  members,
+  meId,
+  people,
+  replyTo,
+  editing,
+  onCancelReply,
+  onCancelEdit,
+  onError,
+}: {
+  roomId: string;
+  members: ChatMember[];
+  meId: string | undefined;
+  people: Mentionable[];
+  replyTo: ChatMessage | null;
+  editing: ChatMessage | null;
+  onCancelReply: () => void;
+  onCancelEdit: () => void;
+  onError: (e: unknown) => void;
+}) {
+  const { c } = useTheme();
+  const me = members.find((m) => m.id === meId);
+  const send = useSendChatMessage(roomId, me ? { id: me.id, name: me.name, avatarColor: me.avatarColor, avatarUrl: me.avatarUrl } : null);
+  const edit = useChatMutation(({ mid, body }: { mid: string; body: string }) => api.editChatMessage(mid, body));
+  const { typed, stop } = useChatTypingSignal(roomId);
+  const [text, setText] = useState("");
+  const [draft, setDraft] = useState("");
+  const [caret, setCaret] = useState(0);
+  const input = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(text);
+      setText(mentionsToNames(editing.body, people));
+      input.current?.focus();
+    }
+    // Only when an edit starts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
+  useEffect(() => {
+    if (replyTo) input.current?.focus();
+  }, [replyTo]);
+
+  const inRoom = useMemo(() => {
+    const ids = new Set(members.filter((m) => m.id !== meId).map((m) => m.id));
+    return people.filter((p) => ids.has((p as Mentionable & { id?: string }).id ?? ""));
+  }, [people, members, meId]);
+  const before = text.slice(0, caret);
+  const at = /(^|\s)@([^\s@]{0,24})$/.exec(before);
+  const matches = at
+    ? inRoom.filter((p) => p.name.toLowerCase().startsWith(at[2]!.toLowerCase()) || p.name.toLowerCase().includes(` ${at[2]!.toLowerCase()}`)).slice(0, 5)
+    : [];
+
+  const pick = (p: Mentionable) => {
+    if (!at) return;
+    const start = caret - at[2]!.length - 1;
+    const next = `${text.slice(0, start)}@${p.name} ${text.slice(caret)}`;
+    setText(next);
+    setCaret(start + p.name.length + 2);
+  };
+
+  const submit = () => {
+    const body = namesToHandles(text.trim(), people);
+    if (!body) return;
+    stop();
+    haptics.tap();
+    if (editing) {
+      if (body !== editing.body) edit.mutate({ mid: editing.id, body }, { onError });
+      setText(draft);
+      onCancelEdit();
+      return;
+    }
+    setText("");
+    const quoting = replyTo;
+    onCancelReply();
+    void send(body, quoting);
+  };
+
+  return (
+    <View style={{ backgroundColor: c.surface, borderTopColor: c.border }} className="border-t px-2 pb-2 pt-2">
+      {matches.length ? (
+        <View style={{ backgroundColor: c.elevated, borderColor: c.border }} className="mb-2 rounded-12 border py-1">
+          {matches.map((p) => (
+            <Touchable key={p.email} feel="row" onPress={() => pick(p)} accessibilityRole="button" accessibilityLabel={`Mention ${p.name}`} className="flex-row items-center gap-2.5 px-3 py-2">
+              <Avatar name={p.name} size={26} photo={(p as Mentionable & { avatarUrl?: string | null }).avatarUrl ? mediaSource((p as Mentionable & { avatarUrl: string }).avatarUrl) : null} />
+              <Text className="text-md font-medium text-fg">{p.name}</Text>
+            </Touchable>
+          ))}
+        </View>
+      ) : null}
+      {replyTo || editing ? (
+        <View style={{ backgroundColor: c.surface2, borderLeftColor: c.wa }} className="mx-1 mb-2 flex-row items-center gap-2 rounded-8 border-l-4 py-1.5 pl-3 pr-1">
+          {editing ? <EditIcon size={16} color={c.wa} /> : <ReplyIcon size={16} color={c.wa} />}
+          <View className="flex-1">
+            <Text style={{ color: c.wa }} className="text-sm font-semibold">
+              {editing ? "Edit message" : replyTo?.author?.id === meId ? "Replying to yourself" : `Replying to ${replyTo?.author?.name ?? ""}`}
+            </Text>
+            <Text numberOfLines={1} className="text-sm text-muted">
+              {mentionsToNames((editing ?? replyTo)!.body, people)}
+            </Text>
+          </View>
+          <Touchable
+            feel="chip"
+            borderless
+            onPress={() => {
+              if (editing) {
+                setText(draft);
+                onCancelEdit();
+              } else onCancelReply();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={editing ? "Cancel editing" : "Cancel reply"}
+            hitSlop={8}
+            className="h-8 w-8 items-center justify-center"
+          >
+            <XIcon size={16} color={c.textMuted} />
+          </Touchable>
+        </View>
+      ) : null}
+      <View className="flex-row items-end gap-2">
+        <View style={{ backgroundColor: c.surface2 }} className="flex-1 rounded-[22px] px-4">
+          <TextInput
+            ref={input}
+            value={text}
+            onChangeText={(v) => {
+              setText(v.slice(0, CHAT_MESSAGE_MAX));
+              if (!editing) typed();
+            }}
+            onSelectionChange={(e) => setCaret(e.nativeEvent.selection.end)}
+            selection={undefined}
+            placeholder={editing ? "Edit your message" : "Message"}
+            placeholderTextColor={c.textFaint}
+            multiline
+            accessibilityLabel="Message"
+            style={{ color: c.text, maxHeight: 140 }}
+            className="py-2.5 text-lg"
+          />
+        </View>
+        <Touchable
+          feel="chip"
+          borderless
+          disabled={!text.trim()}
+          onPress={submit}
+          accessibilityRole="button"
+          accessibilityLabel={editing ? "Save" : "Send"}
+          style={{ backgroundColor: c.wa, opacity: text.trim() ? 1 : 0.5 }}
+          className="h-11 w-11 items-center justify-center rounded-full"
+        >
+          {editing ? <CheckIcon size={20} color="#fff" /> : <SendIcon size={19} color="#fff" />}
+        </Touchable>
+      </View>
+    </View>
+  );
+}

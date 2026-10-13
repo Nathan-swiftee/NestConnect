@@ -530,6 +530,7 @@ export default function Inbox() {
         <NotificationBell
           onOpenConversation={(id) => router.push({ pathname: "/(app)/thread/[id]", params: { id } })}
           onOpenOpsSop={(id) => router.push({ pathname: "/(app)/ops/[id]", params: { id } })}
+          onOpenChat={(id) => router.push({ pathname: "/(app)/chat/[id]", params: { id } })}
         />
 
         {/* Start one, rather than only ever answering one. Beside the title

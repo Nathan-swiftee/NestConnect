@@ -19,7 +19,13 @@ deleted: switching back on brings every chat back as it was.
   number of unread messages (muted chats left out). At phone width it's in the
   menu drawer. The screen is two panes, like WhatsApp Web: chats on the left,
   the open chat on the right; at phone width, one at a time.
-- **App:** coming in the next release (a Chat tab).
+- **App:** a **Chat** tab, second along, with a green unread count (Insights
+  stays for admins and managers, so the bar can carry six). The list reads
+  like WhatsApp's; long-press a chat to pin, mute or mark it read. In a chat:
+  swipe a message to reply, long-press it for reactions, edit, info and
+  delete; tap the header for the group's info (members, mute, pin, rename,
+  icon, add people, leave). A push opens the chat, and an @mention in the bell
+  does too. Admins get the same **All chats** eye.
 
 ## Kinds of chat
 
@@ -65,7 +71,8 @@ chats."
 ## Messages
 
 - **Replies:** hover a message and press reply (or right-click / long-press);
-  the reply quotes it, and tapping the quote scrolls to the original.
+  in the app, swipe it. The reply quotes it, and tapping the quote scrolls to
+  the original.
 - **Reactions:** one per person per message; the same emoji again takes it off.
 - **@mentions:** type `@` for the people in the chat. Stored as handles
   (`@nathan`), shown by name — the same as internal notes.
@@ -128,6 +135,11 @@ per person (`ChatPresence`) when their last tab or phone disconnects.
 - Live events go to each member's `user:` room (so the list and badge update
   anywhere in the app) and to `chat:<id>` (whoever has it open, including an
   admin reading along). Typing and "has it open" use `chat:<id>` only.
+- The app: `apps/mobile/app/(app)/(tabs)/chat.tsx` (the list),
+  `app/(app)/chat/[id].tsx` (a chat), `chat/info.tsx`, and
+  `src/components/chat/*`. Whether someone is "looking" (so a chat counts as
+  read) comes from `ClientConfig.attention` — the browser's focus on the web,
+  the app being in the foreground on a phone.
 - Client: `packages/client/src/chat.ts` (queries, optimistic sending, socket
   patches, typing) and `chat-format.ts` (day lines, list times, last seen,
   previews, runs) — shared with the app.
@@ -142,3 +154,6 @@ per person (`ChatPresence`) when their last tab or phone disconnects.
   store; paging back; mention flags; a deleted team's chat; cascades.
 - `apps/web/src/lib/chat-format.test.ts` — dates, runs, the unread line, ticks,
   previews.
+- `apps/mobile/__tests__/team-chat.test.tsx` — the app's list (previews, counts,
+  mention flag, filters, opening) and bubbles (sender, quote, ticks, reactions,
+  deleted).

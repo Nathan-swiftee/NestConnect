@@ -8,6 +8,7 @@ import {
   useUpdateMyPreferences,
   useUpdateMyProfile,
   useUpdatePushPreferences,
+  useChatStatus,
 } from "@ding/client";
 import { availableNow, type PushPreferences } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
@@ -57,6 +58,7 @@ export default function Settings() {
     profile.mutate({ position: next }, { onError: () => setPosition(me?.position ?? "") });
   }
   const pushPrefs = usePushPreferences();
+  const chatOn = !!useChatStatus().data?.enabled;
   const updatePush = useUpdatePushPreferences();
   const logout = useLogout();
   const appearance = useAppearance();
@@ -252,7 +254,7 @@ export default function Settings() {
             />
             <Toggle
               label="Mentions"
-              detail="Someone @mentions me in an internal note"
+              detail="Someone @mentions me in an internal note or in Team Chat"
               value={p.mentions}
               onChange={(v) => setPush("mentions", v)}
             />
@@ -279,8 +281,17 @@ export default function Settings() {
               detail="Any new message in my team's inboxes — noisy on a busy shift"
               value={p.teamInbound}
               onChange={(v) => setPush("teamInbound", v)}
-              last
+              last={!chatOn}
             />
+            {chatOn ? (
+              <Toggle
+                label="Team Chat messages"
+                detail="A new message in one of my team chats, groups or direct chats"
+                value={p.chatMessages}
+                onChange={(v) => setPush("chatMessages", v)}
+                last
+              />
+            ) : null}
           </>
         )}
       </View>

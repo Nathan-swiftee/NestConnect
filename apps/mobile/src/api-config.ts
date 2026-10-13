@@ -1,3 +1,4 @@
+import { AppState } from "react-native";
 import Constants from "expo-constants";
 import { configureClient } from "@ding/client";
 import { clearSession, sessionToken } from "./session";
@@ -77,6 +78,17 @@ export function configureMobileClient(): void {
     onSignedOut: () => {
       void clearSession();
       onSignedOut();
+    },
+    // In the foreground is looking: a phone has one screen, and the chat on
+    // it is the one being read.
+    attention: {
+      isLooking: () => AppState.currentState === "active",
+      onReturn: (cb) => {
+        const sub = AppState.addEventListener("change", (s) => {
+          if (s === "active") cb();
+        });
+        return () => sub.remove();
+      },
     },
   });
 }
