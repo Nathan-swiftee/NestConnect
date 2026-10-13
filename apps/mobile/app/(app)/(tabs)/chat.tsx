@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { FlatList, Text, TextInput, View } from "react-native";
+import { FlatList, ScrollView, Text, TextInput, View } from "react-native";
 import { router } from "expo-router";
 import {
   api,
@@ -18,12 +18,14 @@ import { ActionSheet, type SheetAction } from "../../../src/components/ActionShe
 import { ChatAvatar } from "../../../src/components/chat/ChatAvatar";
 import { NewChatSheet } from "../../../src/components/chat/ChatSheets";
 import { EmptyState, QueryState } from "../../../src/components/States";
+import { FilterChip } from "../../../src/components/FilterChip";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { HeaderButton, TabHeader } from "../../../src/components/TabHeader";
 import { useToast } from "../../../src/components/Toast";
 import { Touchable } from "../../../src/components/Touchable";
 import { BackIcon, ComposeIcon, EyeIcon, PinIcon, SearchIcon, SoundOffIcon, StarIcon } from "../../../src/icons";
 import { useInsets } from "../../../src/insets";
+import { haptics } from "../../../src/haptics";
 import { useTheme } from "../../../src/theme";
 
 type Filter = "all" | "unread" | "groups" | "direct";
@@ -93,11 +95,12 @@ export default function Chat() {
     ];
   }, [showStarred, starred.data, shown, term, found.data]);
 
-  const filters: Array<{ key: Filter; label: string }> = [
-    { key: "all", label: "All" },
-    { key: "unread", label: unreadChats ? `Unread ${unreadChats}` : "Unread" },
-    { key: "groups", label: "Groups" },
-    { key: "direct", label: "Direct" },
+  // Counted, as the Inbox's are: a filter that says how much is behind it.
+  const filters: Array<{ key: Filter; label: string; count: number }> = [
+    { key: "all", label: "All", count: all.length },
+    { key: "unread", label: "Unread", count: unreadChats },
+    { key: "groups", label: "Groups", count: all.filter((r) => r.kind !== "direct").length },
+    { key: "direct", label: "Direct", count: all.filter((r) => r.kind === "direct").length },
   ];
 
   const open = (r: ChatRoomSummary) => router.push({ pathname: "/(app)/chat/[id]", params: { id: r.id } });
@@ -164,7 +167,7 @@ export default function Chat() {
         </View>
       ) : null}
 
-      <View className="px-4 pb-2">
+      <View className="px-4 pb-3">
         <View style={{ backgroundColor: c.surface2 }} className="flex-row items-center gap-2 rounded-full px-3.5">
           <SearchIcon size={17} color={c.textFaint} />
           <TextInput
@@ -182,26 +185,27 @@ export default function Chat() {
         </View>
       </View>
 
-      <View className="flex-row gap-1.5 px-4 pb-2">
-        {filters.map((f) => {
-          const on = filter === f.key;
-          return (
-            <Touchable
-              key={f.key}
-              feel="chip"
-              onPress={() => setFilter(f.key)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: on }}
-              style={{ backgroundColor: on ? c.brandTint : c.surface2 }}
-              className="rounded-full px-3 py-1"
-            >
-              <Text style={{ color: on ? c.brandStrong : c.textMuted }} className="text-sm font-medium">
-                {f.label}
-              </Text>
-            </Touchable>
-          );
-        })}
-      </View>
+      {/* The Inbox's pills and the Inbox's row of them, so the two lists look
+          like one app. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+        className="flex-none pb-2.5"
+      >
+        {filters.map((f) => (
+          <FilterChip
+            key={f.key}
+            label={f.label}
+            count={f.count}
+            active={filter === f.key}
+            onPress={() => {
+              haptics.select();
+              setFilter(f.key);
+            }}
+          />
+        ))}
+      </ScrollView>
       </>
       )}
 
@@ -211,6 +215,10 @@ export default function Chat() {
         keyExtractor={(e) => e.key}
         keyboardDismissMode="on-drag"
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 + TAB_BAR_H }}
+        // The Inbox's dividers: between rows, starting past the avatar.
+        ItemSeparatorComponent={({ leadingItem }: { leadingItem?: Entry }) =>
+          leadingItem?.kind === "room" ? <View style={{ backgroundColor: c.border }} className="ml-[80px] h-px" /> : null
+        }
         renderItem={({ item }) =>
           item.kind === "label" ? (
             <Text style={{ color: c.wa }} className="px-4 pb-1 pt-3 text-2xs font-bold uppercase tracking-wide">
@@ -292,19 +300,21 @@ function Row({
       onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={`${r.name}${unread ? `, ${r.unread} unread` : ""}`}
-      className="flex-row items-center gap-3 px-4 py-2.5"
+      // The Inbox row's measurements — padding, avatar, name and time sizes —
+      // so switching between the two lists doesn't shift anything.
+      className="flex-row items-center gap-3 px-4 py-3"
     >
       <ChatAvatar room={r} size={52} />
-      <View style={{ borderBottomColor: c.border }} className="flex-1 border-b pb-2.5 pt-0.5">
+      <View className="flex-1 gap-1">
         <View className="flex-row items-center gap-2">
-          <Text numberOfLines={1} className="flex-1 text-lg font-semibold text-fg">
+          <Text numberOfLines={1} className={`flex-1 text-lg text-fg ${unread ? "font-semibold" : "font-medium"}`}>
             {r.name}
           </Text>
-          <Text style={{ color: unread ? c.wa : c.textFaint }} className={`text-2xs ${unread ? "font-semibold" : ""}`}>
+          <Text style={{ color: unread ? c.wa : c.textFaint }} className={`text-xs ${unread ? "font-semibold" : ""}`}>
             {chatListTime(r.lastActivityAt)}
           </Text>
         </View>
-        <View className="mt-0.5 flex-row items-center gap-1.5">
+        <View className="flex-row items-center gap-1.5">
           <Text
             numberOfLines={1}
             style={{ color: unread ? c.text : c.textMuted, fontStyle: r.lastMessage?.deletedAt ? "italic" : "normal" }}
