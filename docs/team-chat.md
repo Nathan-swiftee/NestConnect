@@ -84,6 +84,51 @@ chats."
   sent it says "Not sent · Retry".
 - Emoji-only messages of a few emoji show large, without a bubble.
 
+### Photos, files and voice notes
+
+- **Web:** the paperclip, paste an image into the box, or drop files anywhere
+  on the chat. They upload straight away and sit above the box until you send
+  (up to 10 in one message, with or without words). With nothing typed, the
+  green button is a microphone: click to record, then pause, delete or send.
+- **App:** the paperclip opens camera, photo library or file; hold the
+  microphone to record and let go to send — slide left to cancel, up to lock
+  it hands-free. The same recorder and pickers as the inbox, so nothing new
+  had to be installed (the app updates over the air).
+- Photos open full screen; a photo on its own fills its bubble with the time
+  over it. Voice notes play in the bubble with their waveform. The chat list
+  and pushes say "📷 Photo", "🎤 Voice message (0:12)", "📄 rota.pdf".
+- Files are the same uploads the inbox uses (`Attachment`, kept in the
+  workspace's storage). The server takes what a file is — its type, name and
+  address — from its own upload record, never from what the app sends, and
+  refuses an upload from another workspace. Within a workspace a file is
+  served to anyone signed in who has its (unguessable) address, as inbox
+  files are. Deleting a message for everyone takes its files off it.
+
+### Links
+
+The first link in a message gets a card under it — the page's title,
+description and site — fetched by the server just after the message is sent
+(the message doesn't wait for it, and the card arrives live). Links in the
+text are clickable. Because the server is the one fetching, it is careful
+about where (`apps/api/src/chat/link-preview.ts`): http(s) on the standard
+ports only, no passwords in the address, every address the name resolves to
+must be on the public internet (no localhost, private ranges, link-local and
+cloud-metadata, or their IPv6 forms) and the connection goes to that checked
+address; redirects are followed by hand (3 at most) and checked again; HTML
+only, 4 seconds and 256 KB at most. Anything else is just no card. Editing the
+link out takes the card away.
+
+### Search and stars
+
+- The search box above the chats also finds messages, in every chat you're in
+  (not ones you're only reading along in as an admin, and nothing from before
+  you joined a group), newest first. Choosing one opens the chat at that
+  message.
+- **Star** a message from its menu (long-press in the app) to keep it. The
+  star in the list's header shows yours, newest first; stars are private to
+  you, and a starred message from a chat you've since left, or that has been
+  deleted, drops out.
+
 ### Ticks
 
 Each person has a marker per chat: *read up to here* and *my app has up to
@@ -124,7 +169,8 @@ per person (`ChatPresence`) when their last tab or phone disconnects.
 - Tables: `ChatRoom` (kind, name, emoji, `teamId` for a team chat, `directKey`
   for a pair), `ChatMember` (role, joined, read and delivered markers, muted,
   pinned), `ChatMessage` (text or system, reply-to, reactions, mentions, edited,
-  deleted), `ChatAudit`, `ChatPresence`; and `Notification.chatRoomId`.
+  deleted, attachments, link card), `ChatStar` (person × message),
+  `ChatAudit`, `ChatPresence`; and `Notification.chatRoomId`.
   Tenant-scoped (`ChatRoom` directly, the rest through it).
 - A team chat's members come from the team at the moment of asking; its
   `ChatMember` rows only hold each person's markers and settings. Team chats are
@@ -148,12 +194,19 @@ per person (`ChatPresence`) when their last tab or phone disconnects.
 
 - `pnpm check:team-chat` — the switch, team chats following teams, groups and
   their admins, direct chats, replies/edits/deletes/reactions, ticks and unread
-  counts, who's told, admins reading along, pins, deleted teams.
+  counts, who's told, admins reading along, pins, deleted teams; files (only
+  this workspace's uploads, described by the server's record), voice notes,
+  link cards against a local page and the address checks that refuse
+  localhost, private networks, metadata, odd ports and inward redirects;
+  search; stars.
 - `pnpm check:team-chat-pg` — on Postgres: one workspace can't list, open, read,
   write, react to, quote or join another's chats, through the service or the
-  store; paging back; mention flags; a deleted team's chat; cascades.
+  store — nor star, search or send another's files; paging back; mention
+  flags; files and link cards kept; search; stars; a deleted team's chat;
+  cascades (stars included).
 - `apps/web/src/lib/chat-format.test.ts` — dates, runs, the unread line, ticks,
-  previews.
+  previews (photos, voice notes).
 - `apps/mobile/__tests__/team-chat.test.tsx` — the app's list (previews, counts,
-  mention flag, filters, opening) and bubbles (sender, quote, ticks, reactions,
-  deleted).
+  mention flag, filters, opening, photo and voice previews, message search)
+  and bubbles (sender, quote, ticks, reactions, deleted, files, link card,
+  star).

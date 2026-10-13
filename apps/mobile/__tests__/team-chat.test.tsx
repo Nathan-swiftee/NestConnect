@@ -11,10 +11,10 @@
  * these (ticks, previews, runs) are tested on their own in the web's
  * chat-format tests and on the server.
  */
-import { fireEvent, render } from "@testing-library/react-native";
+import { act, fireEvent, render } from "@testing-library/react-native";
 import type { ChatMember, ChatMessage, ChatRoomSummary } from "@ding/schemas";
 
-const mockState: { rooms: ChatRoomSummary[]; pushed: unknown[] } = { rooms: [], pushed: [] };
+const mockState: { rooms: ChatRoomSummary[]; pushed: unknown[]; hits: unknown[] } = { rooms: [], pushed: [], hits: [] };
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -37,6 +37,11 @@ jest.mock("../src/components/SwipeToReply", () => ({
   SwipeToReply: ({ children }: { children: unknown }) => children,
 }));
 jest.mock("../src/api-config", () => ({ mediaSource: (uri: string) => ({ uri }) }));
+// What's in the bubble is under test, not the photo viewer and audio player behind it.
+jest.mock("../src/components/Attachments", () => {
+  const { Text } = jest.requireActual("react-native");
+  return { Attachments: ({ items }: { items: Array<{ filename: string }> }) => items.map((a) => <Text key={a.filename}>{`file:${a.filename}`}</Text>) };
+});
 
 jest.mock("@ding/client", () => {
   const format = jest.requireActual("../../../packages/client/src/format");
@@ -51,6 +56,8 @@ jest.mock("@ding/client", () => {
     useChatStatus: () => ({ data: { enabled: true, canCreateGroups: false, canOversee: false, unread: 3 } }),
     useChatRooms: () => ({ data: mockState.rooms, isLoading: false, isError: false }),
     useChatMutation: () => ({ mutate: () => {}, isPending: false }),
+    useChatSearch: (q: string) => ({ data: q.length >= 2 ? mockState.hits : [] }),
+    useChatStarred: () => ({ data: [], isLoading: false, isError: false }),
   };
 });
 
@@ -108,6 +115,7 @@ const member = (id: string, read: string | null): ChatMember => ({
 beforeEach(() => {
   mockState.rooms = [];
   mockState.pushed = [];
+  mockState.hits = [];
 });
 
 describe("the list of chats", () => {
@@ -139,6 +147,31 @@ describe("the list of chats", () => {
     const view = render(<Chat />);
     fireEvent.press(view.getByLabelText("Dispatch London"));
     expect(mockState.pushed).toEqual([{ pathname: "/(app)/chat/[id]", params: { id: "r1" } }]);
+  });
+
+  it("says what a photo or voice note was, when it's the last message", () => {
+    const photo = { id: "a1", kind: "image" as const, mime: "image/jpeg", size: 1, filename: "van.jpg", url: "/api/media/a1" };
+    const note = { ...photo, id: "a2", kind: "voice" as const, filename: "v.m4a", durationMs: 9_000 };
+    mockState.rooms = [
+      room({ lastMessage: msg({ body: "", attachments: [photo] }) }),
+      room({ id: "r2", kind: "direct", name: "James", emoji: null, lastMessage: msg({ body: "", attachments: [note] }) }),
+    ];
+    const view = render(<Chat />);
+    expect(view.queryByText("Amara: 📷 Photo")).not.toBeNull();
+    expect(view.queryByText("🎤 Voice message (0:09)")).not.toBeNull();
+  });
+
+  it("searches messages as well as chats, and opens a hit at the message", () => {
+    jest.useFakeTimers();
+    mockState.rooms = [room({})];
+    mockState.hits = [{ roomId: "r1", roomName: "Dispatch London", roomKind: "group", message: msg({ id: "m9", body: "The van keys are in the drawer" }) }];
+    const view = render(<Chat />);
+    fireEvent.changeText(view.getByLabelText("Search chats and messages"), "van keys");
+    act(() => jest.advanceTimersByTime(300));
+    expect(view.queryByText("Messages")).not.toBeNull();
+    fireEvent.press(view.getByLabelText("Message in Dispatch London"));
+    expect(mockState.pushed).toEqual([{ pathname: "/(app)/chat/[id]", params: { id: "r1", mid: "m9" } }]);
+    jest.useRealTimers();
   });
 
   it("an agent isn't offered All chats", () => {
@@ -177,6 +210,24 @@ describe("a message", () => {
     expect(view.queryByLabelText("Read")).toBeNull();
     view = render(<ChatBubbleRow {...props} m={mine} mine group members={[member("me", null), member("a", later), member("b", later)]} />);
     expect(view.queryByLabelText("Read")).not.toBeNull();
+  });
+
+  it("carries its files, a card for its link, and a star", () => {
+    const photo = { id: "a1", kind: "image" as const, mime: "image/jpeg", size: 1, filename: "van.jpg", url: "/api/media/a1" };
+    const m = msg({ body: "Rota https://nest.example/rota", attachments: [photo], link: { url: "https://nest.example/rota", title: "Rota & shifts", description: "Who's on", siteName: "nest.example" } });
+    const view = render(<ChatBubbleRow {...props} m={m} mine={false} group={false} members={[]} starred />);
+    expect(view.queryByText("file:van.jpg")).not.toBeNull();
+    expect(view.queryByText("Rota & shifts")).not.toBeNull();
+    expect(view.queryByLabelText("Starred")).not.toBeNull();
+    const plain = render(<ChatBubbleRow {...props} m={msg({})} mine={false} group={false} members={[]} />);
+    expect(plain.queryByLabelText("Starred")).toBeNull();
+  });
+
+  it("a photo on its own has no empty line of text", () => {
+    const photo = { id: "a1", kind: "image" as const, mime: "image/jpeg", size: 1, filename: "van.jpg", url: "/api/media/a1" };
+    const view = render(<ChatBubbleRow {...props} m={msg({ body: "", attachments: [photo] })} mine={false} group={false} members={[]} />);
+    expect(view.toJSON()).toBeTruthy();
+    expect(view.queryByText("file:van.jpg")).not.toBeNull();
   });
 
   it("shows reactions, and a deleted message as deleted", () => {
