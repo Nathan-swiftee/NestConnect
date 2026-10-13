@@ -5,6 +5,7 @@ import { relativeTime, useOpsLibrary, useOpsStatus, useTeams } from "@ding/clien
 import type { OpsFilter, OpsSopCard } from "@ding/schemas";
 import { opsCardMatches, sortOpsCards } from "@ding/schemas";
 import { OpsChip, OpsTile, SopFlags, teamsLabel } from "../../../src/components/OpsParts";
+import { TabHeader } from "../../../src/components/TabHeader";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { Touchable } from "../../../src/components/Touchable";
@@ -51,12 +52,7 @@ export default function Ops() {
 
   return (
     <View style={{ backgroundColor: c.bg, paddingTop: insets.top }} className="flex-1">
-      <View className="px-4 pb-2 pt-2">
-        <Text accessibilityRole="header" className="text-2xl font-semibold tracking-tight text-fg">
-          Business Ops
-        </Text>
-        <Text className="text-sm text-muted">How we do things — always the latest version</Text>
-      </View>
+      <TabHeader title="Business Ops" subtitle="How we do things — always the latest version" />
 
       <View className="px-4 pb-2">
         <View style={{ backgroundColor: c.surface2 }} className="flex-row items-center gap-2 rounded-full px-3.5">

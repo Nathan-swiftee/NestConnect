@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { relativeTime, useAccounts, useContact, useContacts } from "@ding/client";
 import type { AccountListItem, AccountStatus, Contact } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
+import { TabHeader } from "../../../src/components/TabHeader";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { ChannelDot } from "../../../src/components/ChannelDot";
 import { EmptyState, QueryState } from "../../../src/components/States";
@@ -71,17 +72,14 @@ export default function Customers() {
         importantForAccessibility={stack.length || creating ? "no-hide-descendants" : "auto"}
         accessibilityElementsHidden={stack.length > 0 || creating}
       >
-      <View className="flex-row items-end px-4 pb-2 pt-2">
-        <View className="flex-1">
-          <Text accessibilityRole="header" className="text-2xl font-semibold tracking-tight text-fg">
-            Customers
-          </Text>
-          <Text className="text-sm text-muted">
-            {mode === "people"
-              ? data ? `${data.length} in the directory` : ""
-              : orgs.data && !q ? `${orgs.data.length} ${orgs.data.length === 1 ? "organisation" : "organisations"}` : ""}
-          </Text>
-        </View>
+      <TabHeader
+        title="Customers"
+        subtitle={
+          mode === "people"
+            ? data ? `${data.length} in the directory` : ""
+            : orgs.data && !q ? `${orgs.data.length} ${orgs.data.length === 1 ? "organisation" : "organisations"}` : ""
+        }
+      >
         {mode === "orgs" ? (
           <Touchable feel="chip"
             onPress={() => setCreating(true)}
@@ -94,7 +92,7 @@ export default function Customers() {
             <Text className="text-md font-semibold text-white">New</Text>
           </Touchable>
         ) : null}
-      </View>
+      </TabHeader>
 
       <View style={{ backgroundColor: c.surface2 }} className="mx-4 mb-2 flex-row rounded-full p-1" accessibilityRole="tablist">
         {(["people", "orgs"] as const).map((m) => (

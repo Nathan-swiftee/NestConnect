@@ -19,6 +19,7 @@ import { ChatAvatar } from "../../../src/components/chat/ChatAvatar";
 import { NewChatSheet } from "../../../src/components/chat/ChatSheets";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
+import { HeaderButton, TabHeader } from "../../../src/components/TabHeader";
 import { useToast } from "../../../src/components/Toast";
 import { Touchable } from "../../../src/components/Touchable";
 import { BackIcon, ComposeIcon, EyeIcon, PinIcon, SearchIcon, SoundOffIcon, StarIcon } from "../../../src/icons";
@@ -133,49 +134,27 @@ export default function Chat() {
         </View>
       ) : (
       <>
-      <View className="flex-row items-center px-4 pb-2 pt-2">
-        <Text accessibilityRole="header" className="flex-1 text-2xl font-semibold tracking-tight text-fg">
-          {oversee ? "All chats" : "Chats"}
-        </Text>
-        <Touchable
-          feel="chip"
-          borderless
-          onPress={() => setShowStarred(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Starred messages"
-          hitSlop={8}
-          className="mr-1 h-10 w-10 items-center justify-center rounded-full"
-        >
-          <StarIcon size={20} color={c.textMuted} />
-        </Touchable>
+      <TabHeader
+        title={oversee ? "All chats" : "Chats"}
+        subtitle={
+          oversee
+            ? "Every chat in the workspace"
+            : status.data?.unread
+              ? `${status.data.unread} unread`
+              : "Your team, in one place"
+        }
+      >
+        <HeaderButton label="Starred messages" icon={(p) => <StarIcon {...p} />} onPress={() => setShowStarred(true)} />
         {status.data?.canOversee ? (
-          <Touchable
-            feel="chip"
-            borderless
+          <HeaderButton
+            label={oversee ? "Back to my chats" : "All chats in the workspace"}
+            icon={(p) => <EyeIcon {...p} />}
+            selected={oversee}
             onPress={() => setOversee((v) => !v)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: oversee }}
-            accessibilityLabel={oversee ? "Back to my chats" : "All chats in the workspace"}
-            hitSlop={8}
-            style={{ backgroundColor: oversee ? c.brandTint : "transparent" }}
-            className="mr-1 h-10 w-10 items-center justify-center rounded-full"
-          >
-            <EyeIcon size={20} color={oversee ? c.brandStrong : c.textMuted} />
-          </Touchable>
+          />
         ) : null}
-        <Touchable
-          feel="chip"
-          borderless
-          onPress={() => setNewOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel="New chat"
-          hitSlop={8}
-          style={{ backgroundColor: c.wa }}
-          className="h-10 w-10 items-center justify-center rounded-full"
-        >
-          <ComposeIcon size={19} color="#fff" />
-        </Touchable>
-      </View>
+        <HeaderButton label="New chat" icon={(p) => <ComposeIcon {...p} />} fill={c.wa} onPress={() => setNewOpen(true)} />
+      </TabHeader>
 
       {oversee ? (
         <View style={{ backgroundColor: c.amberTint }} className="mx-4 mb-2 rounded-12 px-3 py-2">
