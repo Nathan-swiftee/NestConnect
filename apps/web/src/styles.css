@@ -4157,6 +4157,15 @@ button.tc-card:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
 .tc-msg.in .tc-tools{right:-8px;transform:translateX(100%)}
 .tc-msg.out .tc-tools{left:-8px;transform:translateX(-100%)}
 .tc-msg:hover .tc-tools,.tc-tools.open,.tc-tools:focus-within{opacity:1;pointer-events:auto}
+/* The inbox's trick (see .bubblewrap::after): an always-there, invisible strip
+   in the gutter beside the message, tall enough to reach the toolbar above its
+   corner. The pointer crosses it on the way from the bubble to the toolbar, so
+   the message stays hovered and the toolbar stays put long enough to click. */
+.tc-msg.in::after{content:"";position:absolute;top:-16px;bottom:0;left:100%;width:120px}
+.tc-msg.out::after{content:"";position:absolute;top:-16px;bottom:0;right:100%;width:120px}
+@media (hover:none){.tc-msg::after{display:none}}
+/* …and the same across the gap between the toolbar and what it opens. */
+.tc-reactpop::before,.menu.tc-moremenu::before{content:"";position:absolute;left:0;right:0;top:-10px;height:10px}
 .tc-tools>button{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:var(--text-muted)}
 .tc-tools>button:hover{background:var(--hover);color:var(--text)}
 .tc-tools>button svg{width:15px;height:15px}

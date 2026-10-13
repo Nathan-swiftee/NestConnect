@@ -11,7 +11,7 @@ import {
   useMediaQuery,
   usePeople,
 } from "../../hooks";
-import { BackIcon, ComposeIcon, EyeIcon, SearchIcon, SoundOffIcon, StarIcon, TeamChatIcon, XIcon } from "../../lib/icons";
+import { BackIcon, ComposeIcon, EyeIcon, PinIcon, SearchIcon, SoundOffIcon, StarIcon, TeamChatIcon, XIcon } from "../../lib/icons";
 import { ChatConversation } from "./ChatConversation";
 import { NewChatDialog } from "./ChatDialogs";
 import { RoomAvatar } from "./RoomAvatar";
@@ -273,6 +273,11 @@ function ChatRow({
           {r.muted && (
             <span className="tc-row__muted" title="Muted" aria-label="Muted">
               <SoundOffIcon />
+            </span>
+          )}
+          {r.pinned && (
+            <span className="tc-row__muted tc-row__pin" title="Pinned" aria-label="Pinned">
+              <PinIcon />
             </span>
           )}
           {r.mentioned && r.unread > 0 && (

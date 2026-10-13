@@ -21,7 +21,7 @@ import { EmptyState, QueryState } from "../../../src/components/States";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { useToast } from "../../../src/components/Toast";
 import { Touchable } from "../../../src/components/Touchable";
-import { BackIcon, ComposeIcon, EyeIcon, SearchIcon, SoundOffIcon, StarIcon } from "../../../src/icons";
+import { BackIcon, ComposeIcon, EyeIcon, PinIcon, SearchIcon, SoundOffIcon, StarIcon } from "../../../src/icons";
 import { useInsets } from "../../../src/insets";
 import { useTheme } from "../../../src/theme";
 
@@ -334,6 +334,11 @@ function Row({
             {preview || (r.kind === "team" ? "Your team's chat" : r.archived ? "Archived" : "")}
           </Text>
           {r.muted ? <SoundOffIcon size={14} color={c.textFaint} /> : null}
+          {r.pinned ? (
+            <View accessibilityLabel="Pinned">
+              <PinIcon size={14} color={c.textFaint} />
+            </View>
+          ) : null}
           {r.mentioned && unread ? (
             <View style={{ backgroundColor: c.wa }} className="h-5 w-5 items-center justify-center rounded-full">
               <Text className="text-2xs font-bold text-white">@</Text>

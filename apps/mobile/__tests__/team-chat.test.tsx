@@ -138,6 +138,12 @@ describe("the list of chats", () => {
     expect(view.queryByLabelText("Online")).not.toBeNull();
   });
 
+  it("a pinned chat shows its pin", () => {
+    mockState.rooms = [room({ pinned: true }), room({ id: "r2", name: "Quiet group" })];
+    const view = render(<Chat />);
+    expect(view.getAllByLabelText("Pinned")).toHaveLength(1);
+  });
+
   it("filters to unread", () => {
     mockState.rooms = [room({ unread: 2 }), room({ id: "r2", name: "Quiet group", unread: 0 })];
     const view = render(<Chat />);
