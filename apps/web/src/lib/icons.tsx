@@ -52,6 +52,8 @@ export const InboxIcon = g(icons.inbox);
 export const ContactsIcon = g(icons.contacts);
 export const InsightsIcon = g(icons.insights);
 export const OrganisationsIcon = g(icons.organisations);
+/** Clipboard of ticked lines — Business Ops. */
+export const OpsIcon = g(icons.ops);
 export const SettingsIcon = g(icons.settings);
 /** Moon — shown in light mode (click to go dark). */
 export const ThemeIcon = g(icons.theme);
@@ -114,6 +116,9 @@ export const EditIcon = g(icons.edit);
 export const TrashIcon = g(icons.trash);
 export const DocIcon = g(icons.doc);
 export const LinkIcon = g(icons.link);
+export const PrintIcon = g(icons.print);
+export const HistoryIcon = g(icons.history);
+export const GripIcon = g(icons.grip);
 export const SoundOnIcon = g(icons.soundOn);
 export const SoundOffIcon = g(icons.soundOff);
 export const PlayIcon = g(icons.play);

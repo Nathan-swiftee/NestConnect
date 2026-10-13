@@ -313,3 +313,49 @@ export function describeOpsChanges(before: OpsContent | null, after: OpsContent)
   if (before.body !== after.body) out.push("Details edited");
   return out;
 }
+
+/** Emoji offered for an SOP or collection. Anything else can be typed. */
+export const OPS_ICONS = [
+  "📘", "📗", "📕", "📙", "📋", "✅", "🛠️", "🚨", "🔥", "🧯", "⚠️", "🛡️",
+  "🏭", "📦", "🚚", "🧾", "💳", "💷", "🛒", "🏬", "🍽️", "☕", "🧹", "♻️",
+  "🔐", "🔑", "🖥️", "📞", "✉️", "💬", "👥", "🧑‍💼", "🗓️", "⏰", "📈", "🎓",
+] as const;
+
+/** The library's quick filters. Drafts, reviews and archived are for editors. */
+export const OPS_FILTERS = ["all", "must_read", "review", "drafts", "archived"] as const;
+export type OpsFilter = (typeof OPS_FILTERS)[number];
+
+/**
+ * Whether a card belongs under a filter. "All" is what's live: published (and,
+ * for an editor, drafts too) — archived only shows when asked for.
+ */
+export function opsCardMatches(card: OpsSopCard, filter: OpsFilter, collectionId?: string | null): boolean {
+  if (collectionId && card.collectionId !== collectionId) return false;
+  switch (filter) {
+    case "all":
+      return card.status !== "archived";
+    case "must_read":
+      return card.mustRead && card.status === "published";
+    case "review":
+      return card.reviewOverdue;
+    case "drafts":
+      return card.status === "draft";
+    case "archived":
+      return card.status === "archived";
+  }
+}
+
+/** Must-reads waiting for me first, then by title. */
+export function sortOpsCards<T extends OpsSopCard>(cards: T[]): T[] {
+  return [...cards].sort(
+    (a, b) =>
+      Number(b.needsMyAck) - Number(a.needsMyAck) ||
+      a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" }),
+  );
+}
+
+/** "Step 3 of 7" progress for a checklist. */
+export function opsProgress(stepCount: number, done: number[]): { done: number; total: number; pct: number } {
+  const n = new Set(done.filter((i) => i >= 0 && i < stepCount)).size;
+  return { done: n, total: stepCount, pct: stepCount ? Math.round((n / stepCount) * 100) : 0 };
+}

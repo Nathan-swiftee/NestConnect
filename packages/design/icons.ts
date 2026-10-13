@@ -83,6 +83,13 @@ export const icons = {
       "M7.6 7.6h.01M11.4 7.6h.01M7.6 11.2h.01M11.4 11.2h.01M7.6 14.8h.01M11.4 14.8h.01" +
       "M8.8 20.5v-2.6h1.4v2.6",
   },
+  /** A clipboard of ticked lines — Business Ops, the workspace's own procedures. */
+  ops: {
+    d:
+      box(4.8, 4.4, 14.4, 16.4, 2.4) +
+      "M9 4.4V3.8a1.2 1.2 0 0 1 1.2-1.2h3.6A1.2 1.2 0 0 1 15 3.8v.6a1.2 1.2 0 0 1-1.2 1.2h-3.6A1.2 1.2 0 0 1 9 4.4Z" +
+      "M8.4 10.6l1.2 1.2 2.1-2.2M13.8 10.8h2.2M8.4 15.6l1.2 1.2 2.1-2.2M13.8 15.8h2.2",
+  },
   /** Three bars. Round caps turn them into pills, which is the whole point. */
   insights: { d: "M6 19.6v-6.2M12 19.6V5.4M18 19.6v-9.4" },
   /**
@@ -199,6 +206,18 @@ export const icons = {
   /** A speech bubble with a slash through it — a saved reply typed as "/shortcut". */
   macro: {
     d: "M6 4.4h12a2.2 2.2 0 0 1 2.2 2.2v8.2a2.2 2.2 0 0 1-2.2 2.2h-7.6l-3.9 3.1a.7.7 0 0 1-1.14-.55V17H6a2.2 2.2 0 0 1-2.2-2.2V6.6A2.2 2.2 0 0 1 6 4.4ZM13.4 7.6l-2.8 6",
+  },
+  /** A printer: paper in, paper out. */
+  print: {
+    d: "M7.2 8.4V3.8h9.6v4.6M7.2 16.6H5.4a1.8 1.8 0 0 1-1.8-1.8v-4.6a1.8 1.8 0 0 1 1.8-1.8h13.2a1.8 1.8 0 0 1 1.8 1.8v4.6a1.8 1.8 0 0 1-1.8 1.8h-1.8M7.2 13.6h9.6v6.6H7.2Z",
+  },
+  /** A clock with its arrow running back — earlier versions. */
+  history: {
+    d: "M3.8 12a8.2 8.2 0 1 0 2.4-5.8M3.8 3.8v3.6h3.6M12 7.8V12l2.8 1.8",
+  },
+  /** Six dots — something you can pick up and drag. */
+  grip: {
+    fill: [6.2, 12, 17.8].map((y) => circle(9, y, 1.3) + circle(15, y, 1.3)).join(""),
   },
   /** Two overlapping sheets — duplicate. */
   copy: { d: box(8.6, 8.6, 11.6, 11.6, 2.2) + "M15.4 8.6V6a2.2 2.2 0 0 0-2.2-2.2H6A2.2 2.2 0 0 0 3.8 6v7.2a2.2 2.2 0 0 0 2.2 2.2h2.6" },

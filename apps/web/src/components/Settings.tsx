@@ -10,6 +10,7 @@ import {
 import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
 import { MacrosPane } from "./MacrosPane";
+import { OpsModulesPane } from "./ops/OpsModulesPane";
 import { ChannelSignature, signatureDraftFor, signatureInput, type SignatureDraft } from "./ChannelSignature";
 import type {
   ChannelType,
@@ -142,6 +143,7 @@ type Leaf =
   | "people"
   | "labels"
   | "fields"
+  | "modules"
   | "connections"
   | "storage"
   | "email"
@@ -189,6 +191,7 @@ const NAV: NavSection[] = [
       { key: "people", label: "People" },
       { key: "labels", label: "Labels" },
       { key: "fields", label: "Custom fields" },
+      { key: "modules", label: "Modules" },
     ],
   },
   {
@@ -318,6 +321,7 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "people" && <PeoplePane onToast={onToast} />}
             {active === "labels" && <LabelsPane onToast={onToast} />}
             {active === "fields" && <CustomFieldsPane onToast={onToast} />}
+            {active === "modules" && <OpsModulesPane onToast={onToast} />}
             {(active === "connections" ||
               active === "storage" ||
               active === "email" ||
