@@ -4,11 +4,15 @@ import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-au
 import type { Attachment } from "@ding/schemas";
 import { formatDuration } from "@ding/client";
 import { mediaSource } from "../api-config";
-import { PauseIcon, PlayIcon } from "../icons";
+import { playableUrl } from "../audio-url";
+import { AlertIcon, PauseIcon, PlayIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Touchable } from "./Touchable";
 
 const BARS = 34;
+
+/** How long a clip may take to load before it's called a failure, not slow. */
+const LOAD_GIVE_UP_MS = 15_000;
 
 /**
  * A voice note or audio file, played where it sits.
@@ -37,7 +41,9 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
    * somebody's data. A null source costs nothing; the tap arms it.
    */
   const [armed, setArmed] = useState(false);
-  const player = useAudioPlayer(armed ? mediaSource(att.url) : null);
+  /** It never loaded: say so, rather than spinning for ever. A tap tries again. */
+  const [failed, setFailed] = useState(false);
+  const player = useAudioPlayer(armed ? mediaSource(playableUrl(att)) : null);
   const status = useAudioPlayerStatus(player);
   const [width, setWidth] = useState(0);
   // Set once, the first time anything plays: the recorder leaves the session in
@@ -74,6 +80,16 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
   const tint = mine ? c.brandStrong : c.brand;
   const loading = armed && !status.isLoaded;
 
+  useEffect(() => {
+    if (!loading) return;
+    const t = setTimeout(() => {
+      autoplay.current = false;
+      setArmed(false);
+      setFailed(true);
+    }, LOAD_GIVE_UP_MS);
+    return () => clearTimeout(t);
+  }, [loading]);
+
   async function toggle() {
     if (!modeSet.current) {
       modeSet.current = true;
@@ -81,6 +97,7 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
     }
     if (!armed) {
       autoplay.current = true;
+      setFailed(false);
       setArmed(true);
       return;
     }
@@ -106,7 +123,9 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
       <Touchable feel="chip"
         onPress={() => void toggle()}
         accessibilityRole="button"
-        accessibilityLabel={loading ? "Loading voice message" : status.playing ? "Pause" : "Play voice message"}
+        accessibilityLabel={
+          loading ? "Loading voice message" : failed ? "Couldn't play this voice message. Try again" : status.playing ? "Pause" : "Play voice message"
+        }
         hitSlop={6}
         style={{ backgroundColor: tint }}
         className="h-9 w-9 items-center justify-center rounded-full"
@@ -115,6 +134,8 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
           // Between the tap and the first byte. Without it the button looks
           // pressed and dead for as long as the clip takes to reach the phone.
           <ActivityIndicator size="small" color="#fff" />
+        ) : failed ? (
+          <AlertIcon size={16} color="#fff" />
         ) : status.playing ? (
           <PauseIcon size={16} color="#fff" />
         ) : (
@@ -127,13 +148,17 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
 
       <Pressable
         onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-        onPress={(e) => scrub(e.nativeEvent.locationX)}
+        onPress={(e) => (failed ? void toggle() : scrub(e.nativeEvent.locationX))}
         accessibilityRole="adjustable"
         accessibilityLabel="Seek"
         hitSlop={{ top: 10, bottom: 10 }}
         className="h-6 flex-1 justify-center"
       >
-        {peaks ? (
+        {failed ? (
+          <Text style={{ color: c.danger }} className="text-xs font-medium">
+            Couldn't play this — tap to try again
+          </Text>
+        ) : peaks ? (
           <View className="h-6 flex-row items-center gap-[2px]">
             {peaks.map((p, i) => (
               <View

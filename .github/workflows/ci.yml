@@ -241,6 +241,14 @@ jobs:
       - name: Website chat away reply
         run: pnpm check:nestchat-away
 
+      # Voice notes an iPhone can play: a browser's WebM/Ogg recording gets an
+      # AAC copy, made once with ffmpeg (as in the production image).
+      - name: Phone-playable voice notes
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
+          pnpm check:phone-audio
+
       # Email signatures: each email channel's design, filled in per sender —
       # a missing position drops its line, and an email signs as the mailbox it
       # really leaves from.

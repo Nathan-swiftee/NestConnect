@@ -3687,3 +3687,14 @@ export * from "./recipients";
 export * from "./ops";
 export * from "./conversation-log";
 export * from "./chat";
+
+/**
+ * Audio an iPhone can't play as recorded: Opus in WebM (Chrome, Edge) or Ogg
+ * (Firefox), which is what a browser's recorder makes. The phone app asks the
+ * server for an AAC copy of these (`/media/:id?as=m4a`); desktop browsers and
+ * WhatsApp keep the original.
+ */
+export function needsPhoneAudio(mime: string | null | undefined): boolean {
+  const base = (mime ?? "").split(";")[0]!.trim().toLowerCase();
+  return base === "audio/webm" || base === "video/webm" || base === "audio/ogg" || base === "audio/opus";
+}
