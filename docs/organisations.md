@@ -83,6 +83,33 @@ which organisation to show:
 Only **active** SOPs are presented as how things are done. Drafts and archived
 SOPs appear on the profile, clearly labelled, and never in the inbox.
 
+## Routing
+
+An organisation can say where its people's new chats go: a **team**, and
+optionally a **person** on it. Set on the Overview tab's Routing card (web) or
+the organisation screen (app); admins and managers only. The person must be on
+the team. Deleting the team clears it.
+
+Where a new conversation lands, in order (`channels/routing.service.ts`):
+
+1. A team the customer picked from a live-chat menu.
+2. The contact's own routing — team and/or person. If a contact has any routing
+   of their own, their organisation's doesn't apply to them.
+3. **Their organisation's routing.** Which organisation: the one they're in, or —
+   if they're in several — the only one of those that routes. Two that route is
+   a choice we won't guess (`routingAccount` in `packages/schemas/src/accounts.ts`,
+   the same "don't guess" rule the inbox uses), so it falls through. Archived
+   organisations don't route.
+4. The channel's own team and strategy.
+
+The organisation's person gets the chat while they're available and still on
+the team; otherwise the team takes it by the channel's strategy (queue or
+rotation). A menu choice keeps the organisation's person if they're on the team
+that was picked. The Routing card says how many of its people follow it, how
+many have routing of their own, and how many are in several organisations that
+route. A contact with no routing of their own shows what "Automatic" means for
+them ("Follows Acme Ltd: Sales team · Amara").
+
 ## The old Company field
 
 Organisations replace the free-text **Company** field on contacts.
@@ -200,7 +227,8 @@ PUT    /accounts/conversation/:conversationId  { accountId | null }
 | Check | Covers |
 | --- | --- |
 | `pnpm check:organisations` | The acceptance scenarios (new customer, three contacts, incoming message, handover, a contact at two companies, updated instructions), plus permissions, duplicates, archiving, search and the sanitiser. In-memory. Runs in CI. |
-| `pnpm check:organisations-pg` | On real Postgres. A second workspace can't reach the first's organisations, knowledge, uploads or conversations, and SOP revisions, contact merge and contact delete behave. Runs in CI's tenant-isolation step. |
+| `pnpm check:org-routing` | Organisation routing: who can set it, the order against a contact's own routing, a menu choice and the channel, the person away, and which organisation decides (one, the only routed one, never a guess; archived and deleted teams don't route). In-memory. Runs in CI. |
+| `pnpm check:organisations-pg` | On real Postgres. A second workspace can't reach the first's organisations, knowledge, uploads or conversations, and SOP revisions, contact merge and contact delete behave. Routing can't point at another workspace's team or person, and deleting a team clears it. Runs in CI's tenant-isolation step. |
 
 ## Not built (by design)
 

@@ -47,6 +47,8 @@ function mapAccount(r: AccountRecord): AccountRow {
     status: r.status as AccountStatus,
     tags: r.tags,
     ownerUserId: r.ownerUserId,
+    routeTeamId: r.routeTeamId,
+    routeUserId: r.routeUserId,
     phone: r.phone,
     email: r.email,
     website: r.website,

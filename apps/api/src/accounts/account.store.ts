@@ -37,6 +37,8 @@ export interface AccountRow {
   status: AccountStatus;
   tags: string[];
   ownerUserId: string | null;
+  routeTeamId: string | null;
+  routeUserId: string | null;
   phone: string | null;
   email: string | null;
   website: string | null;

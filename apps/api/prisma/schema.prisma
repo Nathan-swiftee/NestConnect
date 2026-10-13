@@ -223,6 +223,7 @@ model User {
   notifications Notification[]
   opsAcks       OpsAck[]
   opsChecklists OpsChecklist[]
+  routedAccounts Account[]    @relation("AccountRouteUser")
   sessions    Session[]
   devices     Device[]
   recoveryCodes RecoveryCode[]
@@ -331,6 +332,7 @@ model Team {
   conversations Conversation[] @relation("assignedTeam")
   macros        MacroTeam[]
   opsSops       OpsSopTeam[]
+  routedAccounts Account[]   @relation("AccountRouteTeam")
 
   @@index([orgId])
 }
@@ -833,6 +835,10 @@ model Account {
   status        AccountStatus @default(active)
   tags          String[]      @default([])
   ownerUserId   String?
+  /// Where this organisation's people's new chats go, unless a contact has
+  /// routing of their own. See docs/organisations.md › Routing.
+  routeTeamId   String?
+  routeUserId   String?
   phone         String?
   email         String?
   website       String?
@@ -846,6 +852,8 @@ model Account {
   updatedByName String?
 
   org           Organization      @relation(fields: [orgId], references: [id])
+  routeTeam     Team?             @relation("AccountRouteTeam", fields: [routeTeamId], references: [id], onDelete: SetNull)
+  routeUser     User?             @relation("AccountRouteUser", fields: [routeUserId], references: [id], onDelete: SetNull)
   contacts      AccountContact[]
   alerts        AccountAlert[]
   sops          AccountSop[]

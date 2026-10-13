@@ -3,6 +3,7 @@ import {
   relativeTime,
   slaCountdown,
   useContact,
+  useContactAccounts,
   useContacts,
   usePeople,
   usePushPreferences,
@@ -12,6 +13,7 @@ import {
   windowLeft,
 } from "@ding/client";
 import type { ConversationWithMessages } from "@ding/schemas";
+import { routingAccount } from "@ding/schemas";
 import { Avatar } from "./Avatar";
 import { ChannelDot } from "./ChannelDot";
 import { ContactEditor } from "./ContactEditor";
@@ -69,6 +71,16 @@ export function DetailsPanel({
   const tags = contact?.tags ?? conv.contact.tags ?? [];
   const ownerTeamId = contact?.ownerTeamId ?? null;
   const ownerUserId = contact?.ownerUserId ?? null;
+  // What "Automatic" means for them: their organisation's routing, when one decides.
+  const { data: orgs } = useContactAccounts(visible ? conv.contact.id : null);
+  const inherited = (() => {
+    const { account, ambiguous } = routingAccount((orgs ?? []).map((o) => o.account));
+    if (ambiguous) return "In several organisations that route — the channel decides";
+    if (!account) return null;
+    const team = (teams ?? []).find((t) => t.id === account.routeTeamId)?.name ?? "its team";
+    const who = account.routeUserId ? (people ?? []).find((p) => p.user.id === account.routeUserId)?.user.name : null;
+    return `Follows ${account.name}: ${team}${who ? ` · ${who}` : ""}`;
+  })();
   const saving = updateContact.isPending;
   const edit = (input: Parameters<typeof updateContact.mutate>[0]["input"]) =>
     updateContact.mutate({ id: conv.contact.id, input });
@@ -221,7 +233,7 @@ export function DetailsPanel({
                 <Card>
                   <RouteRow
                     label="Automatic"
-                    detail="Follow the channel's own routing"
+                    detail={inherited ?? "Follow the channel's own routing"}
                     selected={!ownerTeamId && !ownerUserId}
                     disabled={saving || !contact}
                     onPress={() => edit({ ownerTeamId: null, ownerUserId: null })}

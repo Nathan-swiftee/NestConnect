@@ -22,6 +22,7 @@ import { Avatar } from "../Avatar";
 import { KnowledgeView } from "./KnowledgeEditor";
 import { AccountFormModal, ContactRoleModal, LinkContactModal, NoteModal, ResourceModal, SopEditorModal } from "./forms";
 import { PRIORITY_LABEL, ResourceLink, SopReader, StatusPill, STATUS_LABEL } from "./shared";
+import { RoutingCard } from "./Routing";
 
 type Tab = "overview" | "contacts" | "knowledge" | "resources" | "activity";
 
@@ -325,6 +326,7 @@ function OverviewTab({ d, readOnly, onToast, onTab }: { d: AccountDetail; readOn
             {a.address && (<><dt>Address</dt><dd className="org-pre">{a.address}</dd></>)}
           </dl>
         </section>
+        <RoutingCard d={d} readOnly={readOnly} onToast={onToast} />
         <section className="org-card">
           <h3>At a glance</h3>
           <dl className="org-dl">

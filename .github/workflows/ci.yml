@@ -209,6 +209,12 @@ jobs:
       # Macros: who may write them, and which a conversation is offered — its
       # team inbox's (the assigned team, or its channel's teams before anyone
       # has it) plus the ones every team gets.
+      # Organisation routing: its people's new chats go to its team (and person),
+      # under a contact's own routing and above the channel's; never a guess
+      # between two organisations.
+      - name: Organisation routing
+        run: pnpm check:org-routing
+
       - name: Macros
         run: pnpm check:macros
 

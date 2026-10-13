@@ -74,6 +74,9 @@ export const accountSchema = z.object({
   tags: z.array(z.string()),
   ownerUserId: z.string().nullable(),
   ownerName: z.string().nullable(),
+  /** Where its people's new chats go, unless a contact has routing of their own. */
+  routeTeamId: z.string().nullable(),
+  routeUserId: z.string().nullable(),
   phone: z.string().nullable(),
   email: z.string().nullable(),
   website: z.string().nullable(),
@@ -98,6 +101,8 @@ export const accountListItemSchema = accountSchema
     tags: true,
     ownerUserId: true,
     ownerName: true,
+    routeTeamId: true,
+    routeUserId: true,
     archivedAt: true,
     updatedAt: true,
   })
@@ -229,6 +234,14 @@ export const accountDetailSchema = z.object({
   sops: z.array(accountSopSchema),
   notes: z.array(accountNoteSchema),
   resources: z.array(accountResourceSchema),
+  /** Who its routing reaches: its people whose chats it decides, those with
+   *  routing of their own (which wins), and those in several organisations
+   *  where it isn't clear which one routes. */
+  routing: z.object({
+    appliesTo: z.number().int(),
+    ownRouting: z.number().int(),
+    unclear: z.number().int(),
+  }),
 });
 export type AccountDetail = z.infer<typeof accountDetailSchema>;
 
@@ -386,4 +399,40 @@ export function accountNameKey(name: string): string {
     .replace(/\b(ltd|limited|plc|llp|llc|inc|incorporated|co|company|corp|corporation|gmbh|the)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/* ---- routing ---- */
+
+/** Set an organisation's routing. Team required to route; person optional. */
+export const accountRoutingInputSchema = z.object({
+  teamId: z.string().min(1).nullable(),
+  userId: z.string().min(1).nullable(),
+});
+export type AccountRoutingInput = z.infer<typeof accountRoutingInputSchema>;
+
+interface RoutableAccount {
+  id: string;
+  name: string;
+  routeTeamId: string | null;
+  routeUserId?: string | null;
+  archivedAt?: string | null;
+}
+
+/**
+ * Which of a contact's organisations decides where their new chats go — the
+ * same "don't guess" rule the inbox uses for which organisation a chat is
+ * about:
+ *
+ *   - one organisation (not archived): that one;
+ *   - several: the one that has routing set, if only one does;
+ *   - otherwise none, and `ambiguous` says it was a choice we wouldn't make.
+ *
+ * `account` is returned only when it actually routes (has a team).
+ */
+export function routingAccount<T extends RoutableAccount>(accounts: T[]): { account: T | null; ambiguous: boolean } {
+  const live = accounts.filter((a) => !a.archivedAt);
+  if (live.length === 1) return { account: live[0]!.routeTeamId ? live[0]! : null, ambiguous: false };
+  const routed = live.filter((a) => a.routeTeamId);
+  if (routed.length === 1) return { account: routed[0]!, ambiguous: false };
+  return { account: null, ambiguous: routed.length > 1 };
 }

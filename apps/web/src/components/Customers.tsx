@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import type { ChannelType, Contact, ContactDuplicateGroup, Team } from "@ding/schemas";
+import type { ChannelType, Contact, ContactAccount, ContactDuplicateGroup, Team } from "@ding/schemas";
+import { routingAccount } from "@ding/schemas";
 import {
   useContact,
   useContacts,
@@ -10,6 +11,7 @@ import {
   usePeople,
   useTeams,
   useUpdateContact,
+  useContactAccounts,
 } from "../hooks";
 import { relativeTime } from "../lib/format";
 import { filterCustomers, isFiltered, tagCounts } from "../lib/customer-filter";
@@ -54,6 +56,7 @@ function RoutingPicker({
   ownerUserId,
   onTeam,
   onUser,
+  inherited,
 }: {
   teams: Team[];
   people: { user: { id: string; name: string } }[];
@@ -61,6 +64,8 @@ function RoutingPicker({
   ownerUserId: string | null;
   onTeam: (id: string | null) => void;
   onUser: (id: string | null) => void;
+  /** What "Automatic" means for this customer: their organisation's routing, if one decides. */
+  inherited?: string | null;
 }) {
   const auto = !ownerTeamId && !ownerUserId;
   return (
@@ -90,6 +95,7 @@ function RoutingPicker({
             </label>
           ))}
         </div>
+        {auto && inherited && <small className="routing-inherit"><RouteIcon /> {inherited}</small>}
       </div>
       <label className="field">
         <span>
@@ -106,6 +112,23 @@ function RoutingPicker({
       </label>
     </>
   );
+}
+
+/**
+ * What "Automatic" does for a customer with no routing of their own: follow
+ * their organisation's, when one decides (`routingAccount`), or say why not.
+ */
+function inheritedRouting(
+  orgs: ContactAccount[],
+  teams: Team[],
+  people: { user: { id: string; name: string } }[],
+): string | null {
+  const { account, ambiguous } = routingAccount(orgs.map((o) => o.account));
+  if (ambiguous) return "In several organisations that route — the channel decides until you pick a team here";
+  if (!account) return null;
+  const team = teams.find((t) => t.id === account.routeTeamId)?.name ?? "its team";
+  const who = account.routeUserId ? people.find((p) => p.user.id === account.routeUserId)?.user.name : null;
+  return `Follows ${account.name}: ${team}${who ? ` · ${who}` : ""}`;
 }
 
 /** One modal for both adding and editing a customer. */
@@ -127,6 +150,7 @@ function CustomerModal({
   const isEdit = !!contact;
   const teams = useTeams();
   const people = usePeople();
+  const orgs = useContactAccounts(contact?.id);
   const create = useCreateContact();
   const update = useUpdateContact();
   const del = useDeleteContact();
@@ -232,6 +256,7 @@ function CustomerModal({
             ownerUserId={ownerUserId}
             onTeam={setOwnerTeamId}
             onUser={setOwnerUserId}
+            inherited={inheritedRouting(orgs.data ?? [], teams.data ?? [], people.data ?? [])}
           />
           {isEdit && contact && (
             <ContactOrganisations

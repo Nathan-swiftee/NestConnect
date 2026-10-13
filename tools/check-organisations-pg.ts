@@ -10,6 +10,7 @@
  *     DATABASE_URL=… pnpm check:organisations-pg
  */
 import { PrismaClient } from "@prisma/client";
+import { RoutingService } from "../apps/api/src/channels/routing.service";
 import { AccountsService } from "../apps/api/src/accounts/accounts.service";
 import { PrismaAccountStore } from "../apps/api/src/accounts/prisma-account.store";
 import { PrismaStore } from "../apps/api/src/data/prisma.store";
@@ -85,7 +86,7 @@ async function main(): Promise<void> {
       const resource = await svc.createResource(user.id, account.id, {
         kind: "file", title: `${tag} template`, description: "", category: "Templates", instructions: "", attachmentId: upload.id, sopId: sop.id,
       });
-      return { user, inbox, contact, conversation, upload, account, alert, sop, resource };
+      return { team, user, inbox, contact, conversation, upload, account, alert, sop, resource };
     });
 
   try {
@@ -127,6 +128,30 @@ async function main(): Promise<void> {
     await runInTenant(A, async () => {
       const d = await svc.detail(a.account.id);
       ok("A's data is unchanged", d.account.summary === "a secret summary" && d.alerts[0]?.body === "a secret instruction" && d.contacts.length === 1);
+    });
+
+    console.log("\nOrganisation routing\n");
+    await runInTenant(B, async () => {
+      ok("B can't route its organisation to A's team", await refuses(() => svc.setRouting(b.user.id, b.account.id, { teamId: a.team.id, userId: null })));
+      ok("or to A's person", await refuses(() => svc.setRouting(b.user.id, b.account.id, { teamId: b.team.id, userId: a.user.id })));
+      ok("or route A's organisation", await refuses(() => svc.setRouting(b.user.id, a.account.id, { teamId: b.team.id, userId: null })));
+      ok(
+        "not even through the store directly",
+        await new PrismaAccountStore(root as unknown as PrismaService)
+          .update(b.account.id, { routeTeamId: a.team.id }, { id: null, name: "x" })
+          .then(() => false, (e: Error) => e.name === "TenantViolationError"),
+      );
+    });
+    await runInTenant(A, async () => {
+      const night = await store.createTeam({ orgId: A, name: "a night shift" });
+      await store.updateUser(a.user.id, { teamIds: [a.team.id, night.id] });
+      const routed = await svc.setRouting(a.user.id, a.account.id, { teamId: night.id, userId: a.user.id });
+      ok("A routes its organisation to its own team and person", routed.account.routeTeamId === night.id && routed.account.routeUserId === a.user.id);
+      const decision = await new RoutingService(store, svc).route(a.inbox, (await store.getContact(a.contact.id))!);
+      ok("and a new chat from its contact goes there, on Postgres", decision.assignedTeamId === night.id, JSON.stringify(decision));
+      await store.deleteTeam(night.id);
+      const after = await root.account.findUnique({ where: { id: a.account.id }, select: { routeTeamId: true } });
+      ok("deleting the team clears the organisation's routing", after?.routeTeamId === null);
     });
 
     console.log("\nThe store (acting as A)\n");

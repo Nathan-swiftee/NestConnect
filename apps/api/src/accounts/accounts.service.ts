@@ -22,6 +22,8 @@ import {
   type ContactAccount,
   type ConversationAccountContext,
   type User,
+  routingAccount,
+  type AccountRoutingInput,
 } from "@ding/schemas";
 import { Store } from "../data/store";
 import { AccountStore, type AccountCounts, type AccountFields, type AccountRow, type LinkRow, type ResourceRow } from "./account.store";
@@ -109,6 +111,8 @@ export class AccountsService {
       tags: row.tags,
       ownerUserId: row.ownerUserId,
       ownerName: await this.ownerName(row.ownerUserId, cache),
+      routeTeamId: row.routeTeamId,
+      routeUserId: row.routeUserId,
       archivedAt: row.archivedAt,
       updatedAt: row.updatedAt,
       contactCount: row.contactCount,
@@ -145,7 +149,70 @@ export class AccountsService {
       this.accounts.listNotes(id),
       this.resourcesOf(id),
     ]);
-    return { account: await this.toAccount(row), contacts, alerts, sops, notes, resources };
+    return { account: await this.toAccount(row), contacts, alerts, sops, notes, resources, routing: await this.routingReach(id) };
+  }
+
+  /* ------------------------------- routing ------------------------------- */
+
+  /**
+   * Where this organisation's people's new chats go. Admins and managers only:
+   * it moves every one of that company's chats. The person must be on the
+   * team, so a chat never lands with someone outside the team that owns it.
+   */
+  async setRouting(userId: string, id: string, input: AccountRoutingInput): Promise<AccountDetail> {
+    const { user, actor } = await this.actor(userId);
+    this.requireManager(user, "change an organisation's routing");
+    const before = await this.mustEdit(id);
+    if (input.userId && !input.teamId) throw new BadRequestException("Pick the team first — the person must be on it");
+    if (input.teamId && !(await this.store.getTeam(input.teamId))) throw new BadRequestException("That team doesn't exist");
+    if (input.userId) {
+      const person = await this.store.getUser(input.userId);
+      if (!person) throw new BadRequestException("That person isn't in this workspace");
+      if (!(await this.store.teamsForUser(input.userId)).includes(input.teamId!)) {
+        throw new BadRequestException(`${person.name} isn't on that team`);
+      }
+    }
+    const patch = { routeTeamId: input.teamId, routeUserId: input.userId };
+    if (patch.routeTeamId !== before.routeTeamId || patch.routeUserId !== before.routeUserId) {
+      await this.accounts.update(id, patch, actor);
+      const team = input.teamId ? (await this.store.getTeam(input.teamId))?.name : null;
+      const person = input.userId ? (await this.store.getUser(input.userId))?.name : null;
+      await this.accounts.logActivity(
+        id,
+        actor,
+        "account.routing",
+        team ? `Routed new chats to ${team}${person ? ` · ${person}` : ""}` : "Stopped routing new chats",
+      );
+    }
+    return this.detail(id);
+  }
+
+  /** How many of its people its routing decides for — see `routingAccount`. */
+  private async routingReach(id: string): Promise<AccountDetail["routing"]> {
+    const out = { appliesTo: 0, ownRouting: 0, unclear: 0 };
+    for (const link of await this.accounts.listLinks(id)) {
+      const contact = await this.store.getContact(link.contactId);
+      if (!contact) continue;
+      if (contact.ownerTeamId || contact.ownerUserId) {
+        out.ownRouting++;
+        continue;
+      }
+      const theirs = await this.routingCandidates(link.contactId);
+      const pick = routingAccount(theirs);
+      if (pick.account?.id === id) out.appliesTo++;
+      else if (!pick.account) out.unclear++;
+    }
+    return out;
+  }
+
+  /** A contact's organisations, as `routingAccount` reads them. */
+  async routingCandidates(contactId: string): Promise<AccountRow[]> {
+    const rows: AccountRow[] = [];
+    for (const l of await this.accounts.linksForContact(contactId)) {
+      const r = await this.accounts.get(l.accountId);
+      if (r) rows.push(r);
+    }
+    return rows;
   }
 
   private async validOwner(ownerUserId: string | null | undefined): Promise<void> {
@@ -183,6 +250,8 @@ export class AccountsService {
       status: input.status ?? "active",
       tags: normaliseTags(input.tags ?? []),
       ownerUserId: input.ownerUserId ?? null,
+      routeTeamId: null,
+      routeUserId: null,
       phone: input.phone ?? null,
       email: input.email ?? null,
       website: input.website ?? null,
