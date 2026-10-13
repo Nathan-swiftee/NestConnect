@@ -6,6 +6,10 @@ import { Store } from "../data/store";
 export interface RoutingDecision {
   assigneeUserId: string | null;
   assignedTeamId: string | null;
+  /** Why — for the conversation log. */
+  reason?: "menu" | "contact" | "organisation" | "channel";
+  /** The organisation that decided, when one did. */
+  organisation?: string;
 }
 
 export interface RoutingHints {
@@ -55,6 +59,14 @@ export class RoutingService {
 
   async route(inbox: Inbox, contact: Contact, hints?: RoutingHints): Promise<RoutingDecision> {
     const asked = hints?.optionTeamId;
+    if (asked) return { ...(await this.decide(inbox, contact, hints)), reason: "menu" };
+    if (contact.ownerUserId || contact.ownerTeamId) return { ...(await this.decide(inbox, contact, hints)), reason: "contact" };
+    const decision = await this.decide(inbox, contact, hints);
+    return decision.reason ? decision : { ...decision, reason: "channel" };
+  }
+
+  private async decide(inbox: Inbox, contact: Contact, hints?: RoutingHints): Promise<RoutingDecision> {
+    const asked = hints?.optionTeamId;
     if (asked) {
       // Their own person, but only when they're one of the people who answer
       // what was asked for. Otherwise the team takes it on its own terms.
@@ -89,21 +101,22 @@ export class RoutingService {
     if (org) {
       // Their organisation's person, while they're available and still on the
       // team; otherwise the team takes it, by the channel's strategy.
+      const via = { reason: "organisation" as const, organisation: org.name };
       if (org.userId && (await this.isMember(org.teamId, org.userId)) && (await this.isAvailable(org.userId))) {
-        return { assigneeUserId: org.userId, assignedTeamId: org.teamId };
+        return { assigneeUserId: org.userId, assignedTeamId: org.teamId, ...via };
       }
-      return this.withinTeam(inbox, org.teamId);
+      return { ...(await this.withinTeam(inbox, org.teamId)), ...via };
     }
 
     return this.withinTeam(inbox, inbox.teamIds[0] ?? null);
   }
 
   /** The organisation that decides for this contact, if one does, and its team still exists. */
-  private async organisationRoute(contact: Contact): Promise<{ teamId: string; userId: string | null } | null> {
+  private async organisationRoute(contact: Contact): Promise<{ teamId: string; userId: string | null; name: string } | null> {
     if (!this.accounts) return null;
     const { account } = routingAccount(await this.accounts.routingCandidates(contact.id));
     if (!account?.routeTeamId || !(await this.store.getTeam(account.routeTeamId))) return null;
-    return { teamId: account.routeTeamId, userId: account.routeUserId };
+    return { teamId: account.routeTeamId, userId: account.routeUserId, name: account.name };
   }
 
   /** Pick somebody on this team, per the inbox's strategy. */

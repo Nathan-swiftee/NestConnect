@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnModuleDestroy } from "@nestjs/common";
 import type { ConversationWithMessages } from "@ding/schemas";
+import { ConversationLog, SYSTEM } from "../conversations/conversation-log";
 import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { runInTenant } from "../tenancy/tenant-scope";
@@ -110,7 +111,10 @@ export class ConversationSubjectService implements OnModuleDestroy {
     const subject = composeSubject(await this.fieldDetails(conv), state.topic);
     if (subject === (conv.subject ?? null)) return;
     const updated = await this.store.setSubject(conversationId, subject);
-    if (updated) this.realtime.emitConversationUpdated(updated);
+    if (updated) {
+      this.realtime.emitConversationUpdated(updated);
+      await new ConversationLog(this.store).record(conversationId, "subject", SYSTEM, { from: conv.subject ?? null, to: subject });
+    }
   }
 
   /** This conversation's custom field values with their labels, in the order

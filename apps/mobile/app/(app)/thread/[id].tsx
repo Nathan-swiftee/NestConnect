@@ -36,6 +36,7 @@ import { Avatar } from "../../../src/components/Avatar";
 import { Composer } from "../../../src/components/Composer";
 import { useSendQueue } from "../../../src/send-queue";
 import { DetailsPanel } from "../../../src/components/DetailsPanel";
+import { ConversationLogSheet } from "../../../src/components/ConversationLogSheet";
 import { LabelSheet } from "../../../src/components/LabelSheet";
 import { QueuedBubble } from "../../../src/components/QueuedBubble";
 import { MessageActions } from "../../../src/components/MessageActions";
@@ -162,7 +163,7 @@ export default function Thread() {
   const toast = useToast();
   const teamName = (id: string | null) =>
     (id ? teams.data?.find((t) => t.id === id)?.name : undefined) ?? "the team";
-  const [sheet, setSheet] = useState<null | "assign" | "snooze" | "more" | "details" | "labels">(
+  const [sheet, setSheet] = useState<null | "assign" | "snooze" | "more" | "details" | "labels" | "log">(
     null,
   );
   // The message a long-press opened the action sheet for, and the one the
@@ -917,7 +918,9 @@ export default function Thread() {
         visible={sheet === "details"}
         onClose={() => setSheet(null)}
         onOpenConversation={(id) => router.replace({ pathname: "/(app)/thread/[id]", params: { id } })}
+        onOpenLog={() => setSheet("log")}
       />
+      <ConversationLogSheet conversationId={data.id} visible={sheet === "log"} onClose={() => setSheet(null)} />
       <ReadLog message={readLog} visible={!!readLog} onClose={() => setReadLog(null)} />
       <MessageActions
         message={acting}

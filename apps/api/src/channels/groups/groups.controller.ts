@@ -20,7 +20,7 @@ export class GroupsController {
   ) {
     const me = await this.store.getUser(userId);
     if (!me) throw new NotFoundException("Current user not found");
-    return this.groups.createGroup(body);
+    return this.groups.createGroup(body, userId);
   }
 
   /** Revoke and regenerate the group's invite link. */

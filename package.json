@@ -26,6 +26,7 @@
     "check:email-cutover": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-cutover.ts",
     "check:email-signature": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-signature.ts",
     "check:email-signature-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-signature-pg.ts",
+    "check:conversation-log": "tsx --tsconfig apps/api/tsconfig.json tools/check-conversation-log.ts",
     "check:org-routing": "tsx --tsconfig apps/api/tsconfig.json tools/check-org-routing.ts",
     "check:macros": "tsx --tsconfig apps/api/tsconfig.json tools/check-macros.ts",
     "check:macros-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-macros-pg.ts",

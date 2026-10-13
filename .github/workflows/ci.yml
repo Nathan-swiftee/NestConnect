@@ -215,6 +215,11 @@ jobs:
       - name: Organisation routing
         run: pnpm check:org-routing
 
+      # The conversation log: arrival and routing (and why), assignment, status,
+      # priority, labels, organisation, fields and failures, each as a sentence.
+      - name: Conversation log
+        run: pnpm check:conversation-log
+
       - name: Macros
         run: pnpm check:macros
 

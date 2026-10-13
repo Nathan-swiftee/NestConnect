@@ -76,6 +76,9 @@ import {
   type TwoFactorState,
   type ViewItem,
   type WebhookDiagnostic,
+  type ConversationState,
+  type ConversationEventInput,
+  type ConversationEventRow,
 } from "./store";
 
 const AVATAR_PALETTE = [
@@ -1408,6 +1411,44 @@ export class MemoryStore extends Store {
     if (status === "closed") { rec.unread = false; rec.unreadCount = 0; }
     if (status !== "snoozed") rec.snoozedUntil = null;
     return this.summary(rec);
+  }
+
+  // ---- the conversation log ----
+  private conversationEvents: Array<ConversationEventRow & { conversationId: string }> = [];
+
+  async conversationState(conversationId: string): Promise<ConversationState | undefined> {
+    const rec = this.conversations.find((c) => c.id === conversationId);
+    if (!rec) return undefined;
+    return {
+      status: rec.status,
+      assigneeUserId: rec.assigneeUserId ?? null,
+      assignedTeamId: rec.assignedTeamId ?? null,
+      priority: rec.priority ?? "normal",
+      snoozedUntil: rec.snoozedUntil ?? null,
+    };
+  }
+
+  async logConversationEvent(conversationId: string, e: ConversationEventInput): Promise<void> {
+    if (!this.conversations.some((c) => c.id === conversationId)) return;
+    this.conversationEvents.push({
+      id: `cev_${++this.idSeq}`,
+      conversationId,
+      type: e.type,
+      actorKind: e.actorKind,
+      actorUserId: e.actorUserId ?? null,
+      data: { ...(e.data ?? {}) },
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async listConversationEvents(conversationId: string, limit = 500): Promise<ConversationEventRow[]> {
+    return this.conversationEvents
+      .filter((e) => e.conversationId === conversationId)
+      .map((e, i) => ({ e, i }))
+      // Newest first; entries written in the same millisecond keep their order.
+      .sort((a, b) => b.e.createdAt.localeCompare(a.e.createdAt) || b.i - a.i)
+      .slice(0, limit)
+      .map(({ e: { conversationId: _c, ...row } }) => ({ ...row, data: { ...row.data } }));
   }
 
   async wakeSnoozed(conversationId: string): Promise<Conversation | undefined> {

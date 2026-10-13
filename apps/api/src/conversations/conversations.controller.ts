@@ -102,6 +102,12 @@ export class ConversationsController {
     return this.conversations.get(id);
   }
 
+  /** The conversation's log — routing, assignment, status and changes. */
+  @Get(":id/events")
+  events(@Param("id") id: string) {
+    return this.conversations.events(id);
+  }
+
   @Post(":id/messages")
   send(
     @CurrentUserId() userId: string,
@@ -122,18 +128,20 @@ export class ConversationsController {
 
   @Post(":id/status")
   setStatus(
+    @CurrentUserId() userId: string,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updateStatusInputSchema)) body: UpdateStatusInput,
   ) {
-    return this.conversations.setStatus(id, body);
+    return this.conversations.setStatus(id, body, userId);
   }
 
   @Post(":id/snooze")
   snooze(
+    @CurrentUserId() userId: string,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(snoozeInputSchema)) body: SnoozeInput,
   ) {
-    return this.conversations.snooze(id, body.until);
+    return this.conversations.snooze(id, body.until, userId);
   }
 
   /**
@@ -155,10 +163,11 @@ export class ConversationsController {
   /** Replace a conversation's labels with the given set of label ids. */
   @Post(":id/labels")
   setLabels(
+    @CurrentUserId() userId: string,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(setConversationLabelsInputSchema)) body: SetConversationLabelsInput,
   ) {
-    return this.conversations.setLabels(id, body.labelIds);
+    return this.conversations.setLabels(id, body.labelIds, userId);
   }
 
   /** Agent started typing — show the customer a WhatsApp "typing…" indicator. */
@@ -192,15 +201,16 @@ export class ConversationsController {
 
   /** Manually retry a failed outbound message (re-queues it for delivery). */
   @Post(":id/messages/:messageId/retry")
-  retry(@Param("messageId") messageId: string) {
-    return this.conversations.retryMessage(messageId);
+  retry(@CurrentUserId() userId: string, @Param("messageId") messageId: string) {
+    return this.conversations.retryMessage(messageId, userId);
   }
 
   @Post(":id/priority")
   setPriority(
+    @CurrentUserId() userId: string,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(updatePriorityInputSchema)) body: UpdatePriorityInput,
   ) {
-    return this.conversations.setPriority(id, body);
+    return this.conversations.setPriority(id, body, userId);
   }
 }

@@ -24,6 +24,7 @@ import {
   type UpdateContactInput,
 } from "@ding/schemas";
 import { Store } from "../data/store";
+import { ConversationLog, agent } from "../conversations/conversation-log";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { AccountsService } from "../accounts/accounts.service";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
@@ -206,7 +207,12 @@ export class ContactsController {
       // The agent starting the outreach owns the new thread.
       assigneeUserId: me.id,
     });
-    if (created) this.realtime.emitConversationUpdated(conversation);
+    if (created) {
+      this.realtime.emitConversationUpdated(conversation);
+      const log = new ConversationLog(this.store);
+      await log.record(conversation.id, "created", agent(me.id), { channel: body.channel });
+      await log.record(conversation.id, "assigned", agent(me.id), { toUserId: me.id });
+    }
     return { conversationId: conversation.id, created };
   }
 }

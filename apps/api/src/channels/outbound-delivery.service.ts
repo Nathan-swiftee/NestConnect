@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import type { MessageStatus } from "@ding/schemas";
+import { ConversationLog, SYSTEM } from "../conversations/conversation-log";
 import { Store } from "../data/store";
 import { boundOrgId, runInTenant } from "../tenancy/tenant-scope";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
@@ -123,7 +124,14 @@ export class OutboundDeliveryService {
       code: outcome.code,
       reason: outcome.reason,
     });
-    if (change) this.realtime.emitMessageUpdated(change.conversationId, change.message, orgId);
+    if (change) {
+      this.realtime.emitMessageUpdated(change.conversationId, change.message, orgId);
+      await new ConversationLog(this.store).record(change.conversationId, "message_failed", SYSTEM, {
+        messageId: job.messageId,
+        reason: outcome.reason,
+        preview: change.message.body.slice(0, 80),
+      });
+    }
     return { state: "failed-permanent", reason: outcome.reason };
   }
 
