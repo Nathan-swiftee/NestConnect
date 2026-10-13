@@ -23,7 +23,16 @@ type Filter = "all" | "unread" | "groups" | "direct";
  * the right — WhatsApp Web's shape, because that's the one everybody already
  * knows. On a phone-width window it's one or the other. See docs/team-chat.md.
  */
-export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null; onToast: (m: string) => void }) {
+export function TeamChat({
+  focusRoomId,
+  onToast,
+  onOpenConversation,
+}: {
+  focusRoomId?: string | null;
+  onToast: (m: string) => void;
+  /** A shared customer conversation's card was opened. */
+  onOpenConversation?: (id: string) => void;
+}) {
   const isMobile = useMediaQuery("(max-width: 820px)");
   const me = useMe().data?.user;
   const status = useChatStatus();
@@ -194,6 +203,7 @@ export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null
             key={selected}
             roomId={selected}
             focusMessageId={focusMessage}
+            onOpenConversation={onOpenConversation}
             onBack={isMobile ? () => setSelected(null) : undefined}
             onClosed={() => setSelected(null)}
             onOpenRoom={(id) => openAt(id, null)}

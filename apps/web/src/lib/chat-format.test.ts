@@ -16,6 +16,7 @@ const msg = (id: string, authorId: string | null, at: Date, over: Partial<ChatMe
   mentions: [],
   attachments: [],
   link: null,
+  shared: null,
   editedAt: null,
   deletedAt: null,
   createdAt: at.toISOString(),

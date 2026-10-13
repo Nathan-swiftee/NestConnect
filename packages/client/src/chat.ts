@@ -3,7 +3,13 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteD
 import {
   ChatClientEvent,
   ChatServerEvent,
+  ServerEvent,
   type ChatAttachment,
+  type ChatDiscussion,
+  type ChatDiscussionThread,
+  type ChatSharedConversation,
+  type Conversation,
+  type ShareConversationInput,
   type ChatMessage,
   type ChatMessagePage,
   type ChatPerson,
@@ -31,6 +37,8 @@ const keys = {
   room: (id: string) => ["chat", "room", id] as const,
   messages: (id: string) => ["chat", "messages", id] as const,
   starred: ["chat", "starred"] as const,
+  discussions: (conversationId: string) => ["chat", "discussions", conversationId] as const,
+  thread: (cardId: string) => ["chat", "thread", cardId] as const,
   search: (q: string) => ["chat", "search", q] as const,
 };
 
@@ -110,6 +118,65 @@ export function useChatStars() {
   return { ids, toggle };
 }
 
+/* ---- customer conversations, discussed ---- */
+
+/** Where a customer conversation is being discussed — the bar on its thread. */
+export function useChatDiscussions(conversationId: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: keys.discussions(conversationId ?? ""),
+    queryFn: () => api.chatDiscussions(conversationId!),
+    enabled: !!conversationId && enabled,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+/** One discussion: the card, and everything said in reply to it. */
+export function useChatThread(cardId: string | null | undefined) {
+  return useQuery({ queryKey: keys.thread(cardId ?? ""), queryFn: () => api.chatThread(cardId!), enabled: !!cardId, staleTime: 15_000, retry: false });
+}
+
+/** Bring a customer conversation (or a message from it) into a chat. */
+export function useShareConversation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ShareConversationInput) => api.shareConversation(input),
+    onSuccess: (message, input) => {
+      upsertMessage(qc, message.roomId, message);
+      qc.invalidateQueries({ queryKey: keys.discussions(input.conversationId) });
+      refreshLists(qc);
+    },
+  });
+}
+
+/** A reply to a card, a card made or deleted: the discussions that show it are out of date. */
+function discussionNews(qc: QueryClient, m: ChatMessage): void {
+  if (m.replyTo) qc.invalidateQueries({ queryKey: keys.thread(m.replyTo.id) });
+  if (m.replyTo || m.shared || m.deletedAt) qc.invalidateQueries({ queryKey: ["chat", "discussions"] });
+  if (m.deletedAt) qc.invalidateQueries({ queryKey: keys.thread(m.id) });
+}
+
+/**
+ * A customer conversation changed — closed, reopened, handed to someone. Every
+ * card of it on screen follows, wherever it is: in a chat, a discussion, the
+ * thread's bar. The conversation event already reaches everyone in the
+ * workspace, so the cards need nothing of their own from the server.
+ */
+function followConversation(qc: QueryClient, c: Pick<Conversation, "id" | "status" | "assigneeName">): void {
+  const patch = (m: ChatMessage): ChatMessage =>
+    m.shared?.conversationId === c.id && m.shared.status !== null
+      ? { ...m, shared: { ...m.shared, status: c.status, assigneeName: c.assigneeName ?? null } satisfies ChatSharedConversation }
+      : m;
+  for (const [key, data] of qc.getQueriesData<Pages>({ queryKey: ["chat", "messages"] })) {
+    if (!data?.pages.some((p) => p.messages.some((m) => m.shared?.conversationId === c.id))) continue;
+    qc.setQueryData<Pages>(key, { ...data, pages: data.pages.map((p) => ({ ...p, messages: p.messages.map(patch) })) });
+  }
+  for (const [key, data] of qc.getQueriesData<ChatDiscussionThread>({ queryKey: ["chat", "thread"] })) {
+    if (data?.card.shared?.conversationId === c.id) qc.setQueryData<ChatDiscussionThread>(key, { ...data, card: patch(data.card) });
+  }
+  qc.setQueryData<ChatDiscussion[]>(keys.discussions(c.id), (cur) => cur?.map((d) => ({ ...d, card: patch(d.card) })));
+}
+
 /* ---- the cache, patched from wherever news arrives ---- */
 
 /** Add a message at the end, or put a newer copy of it in place. */
@@ -175,6 +242,7 @@ export function useSendChatMessage(roomId: string, me: ChatPerson | null) {
         mentions: [],
         attachments,
         link: null,
+        shared: null,
         editedAt: null,
         deletedAt: null,
         createdAt: new Date().toISOString(),
@@ -349,11 +417,14 @@ export function useChatRealtime(enabled: boolean): void {
       // server it has this message (the second grey tick).
       refreshLists(qc);
       if (p.message.kind === "system") qc.invalidateQueries({ queryKey: keys.room(p.roomId) });
+      discussionNews(qc, p.message);
     };
     const onUpdated = (p: { roomId: string; message: ChatMessage }) => {
       upsertMessage(qc, p.roomId, p.message);
       qc.invalidateQueries({ queryKey: ["chat", "rooms"] });
+      discussionNews(qc, p.message);
     };
+    const onConversation = (p: { conversation: Conversation }) => followConversation(qc, p.conversation);
     const onReceipt = (p: { roomId: string; userId: string; lastReadAt: string | null; lastDeliveredAt: string | null }) => {
       qc.setQueryData<ChatRoom>(keys.room(p.roomId), (cur) =>
         cur
@@ -400,7 +471,11 @@ export function useChatRealtime(enabled: boolean): void {
     socket.on(ChatServerEvent.Typing, onTyping);
     socket.on(ChatServerEvent.Presence, onPresence);
     socket.on(ChatServerEvent.Cue, onCue);
+    socket.on(ServerEvent.ConversationUpdated, onConversation);
+    socket.on(ServerEvent.ConversationAssigned, onConversation);
     return () => {
+      socket.off(ServerEvent.ConversationUpdated, onConversation);
+      socket.off(ServerEvent.ConversationAssigned, onConversation);
       socket.off(ChatServerEvent.Message, onMessage);
       socket.off(ChatServerEvent.MessageUpdated, onUpdated);
       socket.off(ChatServerEvent.Receipt, onReceipt);

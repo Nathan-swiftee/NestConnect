@@ -1052,7 +1052,10 @@ export class ChatService implements OnModuleInit {
           id: q.id,
           authorId: q.authorUserId,
           authorName: (q.authorUserId && people.get(q.authorUserId)?.name) || "Former teammate",
-          body: q.deletedAt ? "" : trim(mentionsToNames(q.body, [...people.values()]), QUOTE_MAX),
+          // A card or a photo with nothing written says what it was.
+          body: q.deletedAt
+            ? ""
+            : trim(mentionsToNames(q.body, [...people.values()]) || chatAttachmentLabel(q.attachments) || (q.shared ? chatSharedLabel(q.shared) : ""), QUOTE_MAX),
           deleted: !!q.deletedAt,
         },
       ]),

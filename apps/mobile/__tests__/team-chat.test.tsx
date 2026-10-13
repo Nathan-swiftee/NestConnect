@@ -77,6 +77,7 @@ const msg = (over: Partial<ChatMessage>): ChatMessage => ({
   mentions: [],
   attachments: [],
   link: null,
+  shared: null,
   editedAt: null,
   deletedAt: null,
   createdAt: at,

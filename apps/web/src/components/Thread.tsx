@@ -7,12 +7,13 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Contact, Macro, Mentionable, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
 import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, isEmailAddress, macroQueryAt, mentionLabel, mentionParts, namesToHandles, renderEmailSignature, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, signedAsLine, templatesForWaba, typingPingMs } from "@ding/schemas";
-import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence, useConversationMacros } from "../hooks";
+import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence, useConversationMacros, useChatStatus, useShareConversation } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { AttachmentView, StagedChip, analyzeAudio, imageSize, kindOfFile, pickAudioMime, type Staged } from "./media/media";
 import { GlideMenu } from "./GlideMenu";
 import { ConversationLog } from "./ConversationLog";
+import { AlsoSendTo, DiscussionBar, ShareDialog } from "./chat/Discuss";
 import { getSocket } from "../lib/socket";
 import { relativeTime, seenAt, lastActive, clockTime, initials, formatDuration, windowLeft, avatarBg, groupMessagesByDay, speakerKey } from "../lib/format";
 import { hasOtherRecipients, replyAllRecipients } from "@ding/client";
@@ -60,6 +61,7 @@ import {
   EditIcon,
   SearchIcon,
   MacroIcon,
+  TeamChatIcon,
 } from "../lib/icons";
 
 interface Props {
@@ -74,6 +76,10 @@ interface Props {
    *  MOUNTED behind the list — so this gates read receipts to when the agent can
    *  really see the message. Defaults to true (desktop always shows the thread). */
   active?: boolean;
+  /** The Team Chat discussion open beside this thread, if any (its card's id). */
+  discussion?: string | null;
+  /** Open a discussion of this conversation beside the thread. */
+  onOpenDiscussion?: (cardId: string) => void;
 }
 
 /** Escape text so it can be safely interpolated into forwarded-email HTML. The
@@ -775,6 +781,8 @@ interface MsgActions {
   onForward?: () => void;
   /** Open the read-receipts view for this sent email (email with recipients only). */
   onReceipts?: () => void;
+  /** Take this message to a Team Chat to discuss (when Team Chat is on). */
+  onDiscuss?: () => void;
   /** Scroll to a quoted message when its preview is tapped. */
   onJump: (messageId: string) => void;
 }
@@ -1179,6 +1187,12 @@ function MessageBubble({
                     <span>Read receipts</span>
                   </button>
                 )}
+                {actions.onDiscuss && (
+                  <button type="button" className="msg__menuitem" role="menuitem" onClick={actions.onDiscuss}>
+                    <TeamChatIcon />
+                    <span>Discuss…</span>
+                  </button>
+                )}
               </div>
             )}
             {/* Quick-reaction row — desktop: above the near corner (hover); mobile: centred (held) */}
@@ -1277,7 +1291,7 @@ function MacroRow({
   );
 }
 
-export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed, active = true }: Props) {
+export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBack, onClosed, active = true, discussion = null, onOpenDiscussion }: Props) {
   const { data: conv } = useConversation(conversationId);
   const { loadOlder, loading: loadingOlder } = useLoadOlderMessages(conversationId);
   const { data: me } = useMe();
@@ -1304,6 +1318,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Saved replies this conversation's team inbox offers (the server decides
   // which). Up here for the same early-return reason as the inboxes above.
   const { data: macros } = useConversationMacros(conversationId, conv?.assignedTeamId);
+  // Team Chat: discuss this conversation, or a message in it, with the team;
+  // and send a note on to a chat as well. Up here for the same reason.
+  const chatOn = !!useChatStatus().data?.enabled;
+  const shareToChat = useShareConversation();
+  const [sharing, setSharing] = useState<{ message: { id: string; who: string; text: string } | null } | null>(null);
+  const [alsoTo, setAlsoTo] = useState<string | null>(null);
+  useEffect(() => {
+    setSharing(null);
+    setAlsoTo(null);
+  }, [conversationId]);
 
   const [text, setText] = useState("");
   // The message being quoted in a reply (shown as a cue above the composer), and
@@ -2333,6 +2357,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     const subject = isEmail && !internal ? subjectDraft.trim() : undefined;
     unlock();
     const attachmentIds = readyAtts.map((s) => s.attachment!.id);
+    // A note can go on to a team chat too, as a card quoting it.
+    const sendOnTo = internal && chatOn ? alsoTo : null;
     send.mutate(
       {
         id: conv.id,
@@ -2353,6 +2379,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         channel: !internal && composeChannel !== conv.channel ? composeChannel : undefined,
       },
       {
+        onSuccess: (note) => {
+          if (!sendOnTo || !note) return;
+          shareToChat.mutate(
+            { roomId: sendOnTo, conversationId: conv.id, messageId: note.id, body: "" },
+            { onError: () => onToast("The note was saved, but couldn't be sent on to the chat.") },
+          );
+        },
         onError: (err) => {
           const status = (err as { status?: number }).status;
           // A closed-window race: the window shut between load and send.
@@ -2370,6 +2403,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     editor?.commands.clearContent();
     clearStaged();
     setInternal(false);
+    setAlsoTo(null);
     setMention(null);
     setSlash(null);
     setReplyTo(null);
@@ -2880,6 +2914,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </>
             )}
           </div>
+          {chatOn && (
+            <button className={"iconbtn hide-sm" + (sharing ? " on" : "")} title="Discuss with the team" aria-label="Discuss with the team" onClick={() => setSharing({ message: null })}>
+              <TeamChatIcon />
+            </button>
+          )}
           <button className={"iconbtn hide-sm" + (logOpen ? " on" : "")} title="Conversation log" aria-label="Conversation log" onClick={() => setLogOpen(true)}>
             <HistoryIcon />
           </button>
@@ -2915,12 +2954,18 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   <button onClick={() => { setMoreMenu(false); setLogOpen(true); }}>
                     <HistoryIcon /> Conversation log
                   </button>
+                  {chatOn && (
+                    <button onClick={() => { setMoreMenu(false); setSharing({ message: null }); }}>
+                      <TeamChatIcon /> Discuss with the team
+                    </button>
+                  )}
                 </GlideMenu>
               </>
             )}
           </div>
         </div>
       </header>
+      {chatOn && onOpenDiscussion && <DiscussionBar conversationId={conv.id} active={discussion} onOpen={onOpenDiscussion} />}
 
       {menu && (
         <>
@@ -3082,6 +3127,20 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                       m.direction === "out" && !m.internal && m.email?.recipients?.length
                         ? () => { setMenuFor(null); setReceiptsMsgId(m.id); }
                         : undefined,
+                    onDiscuss: chatOn
+                      ? () => {
+                          setMenuFor(null);
+                          setReactFor(null);
+                          const words = m.body.replace(/\s+/g, " ").trim();
+                          setSharing({
+                            message: {
+                              id: m.id,
+                              who: m.internal ? `Note · ${m.authorName ?? "Teammate"}` : m.authorName || (m.direction === "in" ? conv.contact.displayName : "Teammate"),
+                              text: words.length > 140 ? `${words.slice(0, 139)}…` : words || "📎 Attachment",
+                            },
+                          });
+                        }
+                      : undefined,
                     onJump: jumpToMessage,
                   }}
                   cont={cont}
@@ -3210,6 +3269,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 {inboxLabel(composeInbox)}
               </span>
             )}
+            {internal && chatOn && <AlsoSendTo value={alsoTo} onChange={setAlsoTo} />}
             <span className="compctx">{ctxNode}</span>
           </div>
           {isEmail && !internal && (
@@ -3768,6 +3828,16 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         })()}
 
       {logOpen && <ConversationLog conversationId={conv.id} onClose={() => setLogOpen(false)} />}
+
+      {sharing && (
+        <ShareDialog
+          conversationId={conv.id}
+          contactName={conv.contact.displayName}
+          message={sharing.message}
+          onClose={() => setSharing(null)}
+          onToast={onToast}
+        />
+      )}
 
       {(() => {
         // Resolve the message live from the thread so opens arriving over the

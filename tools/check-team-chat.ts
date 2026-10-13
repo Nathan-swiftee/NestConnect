@@ -367,6 +367,8 @@ async function main() {
     ok("with the replies to each card, newest discussion first", found2[0]!.card.id === cardMsg.id && here.replies === 1 && here.latest?.body === "Zero-rated is right, I'll reissue it" && here.roomName === "Support team" && here.canPost);
     ok("only in chats you can open", (await svc.discussions(AMARA, conv.id)).map((d) => d.roomKind).join() === "direct");
     const t = await svc.thread(NATHAN, cardMsg.id);
+    const toBare = await svc.send(JAMES, support.id, say("On it", bare.id));
+    ok("a reply to a card with nothing written quotes the customer", toBare.replyTo?.body === "💬 Northside Logistics", toBare.replyTo?.body);
     ok("a discussion in full: the card and what was said to it", t.card.id === cardMsg.id && t.replies.length === 1 && t.replies[0]!.replyTo?.id === cardMsg.id);
     ok("somebody not in the chat can't open it", await refuses(svc.thread(AMARA, cardMsg.id), 404));
     ok("an ordinary message isn't a discussion", await refuses(svc.thread(NATHAN, t.replies[0]!.id), 404));

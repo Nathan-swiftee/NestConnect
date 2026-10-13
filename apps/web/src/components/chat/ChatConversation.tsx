@@ -49,6 +49,7 @@ import {
 } from "../../lib/icons";
 import { AttachmentView } from "../media/media";
 import { ChatComposer, type ChatComposerHandle } from "./ChatComposer";
+import { SharedCard } from "./Discuss";
 import { ChatInfoPanel } from "./ChatInfoPanel";
 import { MessageInfoDialog } from "./ChatDialogs";
 import { RoomAvatar } from "./RoomAvatar";
@@ -59,6 +60,7 @@ export const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"
 export function ChatConversation({
   roomId,
   focusMessageId,
+  onOpenConversation,
   onBack,
   onClosed,
   onOpenRoom,
@@ -67,6 +69,7 @@ export function ChatConversation({
   roomId: string;
   /** Open at this message — from search or starred. */
   focusMessageId?: string | null;
+  onOpenConversation?: (id: string) => void;
   onBack?: () => void;
   onClosed: () => void;
   onOpenRoom: (id: string) => void;
@@ -358,6 +361,7 @@ export function ChatConversation({
                   onQuote={goTo}
                   onRetry={() => void retry(it.message)}
                   onImage={setLightbox}
+                  onOpenConversation={onOpenConversation}
                   starred={stars.ids.has(it.message.id)}
                   onStar={(on) => void stars.toggle(it.message, on).catch(() => onToast("Couldn't star that message"))}
                 />
@@ -476,6 +480,7 @@ function Bubble({
   onImage,
   starred,
   onStar,
+  onOpenConversation,
 }: {
   m: ChatBubble;
   first: boolean;
@@ -499,11 +504,12 @@ function Bubble({
   onImage: (url: string) => void;
   starred: boolean;
   onStar: (on: boolean) => void;
+  onOpenConversation?: (id: string) => void;
 }) {
   const [menu, setMenu] = useState<"react" | "more" | null>(null);
   const deleted = !!m.deletedAt;
   const files = deleted ? [] : (m.attachments ?? []);
-  const jumbo = !deleted && !m.replyTo && !files.length && isJumboEmoji(m.body);
+  const jumbo = !deleted && !m.replyTo && !files.length && !m.shared && isJumboEmoji(m.body);
   // A photo or video on its own sits in the bubble edge to edge, the time over it.
   const visual = files.length > 0 && files.every((a) => a.kind === "image" || a.kind === "video");
   const bare = visual && !m.body && !m.replyTo;
@@ -559,7 +565,7 @@ function Bubble({
           />
         </span>
       )}
-      <div className={"tc-bubble" + (deleted ? " deleted" : "") + (files.length ? " has-files" : "") + (visual ? " visual" : "") + (bare ? " bare" : "")}>
+      <div className={"tc-bubble" + (deleted ? " deleted" : "") + (files.length ? " has-files" : "") + (visual ? " visual" : "") + (bare ? " bare" : "") + (m.shared ? " has-card" : "")}>
         {group && !mine && first && (
           <span className="tc-bubble__name" style={{ color: chatNameColour(m.author?.id) }}>
             {m.author?.name ?? "Former teammate"}
@@ -572,6 +578,9 @@ function Bubble({
             </span>
             <span className="tc-quote__text">{m.replyTo.deleted ? "This message was deleted" : m.replyTo.body}</span>
           </button>
+        )}
+        {m.shared && !deleted && (
+          <SharedCard shared={m.shared} onOpen={onOpenConversation ? () => onOpenConversation(m.shared!.conversationId) : undefined} />
         )}
         {files.length > 0 && (
           <div className={"tc-files" + (visual && files.length > 1 ? " grid" : "")}>
