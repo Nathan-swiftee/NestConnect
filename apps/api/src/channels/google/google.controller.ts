@@ -66,6 +66,12 @@ export class GoogleController {
       this.sendResult(res, { source: "ding-oauth", ok: false, error: "Not signed in" });
       return;
     }
+    // The demo workspace answers first: there, nobody connects anything, and
+    // that's the reason worth giving.
+    if (await this.sandbox.current()) {
+      this.sendResult(res, { source: "ding-oauth", ok: false, error: "Connecting channels isn't available in the demo workspace" });
+      return;
+    }
     // Connecting a mailbox is setting up a channel: managers and admins, as adding one is.
     if (user.role !== "admin" && user.role !== "manager") {
       this.sendResult(res, { source: "ding-oauth", ok: false, error: "Only managers and admins can connect channels" });
@@ -74,10 +80,6 @@ export class GoogleController {
     const reconnecting = inboxId ? await this.store.getInbox(inboxId) : undefined;
     if (inboxId && (!reconnecting || reconnecting.type !== "email")) {
       this.sendResult(res, { source: "ding-oauth", ok: false, error: "That email channel no longer exists" });
-      return;
-    }
-    if (await this.sandbox.current()) {
-      this.sendResult(res, { source: "ding-oauth", ok: false, error: "Connecting channels isn't available in the demo workspace" });
       return;
     }
     if (!(await this.google.configured(user.orgId))) {
