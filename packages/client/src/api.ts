@@ -5,6 +5,8 @@ import type {
   Contact,
   ContactDuplicateGroup,
   MergeContactsInput,
+  BulkContactsInput,
+  BulkContactsResult,
   CreateCustomFieldInput,
   CustomField,
   CustomFieldEntity,
@@ -397,6 +399,7 @@ export const api = {
     post<ImportContactsResult>("/contacts/import", input),
   updateContact: (id: string, input: UpdateContactInput) => patch<Contact>(`/contacts/${id}`, input),
   deleteContact: (id: string) => del<{ ok: boolean }>(`/contacts/${id}`),
+  bulkContacts: (input: BulkContactsInput) => post<BulkContactsResult>("/contacts/bulk", input),
   // Open (or start) this customer's conversation on another channel. An explicit
   // inboxId picks which number/inbox to send from when several are connected.
   reachContact: (contactId: string, channel: "whatsapp" | "email", inboxId?: string) =>

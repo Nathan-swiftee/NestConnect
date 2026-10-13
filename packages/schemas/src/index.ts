@@ -447,6 +447,23 @@ export const mergeContactsInputSchema = z.object({
 });
 export type MergeContactsInput = z.infer<typeof mergeContactsInputSchema>;
 
+/** One action on many customers at once (Customers › select). Merging is
+ *  `merge` above; putting them in an organisation is the organisation's own
+ *  `contacts/many`. */
+const bulkIds = z.array(z.string().min(1)).min(1).max(1000);
+const bulkTags = z.array(z.string().trim().min(1)).max(50).default([]);
+export const bulkContactsInputSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("tag"), ids: bulkIds, add: bulkTags, remove: bulkTags }),
+  z.object({ action: z.literal("block"), ids: bulkIds, blocked: z.boolean() }),
+  z.object({ action: z.literal("delete"), ids: bulkIds }),
+]);
+export type BulkContactsInput = z.input<typeof bulkContactsInputSchema>;
+/** How many it changed, and how many were already gone. */
+export interface BulkContactsResult {
+  done: number;
+  missing: number;
+}
+
 export const inboxSchema = z.object({
   id: z.string(),
   orgId: z.string(),

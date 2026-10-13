@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent } from "react";
 import type { ChannelType, Contact, ContactAccount, ContactDuplicateGroup, Team } from "@ding/schemas";
 import { routingAccount } from "@ding/schemas";
 import {
@@ -18,6 +18,7 @@ import { filterCustomers, isFiltered, tagCounts } from "../lib/customer-filter";
 import { Avatar } from "./Avatar";
 import { GlideMenu } from "./GlideMenu";
 import { ImportCustomers } from "./ImportCustomers";
+import { CustomerBulkBar } from "./CustomerBulk";
 import { TagEditor } from "./TagEditor";
 import {
   channelMeta,
@@ -434,6 +435,32 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
     setChannelFilter([]);
   };
 
+  // Ticked customers, kept across filter changes; anyone since deleted or
+  // merged away drops out.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const lastPicked = useRef<string | null>(null);
+  const selected = useMemo(() => (contacts.data ?? []).filter((c) => picked.has(c.id)), [contacts.data, picked]);
+  const shownPicked = filtered.filter((c) => picked.has(c.id)).length;
+  const allShown = filtered.length > 0 && shownPicked === filtered.length;
+  /** Tick or untick one; with Shift, everything shown between it and the last one ticked. */
+  const togglePick = (c: Contact, e: MouseEvent) => {
+    e.stopPropagation();
+    const on = !picked.has(c.id);
+    const next = new Set(picked);
+    const from = lastPicked.current ? filtered.findIndex((x) => x.id === lastPicked.current) : -1;
+    const to = filtered.findIndex((x) => x.id === c.id);
+    const range = e.shiftKey && from >= 0 && to >= 0 ? filtered.slice(Math.min(from, to), Math.max(from, to) + 1) : [c];
+    for (const x of range) (on ? next.add(x.id) : next.delete(x.id));
+    lastPicked.current = c.id;
+    setPicked(next);
+  };
+  const toggleAllShown = () =>
+    setPicked((cur) => {
+      const next = new Set(cur);
+      for (const c of filtered) (allShown ? next.delete(c.id) : next.add(c.id));
+      return next;
+    });
+
   const routing = (c: Contact) =>
     c.ownerTeamId
       ? { label: teamName(c.ownerTeamId), pinned: true }
@@ -608,9 +635,32 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
             </div>
           )}
 
+          {selected.length > 0 && (
+            <CustomerBulkBar
+              selected={selected}
+              suggestions={allTags}
+              shown={filtered.length}
+              onSelectShown={() => setPicked((cur) => new Set([...cur, ...filtered.map((c) => c.id)]))}
+              onClear={() => setPicked(new Set())}
+              onToast={onToast}
+            />
+          )}
+
           <div className="dwrap">
             <div className="dtable dtable--cust">
               <div className="dtable__head">
+                <span className="dsel">
+                  <input
+                    type="checkbox"
+                    aria-label={allShown ? "Unselect everyone shown" : "Select everyone shown"}
+                    checked={allShown}
+                    ref={(el) => {
+                      if (el) el.indeterminate = shownPicked > 0 && !allShown;
+                    }}
+                    onChange={toggleAllShown}
+                    disabled={!filtered.length}
+                  />
+                </span>
                 <span>Name</span>
                 <span>Organisation</span>
                 <span>Contact</span>
@@ -623,7 +673,7 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
                 const r = routing(c);
                 return (
                   <div
-                    className={"dtable__row" + (c.blocked ? " dtable__row--blocked" : "")}
+                    className={"dtable__row" + (c.blocked ? " dtable__row--blocked" : "") + (picked.has(c.id) ? " dtable__row--picked" : "")}
                     key={c.id}
                     role="button"
                     tabIndex={0}
@@ -632,6 +682,18 @@ export function Customers({ onClose, onToast, onOpenConversation, focusContactId
                       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModal({ contact: c }); }
                     }}
                   >
+                    <span className="dcell dsel" onClick={(e) => togglePick(c, e)}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${c.displayName}`}
+                        checked={picked.has(c.id)}
+                        // The cell takes the click (with Shift for a range) — the box's
+                        // own click, and Space on it, bubble up to it.
+                        onChange={() => undefined}
+                        // …but not to the row, whose Space and Enter open the customer.
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                    </span>
                     <span className="dcell dname">
                       <Avatar name={c.displayName} email={c.email} color={c.avatarColor} className="dname__av av" />
                       <span className="dname__x">
