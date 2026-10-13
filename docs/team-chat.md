@@ -177,8 +177,8 @@ keep the two tied together.
   James") in the conversation's log, with the line that went with it.
 - Anyone in the workspace can open any conversation, so a card shows its
   details to everyone in the chat. You can only share into a chat you can
-  write in, and only see discussions in chats you're in (admins: any, read
-  only). Built on `ChatMessage.conversationId` and `shared` (the card as it was
+  write in, and the bar only shows discussions in chats you're in (an admin
+  reading along can still open any chat from All chats). Built on `ChatMessage.conversationId` and `shared` (the card as it was
   shared); the live part is read from the conversation, and on screen it's
   patched from the conversation events every client already receives.
 

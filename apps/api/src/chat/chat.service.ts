@@ -316,12 +316,16 @@ export class ChatService implements OnModuleInit {
     return message;
   }
 
-  /** Where a customer conversation is being discussed, in the chats I can open. */
+  /**
+   * Where a customer conversation is being discussed, in the chats I'm in. Not
+   * the ones an admin could read along in: those stay something you go and
+   * look at, not something that turns up on every thread.
+   */
   async discussions(userId: string, conversationId: string): Promise<ChatDiscussion[]> {
     const user = await this.open(userId);
     const cards = await this.chat.sharesOf(conversationId);
     if (!cards.length) return [];
-    const rooms = new Map((await this.visibleRooms(user, user.role === "admin")).map((a) => [a.room.id, a]));
+    const rooms = new Map((await this.visibleRooms(user, false)).map((a) => [a.room.id, a]));
     const mine = cards.filter((c) => {
       const a = rooms.get(c.roomId);
       const from = a ? this.visibleFrom(a) : null;

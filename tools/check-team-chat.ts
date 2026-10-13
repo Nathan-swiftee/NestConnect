@@ -365,7 +365,8 @@ async function main() {
     found2 = await svc.discussions(JAMES, conv.id);
     const here = found2.find((d) => d.card.id === cardMsg.id)!;
     ok("with the replies to each card, newest discussion first", found2[0]!.card.id === cardMsg.id && here.replies === 1 && here.latest?.body === "Zero-rated is right, I'll reissue it" && here.roomName === "Support team" && here.canPost);
-    ok("only in chats you can open", (await svc.discussions(AMARA, conv.id)).map((d) => d.roomKind).join() === "direct");
+    ok("only in chats you're in", (await svc.discussions(AMARA, conv.id)).map((d) => d.roomKind).join() === "direct");
+    ok("an admin isn't shown other people's direct chats about it", !(await svc.discussions(NATHAN, conv.id)).some((d) => d.roomKind === "direct"));
     const t = await svc.thread(NATHAN, cardMsg.id);
     const toBare = await svc.send(JAMES, support.id, say("On it", bare.id));
     ok("a reply to a card with nothing written quotes the customer", toBare.replyTo?.body === "💬 Northside Logistics", toBare.replyTo?.body);
