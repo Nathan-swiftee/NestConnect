@@ -3878,3 +3878,14 @@ button.tpl-row:active{transform:scale(.97)}
   body.ops-printing .ops-step,body.ops-printing .ops-warn{break-inside:avoid}
   body.ops-printing .ops-readhero{background:none}
 }
+
+/* ─── Organisation routing (components/organisations/Routing.tsx) ─── */
+.org-routing h3 svg{width:15px;height:15px;color:var(--text-muted)}
+.org-routing__to{margin:0;font-size:var(--fs-sm);line-height:1.5}
+.org-routing__to small{color:var(--text-muted)}
+.org-routing__reach{margin:0;padding-left:18px;font-size:var(--fs-xs);color:var(--text-muted);display:flex;flex-direction:column;gap:2px}
+.org-routing__warn{color:var(--amber)}
+.org-routing__form{display:flex;flex-direction:column;gap:10px}
+.org-routing__acts{display:flex;justify-content:flex-end;gap:8px}
+.routing-inherit{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:var(--fs-xs);color:var(--brand-strong);font-weight:500}
+.routing-inherit svg{width:13px;height:13px;flex:none}

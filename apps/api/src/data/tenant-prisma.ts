@@ -108,6 +108,8 @@ const REFERENCES: Record<string, string> = {
   attachmentId: "Attachment",
   macroId: "Macro",
   opsSopId: "OpsSop",
+  routeTeamId: "Team",
+  routeUserId: "User",
   collectionId: "OpsCollection",
 };
 /** The same, for relation fields written as `{ connect: { id } }`. */
@@ -128,6 +130,8 @@ const RELATIONS: Record<string, string> = {
   sop: "AccountSop",
   macro: "Macro",
   opsSop: "OpsSop",
+  routeTeam: "Team",
+  routeUser: "User",
   collection: "OpsCollection",
 };
 

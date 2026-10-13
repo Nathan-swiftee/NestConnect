@@ -20,6 +20,8 @@ import {
   type AccountAlert,
   type AccountContact,
   type AccountDetail,
+  type AccountRoutingInput,
+  accountRoutingInputSchema,
   type AccountListItem,
   type AccountNote,
   type AccountResource,
@@ -97,6 +99,16 @@ export class AccountsController {
     @Body(new ZodValidationPipe(updateAccountInputSchema)) body: z.output<typeof updateAccountInputSchema>,
   ): Promise<Account> {
     return this.accounts.update(userId, id, body);
+  }
+
+  /** Where its people's new chats go. Admins and managers. */
+  @Put(":id/routing")
+  setRouting(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(accountRoutingInputSchema)) body: AccountRoutingInput,
+  ): Promise<AccountDetail> {
+    return this.accounts.setRouting(userId, id, body);
   }
 
   @Post(":id/archive")

@@ -126,7 +126,8 @@ jest.mock("@ding/client", () => ({
   useContactAccounts: () => ({ data: mockState.linked }),
   relativeTime: () => "2d",
   useMe: () => ({ data: { user: { id: "usr_me", role: mockState.role } } }),
-  usePeople: () => ({ data: [{ user: { id: "usr_me", name: "Nathan" } }] }),
+  usePeople: () => ({ data: [{ user: { id: "usr_me", name: "Nathan" }, teamIds: [] }] }),
+  useTeams: () => ({ data: [] }),
   useAccountActivity: () => ({
     data: [
       {

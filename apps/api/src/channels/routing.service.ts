@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
-import { availableNow, type Contact, type Inbox } from "@ding/schemas";
+import { Injectable, Optional } from "@nestjs/common";
+import { availableNow, routingAccount, type Contact, type Inbox } from "@ding/schemas";
+import { AccountsService } from "../accounts/accounts.service";
 import { Store } from "../data/store";
 
 export interface RoutingDecision {
@@ -20,7 +21,10 @@ export interface RoutingHints {
  * Decides who a newly-created conversation goes to.
  *   1. A team the customer explicitly asked for (the NestChat routing menu)
  *   2. Per-customer owner (a client always reaches "their" person/team)
- *   3. Otherwise the inbox's owning team + its strategy:
+ *   3. Their organisation's routing — the one organisation they're in, or the
+ *      only one of theirs that has routing set (see `routingAccount`). A
+ *      contact's own routing, team or person, always wins over it.
+ *   4. Otherwise the inbox's owning team + its strategy:
  *      - manual        → stays unassigned (in the "Queue")
  *      - round_robin / load_balanced / most_idle → assign an available agent
  * (The latter three share a simple rotation in Phase 1; refine per strategy later.)
@@ -43,7 +47,11 @@ export interface RoutingHints {
 export class RoutingService {
   private rotation = 0;
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    // Optional so the routing checks can build this without organisations.
+    @Optional() private readonly accounts?: AccountsService,
+  ) {}
 
   async route(inbox: Inbox, contact: Contact, hints?: RoutingHints): Promise<RoutingDecision> {
     const asked = hints?.optionTeamId;
@@ -56,6 +64,11 @@ export class RoutingService {
         (await this.isAvailable(contact.ownerUserId))
       ) {
         return { assigneeUserId: contact.ownerUserId, assignedTeamId: asked };
+      }
+      // Likewise their organisation's person, if nobody of their own is set.
+      const org = contact.ownerUserId || contact.ownerTeamId ? null : await this.organisationRoute(contact);
+      if (org?.userId && (await this.isMember(asked, org.userId)) && (await this.isAvailable(org.userId))) {
+        return { assigneeUserId: org.userId, assignedTeamId: asked };
       }
       return this.withinTeam(inbox, asked);
     }
@@ -72,7 +85,25 @@ export class RoutingService {
       return { assigneeUserId: null, assignedTeamId: contact.ownerTeamId };
     }
 
+    const org = await this.organisationRoute(contact);
+    if (org) {
+      // Their organisation's person, while they're available and still on the
+      // team; otherwise the team takes it, by the channel's strategy.
+      if (org.userId && (await this.isMember(org.teamId, org.userId)) && (await this.isAvailable(org.userId))) {
+        return { assigneeUserId: org.userId, assignedTeamId: org.teamId };
+      }
+      return this.withinTeam(inbox, org.teamId);
+    }
+
     return this.withinTeam(inbox, inbox.teamIds[0] ?? null);
+  }
+
+  /** The organisation that decides for this contact, if one does, and its team still exists. */
+  private async organisationRoute(contact: Contact): Promise<{ teamId: string; userId: string | null } | null> {
+    if (!this.accounts) return null;
+    const { account } = routingAccount(await this.accounts.routingCandidates(contact.id));
+    if (!account?.routeTeamId || !(await this.store.getTeam(account.routeTeamId))) return null;
+    return { teamId: account.routeTeamId, userId: account.routeUserId };
   }
 
   /** Pick somebody on this team, per the inbox's strategy. */

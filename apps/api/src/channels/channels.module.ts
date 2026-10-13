@@ -6,6 +6,7 @@ import { CHANNEL_PROVIDERS } from "./channel-provider";
 import { ChannelDispatcher } from "./channel-dispatcher";
 import { OutboundDeliveryService } from "./outbound-delivery.service";
 import { AiModule } from "../ai/ai.module";
+import { AccountsModule } from "../accounts/accounts.module";
 import { VisitorEmailService } from "./nestchat/visitor-email.service";
 import { IngestService } from "./ingest.service";
 import { RoutingService } from "./routing.service";
@@ -36,7 +37,7 @@ import { DiagnosticsController } from "./diagnostics.controller";
 import { IntegrationsController } from "../settings/integrations.controller";
 
 @Module({
-  imports: [RealtimeModule, StorageModule, PushModule, AiModule],
+  imports: [RealtimeModule, StorageModule, PushModule, AiModule, AccountsModule],
   controllers: [
     WhatsAppController,
     EmailController,

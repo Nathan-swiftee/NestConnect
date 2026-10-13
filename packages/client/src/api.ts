@@ -97,6 +97,7 @@ import type {
   ResourceInput,
   SopInput,
   UpdateAccountInput,
+  AccountRoutingInput,
   UpdateContactLinkInput,
   UpdateResourceInput,
   UpdateSopInput,
@@ -570,6 +571,9 @@ export const api = {
   archiveAccount: (id: string, archived: boolean) =>
     post<Account>(`/accounts/${encodeURIComponent(id)}/${archived ? "archive" : "restore"}`, {}),
   deleteAccount: (id: string) => del<{ ok: true }>(`/accounts/${encodeURIComponent(id)}`),
+  /** Where its people's new chats go. Admins and managers. */
+  setAccountRouting: (id: string, input: AccountRoutingInput) =>
+    put<AccountDetail>(`/accounts/${encodeURIComponent(id)}/routing`, input),
   accountActivity: (id: string) => get<AccountActivity[]>(`/accounts/${encodeURIComponent(id)}/activity`),
   contactAccounts: (contactId: string) => get<ContactAccount[]>(`/accounts/by-contact/${encodeURIComponent(contactId)}`),
   conversationAccount: (conversationId: string) =>
