@@ -5,8 +5,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import type { Message, Attachment, Macro, Mentionable, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
-import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, macroQueryAt, mentionLabel, mentionParts, namesToHandles, renderEmailSignature, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, signedAsLine, templatesForWaba, typingPingMs } from "@ding/schemas";
+import type { Message, Attachment, Contact, Macro, Mentionable, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
+import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, isEmailAddress, macroQueryAt, mentionLabel, mentionParts, namesToHandles, renderEmailSignature, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, signedAsLine, templatesForWaba, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence, useConversationMacros } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -19,6 +19,7 @@ import { useHoverGlide } from "../lib/useHoverGlide";
 import { unlock } from "../lib/sound";
 import { emailFit } from "../lib/email-fit";
 import { TemplatePicker } from "./TemplatePicker";
+import { RecipientField, recipientsReady } from "./RecipientField";
 import {
   channelMeta,
   ClockIcon,
@@ -590,23 +591,22 @@ function ForwardModal({
   message,
   contactName,
   subject,
+  contacts,
   onSubmit,
   onClose,
 }: {
   message: Message;
   contactName: string;
   subject: string;
-  onSubmit: (to: string, note: string) => void;
+  /** The customer directory, for the To field's suggestions. */
+  contacts: Contact[];
+  onSubmit: (to: string[], note: string) => void;
   onClose: () => void;
 }) {
-  const [to, setTo] = useState("");
+  const [to, setTo] = useState<string[]>([]);
   const [note, setNote] = useState("");
-  // Enabled once at least one entered address looks like an email.
-  const valid = to
-    .split(/[,\s]+/)
-    .map((x) => x.trim())
-    .filter(Boolean)
-    .some((a) => a.includes("@"));
+  // Enabled once there's a recipient and every one is a real address.
+  const valid = recipientsReady(to);
   const who = message.direction === "out" ? message.authorName || "You" : message.authorName || contactName;
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -620,17 +620,17 @@ function ForwardModal({
           <button type="button" className="modal__x" onClick={onClose} aria-label="Close"><XIcon /></button>
         </div>
         <div className="modal__body">
-          <label className="field">
+          <div className="field">
             <span>To</span>
-            <input
+            <RecipientField
               value={to}
-              onChange={(e) => setTo(e.target.value)}
-              placeholder="name@example.com"
-              type="text"
-              inputMode="email"
+              onChange={setTo}
+              contacts={contacts}
+              ariaLabel="Forward to"
+              placeholder="Search customers, or type an email address"
               autoFocus
             />
-          </label>
+          </div>
           <label className="field">
             <span>Note <em className="field__opt">optional</em></span>
             <textarea
@@ -647,7 +647,7 @@ function ForwardModal({
           </div>
           <p className="fieldhint">
             This goes out as a new email to the people above — it won’t reply to the customer, but it stays
-            logged in this conversation. Separate multiple addresses with commas.
+            logged in this conversation. Pick customers as you type, or enter any address.
           </p>
         </div>
         <div className="modal__foot">
@@ -1599,6 +1599,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   const { mutate: retry } = useRetryMessage();
   const forward = useForwardMessage();
   const { data: people } = usePeople();
+  // The customer directory, for suggestions in Forward and Cc/Bcc (cached, shared).
+  const { data: contacts } = useContacts();
   // Teammates as @mentions: who "@Nathan A" means, and whose name "@nathan" shows as.
   const mentionPeople = useMemo(() => (people ?? []).map((m) => m.user), [people]);
   // Used far below, for reply-all's "don't copy ourselves" filter. It is called
@@ -1636,8 +1638,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Composer emoji picker, and the email Cc/Bcc fields (revealed on demand).
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [showCc, setShowCc] = useState(false);
-  const [cc, setCc] = useState("");
-  const [bcc, setBcc] = useState("");
+  const [cc, setCc] = useState<string[]>([]);
+  const [bcc, setBcc] = useState<string[]>([]);
   // The editable email subject (the thread's subject; empty on a fresh email).
   const [subjectDraft, setSubjectDraft] = useState(conv?.subject ?? "");
   // Subject shows compact ("Subject: …" + pencil) until you tap to edit it.
@@ -1930,8 +1932,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setHtml("");
     setEmojiOpen(false);
     setShowCc(false);
-    setCc("");
-    setBcc("");
+    setCc([]);
+    setBcc([]);
     setComposeChannelState(null);
     setPrePolish(null);
     editor?.commands.clearContent();
@@ -2402,7 +2404,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
    */
   const startReplyAll = (m: Message) => {
     startReply(m);
-    setCc(replyAllRecipients(m, { exclude: [ourAddress] }).join(", "));
+    setCc(replyAllRecipients(m, { exclude: [ourAddress] }).map((a) => a.toLowerCase()));
     setShowCc(true);
   };
 
@@ -2443,11 +2445,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // Forward `forwardMsg` on to `toRaw` (comma/space-separated addresses) with an
   // optional note. Sends a fresh "Fwd:" email — logged in this conversation, but
   // addressed to the new recipients, not the customer (Front-style).
-  const submitForward = (toRaw: string, note: string) => {
+  const submitForward = (toList: string[], note: string) => {
     const m = forwardMsg;
-    if (!m) return;
-    const toList = toRaw.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
-    if (!toList.length) return;
+    if (!m || !toList.length) return;
     const subject = m.email?.subject ?? conv.subject ?? "";
     const who = m.direction === "out" ? m.authorName || "You" : m.authorName || conv.contact.displayName;
     const when = new Date(m.createdAt).toLocaleString();
@@ -2625,10 +2625,15 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     const quotedMsgId = !internal ? replyTo?.id : undefined;
     // A rich email reply carries the editor's HTML; the server sanitizes it.
     const bodyHtml = isRich && body ? html || undefined : undefined;
-    // Optional Cc/Bcc on an email reply (comma/space separated addresses).
-    const parseAddrs = (s: string) => s.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean);
-    const ccList = isEmail && !internal ? parseAddrs(cc) : [];
-    const bccList = isEmail && !internal ? parseAddrs(bcc) : [];
+    // Optional Cc/Bcc on an email reply, picked or typed in their fields.
+    const ccList = isEmail && !internal ? cc : [];
+    const bccList = isEmail && !internal ? bcc : [];
+    const badCopy = [...ccList, ...bccList].find((a) => !isEmailAddress(a));
+    if (badCopy) {
+      // Said now, not after the provider bounces it.
+      onToast(`“${badCopy}” isn't a valid email address — fix or remove it in Cc/Bcc.`);
+      return;
+    }
     // The email thread's subject (verbatim topic; the server adds "Re:" on a reply).
     const subject = isEmail && !internal ? subjectDraft.trim() : undefined;
     unlock();
@@ -2673,8 +2678,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
     setMention(null);
     setSlash(null);
     setReplyTo(null);
-    setCc("");
-    setBcc("");
+    setCc([]);
+    setBcc([]);
     setShowCc(false);
   };
 
@@ -3556,23 +3561,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 <>
                   <div className="emailhdr__row">
                     <span className="emailhdr__lbl">Cc</span>
-                    <input
-                      className="emailhdr__in"
-                      value={cc}
-                      onChange={(e) => setCc(e.target.value)}
-                      placeholder="name@example.com, …"
-                      inputMode="email"
-                    />
+                    <RecipientField compact value={cc} onChange={setCc} contacts={contacts ?? []} ariaLabel="Cc" placeholder="Search customers or type an address" />
                   </div>
                   <div className="emailhdr__row">
                     <span className="emailhdr__lbl">Bcc</span>
-                    <input
-                      className="emailhdr__in"
-                      value={bcc}
-                      onChange={(e) => setBcc(e.target.value)}
-                      placeholder="name@example.com, …"
-                      inputMode="email"
-                    />
+                    <RecipientField compact value={bcc} onChange={setBcc} contacts={contacts ?? []} ariaLabel="Bcc" placeholder="Search customers or type an address" />
                   </div>
                 </>
               )}
@@ -4035,6 +4028,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             message={forwardMsg}
             contactName={conv.contact.displayName}
             subject={forwardMsg.email?.subject ?? conv.subject ?? ""}
+            contacts={contacts ?? []}
             onSubmit={submitForward}
             onClose={() => setForwardMsg(null)}
           />
