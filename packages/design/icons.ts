@@ -179,6 +179,12 @@ export const icons = {
     fill: circle(9.2, 9.8, 1.15) + circle(14.8, 9.8, 1.15),
   },
   /** A speech bubble with a soft tail — an internal note. */
+  /** Team Chat: two speech bubbles, one answering the other. */
+  teamChat: {
+    d:
+      "M4.6 3.6h9.6a2 2 0 0 1 2 2v5.6a2 2 0 0 1-2 2H9.4l-3.3 2.6a.6.6 0 0 1-.97-.47V13.2h-.53a2 2 0 0 1-2-2V5.6a2 2 0 0 1 2-2Z" +
+      "M18.6 8.6h.8a2 2 0 0 1 2 2v5.4a2 2 0 0 1-2 2h-.5v2.1a.6.6 0 0 1-.97.47L14.6 18h-3.8a2 2 0 0 1-2-2v-.4",
+  },
   note: {
     d: "M6 4.4h12a2.2 2.2 0 0 1 2.2 2.2v8.2a2.2 2.2 0 0 1-2.2 2.2h-7.6l-3.9 3.1a.7.7 0 0 1-1.14-.55V17H6a2.2 2.2 0 0 1-2.2-2.2V6.6A2.2 2.2 0 0 1 6 4.4Z",
   },

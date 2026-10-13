@@ -14,8 +14,11 @@ import { createAdapter } from "@socket.io/redis-adapter";
 import { Redis } from "ioredis";
 import jwt from "jsonwebtoken";
 import {
+  ChatClientEvent,
+  ChatServerEvent,
   ClientEvent,
   ServerEvent,
+  type ChatServerEvents,
   type ClientToServerEvents,
   type Conversation,
   type Message,
@@ -33,6 +36,19 @@ type DingSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
 const orgRoom = (orgId: string) => `org:${orgId}`;
 const convRoom = (id: string) => `conversation:${id}`;
+const chatRoom = (id: string) => `chat:${id}`;
+const userRoom = (id: string) => `user:${id}`;
+
+/**
+ * What the gateway asks Team Chat, which lives in its own module: who is in a
+ * chat (null when this person may not open it), and to be told when someone
+ * comes and goes. Registered by ChatService at start-up, so the gateway needs
+ * no knowledge of how chats are stored.
+ */
+export interface ChatHooks {
+  members(orgId: string, userId: string, roomId: string): Promise<string[] | null>;
+  presence(orgId: string, userId: string, online: boolean): void;
+}
 
 /** Pull one cookie value out of a raw `Cookie:` header. */
 function readCookie(header: string | undefined, name: string): string | undefined {
@@ -61,6 +77,13 @@ export class RealtimeGateway
 
   @WebSocketServer()
   server!: DingServer;
+
+  private chat: ChatHooks | null = null;
+
+  /** Team Chat plugs in here; see {@link ChatHooks}. */
+  registerChat(hooks: ChatHooks): void {
+    this.chat = hooks;
+  }
 
   afterInit(server: DingServer) {
     if (!env.usingRedis) return;
@@ -139,12 +162,17 @@ export class RealtimeGateway
     client.data.userId = user.id;
     client.data.orgId = user.orgId;
     client.join(orgRoom(user.orgId));
-    client.join(`user:${user.id}`);
+    client.join(userRoom(user.id));
     this.logger.debug(`socket connected: ${client.id} (user ${user.id})`);
+    this.chat?.presence(user.orgId, user.id, true);
   }
 
-  handleDisconnect(client: DingSocket) {
+  async handleDisconnect(client: DingSocket) {
     this.logger.debug(`socket disconnected: ${client.id}`);
+    const { userId, orgId } = client.data as { userId?: string; orgId?: string };
+    if (!userId || !orgId || !this.chat) return;
+    // Offline only once their last tab or phone has gone.
+    if (!(await this.isOnline(userId))) this.chat.presence(orgId, userId, false);
   }
 
   /**
@@ -220,6 +248,102 @@ export class RealtimeGateway
       who: body.who?.trim() || "Someone",
       typing: body.typing,
     });
+  }
+
+  /* ---- Team Chat ---- */
+
+  /** Opening a chat: only one this person is allowed into. */
+  @SubscribeMessage(ChatClientEvent.Join)
+  async onChatJoin(@ConnectedSocket() client: DingSocket, @MessageBody() body: { roomId: string }) {
+    await this.authenticated.get(client);
+    const { userId, orgId } = client.data as { userId?: string; orgId?: string };
+    const id = typeof body?.roomId === "string" ? body.roomId : "";
+    if (!userId || !orgId || !id || !this.chat) return;
+    const members = await this.chat.members(orgId, userId, id).catch(() => null);
+    if (members) client.join(chatRoom(id));
+  }
+
+  @SubscribeMessage(ChatClientEvent.Leave)
+  onChatLeave(@ConnectedSocket() client: DingSocket, @MessageBody() body: { roomId: string }) {
+    if (typeof body?.roomId === "string") client.leave(chatRoom(body.roomId));
+  }
+
+  /** "typing…" to the others in the chat, wherever they are in the app. */
+  @SubscribeMessage(ChatClientEvent.Typing)
+  async onChatTyping(@ConnectedSocket() client: DingSocket, @MessageBody() body: { roomId: string; typing: boolean }) {
+    const { userId, orgId } = client.data as { userId?: string; orgId?: string };
+    const id = typeof body?.roomId === "string" ? body.roomId : "";
+    if (!userId || !orgId || !id || !this.chat || !client.rooms.has(chatRoom(id))) return;
+    const members = await this.chat.members(orgId, userId, id).catch(() => null);
+    // Only a member types; an admin reading along can't.
+    if (!members?.includes(userId)) return;
+    const user = await runInTenant(orgId, () => this.store.getUser(userId)).catch(() => undefined);
+    this.emitToUsers(
+      members.filter((m) => m !== userId),
+      ChatServerEvent.Typing,
+      { roomId: id, userId, name: user?.name ?? "Someone", typing: !!body.typing },
+    );
+  }
+
+  /**
+   * Send a Team Chat event to these people, on every device they have open —
+   * and, given a chat, to anyone with it open (an admin reading along). One
+   * emit across all the rooms, so a socket in several gets it once.
+   */
+  emitToUsers<E extends keyof ChatServerEvents>(
+    userIds: string[],
+    event: E,
+    payload: Parameters<ChatServerEvents[E]>[0],
+    roomId?: string,
+  ): void {
+    const rooms = [...new Set(userIds)].map(userRoom);
+    if (roomId) rooms.push(chatRoom(roomId));
+    if (!rooms.length) return;
+    (this.server.to(rooms) as unknown as { emit(e: string, p: unknown): void }).emit(event, payload);
+  }
+
+  /** Presence goes to the whole workspace: anyone might have this person's chat open. */
+  emitChatPresence(orgId: string, userId: string, online: boolean, lastSeenAt: string | null): void {
+    this.server.to(orgRoom(orgId)).emit(ChatServerEvent.Presence, { userId, online, lastSeenAt });
+  }
+
+  emitChatCue(userIds: string[], roomId: string, mention: boolean): void {
+    this.emitToUsers(userIds, ChatServerEvent.Cue, { roomId, mention });
+  }
+
+  /** Has this person got this chat open, on any device? Push asks, as for conversations. */
+  async isViewingChat(userId: string, roomId: string): Promise<boolean> {
+    try {
+      const sockets = await this.server.in(chatRoom(roomId)).fetchSockets();
+      return sockets.some((s) => (s.data as { userId?: string }).userId === userId);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Connected anywhere right now. */
+  async isOnline(userId: string): Promise<boolean> {
+    try {
+      return (await this.server.in(userRoom(userId)).fetchSockets()).length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Which of these people are connected — one round trip for a whole chat list. */
+  async onlineAmong(userIds: string[]): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (!userIds.length || !this.server) return out;
+    try {
+      const sockets = await this.server.in([...new Set(userIds)].map(userRoom)).fetchSockets();
+      for (const s of sockets) {
+        const id = (s.data as { userId?: string }).userId;
+        if (id) out.add(id);
+      }
+    } catch {
+      // Unknown is shown as offline; nothing depends on it.
+    }
+    return out;
   }
 
   /* ---- server-side emit helpers, called by services ----

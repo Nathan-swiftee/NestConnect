@@ -103,6 +103,7 @@ export const AtIcon = g(icons.at);
 export const AttachIcon = g(icons.attach);
 export const EmojiIcon = g(icons.emoji);
 export const NoteIcon = g(icons.note);
+export const TeamChatIcon = g(icons.teamChat);
 export const MicIcon = g(icons.mic);
 export const ImageIcon = g(icons.image);
 /** Four-point sparkle — AI assist (the composer's Polish action). */

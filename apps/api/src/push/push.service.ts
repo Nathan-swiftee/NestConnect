@@ -14,7 +14,16 @@ import { currentOrgId } from "../tenancy/tenant-scope";
 
 /** What a push is *about*. Each maps to a preference, an Android notification
  *  channel, and whether quiet hours may hold it back. */
-export type PushKind = "message" | "team_message" | "team_chat" | "mention" | "assignment" | "reminder" | "test";
+export type PushKind =
+  | "message"
+  | "team_message"
+  | "team_chat"
+  | "mention"
+  | "assignment"
+  | "reminder"
+  | "test"
+  | "chat_message"
+  | "chat_mention";
 
 /** One thing worth telling someone about, before policy is applied. */
 export interface PushRequest {
@@ -26,11 +35,20 @@ export interface PushRequest {
   conversationId?: string;
   /** A Business Ops SOP the tap should open. */
   opsSopId?: string;
+  /** A Team Chat chat the tap should open. */
+  chatRoomId?: string;
   /** Whoever caused this. Never notified about their own action. */
   actorUserId?: string;
   /** False when something else already sounds on the desktop (a bell row
    *  plays its own), so one event isn't two chimes. */
   cue?: boolean;
+}
+
+/** What a push collapses and groups under: its conversation, or its chat. */
+function threadKey(req: PushRequest): string | undefined {
+  if (req.conversationId) return `conversation:${req.conversationId}`;
+  if (req.chatRoomId) return `chat:${req.chatRoomId}`;
+  return undefined;
 }
 
 /** Matches the schema's cap on the stored array — kept as a named constant so
@@ -47,6 +65,8 @@ const ANDROID_CHANNEL: Record<PushKind, string> = {
   assignment: "assignments",
   reminder: "reminders",
   test: "messages",
+  chat_message: "messages",
+  chat_mention: "mentions",
 };
 
 /** Notification categories — which quick actions the banner offers. The app
@@ -69,6 +89,8 @@ const PREFERENCE: Record<PushKind, keyof PushPreferences | null> = {
   mention: "mentions",
   assignment: "assignments",
   reminder: "reminders",
+  chat_message: "chatMessages",
+  chat_mention: "mentions",
   // A test push is a deliberate act by the person receiving it: policy would
   // only make "I pressed the button and nothing happened" ambiguous.
   test: null,
@@ -85,7 +107,7 @@ const PREFERENCE: Record<PushKind, keyof PushPreferences | null> = {
 const CUES_DESKTOP: ReadonlySet<PushKind> = new Set<PushKind>(["message", "team_message", "team_chat"]);
 
 /** Quiet hours hold back the routine; a direct mention still gets through. */
-const IGNORES_QUIET_HOURS: ReadonlySet<PushKind> = new Set<PushKind>(["mention", "test"]);
+const IGNORES_QUIET_HOURS: ReadonlySet<PushKind> = new Set<PushKind>(["mention", "chat_mention", "test"]);
 
 /** A chat notification is worthless an hour late — don't let the OS deliver it. */
 const TTL_SECONDS = 30 * 60;
@@ -254,6 +276,10 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     if (audience.length && req.conversationId && req.cue !== false && CUES_DESKTOP.has(req.kind)) {
       this.realtime.emitMessageCue(audience, req.conversationId, req.kind === "message" ? "message" : "team_message");
     }
+    // Team Chat rings its own way: the chat screen knows which chat is open.
+    if (audience.length && req.chatRoomId && req.cue !== false) {
+      this.realtime.emitChatCue(audience, req.chatRoomId, req.kind === "chat_mention");
+    }
 
     if (!recipients.length) return { sent: 0, failed: 0 };
     const devices = await this.store.devicesForUsers(recipients);
@@ -282,6 +308,7 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
         kind: req.kind,
         ...(req.conversationId ? { conversationId: req.conversationId } : {}),
         ...(req.opsSopId ? { opsSopId: req.opsSopId } : {}),
+        ...(req.chatRoomId ? { chatRoomId: req.chatRoomId } : {}),
       },
       ...(badges.has(d.userId) ? { badge: badges.get(d.userId) } : {}),
       channelId: ANDROID_CHANNEL[req.kind],
@@ -289,10 +316,10 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
       // One key per conversation: five messages in a chat become one entry in the
       // tray rather than five banners. `threadId` is the iOS half of the same
       // idea — collapse replaces, thread groups.
-      ...(req.conversationId
+      ...(threadKey(req)
         ? {
-            collapseKey: `conversation:${req.conversationId}`,
-            threadId: `conversation:${req.conversationId}`,
+            collapseKey: threadKey(req),
+            threadId: threadKey(req),
           }
         : {}),
       // Only a reminder earns the right to break through Focus: it's the one
@@ -366,13 +393,14 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     // The only check that hits the socket adapter, so it goes after the cheap
     // ones — there is no point paying for it if quiet hours already said no.
     if (req.conversationId && (await this.realtime.isViewing(userId, req.conversationId))) return false;
+    if (req.chatRoomId && (await this.realtime.isViewingChat(userId, req.chatRoomId))) return false;
 
-    return this.withinRateLimit(userId, req.conversationId);
+    return this.withinRateLimit(userId, threadKey(req));
   }
 
-  private withinRateLimit(userId: string, conversationId?: string): boolean {
-    if (!conversationId) return true;
-    const key = `${userId}:${conversationId}`;
+  private withinRateLimit(userId: string, thread?: string): boolean {
+    if (!thread) return true;
+    const key = `${userId}:${thread}`;
     const now = Date.now();
     const hits = (this.recent.get(key) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
     if (hits.length >= RATE_LIMIT) return false;

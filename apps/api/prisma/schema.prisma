@@ -88,6 +88,7 @@ model Organization {
   macros        Macro[]
   opsCollections OpsCollection[]
   opsSops        OpsSop[]
+  chatRooms      ChatRoom[]
 }
 
 /// A fact a workspace wants to record that we did not think of.
@@ -227,6 +228,10 @@ model User {
   sessions    Session[]
   devices     Device[]
   recoveryCodes RecoveryCode[]
+  chatMemberships ChatMember[]
+  chatMessages    ChatMessage[] @relation("ChatAuthor")
+  chatAudits      ChatAudit[]
+  chatPresence    ChatPresence?
 
   @@unique([orgId, email])
   @@index([orgId])
@@ -308,11 +313,14 @@ model Notification {
   conversationId String?
   /// A Business Ops SOP to open instead (review reminders, must-reads).
   opsSopId       String?
+  /// A Team Chat chat to open instead (an @mention there).
+  chatRoomId     String?
   read           Boolean  @default(false)
   createdAt      DateTime @default(now())
 
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   opsSop         OpsSop?  @relation(fields: [opsSopId], references: [id], onDelete: Cascade)
+  chatRoom       ChatRoom? @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
@@ -332,6 +340,7 @@ model Team {
   conversations Conversation[] @relation("assignedTeam")
   macros        MacroTeam[]
   opsSops       OpsSopTeam[]
+  chatRoom      ChatRoom?
   routedAccounts Account[]   @relation("AccountRouteTeam")
 
   @@index([orgId])
@@ -1203,3 +1212,101 @@ model ConversationEvent {
   @@index([conversationId, createdAt])
 }
 
+// ─── Team Chat ─────────────────────────────────────────────────────────────
+// Direct messages, groups, and one chat per team. See docs/team-chat.md.
+
+model ChatRoom {
+  id            String   @id @default(cuid())
+  orgId         String
+  /// direct | group | team
+  kind          String
+  /// A group's name. Empty for a direct message; a team chat shows its team's.
+  name          String   @default("")
+  emoji         String?
+  /// The team a team chat belongs to. Its members are the team's.
+  teamId        String?  @unique
+  /// "userA:userB", sorted — one direct chat per pair.
+  directKey     String?
+  createdById   String?
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  org           Organization   @relation(fields: [orgId], references: [id])
+  team          Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  members       ChatMember[]
+  messages      ChatMessage[]
+  audits        ChatAudit[]
+  notifications Notification[]
+
+  @@unique([orgId, directKey])
+  @@index([orgId, lastMessageAt])
+}
+
+/// A person in a chat, and their own state in it. For a team chat the team
+/// decides who is in it; these rows only hold each person's markers.
+model ChatMember {
+  roomId          String
+  userId          String
+  /// admin | member
+  role            String    @default("member")
+  joinedAt        DateTime  @default(now())
+  /// Read everything up to here.
+  lastReadAt      DateTime?
+  /// Their app has received everything up to here.
+  lastDeliveredAt DateTime?
+  mutedUntil      DateTime?
+  pinnedAt        DateTime?
+
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([roomId, userId])
+  @@index([userId])
+}
+
+model ChatMessage {
+  id           String    @id @default(cuid())
+  roomId       String
+  authorUserId String?
+  /// text | system
+  kind         String    @default("text")
+  body         String    @default("")
+  /// A system message's event (ChatSystemData).
+  data         Json?
+  replyToId    String?
+  /// { "👍": [userId, …] }
+  reactions    Json      @default("{}")
+  /// User ids it @-mentions.
+  mentions     Json      @default("[]")
+  editedAt     DateTime?
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  room    ChatRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author  User?         @relation("ChatAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  replyTo ChatMessage?  @relation("ChatReply", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies ChatMessage[] @relation("ChatReply")
+
+  @@index([roomId, createdAt])
+}
+
+/// An admin opened a chat they aren't in.
+model ChatAudit {
+  id     String   @id @default(cuid())
+  roomId String
+  userId String
+  at     DateTime @default(now())
+
+  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, at])
+}
+
+/// When someone was last connected, for "last seen".
+model ChatPresence {
+  userId     String   @id
+  lastSeenAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
