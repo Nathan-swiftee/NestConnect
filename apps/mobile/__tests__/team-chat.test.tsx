@@ -68,6 +68,8 @@ const msg = (over: Partial<ChatMessage>): ChatMessage => ({
   replyTo: null,
   reactions: [],
   mentions: [],
+  attachments: [],
+  link: null,
   editedAt: null,
   deletedAt: null,
   createdAt: at,

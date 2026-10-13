@@ -6,8 +6,9 @@
  * and a group. Acting as the second, nothing of the first's can be listed,
  * opened, read, written in, reacted to, quoted or joined — not through the
  * service and not through the store. Then what only Postgres can show: paging
- * back, mention flags in unread counts, a deleted team leaving its chat behind,
- * and deleting a chat taking its messages with it.
+ * back, mention flags in unread counts, files and stars kept, search, a deleted
+ * team leaving its chat behind, and deleting a chat taking its messages (and
+ * their stars) with it.
  *
  *     DATABASE_URL=… pnpm check:team-chat-pg
  */
@@ -49,7 +50,8 @@ const B = "chatchk_b";
 async function cleanup(root: PrismaClient): Promise<void> {
   const orgs = [A, B];
   await root.notification.deleteMany({ where: { user: { orgId: { in: orgs } } } });
-  await root.chatRoom.deleteMany({ where: { orgId: { in: orgs } } }); // members, messages, audits cascade
+  await root.chatRoom.deleteMany({ where: { orgId: { in: orgs } } }); // members, messages, stars, audits cascade
+  await root.attachment.deleteMany({ where: { orgId: { in: orgs } } });
   await root.chatPresence.deleteMany({ where: { user: { orgId: { in: orgs } } } });
   await root.teamMember.deleteMany({ where: { team: { orgId: { in: orgs } } } });
   await root.team.deleteMany({ where: { orgId: { in: orgs } } });
@@ -95,7 +97,9 @@ async function main(): Promise<void> {
       const dm = await svc.openDirect(agent.id, admin.id);
       const secret = await svc.send(agent.id, dm.id, say(`${tag} secret`));
       const group = await svc.createGroup(admin.id, { name: `${tag} group`, memberIds: [agent.id] });
-      return { team, admin, agent, teamRoom, dm, secret, group };
+      const upload = await store.createUploadAttachment(org, { storageKey: `chatchk/${tag}.jpg`, kind: "image", mime: "image/jpeg", size: 10, filename: `${tag}.jpg` });
+      await svc.star(agent.id, secret.id, true);
+      return { team, admin, agent, teamRoom, dm, secret, group, upload };
     });
 
   try {
@@ -125,6 +129,12 @@ async function main(): Promise<void> {
       ok("or its members to list", (await chat.listMembers(a.dm.id)).length === 0);
       ok("or its messages", (await chat.listMessages(a.dm.id, { limit: 10 })).length === 0);
       ok("or its read-along record", await violation(chat.addAudit(a.dm.id, b.admin.id)));
+      ok("A's message can't be starred", await refuses(() => svc.star(b.admin.id, a.secret.id, true)));
+      ok("or starred through the store", await violation(chat.setStar(b.admin.id, a.secret.id, true)));
+      ok("search doesn't reach A", (await svc.search(b.admin.id, "secret")).every((h) => h.roomId !== a.dm.id));
+      ok("not even asked for A's chat by name", (await chat.searchMessages([a.dm.id], "secret", 10)).length === 0);
+      ok("A's starred messages aren't B's to list", (await chat.starsOf(a.agent.id)).length === 0);
+      ok("A's upload can't be sent in B", await refuses(() => svc.send(b.agent.id, b.dm.id, sendChatMessageInputSchema.parse({ body: "", attachments: [a.upload] }))));
       ok("switching B off", (await svc.setEnabled(b.admin.id, false)).enabled === false);
     });
     await runInTenant(A, async () => {
@@ -152,6 +162,21 @@ async function main(): Promise<void> {
       await svc.room(a.admin.id, a.dm.id);
       ok("a member opening their own chat isn't a read-along", (await chat.listAudits(a.dm.id)).length === 0);
 
+      const photo = await svc.send(a.agent.id, a.dm.id, sendChatMessageInputSchema.parse({ body: "the van", attachments: [a.upload] }));
+      const kept = (await svc.messages(a.admin.id, a.dm.id)).messages.find((m) => m.id === photo.id);
+      ok("a photo is kept with its message", kept?.attachments[0]?.id === a.upload.id && kept.attachments[0]!.filename === "a.jpg");
+      await chat.updateMessage(photo.id, { link: { url: "https://x.co", title: "X", description: null, siteName: "x.co" } });
+      ok("and a link card", (await chat.getMessage(photo.id))?.link?.title === "X");
+      await chat.updateMessage(photo.id, { link: null });
+      ok("which can be taken off again", (await chat.getMessage(photo.id))?.link === null);
+      const hits = await svc.search(a.admin.id, "SECRET");
+      ok("search ignores case, and says where", hits.length === 1 && hits[0]!.message.id === a.secret.id && hits[0]!.roomKind === "direct");
+      ok("the agent's star survived", (await svc.starred(a.agent.id))[0]?.message.id === a.secret.id);
+      await svc.star(a.agent.id, a.secret.id, true);
+      ok("starring twice is still one star", (await chat.starsOf(a.agent.id)).length === 1);
+      await svc.remove(a.agent.id, a.secret.id);
+      ok("a deleted message drops out of starred", (await svc.starred(a.agent.id)).length === 0);
+
       await store.deleteTeam(a.team.id);
       const room = await chat.getRoom(a.teamRoom.id);
       ok("deleting the team leaves its chat, detached", !!room && room.teamId === null && room.kind === "team");
@@ -160,6 +185,8 @@ async function main(): Promise<void> {
 
       await root.chatRoom.delete({ where: { id: a.group.id } });
       ok("deleting a chat takes its messages and members", (await root.chatMessage.count({ where: { roomId: a.group.id } })) === 0 && (await root.chatMember.count({ where: { roomId: a.group.id } })) === 0);
+      await root.chatRoom.delete({ where: { id: a.dm.id } });
+      ok("its stars go with it", (await root.chatStar.count({ where: { chatMessageId: a.secret.id } })) === 0);
       ok("and the bell entries pointing at it", (await root.notification.count({ where: { chatRoomId: a.group.id } })) === 0);
     });
   } finally {

@@ -14,6 +14,8 @@ const msg = (id: string, authorId: string | null, at: Date, over: Partial<ChatMe
   replyTo: null,
   reactions: [],
   mentions: [],
+  attachments: [],
+  link: null,
   editedAt: null,
   deletedAt: null,
   createdAt: at.toISOString(),
@@ -117,6 +119,11 @@ describe("Team Chat: previews", () => {
   it("shows mentions by name, and deleted as deleted", () => {
     expect(chatPreview(msg("1", "amara", NOW, { body: "@nathan can you?" }), { meId: "me", group: false, people })).toBe("@Nathan A can you?");
     expect(chatPreview(msg("1", "amara", NOW, { deletedAt: NOW.toISOString(), body: "" }), { meId: "me", group: false, people })).toBe("This message was deleted");
+    const photo = { id: "a", kind: "image" as const, mime: "image/jpeg", size: 1, filename: "van.jpg", url: "/api/media/a" };
+    expect(chatPreview(msg("1", "amara", NOW, { body: "", attachments: [photo] }), { meId: "me", group: true, people })).toBe("Amara: 📷 Photo");
+    expect(chatPreview(msg("1", "amara", NOW, { body: "The van", attachments: [photo] }), { meId: "me", group: false, people })).toBe("📷 The van");
+    const voice = { ...photo, kind: "voice" as const, durationMs: 72_000 };
+    expect(chatPreview(msg("1", "me", NOW, { body: "", attachments: [voice] }), { meId: "me", group: false, people })).toBe("You: 🎤 Voice message (1:12)");
   });
   it("system lines read as sentences", () => {
     expect(chatSystemText({ event: "added", actorName: "Nathan A", targetNames: ["Amara", "James", "Sam"] })).toBe("Nathan A added Amara, James and Sam");

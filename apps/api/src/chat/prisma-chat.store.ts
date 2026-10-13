@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
-import type { Prisma } from "@prisma/client";
-import type { ChatMemberRole, ChatRoomKind, ChatSystemData } from "@ding/schemas";
+import { Prisma } from "@prisma/client";
+import type { ChatAttachment, ChatLinkPreview, ChatMemberRole, ChatRoomKind, ChatSystemData } from "@ding/schemas";
 import { PrismaService } from "../data/prisma.service";
 import { tenantScoped, type TenantPrisma } from "../data/tenant-prisma";
 import { currentOrgId } from "../tenancy/tenant-scope";
@@ -58,6 +58,8 @@ function toMessage(m: Prisma.ChatMessageGetPayload<object>): ChatMessageRecord {
     replyToId: m.replyToId,
     reactions: (m.reactions as unknown as Record<string, string[]>) ?? {},
     mentions: (m.mentions as unknown as string[]) ?? [],
+    attachments: (m.attachments as unknown as ChatAttachment[]) ?? [],
+    link: (m.link as unknown as ChatLinkPreview | null) ?? null,
     editedAt: iso(m.editedAt),
     deletedAt: iso(m.deletedAt),
     createdAt: m.createdAt.toISOString(),
@@ -178,6 +180,7 @@ export class PrismaChatStore extends ChatStore {
         data: f.data ? json(f.data) : undefined,
         replyToId: f.replyToId,
         mentions: json(f.mentions),
+        attachments: json(f.attachments ?? []),
         createdAt: at,
       },
     });
@@ -209,9 +212,11 @@ export class PrismaChatStore extends ChatStore {
   }
   async updateMessage(
     id: string,
-    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt">>,
+    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link">>,
   ): Promise<ChatMessageRecord | undefined> {
     const data: Prisma.ChatMessageUncheckedUpdateInput = {};
+    if (patch.attachments !== undefined) data.attachments = json(patch.attachments);
+    if (patch.link !== undefined) data.link = patch.link ? json(patch.link) : Prisma.DbNull;
     if (patch.body !== undefined) data.body = patch.body;
     if (patch.reactions !== undefined) data.reactions = json(patch.reactions);
     if (patch.mentions !== undefined) data.mentions = json(patch.mentions);
@@ -255,6 +260,32 @@ export class PrismaChatStore extends ChatStore {
       }),
     );
     return out;
+  }
+
+  async searchMessages(roomIds: string[], q: string, limit: number): Promise<ChatMessageRecord[]> {
+    if (!roomIds.length) return [];
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { roomId: { in: roomIds }, kind: "text", deletedAt: null, body: { contains: q, mode: "insensitive" } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+    });
+    return rows.map(toMessage);
+  }
+
+  async setStar(userId: string, messageId: string, starred: boolean): Promise<void> {
+    if (starred) {
+      await this.prisma.chatStar.upsert({
+        where: { userId_chatMessageId: { userId, chatMessageId: messageId } },
+        create: { userId, chatMessageId: messageId, createdAt: new Date(chatClock()) },
+        update: {},
+      });
+    } else {
+      await this.prisma.chatStar.deleteMany({ where: { userId, chatMessageId: messageId } });
+    }
+  }
+  async starsOf(userId: string): Promise<Array<{ messageId: string; at: string }>> {
+    const rows = await this.prisma.chatStar.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: 500 });
+    return rows.map((r) => ({ messageId: r.chatMessageId, at: r.createdAt.toISOString() }));
   }
 
   async addAudit(roomId: string, userId: string): Promise<void> {

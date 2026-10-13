@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { attachmentSchema, type Attachment } from "./index";
 
 /*
  * Team Chat — the team talking to itself.
@@ -71,6 +72,18 @@ export interface ChatQuote {
   deleted: boolean;
 }
 
+/** The card under a message that carries a link: what the page says it is. */
+export interface ChatLinkPreview {
+  url: string;
+  title: string;
+  description: string | null;
+  siteName: string | null;
+}
+
+/** Photos, voice notes, files — the same shape the inbox uses. */
+export type ChatAttachment = Attachment;
+export const CHAT_MAX_ATTACHMENTS = 10;
+
 export interface ChatReaction {
   emoji: string;
   userIds: string[];
@@ -86,6 +99,9 @@ export interface ChatMessage {
   system: ChatSystemData | null;
   replyTo: ChatQuote | null;
   reactions: ChatReaction[];
+  attachments: ChatAttachment[];
+  /** A preview of the first link in it, once fetched. */
+  link: ChatLinkPreview | null;
   /** Who it @-mentions, resolved when it was sent. */
   mentions: string[];
   editedAt: string | null;
@@ -160,13 +176,37 @@ export interface ChatMessageInfo {
 const body = z.string().trim().min(1, "Write something").max(CHAT_MESSAGE_MAX);
 const emoji = z.string().trim().min(1).max(16);
 
-export const sendChatMessageInputSchema = z.object({
-  body,
-  replyToId: z.string().nullable().optional(),
-  /** The sender's own id for the bubble they're showing while it sends. */
-  clientId: z.string().max(64).nullable().optional(),
-});
+export const sendChatMessageInputSchema = z
+  .object({
+    /** May be empty when the message is only a photo, a voice note or a file. */
+    body: z.string().trim().max(CHAT_MESSAGE_MAX).default(""),
+    /** As the upload returned them; the server checks each against its own records. */
+    // Lazy: index.ts loads this file before it defines attachmentSchema.
+    attachments: z.array(z.lazy(() => attachmentSchema)).max(CHAT_MAX_ATTACHMENTS).default([]),
+    replyToId: z.string().nullable().optional(),
+    /** The sender's own id for the bubble they're showing while it sends. */
+    clientId: z.string().max(64).nullable().optional(),
+  })
+  .refine((v) => v.body.length > 0 || v.attachments.length > 0, { message: "Write something", path: ["body"] });
 export type SendChatMessageInput = z.infer<typeof sendChatMessageInputSchema>;
+
+export const starChatMessageInputSchema = z.object({ starred: z.boolean() });
+
+/** A message I starred, with where it is. */
+export interface ChatStarred {
+  roomId: string;
+  roomName: string;
+  message: ChatMessage;
+  starredAt: string;
+}
+
+/** A message found by search, with where it is. */
+export interface ChatSearchHit {
+  roomId: string;
+  roomName: string;
+  roomKind: ChatRoomKind;
+  message: ChatMessage;
+}
 
 export const editChatMessageInputSchema = z.object({ body });
 export type EditChatMessageInput = z.infer<typeof editChatMessageInputSchema>;
@@ -297,6 +337,28 @@ export function chatSystemText(s: ChatSystemData): string {
       return `${who} made ${them} a group admin`;
     case "demoted":
       return `${who} removed ${them} as a group admin`;
+  }
+}
+
+/** What a message with no words says in a list or a push: "📷 Photo", "🎤 Voice message (0:12)". */
+export function chatAttachmentLabel(atts: Array<Pick<Attachment, "kind" | "filename" | "durationMs">>): string {
+  const a = atts[0];
+  if (!a) return "";
+  const more = atts.length > 1 ? ` +${atts.length - 1}` : "";
+  const secs = a.durationMs ? Math.round(a.durationMs / 1000) : 0;
+  const dur = secs ? ` (${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")})` : "";
+  switch (a.kind) {
+    case "image":
+    case "sticker":
+      return atts.length > 1 && atts.every((x) => x.kind === "image") ? `📷 ${atts.length} photos` : `📷 Photo${more}`;
+    case "video":
+      return `🎥 Video${dur}${more}`;
+    case "voice":
+      return `🎤 Voice message${dur}`;
+    case "audio":
+      return `🎵 Audio${dur}${more}`;
+    default:
+      return `📄 ${a.filename || "File"}${more}`;
   }
 }
 

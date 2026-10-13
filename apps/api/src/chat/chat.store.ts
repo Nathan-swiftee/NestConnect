@@ -1,4 +1,4 @@
-import type { ChatMemberRole, ChatRoomKind, ChatSystemData } from "@ding/schemas";
+import type { ChatAttachment, ChatLinkPreview, ChatMemberRole, ChatRoomKind, ChatSystemData } from "@ding/schemas";
 
 export interface ChatRoomRecord {
   id: string;
@@ -38,12 +38,15 @@ export interface ChatMessageRecord {
   /** emoji → who reacted with it */
   reactions: Record<string, string[]>;
   mentions: string[];
+  attachments: ChatAttachment[];
+  link: ChatLinkPreview | null;
   editedAt: string | null;
   deletedAt: string | null;
   createdAt: string;
 }
 
-export type ChatMessageFields = Pick<ChatMessageRecord, "roomId" | "authorUserId" | "kind" | "body" | "data" | "replyToId" | "mentions">;
+export type ChatMessageFields = Pick<ChatMessageRecord, "roomId" | "authorUserId" | "kind" | "body" | "data" | "replyToId" | "mentions"> &
+  Partial<Pick<ChatMessageRecord, "attachments">>;
 
 /** Where to read from, and how far back. */
 export interface ChatPageQuery {
@@ -83,8 +86,14 @@ export abstract class ChatStore {
   abstract listMessages(roomId: string, q: ChatPageQuery): Promise<ChatMessageRecord[]>;
   abstract updateMessage(
     id: string,
-    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt">>,
+    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link">>,
   ): Promise<ChatMessageRecord | undefined>;
+  /** Text messages in these chats whose words contain `q`, newest first. */
+  abstract searchMessages(roomIds: string[], q: string, limit: number): Promise<ChatMessageRecord[]>;
+
+  abstract setStar(userId: string, messageId: string, starred: boolean): Promise<void>;
+  /** Newest first. */
+  abstract starsOf(userId: string): Promise<Array<{ messageId: string; at: string }>>;
   /** The newest message in each of these chats, from `from` on where given. */
   abstract lastMessages(rooms: Array<{ roomId: string; from: string | null }>): Promise<Map<string, ChatMessageRecord>>;
   /**

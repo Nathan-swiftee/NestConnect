@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import {
   canEditChatMessage,
   chatSystemText,
@@ -21,6 +21,7 @@ import {
   useChatMutation,
   useChatRoom,
   useChatRoomOpen,
+  useChatStars,
   useChatTyping,
   useMarkChatRead,
   useMe,
@@ -30,6 +31,7 @@ import {
 } from "../../hooks";
 import {
   AlertIcon,
+  AttachIcon,
   BackIcon,
   CheckDouble,
   CheckSingle,
@@ -41,9 +43,12 @@ import {
   EmojiIcon,
   EyeIcon,
   ReplyIcon,
+  StarIcon,
   TrashIcon,
+  XIcon,
 } from "../../lib/icons";
-import { ChatComposer } from "./ChatComposer";
+import { AttachmentView } from "../media/media";
+import { ChatComposer, type ChatComposerHandle } from "./ChatComposer";
 import { ChatInfoPanel } from "./ChatInfoPanel";
 import { MessageInfoDialog } from "./ChatDialogs";
 import { RoomAvatar } from "./RoomAvatar";
@@ -53,12 +58,15 @@ export const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"
 /** One chat, open: header, the messages, and the composer. */
 export function ChatConversation({
   roomId,
+  focusMessageId,
   onBack,
   onClosed,
   onOpenRoom,
   onToast,
 }: {
   roomId: string;
+  /** Open at this message — from search or starred. */
+  focusMessageId?: string | null;
   onBack?: () => void;
   onClosed: () => void;
   onOpenRoom: (id: string) => void;
@@ -74,6 +82,11 @@ export function ChatConversation({
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [infoFor, setInfoFor] = useState<ChatMessage | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragDepth = useRef(0);
+  const composer = useRef<ChatComposerHandle>(null);
+  const stars = useChatStars();
   useChatRoomOpen(roomId);
 
   const r = room.data;
@@ -165,6 +178,57 @@ export function ChatConversation({
     window.setTimeout(() => setFlash(null), 1400);
   };
 
+  // Opened from search or starred: load back until the message is there, then show it.
+  const sought = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusMessageId || sought.current === focusMessageId || msgs.isLoading) return;
+    if (msgs.messages.some((m) => m.id === focusMessageId)) {
+      sought.current = focusMessageId;
+      requestAnimationFrame(() => goTo(focusMessageId));
+    } else if (msgs.hasNextPage && !msgs.isFetchingNextPage) {
+      prevHeight.current = scroller.current?.scrollHeight ?? 0;
+      void msgs.fetchNextPage();
+    } else if (!msgs.hasNextPage) {
+      sought.current = focusMessageId;
+      onToast("That message isn't here any more");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusMessageId, msgs.messages, msgs.hasNextPage, msgs.isFetchingNextPage, msgs.isLoading]);
+
+  useEffect(() => {
+    if (!lightbox) return;
+    const close = (e: globalThis.KeyboardEvent) => e.key === "Escape" && setLightbox(null);
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [lightbox]);
+
+  // Files dropped anywhere on the chat go to the composer.
+  const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes("Files");
+  const dropProps = {
+    onDragEnter: (e: DragEvent) => {
+      if (!hasFiles(e) || !composer.current) return;
+      e.preventDefault();
+      dragDepth.current += 1;
+      setDragging(true);
+    },
+    onDragOver: (e: DragEvent) => {
+      if (hasFiles(e) && composer.current) e.preventDefault();
+    },
+    onDragLeave: (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      dragDepth.current = Math.max(0, dragDepth.current - 1);
+      if (!dragDepth.current) setDragging(false);
+    },
+    onDrop: (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth.current = 0;
+      setDragging(false);
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length) composer.current?.addFiles(files);
+    },
+  };
+
   /* ---- actions ---- */
   const react = useChatMutation(({ id, emoji }: { id: string; emoji: string }) => api.reactChatMessage(id, emoji));
   const remove = useChatMutation((id: string) => api.deleteChatMessage(id));
@@ -193,7 +257,14 @@ export function ChatConversation({
 
   return (
     <div className="tc-main">
-      <section className="tc-chat" aria-label={`Chat: ${r.name}`}>
+      <section className="tc-chat" aria-label={`Chat: ${r.name}`} {...dropProps}>
+        {dragging && (
+          <div className="comp-drop tc-drop" aria-hidden="true">
+            <span>
+              <AttachIcon /> Drop to send
+            </span>
+          </div>
+        )}
         <header className="tc-chat__head">
           {onBack && (
             <button type="button" className="iconbtn" aria-label="Back to chats" onClick={onBack}>
@@ -286,6 +357,9 @@ export function ChatConversation({
                   }}
                   onQuote={goTo}
                   onRetry={() => void retry(it.message)}
+                  onImage={setLightbox}
+                  starred={stars.ids.has(it.message.id)}
+                  onStar={(on) => void stars.toggle(it.message, on).catch(() => onToast("Couldn't star that message"))}
                 />
               ),
             )}
@@ -307,6 +381,7 @@ export function ChatConversation({
 
         {r.canPost ? (
           <ChatComposer
+            ref={composer}
             room={r}
             people={mentionables}
             replyTo={replyTo}
@@ -335,6 +410,14 @@ export function ChatConversation({
         />
       )}
       {infoFor && <MessageInfoDialog message={infoFor} onClose={() => setInfoFor(null)} />}
+      {lightbox && (
+        <div className="lightbox" role="dialog" aria-modal="true" aria-label="Image preview" onClick={() => setLightbox(null)}>
+          <img className="lightbox__img" src={lightbox} alt="" />
+          <button type="button" className="lightbox__close" onClick={() => setLightbox(null)} aria-label="Close preview">
+            <XIcon />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -346,6 +429,28 @@ function membersLine(members: ChatMember[], meId: string | undefined): string {
   const names = [...others.slice(0, 6), ...(members.some((m) => m.id === meId) ? ["You"] : [])].join(", ");
   const more = others.length > 6 ? ` +${others.length - 6}` : "";
   return `${names}${more}${online ? ` · ${online} online` : ""}`;
+}
+
+/** Words, with any web links in them clickable. */
+function Linked({ text }: { text: string }) {
+  const parts = text.split(/(\bhttps?:\/\/[^\s<>"']+)/gi);
+  return (
+    <span>
+      {parts.map((part, i) => {
+        if (i % 2 === 0) return part;
+        // "see https://x.com/a." — the full stop ends the sentence, not the link.
+        const url = part.replace(/[.,;:!?)\]]+$/, "");
+        return (
+          <span key={i}>
+            <a className="tc-link" href={url} target="_blank" rel="noopener noreferrer">
+              {url}
+            </a>
+            {part.slice(url.length)}
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 function Bubble({
@@ -368,6 +473,9 @@ function Bubble({
   onCopy,
   onQuote,
   onRetry,
+  onImage,
+  starred,
+  onStar,
 }: {
   m: ChatBubble;
   first: boolean;
@@ -388,10 +496,17 @@ function Bubble({
   onCopy: () => void;
   onQuote: (id: string) => void;
   onRetry: () => void;
+  onImage: (url: string) => void;
+  starred: boolean;
+  onStar: (on: boolean) => void;
 }) {
   const [menu, setMenu] = useState<"react" | "more" | null>(null);
   const deleted = !!m.deletedAt;
-  const jumbo = !deleted && !m.replyTo && isJumboEmoji(m.body);
+  const files = deleted ? [] : (m.attachments ?? []);
+  const jumbo = !deleted && !m.replyTo && !files.length && isJumboEmoji(m.body);
+  // A photo or video on its own sits in the bubble edge to edge, the time over it.
+  const visual = files.length > 0 && files.every((a) => a.kind === "image" || a.kind === "video");
+  const bare = visual && !m.body && !m.replyTo;
   const ticks = mine && !m.pending && !m.failed ? chatTicks(m, room.members, m.author?.id ?? "") : null;
   const settled = !m.pending && !m.failed && !deleted;
 
@@ -444,7 +559,7 @@ function Bubble({
           />
         </span>
       )}
-      <div className={"tc-bubble" + (deleted ? " deleted" : "")}>
+      <div className={"tc-bubble" + (deleted ? " deleted" : "") + (files.length ? " has-files" : "") + (visual ? " visual" : "") + (bare ? " bare" : "")}>
         {group && !mine && first && (
           <span className="tc-bubble__name" style={{ color: chatNameColour(m.author?.id) }}>
             {m.author?.name ?? "Former teammate"}
@@ -458,9 +573,16 @@ function Bubble({
             <span className="tc-quote__text">{m.replyTo.deleted ? "This message was deleted" : m.replyTo.body}</span>
           </button>
         )}
+        {files.length > 0 && (
+          <div className={"tc-files" + (visual && files.length > 1 ? " grid" : "")}>
+            {files.map((a) => (
+              <AttachmentView key={a.id} att={a} onImage={onImage} />
+            ))}
+          </div>
+        )}
         {deleted ? (
           <span className="tc-bubble__text tc-deleted">{mine ? "You deleted this message" : "This message was deleted"}</span>
-        ) : (
+        ) : !m.body ? null : (
           <span className="tc-bubble__text">
             {mentionParts(m.body, people).map((p, i) =>
               p.mention ? (
@@ -468,13 +590,25 @@ function Bubble({
                   {p.text}
                 </span>
               ) : (
-                <span key={i}>{p.text}</span>
+                <Linked key={i} text={p.text} />
               ),
             )}
           </span>
         )}
-        <span className="tc-stamp-space" aria-hidden="true" />
+        {m.link && !deleted && (
+          <a className="tc-linkcard" href={m.link.url} target="_blank" rel="noopener noreferrer">
+            {m.link.siteName && <span className="tc-linkcard__site">{m.link.siteName}</span>}
+            <span className="tc-linkcard__title">{m.link.title}</span>
+            {m.link.description && <span className="tc-linkcard__desc">{m.link.description}</span>}
+          </a>
+        )}
+        {!bare && <span className="tc-stamp-space" aria-hidden="true" />}
         <span className="tc-stamp">
+          {starred && !deleted && (
+            <span className="tc-starred" aria-label="Starred">
+              <StarIcon filled />
+            </span>
+          )}
           {m.editedAt && !deleted && <span className="tc-edited">Edited</span>}
           <time dateTime={m.createdAt} title={new Date(m.createdAt).toLocaleString()}>
             {clockTime(m.createdAt)}
@@ -550,8 +684,13 @@ function Bubble({
                   <ReplyIcon /> Reply
                 </button>
               )}
-              <button type="button" role="menuitem" onClick={() => { setMenu(null); onCopy(); }}>
-                <CopyIcon /> Copy
+              {!!m.body && (
+                <button type="button" role="menuitem" onClick={() => { setMenu(null); onCopy(); }}>
+                  <CopyIcon /> Copy
+                </button>
+              )}
+              <button type="button" role="menuitem" onClick={() => { setMenu(null); onStar(!starred); }}>
+                <StarIcon filled={starred} /> {starred ? "Unstar" : "Star"}
               </button>
               {mine && canEditChatMessage(m) && (
                 <button type="button" role="menuitem" onClick={() => { setMenu(null); onEdit(); }}>
