@@ -1,4 +1,4 @@
-import { chatSystemText, mentionsToNames, type ChatMessage, type Mentionable } from "@ding/schemas";
+import { chatAttachmentLabel, chatSystemText, mentionsToNames, type ChatMessage, type Mentionable } from "@ding/schemas";
 import { clockTime } from "./format";
 
 /*
@@ -55,7 +55,10 @@ export function chatPreview(
   if (!m) return "";
   if (m.kind === "system" && m.system) return chatSystemText(m.system);
   const who = m.author?.id && m.author.id === opts.meId ? "You" : opts.group ? (m.author?.name.split(" ")[0] ?? "") : "";
-  const text = m.deletedAt ? "This message was deleted" : mentionsToNames(m.body, opts.people).replace(/\s+/g, " ").trim();
+  const words = mentionsToNames(m.body, opts.people).replace(/\s+/g, " ").trim();
+  const files = m.attachments?.length ? chatAttachmentLabel(m.attachments) : "";
+  // "📷 Photo" on its own; with a caption, the icon and the caption — as WhatsApp does.
+  const text = m.deletedAt ? "This message was deleted" : files && words ? `${files.split(" ")[0]} ${words}` : files || words;
   return who ? `${who}: ${text}` : text;
 }
 

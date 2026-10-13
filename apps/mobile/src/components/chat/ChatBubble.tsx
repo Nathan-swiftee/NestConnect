@@ -1,10 +1,12 @@
 import { memo } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Linking, Pressable, Text, View } from "react-native";
 import { chatNameColour, clockTime, isJumboEmoji, type ChatBubble as Bubble } from "@ding/client";
 import { chatTicks, mentionParts, type ChatMember, type Mentionable, type MessageStatus } from "@ding/schemas";
 import { mediaSource } from "../../api-config";
 import { haptics } from "../../haptics";
 import { useTheme } from "../../theme";
+import { StarIcon } from "../../icons";
+import { Attachments } from "../Attachments";
 import { Avatar } from "../Avatar";
 import { SwipeToReply } from "../SwipeToReply";
 import { Tail, tailCorner } from "../Tail";
@@ -32,6 +34,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onReact,
   onQuote,
   onRetry,
+  starred = false,
 }: {
   m: Bubble;
   first: boolean;
@@ -47,10 +50,12 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onReact: (m: Bubble, emoji: string) => void;
   onQuote: (id: string) => void;
   onRetry: (m: Bubble) => void;
+  starred?: boolean;
 }) {
   const { c } = useTheme();
   const deleted = !!m.deletedAt;
-  const jumbo = !deleted && !m.replyTo && isJumboEmoji(m.body);
+  const files = deleted ? [] : (m.attachments ?? []);
+  const jumbo = !deleted && !m.replyTo && !files.length && isJumboEmoji(m.body);
   const fill = mine ? c.brandTint : c.surface;
   const ticks = mine && !m.pending && !m.failed && !deleted ? chatTicks(m, members, m.author?.id ?? "") : null;
   const status: MessageStatus = m.pending ? "sending" : m.failed ? "failed" : (ticks ?? "sent");
@@ -100,9 +105,11 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
           </Text>
         </Pressable>
       ) : null}
+      {files.length ? <Attachments items={files} mine={mine} /> : null}
+      {!deleted && !m.body ? null : (
       <Text
         style={deleted ? { fontStyle: "italic", color: c.textMuted } : jumbo ? { fontSize: 40, lineHeight: 48 } : undefined}
-        className={jumbo ? "" : "text-lg leading-snug text-fg"}
+        className={jumbo ? "" : `text-lg leading-snug text-fg${files.length ? " mt-1" : ""}`}
       >
         {deleted
           ? mine
@@ -114,11 +121,40 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
                   {p.text}
                 </Text>
               ) : (
-                <Text key={i}>{p.text}</Text>
+                <Linked key={i} text={p.text} />
               ),
             )}
       </Text>
+      )}
+      {m.link && !deleted ? (
+        <Pressable
+          onPress={() => void Linking.openURL(m.link!.url)}
+          accessibilityRole="link"
+          accessibilityLabel={`${m.link.title}, open link`}
+          style={{ borderLeftColor: c.wa, backgroundColor: mine ? "rgba(0,0,0,0.05)" : c.surface2, maxWidth: 280 }}
+          className="mt-1.5 rounded-8 border-l-4 px-2.5 py-1.5"
+        >
+          {m.link.siteName ? (
+            <Text style={{ color: c.wa }} className="text-2xs font-semibold lowercase">
+              {m.link.siteName}
+            </Text>
+          ) : null}
+          <Text numberOfLines={2} className="text-sm font-semibold text-fg">
+            {m.link.title}
+          </Text>
+          {m.link.description ? (
+            <Text numberOfLines={2} className="text-xs text-muted">
+              {m.link.description}
+            </Text>
+          ) : null}
+        </Pressable>
+      ) : null}
       <View className="mt-0.5 flex-row items-center justify-end gap-1 self-end">
+        {starred && !deleted ? (
+          <View accessibilityLabel="Starred">
+            <StarIcon size={11} color={c.textFaint} />
+          </View>
+        ) : null}
         {m.editedAt && !deleted ? <Text className="text-2xs italic text-faint">Edited</Text> : null}
         <Text className="text-2xs text-faint">{clockTime(m.createdAt)}</Text>
         {mine && !deleted ? <Ticks status={status} /> : null}
@@ -175,3 +211,26 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
     </View>
   );
 });
+
+/** Words, with any web links in them tappable. */
+function Linked({ text }: { text: string }) {
+  const parts = text.split(/(\bhttps?:\/\/[^\s<>"']+)/gi);
+  if (parts.length === 1) return <Text>{text}</Text>;
+  return (
+    <Text>
+      {parts.map((part, i) => {
+        if (i % 2 === 0) return part;
+        // "see https://x.com/a." — the full stop ends the sentence, not the link.
+        const url = part.replace(/[.,;:!?)\]]+$/, "");
+        return (
+          <Text key={i}>
+            <Text onPress={() => void Linking.openURL(url)} accessibilityRole="link" style={{ color: "#1F7AEC", textDecorationLine: "underline" }}>
+              {url}
+            </Text>
+            {part.slice(url.length)}
+          </Text>
+        );
+      })}
+    </Text>
+  );
+}

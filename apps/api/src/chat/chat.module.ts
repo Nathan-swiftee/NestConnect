@@ -6,6 +6,7 @@ import { RealtimeModule } from "../realtime/realtime.module";
 import { ChatController } from "./chat.controller";
 import { ChatService } from "./chat.service";
 import { ChatStore } from "./chat.store";
+import { LinkPreviewService } from "./link-preview";
 import { MemoryChatStore } from "./memory-chat.store";
 import { PrismaChatStore } from "./prisma-chat.store";
 
@@ -13,6 +14,6 @@ import { PrismaChatStore } from "./prisma-chat.store";
 @Module({
   imports: [RealtimeModule, PushModule, NotificationsModule],
   controllers: [ChatController],
-  providers: [{ provide: ChatStore, useClass: env.usingDatabase ? PrismaChatStore : MemoryChatStore }, ChatService],
+  providers: [{ provide: ChatStore, useClass: env.usingDatabase ? PrismaChatStore : MemoryChatStore }, ChatService, LinkPreviewService],
 })
 export class ChatModule {}

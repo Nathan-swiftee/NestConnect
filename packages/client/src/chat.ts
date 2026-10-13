@@ -3,6 +3,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteD
 import {
   ChatClientEvent,
   ChatServerEvent,
+  type ChatAttachment,
   type ChatMessage,
   type ChatMessagePage,
   type ChatPerson,
@@ -29,6 +30,8 @@ const keys = {
   rooms: (all: boolean) => ["chat", "rooms", all] as const,
   room: (id: string) => ["chat", "room", id] as const,
   messages: (id: string) => ["chat", "messages", id] as const,
+  starred: ["chat", "starred"] as const,
+  search: (q: string) => ["chat", "search", q] as const,
 };
 
 /* ---- which chat is on screen ---- */
@@ -70,6 +73,41 @@ export function useChatMessages(id: string | null | undefined) {
   // Pages arrive newest first; a chat reads oldest first.
   const messages: ChatBubble[] = q.data ? [...q.data.pages].reverse().flatMap((p) => p.messages) : [];
   return { ...q, messages };
+}
+
+/** Words in any of my chats. Two letters at least; the screen waits for typing to pause. */
+export function useChatSearch(q: string) {
+  const term = q.trim();
+  return useQuery({ queryKey: keys.search(term), queryFn: () => api.searchChat(term), enabled: term.length >= 2, staleTime: 10_000 });
+}
+
+/** What I've starred, newest star first. */
+export function useChatStarred(enabled = true) {
+  return useQuery({ queryKey: keys.starred, queryFn: () => api.chatStarred(), staleTime: 30_000, enabled });
+}
+
+/** Star or unstar: the ids I've starred, for the star on each bubble. */
+export function useChatStars() {
+  const qc = useQueryClient();
+  const starred = useChatStarred();
+  const ids = new Set((starred.data ?? []).map((s) => s.message.id));
+  const toggle = useCallback(
+    async (m: ChatMessage, on: boolean) => {
+      // Show it at once; the list is fetched again either way.
+      qc.setQueryData(keys.starred, (cur: typeof starred.data) =>
+        on
+          ? [{ roomId: m.roomId, roomName: "", message: m, starredAt: new Date().toISOString() }, ...(cur ?? []).filter((s) => s.message.id !== m.id)]
+          : (cur ?? []).filter((s) => s.message.id !== m.id),
+      );
+      try {
+        await api.starChatMessage(m.id, on);
+      } finally {
+        qc.invalidateQueries({ queryKey: keys.starred });
+      }
+    },
+    [qc],
+  );
+  return { ids, toggle };
 }
 
 /* ---- the cache, patched from wherever news arrives ---- */
@@ -121,7 +159,7 @@ let localSeq = 0;
 export function useSendChatMessage(roomId: string, me: ChatPerson | null) {
   const qc = useQueryClient();
   return useCallback(
-    async (body: string, replyTo?: ChatMessage | null): Promise<void> => {
+    async (body: string, replyTo?: ChatMessage | null, attachments: ChatAttachment[] = []): Promise<void> => {
       const clientId = `c${Date.now().toString(36)}${(++localSeq).toString(36)}`;
       const draft: ChatBubble = {
         id: `local_${clientId}`,
@@ -135,6 +173,8 @@ export function useSendChatMessage(roomId: string, me: ChatPerson | null) {
           : null,
         reactions: [],
         mentions: [],
+        attachments,
+        link: null,
         editedAt: null,
         deletedAt: null,
         createdAt: new Date().toISOString(),
@@ -143,7 +183,7 @@ export function useSendChatMessage(roomId: string, me: ChatPerson | null) {
       };
       upsertMessage(qc, roomId, draft);
       try {
-        const sent = await api.sendChatMessage(roomId, { body, replyToId: replyTo?.id ?? null, clientId });
+        const sent = await api.sendChatMessage(roomId, { body, replyToId: replyTo?.id ?? null, clientId, attachments });
         upsertMessage(qc, roomId, { ...sent, clientId });
         refreshLists(qc);
       } catch {
@@ -163,7 +203,11 @@ export function useRetryChatMessage(roomId: string, me: ChatPerson | null) {
       qc.setQueryData<Pages>(keys.messages(roomId), (cur) =>
         cur ? { ...cur, pages: cur.pages.map((p) => ({ ...p, messages: p.messages.filter((m) => m.id !== failed.id) })) } : cur,
       );
-      await send(failed.body, failed.replyTo ? ({ id: failed.replyTo.id, author: null, body: failed.replyTo.body } as unknown as ChatMessage) : null);
+      await send(
+        failed.body,
+        failed.replyTo ? ({ id: failed.replyTo.id, author: null, body: failed.replyTo.body } as unknown as ChatMessage) : null,
+        failed.attachments,
+      );
     },
     [qc, roomId, send],
   );

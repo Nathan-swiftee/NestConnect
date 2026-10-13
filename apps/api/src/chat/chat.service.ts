@@ -4,17 +4,22 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   type OnModuleInit,
 } from "@nestjs/common";
 import {
   CHAT_PAGE_SIZE,
   ChatServerEvent,
   canEditChatMessage,
+  chatAttachmentLabel,
   chatMentionTokens,
   directChatKey,
   mentionHandle,
   mentionsToNames,
   type AddChatMembersInput,
+  type ChatAttachment,
+  type ChatSearchHit,
+  type ChatStarred,
   type ChatMember,
   type ChatMemberRole,
   type ChatMessage,
@@ -38,7 +43,9 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { PushService } from "../push/push.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { currentOrgId, runInTenant } from "../tenancy/tenant-scope";
+import { mediaUrl } from "../data/mappers";
 import { chatClock } from "./chat-clock";
+import { LinkPreviewService, firstLink } from "./link-preview";
 import { ChatStore, type ChatMemberRecord, type ChatMessageRecord, type ChatRoomRecord } from "./chat.store";
 
 /** The workspace setting that switches the module on. Off unless set. */
@@ -85,6 +92,8 @@ export class ChatService implements OnModuleInit {
     private readonly realtime: RealtimeGateway,
     private readonly push: PushService,
     private readonly notifications: NotificationsService,
+    // Optional so the checks can build this without reaching the internet.
+    @Optional() private readonly links?: LinkPreviewService,
   ) {}
 
   onModuleInit(): void {
@@ -132,30 +141,8 @@ export class ChatService implements OnModuleInit {
    */
   async rooms(userId: string, all = false): Promise<ChatRoomSummary[]> {
     const user = await this.open(userId);
-    await this.ensureTeamRooms();
-    const [people, teams, memberships] = await Promise.all([this.people(), this.store.listTeams(), this.chat.membershipsOf(userId)]);
-    const teamById = new Map(teams.map((t) => [t.id, t]));
-    const myTeams = new Set((await this.store.listMembers()).find((m) => m.user.id === userId)?.teamIds ?? []);
-
-    const rooms = await this.chat.listRooms();
-    const mine = new Map(memberships.map((m) => [m.roomId, m]));
-    const visible: Access[] = [];
-    for (const room of rooms) {
-      const team = room.teamId ? teamById.get(room.teamId) : undefined;
-      const inTeam = room.kind === "team" && !!team && myTeams.has(team.id);
-      const isMember = room.kind === "team" && team ? inTeam : mine.has(room.id);
-      if (!isMember && !(all && user.role === "admin")) continue;
-      const memberIds = await this.memberIds(room, team);
-      visible.push({
-        room,
-        memberIds,
-        me: mine.get(room.id),
-        isMember,
-        oversight: !isMember,
-        team,
-        archived: room.kind === "team" && !team,
-      });
-    }
+    const people = await this.people();
+    const visible = await this.visibleRooms(user, all);
 
     const lasts = await this.chat.lastMessages(visible.map((a) => ({ roomId: a.room.id, from: this.visibleFrom(a) })));
     const counts = await this.chat.unreadCounts(
@@ -176,6 +163,79 @@ export class ChatService implements OnModuleInit {
         if (x.pinned !== y.pinned) return x.pinned ? -1 : 1;
         return y.lastActivityAt.localeCompare(x.lastActivityAt);
       });
+  }
+
+  /** The chats this person is in — or, for an admin asking for `all`, every chat. */
+  private async visibleRooms(user: User, all: boolean): Promise<Access[]> {
+    await this.ensureTeamRooms();
+    const [teams, memberships, members] = await Promise.all([this.store.listTeams(), this.chat.membershipsOf(user.id), this.store.listMembers()]);
+    const teamById = new Map(teams.map((t) => [t.id, t]));
+    const myTeams = new Set(members.find((m) => m.user.id === user.id)?.teamIds ?? []);
+    const mine = new Map(memberships.map((m) => [m.roomId, m]));
+    const visible: Access[] = [];
+    for (const room of await this.chat.listRooms()) {
+      const team = room.teamId ? teamById.get(room.teamId) : undefined;
+      const inTeam = room.kind === "team" && !!team && myTeams.has(team.id);
+      const isMember = room.kind === "team" && team ? inTeam : mine.has(room.id);
+      if (!isMember && !(all && user.role === "admin")) continue;
+      visible.push({
+        room,
+        memberIds: await this.memberIds(room, team),
+        me: mine.get(room.id),
+        isMember,
+        oversight: !isMember,
+        team,
+        archived: room.kind === "team" && !team,
+      });
+    }
+    return visible;
+  }
+
+  /* ---- search and stars ---- */
+
+  /** Messages in my chats whose words contain `q` — newest first, with where they are. */
+  async search(userId: string, q: string): Promise<ChatSearchHit[]> {
+    const user = await this.open(userId);
+    const term = q.trim();
+    if (term.length < 2) return [];
+    const [rooms, people] = await Promise.all([this.visibleRooms(user, false), this.people()]);
+    const byId = new Map(rooms.map((a) => [a.room.id, a]));
+    const rows = await this.chat.searchMessages([...byId.keys()], term, 60);
+    const hits = rows.filter((m) => {
+      const from = this.visibleFrom(byId.get(m.roomId)!);
+      return !from || m.createdAt >= from;
+    });
+    const quotes = await this.quotesFor(hits, people);
+    return hits.slice(0, 50).map((m) => {
+      const a = byId.get(m.roomId)!;
+      return { roomId: m.roomId, roomName: this.roomName(a, userId, people), roomKind: a.room.kind, message: this.message(m, people, quotes) };
+    });
+  }
+
+  async star(userId: string, messageId: string, starred: boolean): Promise<{ ok: true }> {
+    const user = await this.open(userId);
+    const m = await this.chat.getMessage(messageId);
+    if (!m || m.kind !== "text") throw new NotFoundException("Message not found");
+    const a = await this.access(user, m.roomId);
+    const from = this.visibleFrom(a);
+    if (from && m.createdAt < from) throw new NotFoundException("Message not found");
+    await this.chat.setStar(userId, messageId, starred);
+    return { ok: true };
+  }
+
+  /** My starred messages, newest star first — only from chats I can still open. */
+  async starred(userId: string): Promise<ChatStarred[]> {
+    const user = await this.open(userId);
+    const [stars, rooms, people] = await Promise.all([this.chat.starsOf(userId), this.visibleRooms(user, user.role === "admin"), this.people()]);
+    const byId = new Map(rooms.map((a) => [a.room.id, a]));
+    const msgs = new Map((await this.chat.getMessages(stars.map((s) => s.messageId))).map((m) => [m.id, m]));
+    const quotes = await this.quotesFor([...msgs.values()], people);
+    return stars.flatMap((s) => {
+      const m = msgs.get(s.messageId);
+      const a = m ? byId.get(m.roomId) : undefined;
+      if (!m || !a || m.deletedAt) return [];
+      return [{ roomId: m.roomId, roomName: this.roomName(a, userId, people), message: this.message(m, people, quotes), starredAt: s.at }];
+    });
   }
 
   /* ---- one chat ---- */
@@ -216,6 +276,7 @@ export class ChatService implements OnModuleInit {
     }
     const people = await this.people();
     const mentions = this.mentionsIn(input.body, a.memberIds, people, userId);
+    const attachments = await this.checkedAttachments(input.attachments ?? []);
     const rec = await this.chat.createMessage({
       roomId,
       authorUserId: userId,
@@ -224,6 +285,7 @@ export class ChatService implements OnModuleInit {
       data: null,
       replyToId: replyTo?.id ?? null,
       mentions,
+      attachments,
     });
     // Writing in a chat is reading it.
     await this.chat.upsertMember(roomId, userId, { lastReadAt: chatClock() });
@@ -232,7 +294,37 @@ export class ChatService implements OnModuleInit {
     this.emit(a, ChatServerEvent.Message, { roomId, message });
     this.emitReceipt(a, userId, await this.chat.getMember(roomId, userId));
     void this.tell(a, user, rec, people).catch((err) => this.logger.warn(`Chat notify failed: ${String(err)}`));
+    void this.attachLink(a, rec).catch((err) => this.logger.warn(`Chat link preview failed: ${String(err)}`));
     return message;
+  }
+
+  /**
+   * Each attachment must be an upload in this workspace (the store is
+   * tenant-scoped, so another's isn't there). What the file is and where it
+   * lives come from the server's own record, not from what the client said.
+   */
+  private async checkedAttachments(list: ChatAttachment[]): Promise<ChatAttachment[]> {
+    const out: ChatAttachment[] = [];
+    for (const att of list) {
+      if (out.some((x) => x.id === att.id)) continue;
+      const ref = await this.store.getAttachment(att.id);
+      if (!ref) throw new BadRequestException("One of those files didn't upload — try attaching it again");
+      out.push({ ...att, mime: ref.mime, filename: ref.filename, url: mediaUrl(att.id) });
+    }
+    return out;
+  }
+
+  /** The card for the first link in a message, fetched after it's sent; nobody waits for it. */
+  private async attachLink(a: Access, rec: ChatMessageRecord): Promise<void> {
+    const url = firstLink(rec.body);
+    if (!url || !this.links) return;
+    const preview = await this.links.preview(url);
+    if (!preview) return;
+    const current = await this.chat.getMessage(rec.id);
+    // Edited or deleted while we were fetching: only keep it if it's still the link it's about.
+    if (!current || current.deletedAt || firstLink(current.body) !== url) return;
+    const updated = await this.chat.updateMessage(rec.id, { link: preview });
+    if (updated) await this.emitUpdated(a, updated, await this.people());
   }
 
   /** Change what I wrote, within the window. Mentions are re-read but nobody is told again. */
@@ -242,12 +334,16 @@ export class ChatService implements OnModuleInit {
     const a = await this.writable(user, m.roomId);
     if (!canEditChatMessage(m)) throw new ForbiddenException("Messages can only be edited for 15 minutes after sending");
     const people = await this.people();
+    const linkChanged = firstLink(body) !== firstLink(m.body);
     const updated = await this.chat.updateMessage(messageId, {
       body,
       mentions: this.mentionsIn(body, a.memberIds, people, userId),
       editedAt: new Date().toISOString(),
+      ...(linkChanged ? { link: null } : {}),
     });
-    return this.emitUpdated(a, updated!, people);
+    const out = await this.emitUpdated(a, updated!, people);
+    if (linkChanged) void this.attachLink(a, updated!).catch((err) => this.logger.warn(`Chat link preview failed: ${String(err)}`));
+    return out;
   }
 
   /** "Delete for everyone": my own, or anyone's for an admin or one of the group's admins. */
@@ -264,6 +360,8 @@ export class ChatService implements OnModuleInit {
       body: "",
       reactions: {},
       mentions: [],
+      attachments: [],
+      link: null,
       deletedAt: new Date().toISOString(),
     });
     return this.emitUpdated(a, updated!, await this.people());
@@ -638,7 +736,7 @@ export class ChatService implements OnModuleInit {
   private async tell(a: Access, author: User, m: ChatMessageRecord, people: People): Promise<void> {
     const rows = new Map((await this.chat.listMembers(a.room.id)).map((r) => [r.userId, r]));
     const now = new Date().toISOString();
-    const text = trim(mentionsToNames(m.body, [...people.values()]), PREVIEW_MAX);
+    const text = trim(mentionsToNames(m.body, [...people.values()]), PREVIEW_MAX) || chatAttachmentLabel(m.attachments);
     const title = a.room.kind === "direct" ? author.name : this.roomName(a, author.id, people);
     const body = a.room.kind === "direct" ? text : `${author.name}: ${text}`;
 
@@ -798,6 +896,8 @@ export class ChatService implements OnModuleInit {
       system: m.kind === "system" ? m.data : null,
       replyTo: m.replyToId && !m.deletedAt ? (quotes.get(m.replyToId) ?? null) : null,
       reactions: Object.entries(m.reactions).map(([emoji, userIds]) => ({ emoji, userIds })),
+      attachments: m.deletedAt ? [] : m.attachments,
+      link: m.deletedAt ? null : m.link,
       mentions: m.mentions,
       editedAt: m.editedAt,
       deletedAt: m.deletedAt,

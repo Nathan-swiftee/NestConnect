@@ -23,6 +23,7 @@ export class MemoryChatStore extends ChatStore {
   private messages: ChatMessageRecord[] = [];
   private audits: Array<{ roomId: string; userId: string; at: string }> = [];
   private seen = new Map<string, string>();
+  private stars: Array<{ userId: string; messageId: string; at: string }> = [];
   private seq = 0;
 
   private org(): string {
@@ -106,6 +107,8 @@ export class MemoryChatStore extends ChatStore {
     const m: ChatMessageRecord = {
       ...clone(f),
       id: this.id("chm"),
+      attachments: clone(f.attachments ?? []),
+      link: null,
       reactions: {},
       editedAt: null,
       deletedAt: null,
@@ -135,7 +138,7 @@ export class MemoryChatStore extends ChatStore {
   }
   async updateMessage(
     id: string,
-    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt">>,
+    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link">>,
   ): Promise<ChatMessageRecord | undefined> {
     const m = this.messages.find((x) => x.id === id && this.roomIsMine(x.roomId));
     if (!m) return undefined;
@@ -169,6 +172,30 @@ export class MemoryChatStore extends ChatStore {
       out.set(r.roomId, { unread: waiting.length, mentioned: waiting.some((m) => m.mentions.includes(userId)) });
     }
     return out;
+  }
+
+  async searchMessages(roomIds: string[], q: string, limit: number): Promise<ChatMessageRecord[]> {
+    const want = new Set(roomIds.filter((id) => this.roomIsMine(id)));
+    const needle = q.toLowerCase();
+    return this.messages
+      .filter((m) => want.has(m.roomId) && m.kind === "text" && !m.deletedAt && m.body.toLowerCase().includes(needle))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+      .map(clone);
+  }
+
+  async setStar(userId: string, messageId: string, starred: boolean): Promise<void> {
+    const m = this.messages.find((x) => x.id === messageId && this.roomIsMine(x.roomId));
+    if (!m) throw new Error(`No message ${messageId}`);
+    this.stars = this.stars.filter((s) => !(s.userId === userId && s.messageId === messageId));
+    if (starred) this.stars.push({ userId, messageId, at: chatClock() });
+  }
+  async starsOf(userId: string): Promise<Array<{ messageId: string; at: string }>> {
+    const mine = new Set(this.messages.filter((m) => this.roomIsMine(m.roomId)).map((m) => m.id));
+    return this.stars
+      .filter((s) => s.userId === userId && mine.has(s.messageId))
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .map(({ messageId, at }) => ({ messageId, at }));
   }
 
   async addAudit(roomId: string, userId: string): Promise<void> {

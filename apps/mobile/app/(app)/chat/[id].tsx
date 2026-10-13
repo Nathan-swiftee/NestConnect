@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FlatList, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Text, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import {
@@ -10,6 +10,7 @@ import {
   useChatMutation,
   useChatRoom,
   useChatRoomOpen,
+  useChatStars,
   useChatTyping,
   useChatTypingSignal,
   useMarkChatRead,
@@ -30,7 +31,13 @@ import {
   type ChatMessage,
   type Mentionable,
 } from "@ding/schemas";
+import { useStagedAttachments } from "../../../src/attachments";
+import { AttachSheet } from "../../../src/components/AttachSheet";
 import { BottomInset } from "../../../src/components/BottomInset";
+import { HoldMic, HoldOverlay, useHoldToRecord } from "../../../src/components/HoldToRecord";
+import { StagedAttachments } from "../../../src/components/StagedAttachments";
+import { VoiceRecorder } from "../../../src/components/VoiceRecorder";
+import { useVoiceRecording } from "../../../src/voice";
 import { ChatAvatar } from "../../../src/components/chat/ChatAvatar";
 import { ChatBubbleRow } from "../../../src/components/chat/ChatBubble";
 import { ChatInfoSheet, ChatMessageSheet } from "../../../src/components/chat/ChatSheets";
@@ -40,7 +47,7 @@ import { Touchable } from "../../../src/components/Touchable";
 import { Avatar } from "../../../src/components/Avatar";
 import { mediaSource } from "../../../src/api-config";
 import { haptics } from "../../../src/haptics";
-import { BackIcon, DetailsIcon, EditIcon, EyeIcon, ReplyIcon, SendIcon, CheckIcon, XIcon } from "../../../src/icons";
+import { AttachIcon, BackIcon, DetailsIcon, EditIcon, EyeIcon, ReplyIcon, SendIcon, CheckIcon, XIcon } from "../../../src/icons";
 import { useInsets } from "../../../src/insets";
 import { useTheme } from "../../../src/theme";
 
@@ -50,7 +57,7 @@ import { useTheme } from "../../../src/theme";
  * pages load as you scroll up. See docs/team-chat.md.
  */
 export default function ChatScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, mid } = useLocalSearchParams<{ id: string; mid?: string }>();
   const { c } = useTheme();
   const insets = useInsets();
   const toast = useToast();
@@ -64,6 +71,7 @@ export default function ChatScreen() {
   const [acting, setActing] = useState<ChatBubble | null>(null);
   const [infoFor, setInfoFor] = useState<ChatMessage | null>(null);
   const list = useRef<FlatList<ChatItem<ChatBubble>>>(null);
+  const stars = useChatStars();
   useChatRoomOpen(id);
 
   const r = room.data;
@@ -103,6 +111,22 @@ export default function ChatScreen() {
     },
     [items, toast],
   );
+
+  // Opened from search or starred: load back until the message is there, then show it.
+  const sought = useRef<string | null>(null);
+  useEffect(() => {
+    if (!mid || sought.current === mid || msgs.isLoading) return;
+    const index = items.findIndex((it) => it.kind === "message" && it.message.id === mid);
+    if (index >= 0) {
+      sought.current = mid;
+      setTimeout(() => list.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true }), 250);
+    } else if (msgs.hasNextPage && !msgs.isFetchingNextPage) {
+      void msgs.fetchNextPage();
+    } else if (!msgs.hasNextPage) {
+      sought.current = mid;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mid, items, msgs.hasNextPage, msgs.isFetchingNextPage, msgs.isLoading]);
 
   if (room.isError) {
     return (
@@ -236,6 +260,7 @@ export default function ChatScreen() {
               onReact={(x, emoji) => react.mutate({ mid: x.id, emoji }, { onError: fail })}
               onQuote={goTo}
               onRetry={(x) => void retry(x)}
+              starred={stars.ids.has(m.id)}
             />
           );
         }}
@@ -300,6 +325,12 @@ export default function ChatScreen() {
         }}
         onInfo={() => setInfoFor(acting)}
         onDelete={() => acting && remove.mutate(acting.id, { onSuccess: () => haptics.success(), onError: fail })}
+        starred={!!acting && stars.ids.has(acting.id)}
+        onStar={(on) => {
+          if (!acting) return;
+          haptics.select();
+          void stars.toggle(acting, on).catch(fail);
+        }}
       />
       <ChatInfoSheet message={infoFor} onClose={() => setInfoFor(null)} />
     </View>
@@ -358,6 +389,33 @@ function Composer({
   const [draft, setDraft] = useState("");
   const [caret, setCaret] = useState(0);
   const input = useRef<TextInput>(null);
+  const files = useStagedAttachments();
+  const [attachSheet, setAttachSheet] = useState(false);
+  // The inbox composer's recorder: hold the microphone to record, let go to
+  // send, slide left to cancel, slide up to lock it hands-free.
+  const voice = useVoiceRecording();
+  const [locked, setLocked] = useState(false);
+  const [sendingVoice, setSendingVoice] = useState(false);
+  const hold = useHoldToRecord({ voice, onSend: () => void finishVoice(), onLock: () => setLocked(true) });
+
+  async function finishVoice() {
+    setLocked(false);
+    const v = await voice.stop();
+    if (!v) return;
+    setSendingVoice(true);
+    const name = `voice-${Date.now()}.m4a`;
+    try {
+      const attachment = await api.uploadMedia({ uri: v.uri, name, type: "audio/mp4" }, { kind: "voice", durationMs: v.durationMs, filename: name });
+      const quoting = replyTo;
+      onCancelReply();
+      await send("", quoting, [attachment]);
+      haptics.success();
+    } catch (err) {
+      onError(err);
+    } finally {
+      setSendingVoice(false);
+    }
+  }
 
   useEffect(() => {
     if (editing) {
@@ -390,9 +448,11 @@ function Composer({
     setCaret(start + p.name.length + 2);
   };
 
+  const ready = files.staged.filter((f) => f.status === "done" && f.attachment).map((f) => f.attachment!);
   const submit = () => {
     const body = namesToHandles(text.trim(), people);
-    if (!body) return;
+    if (!editing && files.uploading) return onError(new Error("Still uploading — one moment"));
+    if (!body && (editing || !ready.length)) return;
     stop();
     haptics.tap();
     if (editing) {
@@ -404,8 +464,10 @@ function Composer({
     setText("");
     const quoting = replyTo;
     onCancelReply();
-    void send(body, quoting);
+    files.clear();
+    void send(body, quoting, ready);
   };
+  const empty = !text.trim() && !files.staged.length && !editing;
 
   return (
     <View style={{ backgroundColor: c.surface, borderTopColor: c.border }} className="border-t px-2 pb-2 pt-2">
@@ -448,8 +510,44 @@ function Composer({
           </Touchable>
         </View>
       ) : null}
+      {!editing ? <StagedAttachments items={files.staged} onRemove={files.remove} onRetry={files.retry} /> : null}
+      {locked ? (
+        <VoiceRecorder
+          voice={voice}
+          onSend={() => void finishVoice()}
+          onCancel={() => {
+            setLocked(false);
+            void voice.cancel();
+          }}
+        />
+      ) : sendingVoice ? (
+        <View style={{ backgroundColor: c.surface2 }} className="flex-row items-center gap-3 rounded-24 px-4 py-3" accessibilityLabel="Sending voice message">
+          <ActivityIndicator size="small" color={c.wa} />
+          <Text className="flex-1 text-md text-muted">Sending your voice note…</Text>
+        </View>
+      ) : (
+      <View>
       <View className="flex-row items-end gap-2">
-        <View style={{ backgroundColor: c.surface2 }} className="flex-1 rounded-[22px] px-4">
+        <View
+          style={{ backgroundColor: c.surface2, opacity: hold.holding ? 0 : 1 }}
+          pointerEvents={hold.holding ? "none" : "auto"}
+          className="flex-1 flex-row items-end rounded-[22px] pl-1 pr-4"
+        >
+          {!editing ? (
+            <Touchable
+              feel="chip"
+              borderless
+              onPress={() => setAttachSheet(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Attach"
+              hitSlop={6}
+              className="h-11 w-10 items-center justify-center"
+            >
+              <AttachIcon size={20} color={c.textMuted} />
+            </Touchable>
+          ) : (
+            <View className="w-3" />
+          )}
           <TextInput
             ref={input}
             value={text}
@@ -464,22 +562,37 @@ function Composer({
             multiline
             accessibilityLabel="Message"
             style={{ color: c.text, maxHeight: 140 }}
-            className="py-2.5 text-lg"
+            className="flex-1 py-2.5 text-lg"
           />
         </View>
-        <Touchable
-          feel="chip"
-          borderless
-          disabled={!text.trim()}
-          onPress={submit}
-          accessibilityRole="button"
-          accessibilityLabel={editing ? "Save" : "Send"}
-          style={{ backgroundColor: c.wa, opacity: text.trim() ? 1 : 0.5 }}
-          className="h-11 w-11 items-center justify-center rounded-full"
-        >
-          {editing ? <CheckIcon size={20} color="#fff" /> : <SendIcon size={19} color="#fff" />}
-        </Touchable>
+        {empty ? (
+          // Nothing to send: the button records, as WhatsApp's does.
+          <HoldMic hold={hold} />
+        ) : (
+          <Touchable
+            feel="chip"
+            borderless
+            disabled={editing ? !text.trim() : files.uploading || (!text.trim() && !ready.length)}
+            onPress={submit}
+            accessibilityRole="button"
+            accessibilityLabel={editing ? "Save" : "Send"}
+            style={{ backgroundColor: c.wa, opacity: (editing ? text.trim() : !files.uploading && (text.trim() || ready.length)) ? 1 : 0.5 }}
+            className="h-11 w-11 items-center justify-center rounded-full"
+          >
+            {editing ? <CheckIcon size={20} color="#fff" /> : <SendIcon size={19} color="#fff" />}
+          </Touchable>
+        )}
       </View>
+      {empty ? <HoldOverlay hold={hold} voice={voice} /> : null}
+      </View>
+      )}
+      <AttachSheet
+        visible={attachSheet}
+        onClose={() => setAttachSheet(false)}
+        onCamera={() => void files.takePhoto()}
+        onPhotos={() => void files.pickImages()}
+        onFiles={() => void files.pickFiles()}
+      />
     </View>
   );
 }

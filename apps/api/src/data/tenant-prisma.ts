@@ -83,6 +83,7 @@ const VIA: Record<string, (orgId: string) => Filter> = {
   ChatMessage: (orgId) => ({ room: { orgId } }),
   ChatAudit: (orgId) => ({ room: { orgId } }),
   ChatPresence: (orgId) => ({ user: { orgId } }),
+  ChatStar: (orgId) => ({ chatMessage: { room: { orgId } } }),
 };
 
 /**
@@ -120,6 +121,7 @@ const REFERENCES: Record<string, string> = {
   roomId: "ChatRoom",
   chatRoomId: "ChatRoom",
   replyToId: "ChatMessage",
+  chatMessageId: "ChatMessage",
 };
 /** The same, for relation fields written as `{ connect: { id } }`. */
 const RELATIONS: Record<string, string> = {
@@ -145,6 +147,7 @@ const RELATIONS: Record<string, string> = {
   room: "ChatRoom",
   chatRoom: "ChatRoom",
   replyTo: "ChatMessage",
+  chatMessage: "ChatMessage",
 };
 
 const FILTERED_OPS = new Set([

@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ChatRoomSummary } from "@ding/schemas";
-import { chatListTime, chatPreview, useChatRooms, useChatStatus, useMe, useMediaQuery, usePeople } from "../../hooks";
-import { ComposeIcon, EyeIcon, SearchIcon, SoundOffIcon, TeamChatIcon, XIcon } from "../../lib/icons";
+import type { ChatMessage, ChatRoomSummary } from "@ding/schemas";
+import {
+  chatListTime,
+  chatPreview,
+  useChatRooms,
+  useChatSearch,
+  useChatStarred,
+  useChatStatus,
+  useMe,
+  useMediaQuery,
+  usePeople,
+} from "../../hooks";
+import { BackIcon, ComposeIcon, EyeIcon, SearchIcon, SoundOffIcon, StarIcon, TeamChatIcon, XIcon } from "../../lib/icons";
 import { ChatConversation } from "./ChatConversation";
 import { NewChatDialog } from "./ChatDialogs";
 import { RoomAvatar } from "./RoomAvatar";
@@ -24,10 +34,25 @@ export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [newOpen, setNewOpen] = useState(false);
+  const [showStarred, setShowStarred] = useState(false);
+  const [focusMessage, setFocusMessage] = useState<string | null>(null);
+  // Search messages once typing pauses.
+  const [term, setTerm] = useState("");
+  useEffect(() => {
+    const t = window.setTimeout(() => setTerm(q.trim()), 250);
+    return () => window.clearTimeout(t);
+  }, [q]);
+  const found = useChatSearch(oversee ? "" : term);
+  const starred = useChatStarred(showStarred);
 
   useEffect(() => {
     if (focusRoomId) setSelected(focusRoomId);
   }, [focusRoomId]);
+
+  const openAt = (roomId: string, messageId: string | null) => {
+    setFocusMessage(messageId);
+    setSelected(roomId);
+  };
 
   const mentionables = useMemo(() => (people.data ?? []).map((m) => m.user), [people.data]);
   const list = useMemo(() => {
@@ -49,9 +74,23 @@ export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null
     <div className="tc">
       {showList && (
         <aside className="tc-list" aria-label="Chats">
+          {showStarred ? (
+            <StarredList
+              items={starred.data ?? []}
+              loading={starred.isLoading}
+              meId={me?.id}
+              people={mentionables}
+              onBack={() => setShowStarred(false)}
+              onOpen={(roomId, id) => openAt(roomId, id)}
+            />
+          ) : (
+          <>
           <header className="tc-list__head">
             <h1>{oversee ? "All chats" : "Chats"}</h1>
             <div className="tc-list__acts">
+              <button type="button" className="iconbtn" title="Starred messages" aria-label="Starred messages" onClick={() => setShowStarred(true)}>
+                <StarIcon />
+              </button>
               {status.data?.canOversee && (
                 <button
                   type="button"
@@ -78,8 +117,8 @@ export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null
             <SearchIcon />
             <input
               type="search"
-              placeholder="Search chats"
-              aria-label="Search chats"
+              placeholder={oversee ? "Search chats" : "Search chats and messages"}
+              aria-label="Search chats and messages"
               value={q}
               onChange={(e) => setQ(e.target.value)}
             />
@@ -106,25 +145,47 @@ export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null
           <div className="tc-rows" role="list">
             {rooms.isLoading ? (
               <p className="tc-empty">Loading…</p>
-            ) : !list.length ? (
+            ) : !list.length && !(found.data?.length && term.length >= 2) ? (
               <div className="tc-empty">
                 <TeamChatIcon />
                 <p>{q || filter !== "all" ? "Nothing matches." : "No chats yet. Start one with the pencil above."}</p>
               </div>
             ) : (
-              list.map((r) => (
-                <ChatRow
-                  key={r.id}
-                  r={r}
-                  active={selected === r.id}
-                  meId={me?.id}
-                  people={mentionables}
-                  onOpen={() => setSelected(r.id)}
-                />
-              ))
+              <>
+                {term.length >= 2 && list.length > 0 && <div className="tc-rows__label">Chats</div>}
+                {list.map((r) => (
+                  <ChatRow
+                    key={r.id}
+                    r={r}
+                    active={selected === r.id}
+                    meId={me?.id}
+                    people={mentionables}
+                    onOpen={() => openAt(r.id, null)}
+                  />
+                ))}
+                {term.length >= 2 && !!found.data?.length && (
+                  <>
+                    <div className="tc-rows__label">Messages</div>
+                    {found.data.map((h) => (
+                      <MessageRow
+                        key={h.message.id}
+                        where={h.roomName}
+                        m={h.message}
+                        group={h.roomKind !== "direct"}
+                        highlight={term}
+                        meId={me?.id}
+                        people={mentionables}
+                        onOpen={() => openAt(h.roomId, h.message.id)}
+                      />
+                    ))}
+                  </>
+                )}
+              </>
             )}
           </div>
           <footer className="tc-list__foot">Admins in your workspace can read team chats.</footer>
+          </>
+          )}
         </aside>
       )}
       {showChat &&
@@ -132,9 +193,10 @@ export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null
           <ChatConversation
             key={selected}
             roomId={selected}
+            focusMessageId={focusMessage}
             onBack={isMobile ? () => setSelected(null) : undefined}
             onClosed={() => setSelected(null)}
-            onOpenRoom={setSelected}
+            onOpenRoom={(id) => openAt(id, null)}
             onToast={onToast}
           />
         ) : (
@@ -156,7 +218,7 @@ export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null
           onOpened={(id) => {
             setNewOpen(false);
             setOversee(false);
-            setSelected(id);
+            openAt(id, null);
           }}
           onToast={onToast}
         />
@@ -213,5 +275,99 @@ function ChatRow({
         </span>
       </span>
     </button>
+  );
+}
+
+/** A message found by search, or starred: where it was said, who said it, when. */
+function MessageRow({
+  where,
+  m,
+  group,
+  highlight,
+  meId,
+  people,
+  onOpen,
+}: {
+  where: string;
+  m: ChatMessage;
+  group: boolean;
+  highlight?: string;
+  meId: string | undefined;
+  people: Array<{ name: string; email: string }>;
+  onOpen: () => void;
+}) {
+  const text = chatPreview(m, { meId, group, people });
+  const at = highlight ? text.toLowerCase().indexOf(highlight.toLowerCase()) : -1;
+  return (
+    <button type="button" role="listitem" className="tc-row tc-row--msg" onClick={onOpen}>
+      <span className="tc-row__main">
+        <span className="tc-row__top">
+          <span className="tc-row__name">{where}</span>
+          <span className="tc-row__time">{chatListTime(m.createdAt)}</span>
+        </span>
+        <span className="tc-row__bottom">
+          <span className="tc-row__preview">
+            {at >= 0 && highlight ? (
+              <>
+                {text.slice(0, at)}
+                <mark>{text.slice(at, at + highlight.length)}</mark>
+                {text.slice(at + highlight.length)}
+              </>
+            ) : (
+              text
+            )}
+          </span>
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function StarredList({
+  items,
+  loading,
+  meId,
+  people,
+  onBack,
+  onOpen,
+}: {
+  items: Array<{ roomId: string; roomName: string; message: ChatMessage; starredAt: string }>;
+  loading: boolean;
+  meId: string | undefined;
+  people: Array<{ name: string; email: string }>;
+  onBack: () => void;
+  onOpen: (roomId: string, messageId: string) => void;
+}) {
+  return (
+    <>
+      <header className="tc-list__head tc-list__head--sub">
+        <button type="button" className="iconbtn" aria-label="Back to chats" onClick={onBack}>
+          <BackIcon />
+        </button>
+        <h1>Starred messages</h1>
+      </header>
+      <div className="tc-rows" role="list">
+        {loading ? (
+          <p className="tc-empty">Loading…</p>
+        ) : !items.length ? (
+          <div className="tc-empty">
+            <StarIcon />
+            <p>Nothing starred yet. Star a message from its menu to find it here later.</p>
+          </div>
+        ) : (
+          items.map((s) => (
+            <MessageRow
+              key={s.message.id}
+              where={s.roomName}
+              m={s.message}
+              group
+              meId={meId}
+              people={people}
+              onOpen={() => onOpen(s.roomId, s.message.id)}
+            />
+          ))
+        )}
+      </div>
+    </>
   );
 }

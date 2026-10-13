@@ -11,14 +11,20 @@
  *   F  ticks and unread counts come from each person's read marker;
  *   G  who's told: everyone else, not a muted chat — but a mention always;
  *   H  admins read any chat, read-only, and each look is recorded;
- *   I  pinned chats first; a deleted team's chat stays, read-only.
+ *   I  pinned chats first; a deleted team's chat stays, read-only;
+ *   J  photos, voice notes and files (only this workspace's uploads, described
+ *      by the server's own record); link cards, fetched safely; search only
+ *      where you can read; stars are yours alone.
  *
  * (One workspace not seeing another's chats is proven on Postgres, in
  * check-tenant-isolation.)
  *
  *     pnpm check:team-chat
  */
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { ChatService } from "../apps/api/src/chat/chat.service";
+import { LinkPreviewService, firstLink, isPublicAddress, parsePreview } from "../apps/api/src/chat/link-preview";
 import { MemoryChatStore } from "../apps/api/src/chat/memory-chat.store";
 import { MemoryStore } from "../apps/api/src/data/memory.store";
 import { DEMO_USER_ID, ORG_ID } from "../apps/api/src/data/fixtures";
@@ -26,7 +32,7 @@ import { runInTenant } from "../apps/api/src/tenancy/tenant-scope";
 import type { NotificationsService } from "../apps/api/src/notifications/notifications.service";
 import type { PushRequest, PushService } from "../apps/api/src/push/push.service";
 import type { RealtimeGateway } from "../apps/api/src/realtime/realtime.gateway";
-import { chatSystemText, chatTicks, sendChatMessageInputSchema, type ChatRoomSummary } from "../packages/schemas/src";
+import { chatAttachmentLabel, chatSystemText, chatTicks, sendChatMessageInputSchema, type Attachment, type ChatRoomSummary } from "../packages/schemas/src";
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -42,6 +48,33 @@ async function refuses(p: Promise<unknown>, status: number): Promise<boolean> {
   }
 }
 const say = (body: string, replyToId?: string) => sendChatMessageInputSchema.parse({ body, replyToId });
+const withFiles = (body: string, attachments: Attachment[]) => sendChatMessageInputSchema.parse({ body, attachments });
+async function until(cond: () => Promise<boolean>, ms = 3000): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (await cond()) return true;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  return false;
+}
+/** A page to preview, and one that redirects inward. */
+function pages(): Promise<{ server: Server; base: string }> {
+  const server = createServer((req, res) => {
+    if (req.url === "/away") {
+      res.writeHead(302, { location: "http://127.0.0.1:1/private" });
+      res.end();
+      return;
+    }
+    if (req.url === "/file.zip") {
+      res.writeHead(200, { "content-type": "application/zip" });
+      res.end("PK");
+      return;
+    }
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.end('<html><head><title>Fallback</title><meta property="og:title" content="Rota &amp; shifts"><meta property="og:description" content="Who is on this week"><meta property="og:site_name" content="Nest Docs"></head></html>');
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve({ server, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}` })));
+}
 const names = (rooms: ChatRoomSummary[]) => rooms.map((r) => r.name).sort().join(", ");
 
 const NATHAN = DEMO_USER_ID; // admin, both teams
@@ -68,7 +101,10 @@ async function main() {
       bells.push({ userId, type: n.type, chatRoomId: n.chatRoomId });
     },
   } as unknown as NotificationsService;
-  const svc = new ChatService(new MemoryChatStore(), store, realtime, push, notifications);
+  const links = new LinkPreviewService();
+  links.allowPrivate = true; // the test pages are on localhost
+  const svc = new ChatService(new MemoryChatStore(), store, realtime, push, notifications, links);
+  const { server, base } = await pages();
 
   await runInTenant(ORG_ID, async () => {
     console.log("\nA — the switch\n");
@@ -228,7 +264,71 @@ async function main() {
     ok("and nobody can write in it", await refuses(svc.send(NATHAN, sales.id, say("anyone?")), 403));
     ok("an agent can't open it", await refuses(svc.room(JAMES, sales.id), 404));
     ok("a message reaches its chat's members live", emitted.some((e) => e.event === "chat.message" && e.users.includes(JAMES)));
+
+    console.log("\nJ — files, links, search and stars\n");
+    const photo = await store.createUploadAttachment(ORG_ID, { storageKey: "k1", kind: "image", mime: "image/jpeg", size: 2048, filename: "van.jpg", width: 800, height: 600 });
+    const voice = await store.createUploadAttachment(ORG_ID, { storageKey: "k2", kind: "voice", mime: "audio/webm", size: 900, filename: "voice.webm", durationMs: 12_000, waveform: [0.2, 0.8] });
+    const pic = await svc.send(JAMES, support.id, withFiles("", [{ ...photo, mime: "text/html", filename: "evil.html", url: "https://evil.example/x" }]));
+    ok("a photo on its own is a message", pic.body === "" && pic.attachments.length === 1);
+    ok("what it is comes from the upload, not from what the app said", pic.attachments[0]!.mime === "image/jpeg" && pic.attachments[0]!.filename === "van.jpg" && pic.attachments[0]!.url === `/api/media/${photo.id}`);
+    ok("and keeps its size for the bubble", pic.attachments[0]!.width === 800 && pic.attachments[0]!.height === 600);
+    ok("a file that was never uploaded is refused", await refuses(svc.send(JAMES, support.id, withFiles("", [{ ...photo, id: "att_nope" }])), 400));
+    ok("nothing at all is refused", !sendChatMessageInputSchema.safeParse({ body: "  " }).success && !sendChatMessageInputSchema.safeParse({ body: "" }).success);
+    ok("ten files at most", !sendChatMessageInputSchema.safeParse({ body: "", attachments: Array.from({ length: 11 }, () => photo) }).success);
+    pushes.length = 0;
+    const note = await svc.send(JAMES, support.id, withFiles("", [voice]));
+    ok("a voice note keeps its length and waveform", note.attachments[0]!.durationMs === 12_000 && note.attachments[0]!.waveform?.length === 2);
+    ok("its push says what it is", pushes[0]?.body === "James: 🎤 Voice message (0:12)", pushes[0]?.body);
+    ok("the list's last message says so too", chatAttachmentLabel((await svc.rooms(NATHAN)).find((x) => x.id === support.id)!.lastMessage!.attachments) === "🎤 Voice message (0:12)");
+    ok("labels for the rest", chatAttachmentLabel([photo, photo]) === "📷 2 photos" && chatAttachmentLabel([{ kind: "file", filename: "rota.pdf" }]) === "📄 rota.pdf");
+    const deletedPic = await svc.remove(JAMES, pic.id);
+    ok("deleting it takes the file off the message", deletedPic.attachments.length === 0);
+
+    ok("the link in a message", firstLink("see https://nest.example/rota.") === "https://nest.example/rota" && firstLink("no link here") === null);
+    const linked = await svc.send(NATHAN, support.id, say(`Rota for next week ${base}/rota`));
+    ok("sent at once — the card follows", linked.link === null);
+    const card = await until(async () => !!(await svc.messages(NATHAN, support.id)).messages.find((m) => m.id === linked.id)?.link);
+    const got = (await svc.messages(JAMES, support.id)).messages.find((m) => m.id === linked.id)?.link;
+    ok("with the page's own title and description", card && got?.title === "Rota & shifts" && got.description === "Who is on this week" && got.siteName === "Nest Docs", JSON.stringify(got));
+    ok("and everyone's told it changed", emitted.some((e) => e.event === "chat.message.updated" && e.users.includes(JAMES)));
+    const noLink = await svc.edit(NATHAN, linked.id, "Rota for next week — in the drive");
+    ok("edit the link out, and the card goes", noLink.link === null);
+    ok("a page's <title> will do", parsePreview("<title>Just a title</title>", "https://www.x.co/a")?.title === "Just a title" && parsePreview("<title>t</title>", "https://www.x.co/a")?.siteName === "x.co");
+    ok("no title, no card", parsePreview("<p>hi</p>", "https://x.co") === null);
+
+    const careful = new LinkPreviewService();
+    ok("never this machine", (await careful.preview(`${base}/rota`)) === null && (await careful.preview("http://localhost/")) === null);
+    ok("nor the cloud's metadata address", (await careful.preview("http://169.254.169.254/latest/meta-data/")) === null);
+    ok("nor the private network", !isPublicAddress("10.1.2.3") && !isPublicAddress("192.168.0.4") && !isPublicAddress("172.20.0.1") && !isPublicAddress("::1") && !isPublicAddress("fd00::1") && !isPublicAddress("::ffff:127.0.0.1") && !isPublicAddress("::ffff:7f00:1"));
+    ok("while the internet is fine", isPublicAddress("93.184.216.34") && isPublicAddress("2606:2800:220:1::1"));
+    ok("nor other schemes, ports or passwords", (await careful.preview("file:///etc/passwd")) === null && (await careful.preview("http://example.com:8080/")) === null && (await careful.preview("http://u:p@example.com/")) === null);
+    ok("a redirect inward is followed into nothing", (await links.preview(`${base}/away`)) === null);
+    ok("and only web pages are read", (await links.preview(`${base}/file.zip`)) === null);
+
+    await svc.send(JAMES, ops.id, say("The van keys are in the drawer"));
+    await svc.send(NATHAN, support.id, say("Has anyone seen the VAN keys?"));
+    const found = await svc.search(JAMES, "van keys");
+    ok("search finds it in every chat you're in, newest first", found.length === 2 && found[0]!.roomName === "Support team" && found[1]!.roomName === "Ops & Dispatch", found.map((h) => h.roomName).join(", "));
+    ok("and not in chats you're not in", (await svc.search(AMARA, "van keys")).length === 0);
+    ok("nor from before they joined", (await svc.search(JAMES, "Before James joins")).length === 0);
+    ok("one letter isn't a search", (await svc.search(JAMES, "v")).length === 0);
+    ok("deleted messages aren't found", (await svc.search(JAMES, "got a minute")).length === 0);
+
+    const keys = found[0]!.message;
+    await svc.star(JAMES, keys.id, true);
+    await svc.star(JAMES, found[1]!.message.id, true);
+    const stars = await svc.starred(JAMES);
+    ok("starred, newest star first, with where it was said", stars.length === 2 && stars[0]!.message.id === found[1]!.message.id && stars[1]!.roomName === "Support team");
+    ok("stars are mine alone", (await svc.starred(NATHAN)).length === 0);
+    await svc.star(JAMES, keys.id, false);
+    ok("unstarred", (await svc.starred(JAMES)).length === 1);
+    ok("you can't star what you can't read", await refuses(svc.star(AMARA, keys.id, true), 404));
+    const before = (await svc.messages(NATHAN, ops.id)).messages.find((m) => m.body === "Before James joins");
+    ok("including from before you joined", !!before && (await refuses(svc.star(JAMES, before.id, true), 404)));
+    await svc.leave(JAMES, ops.id);
+    ok("leave the chat, and its stars go quiet", (await svc.starred(JAMES)).length === 0);
   });
+  server.close();
 
   console.log(failed ? `\n${failed} check(s) failed\n` : "\nall team chat checks passed\n");
   process.exit(failed ? 1 : 0);

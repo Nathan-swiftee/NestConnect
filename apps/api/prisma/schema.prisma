@@ -232,6 +232,7 @@ model User {
   chatMessages    ChatMessage[] @relation("ChatAuthor")
   chatAudits      ChatAudit[]
   chatPresence    ChatPresence?
+  chatStars       ChatStar[]
 
   @@unique([orgId, email])
   @@index([orgId])
@@ -1278,6 +1279,10 @@ model ChatMessage {
   reactions    Json      @default("{}")
   /// User ids it @-mentions.
   mentions     Json      @default("[]")
+  /// Photos, voice notes, files (the inbox's Attachment shape).
+  attachments  Json      @default("[]")
+  /// A preview of the first link in it, once fetched.
+  link         Json?
   editedAt     DateTime?
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -1286,6 +1291,7 @@ model ChatMessage {
   author  User?         @relation("ChatAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
   replyTo ChatMessage?  @relation("ChatReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies ChatMessage[] @relation("ChatReply")
+  stars   ChatStar[]
 
   @@index([roomId, createdAt])
 }
@@ -1309,4 +1315,17 @@ model ChatPresence {
   lastSeenAt DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A message someone starred, to find again.
+model ChatStar {
+  userId        String
+  chatMessageId String
+  createdAt     DateTime @default(now())
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chatMessage ChatMessage @relation(fields: [chatMessageId], references: [id], onDelete: Cascade)
+
+  @@id([userId, chatMessageId])
+  @@index([userId, createdAt])
 }

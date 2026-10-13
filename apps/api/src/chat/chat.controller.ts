@@ -9,6 +9,7 @@ import {
   sendChatMessageInputSchema,
   setChatMemberRoleInputSchema,
   setChatModuleInputSchema,
+  starChatMessageInputSchema,
   updateChatGroupInputSchema,
   type AddChatMembersInput,
   type ChatMessage,
@@ -18,6 +19,8 @@ import {
   type ChatRoom,
   type ChatRoomPrefsInput,
   type ChatRoomSummary,
+  type ChatSearchHit,
+  type ChatStarred,
   type ChatStatusInfo,
   type CreateChatGroupInput,
   type EditChatMessageInput,
@@ -54,6 +57,18 @@ export class ChatController {
   @Get("rooms")
   rooms(@CurrentUserId() userId: string, @Query("all") all?: string): Promise<ChatRoomSummary[]> {
     return this.chat.rooms(userId, all === "1" || all === "true");
+  }
+
+  /** Words in any chat I can read, newest first. */
+  @Get("search")
+  search(@CurrentUserId() userId: string, @Query("q") q?: string): Promise<ChatSearchHit[]> {
+    return this.chat.search(userId, typeof q === "string" ? q : "");
+  }
+
+  /** My starred messages, newest star first. */
+  @Get("starred")
+  starred(@CurrentUserId() userId: string): Promise<ChatStarred[]> {
+    return this.chat.starred(userId);
   }
 
   @Post("direct")
@@ -177,6 +192,15 @@ export class ChatController {
     @Body(new ZodValidationPipe(reactChatMessageInputSchema)) body: ReactChatMessageInput,
   ): Promise<ChatMessage> {
     return this.chat.react(userId, id, body.emoji);
+  }
+
+  @Put("messages/:id/star")
+  star(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(starChatMessageInputSchema)) body: { starred: boolean },
+  ): Promise<{ ok: true }> {
+    return this.chat.star(userId, id, body.starred);
   }
 
   @Get("messages/:id/info")

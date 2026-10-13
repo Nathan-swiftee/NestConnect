@@ -5,7 +5,7 @@ import { api, seenAt, useChatMutation, useMe, usePeople } from "@ding/client";
 import { CHAT_GROUP_NAME_MAX, canEditChatMessage, type ChatMessage } from "@ding/schemas";
 import { mediaSource } from "../../api-config";
 import { haptics } from "../../haptics";
-import { BackIcon, CheckDouble, CheckIcon, EditIcon, PlusIcon, ReplyIcon, SearchIcon, TrashIcon, XIcon } from "../../icons";
+import { BackIcon, CheckDouble, CheckIcon, EditIcon, PlusIcon, ReplyIcon, SearchIcon, StarIcon, TrashIcon, XIcon } from "../../icons";
 import { useTheme } from "../../theme";
 import { Avatar } from "../Avatar";
 import { Sheet } from "../Sheet";
@@ -243,6 +243,8 @@ export function ChatMessageSheet({
   onEdit,
   onInfo,
   onDelete,
+  starred,
+  onStar,
 }: {
   message: ChatMessage | null;
   meId: string | undefined;
@@ -255,6 +257,8 @@ export function ChatMessageSheet({
   onEdit: () => void;
   onInfo: () => void;
   onDelete: () => void;
+  starred: boolean;
+  onStar: (on: boolean) => void;
 }) {
   const { c } = useTheme();
   const act = (fn: () => void) => () => {
@@ -267,6 +271,7 @@ export function ChatMessageSheet({
         ...(mine && canEditChatMessage(message)
           ? [{ key: "edit", label: "Edit", icon: <EditIcon size={20} color={c.textMuted} />, onPress: act(onEdit) }]
           : []),
+        { key: "star", label: starred ? "Unstar" : "Star", icon: <StarIcon size={20} color={c.textMuted} />, onPress: act(() => onStar(!starred)) },
         ...(mine ? [{ key: "info", label: "Info", icon: <CheckDouble size={18} color={c.textMuted} />, onPress: act(onInfo) }] : []),
         ...(canDelete
           ? [{ key: "delete", label: "Delete for everyone", icon: <TrashIcon size={20} color={c.danger} />, onPress: act(onDelete), danger: true }]
