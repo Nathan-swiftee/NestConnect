@@ -13,6 +13,8 @@ interface PushData {
   conversationId?: string;
   /** A Business Ops must-read or review reminder. */
   opsSopId?: string;
+  /** A Team Chat message or @mention. */
+  chatRoomId?: string;
 }
 
 function conversationIdOf(response: Notifications.NotificationResponse): string | null {
@@ -101,9 +103,10 @@ export function useNotificationRouting(enabled: boolean) {
         // Not about a conversation: a must-read or review reminder opens its SOP.
         const data = response.notification.request.content.data as PushData | undefined;
         const sop = typeof data?.opsSopId === "string" && data.opsSopId ? data.opsSopId : null;
-        if (sop && response.actionIdentifier === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-          router.push({ pathname: "/(app)/ops/[id]", params: { id: sop } });
-        }
+        const chat = typeof data?.chatRoomId === "string" && data.chatRoomId ? data.chatRoomId : null;
+        if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
+        if (sop) router.push({ pathname: "/(app)/ops/[id]", params: { id: sop } });
+        else if (chat) router.push({ pathname: "/(app)/chat/[id]", params: { id: chat } });
         return;
       }
 

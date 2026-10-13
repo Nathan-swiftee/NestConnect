@@ -1,5 +1,5 @@
 import { Stack } from "expo-router";
-import { useRealtime } from "@ding/client";
+import { useChatRealtime, useChatStatus, useRealtime } from "@ding/client";
 import { useNotificationRouting } from "../../src/notification-routing";
 import { useTheme } from "../../src/theme";
 
@@ -15,6 +15,9 @@ import { useTheme } from "../../src/theme";
 export default function AppLayout() {
   const { c } = useTheme();
   useRealtime(null);
+  // Team Chat's live updates, for as long as the module is on: the list, the
+  // badge and an open chat stay current wherever you are in the app.
+  useChatRealtime(!!useChatStatus().data?.enabled);
   // Mounted here rather than per-screen so a tap resolves the same way whether
   // the app was cold, backgrounded or already open.
   useNotificationRouting(true);

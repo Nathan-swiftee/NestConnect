@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Tabs } from "expo-router";
 import { BlurTargetView } from "expo-blur";
 import { Text, View } from "react-native";
-import { useMe, useOpsStatus } from "@ding/client";
-import { ContactsIcon, InboxIcon, InsightsIcon, OpsIcon, SettingsIcon } from "../../../src/icons";
+import { useChatStatus, useMe, useOpsStatus } from "@ding/client";
+import { ContactsIcon, InboxIcon, InsightsIcon, OpsIcon, SettingsIcon, TeamChatIcon } from "../../../src/icons";
 import { TabBar, type Tab } from "../../../src/components/TabBar";
 import { useTheme } from "../../../src/theme";
 
@@ -11,8 +11,9 @@ import { useTheme } from "../../../src/theme";
  * The app's primary navigation — the web's icon rail, laid along the bottom
  * where a thumb can reach it.
  *
- * The destinations are the rail's, in the rail's order: Inbox, Customers,
- * Ops, Insights, Settings. Insights is role-gated the same way, so an agent
+ * The destinations are the rail's, in the rail's order: Inbox, Chat,
+ * Customers, Ops, Insights, Settings. Chat only shows while Team Chat is on,
+ * with its unread count. Insights is role-gated the same way, so an agent
  * doesn't see a tab that would only refuse them; Ops only shows while the
  * workspace has Business Ops switched on, with a badge for must-reads waiting.
  *
@@ -56,6 +57,9 @@ export default function TabsLayout() {
   const ops = useOpsStatus();
   const opsOn = !!ops.data?.enabled;
   const opsWaiting = ops.data?.pendingAcks ?? 0;
+  const chat = useChatStatus();
+  const chatOn = !!chat.data?.enabled;
+  const chatUnread = chat.data?.unread ?? 0;
 
   /**
    * The destinations, declared once.
@@ -68,6 +72,7 @@ export default function TabsLayout() {
     () =>
       [
         { name: "index", label: "Inbox", href: "/", icon: InboxIcon },
+        ...(chatOn ? [{ name: "chat", label: "Chat", href: "/chat", icon: TeamChatIcon, badge: chatUnread, badgeColor: "wa" as const }] : []),
         { name: "customers", label: "Customers", href: "/customers", icon: ContactsIcon },
         ...(opsOn ? [{ name: "ops", label: "Ops", href: "/ops", icon: OpsIcon, badge: opsWaiting }] : []),
         ...(elevated
@@ -80,11 +85,11 @@ export default function TabsLayout() {
         icon: ({ color, size }: { color: string; size: number }) => (
           <View>
             <t.icon size={size} color={color} />
-            {"badge" in t && t.badge ? <Badge n={t.badge} /> : null}
+            {"badge" in t && t.badge ? <Badge n={t.badge} chat={"badgeColor" in t} /> : null}
           </View>
         ),
       })),
-    [elevated, opsOn, opsWaiting],
+    [elevated, opsOn, opsWaiting, chatOn, chatUnread],
   );
 
   /**
@@ -127,6 +132,7 @@ export default function TabsLayout() {
           }}
         >
           <Tabs.Screen name="index" options={{ title: "Inbox" }} />
+          <Tabs.Screen name="chat" options={{ title: "Chat", href: chatOn ? undefined : null }} />
           <Tabs.Screen name="customers" options={{ title: "Customers" }} />
           <Tabs.Screen name="ops" options={{ title: "Ops", href: opsOn ? undefined : null }} />
           <Tabs.Screen
@@ -147,16 +153,16 @@ export default function TabsLayout() {
   );
 }
 
-/** Must-reads waiting, on the Ops icon. */
-function Badge({ n }: { n: number }) {
+/** Must-reads waiting on the Ops icon (amber); unread messages on Chat (green, like WhatsApp's). */
+function Badge({ n, chat = false }: { n: number; chat?: boolean }) {
   const { c } = useTheme();
   return (
     <View
-      accessibilityLabel={`${n} to confirm`}
-      style={{ position: "absolute", top: -4, right: -8, backgroundColor: c.amber, borderColor: c.bg, borderWidth: 2 }}
+      accessibilityLabel={chat ? `${n} unread` : `${n} to confirm`}
+      style={{ position: "absolute", top: -4, right: -8, backgroundColor: chat ? c.wa : c.amber, borderColor: c.bg, borderWidth: 2 }}
       className="h-[18px] min-w-[18px] items-center justify-center rounded-full px-1"
     >
-      <Text className="text-[10px] font-bold text-white">{n > 9 ? "9+" : n}</Text>
+      <Text className="text-[10px] font-bold text-white">{n > (chat ? 99 : 9) ? (chat ? "99+" : "9+") : n}</Text>
     </View>
   );
 }
