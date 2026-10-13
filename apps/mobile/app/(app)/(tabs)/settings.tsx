@@ -269,6 +269,12 @@ export default function Settings() {
               onChange={(v) => setPush("reminders", v)}
             />
             <Toggle
+              label="New chats for my team"
+              detail="A chat is sent to my team, or a new one arrives with nobody on it"
+              value={p.teamChats}
+              onChange={(v) => setPush("teamChats", v)}
+            />
+            <Toggle
               label="Team inbound"
               detail="Any new message in my team's inboxes — noisy on a busy shift"
               value={p.teamInbound}

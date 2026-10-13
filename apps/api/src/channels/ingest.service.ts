@@ -115,7 +115,7 @@ export class IngestService {
    * Fire-and-forget by construction — PushService never blocks ingest, and its
    * own rules (open thread, quiet hours, rate limit) decide what actually goes.
    */
-  private async pushInbound(conversationId: string, authorName: string, preview: string): Promise<void> {
+  private async pushInbound(conversationId: string, authorName: string, preview: string, created = false): Promise<void> {
     const conv = await this.store.getConversation(conversationId);
     if (!conv) return;
     const body = preview.trim().slice(0, 140) || "Sent an attachment";
@@ -128,9 +128,22 @@ export class IngestService {
     if (assignee) {
       this.push.notify({ userIds: [assignee], kind: "message", title, body, conversationId });
     }
-    if (team.length) {
-      this.push.notify({ userIds: team, kind: "team_message", title, body, conversationId });
+    if (!team.length) return;
+    if (created && !assignee) {
+      // A brand-new chat waiting in the queue: the team hears about it under
+      // "new chats for my team" (on by default), not the noisy every-message
+      // setting. Follow-ups in it stay under that one.
+      const teamName = conv.assignedTeamId ? (await this.store.getTeam(conv.assignedTeamId))?.name : undefined;
+      this.push.notify({
+        userIds: team,
+        kind: "team_chat",
+        title: teamName ? `New chat for ${teamName}` : "New chat",
+        body: `${title}: ${body}`,
+        conversationId,
+      });
+      return;
     }
+    this.push.notify({ userIds: team, kind: "team_message", title, body, conversationId });
   }
 
   async ingestWhatsApp(input: WhatsAppInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
@@ -214,7 +227,7 @@ export class IngestService {
     });
     if (message) {
       this.realtime.emitMessageCreated(conv.id, message, inbox.orgId);
-      void this.pushInbound(conv.id, contact.displayName, input.text);
+      void this.pushInbound(conv.id, contact.displayName, input.text, created);
       this.subjects.customerWrote(conv.id, inbox.orgId);
     }
 
@@ -387,7 +400,7 @@ export class IngestService {
       // A photo on its own is a message. The alert has to say something, and
       // "" would arrive on a phone as a notification with no content at all.
       const preview = input.text.trim() || describeAttachments(input.attachments);
-      void this.pushInbound(conversationId, input.contact.displayName, preview);
+      void this.pushInbound(conversationId, input.contact.displayName, preview, res.created);
       this.subjects.customerWrote(conversationId, input.inbox.orgId);
     }
 
@@ -508,7 +521,7 @@ export class IngestService {
     });
     if (message) {
       this.realtime.emitMessageCreated(conversationId, message, inbox.orgId);
-      void this.pushInbound(conversationId, contact.displayName, input.text);
+      void this.pushInbound(conversationId, contact.displayName, input.text, created);
     }
 
     return { conversationId, created };

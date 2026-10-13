@@ -61,11 +61,12 @@ function timeAgo(iso: string): string {
  * turned on in a quiet week and blamed in a busy one. Every other entry is
  * about something addressed to this person.
  */
-const ALERT_TOGGLES: { key: keyof Pick<PushPreferences, "assigned" | "mentions" | "assignments" | "reminders" | "teamInbound">; label: string; detail: string }[] = [
+const ALERT_TOGGLES: { key: keyof Pick<PushPreferences, "assigned" | "mentions" | "assignments" | "reminders" | "teamChats" | "teamInbound">; label: string; detail: string }[] = [
   { key: "assigned", label: "My conversations", detail: "A new message on something assigned to me" },
   { key: "mentions", label: "Mentions", detail: "Someone @mentions me in an internal note" },
   { key: "assignments", label: "Assignments", detail: "A conversation is handed to me" },
   { key: "reminders", label: "Snooze reminders", detail: "Something I snoozed comes due" },
+  { key: "teamChats", label: "New chats for my team", detail: "A chat is sent to my team, or a new one arrives with nobody on it" },
   {
     key: "teamInbound",
     label: "Everything in my team's inboxes",

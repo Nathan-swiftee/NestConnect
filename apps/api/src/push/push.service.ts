@@ -14,7 +14,7 @@ import { currentOrgId } from "../tenancy/tenant-scope";
 
 /** What a push is *about*. Each maps to a preference, an Android notification
  *  channel, and whether quiet hours may hold it back. */
-export type PushKind = "message" | "team_message" | "mention" | "assignment" | "reminder" | "test";
+export type PushKind = "message" | "team_message" | "team_chat" | "mention" | "assignment" | "reminder" | "test";
 
 /** One thing worth telling someone about, before policy is applied. */
 export interface PushRequest {
@@ -28,6 +28,9 @@ export interface PushRequest {
   opsSopId?: string;
   /** Whoever caused this. Never notified about their own action. */
   actorUserId?: string;
+  /** False when something else already sounds on the desktop (a bell row
+   *  plays its own), so one event isn't two chimes. */
+  cue?: boolean;
 }
 
 /** Matches the schema's cap on the stored array — kept as a named constant so
@@ -39,6 +42,7 @@ const MAX_MUTED = 200;
 const ANDROID_CHANNEL: Record<PushKind, string> = {
   message: "messages",
   team_message: "messages",
+  team_chat: "assignments",
   mention: "mentions",
   assignment: "assignments",
   reminder: "reminders",
@@ -53,6 +57,7 @@ const ANDROID_CHANNEL: Record<PushKind, string> = {
 const CATEGORY: Partial<Record<PushKind, string>> = {
   message: "message",
   team_message: "message",
+  team_chat: "message",
   mention: "message",
 };
 
@@ -60,6 +65,7 @@ const CATEGORY: Partial<Record<PushKind, string>> = {
 const PREFERENCE: Record<PushKind, keyof PushPreferences | null> = {
   message: "assigned",
   team_message: "teamInbound",
+  team_chat: "teamChats",
   mention: "mentions",
   assignment: "assignments",
   reminder: "reminders",
@@ -76,7 +82,7 @@ const PREFERENCE: Record<PushKind, keyof PushPreferences | null> = {
  * plays its own sound — cueing those here would ring twice for one event. An
  * assignment deliberately stays silent: it changes a list, not a conversation.
  */
-const CUES_DESKTOP: ReadonlySet<PushKind> = new Set<PushKind>(["message", "team_message"]);
+const CUES_DESKTOP: ReadonlySet<PushKind> = new Set<PushKind>(["message", "team_message", "team_chat"]);
 
 /** Quiet hours hold back the routine; a direct mention still gets through. */
 const IGNORES_QUIET_HOURS: ReadonlySet<PushKind> = new Set<PushKind>(["mention", "test"]);
@@ -245,8 +251,8 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     // The desktop is told here rather than at the call site, so a caller cannot
     // add a notification that reaches phones and forgets screens — or worse,
     // one that applies a second, slightly different rule on the way.
-    if (audience.length && req.conversationId && CUES_DESKTOP.has(req.kind)) {
-      this.realtime.emitMessageCue(audience, req.conversationId, req.kind as "message" | "team_message");
+    if (audience.length && req.conversationId && req.cue !== false && CUES_DESKTOP.has(req.kind)) {
+      this.realtime.emitMessageCue(audience, req.conversationId, req.kind === "message" ? "message" : "team_message");
     }
 
     if (!recipients.length) return { sent: 0, failed: 0 };
@@ -326,7 +332,10 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
    */
   private wantsToKnow(prefs: PushPreferences, req: PushRequest): boolean {
     const pref = PREFERENCE[req.kind];
-    if (pref && !prefs[pref]) return false;
+    // Someone who asked to hear every team message has asked for the first one
+    // too, even with "new chats for my team" switched off.
+    const wanted = pref ? prefs[pref] || (req.kind === "team_chat" && prefs.teamInbound) : true;
+    if (!wanted) return false;
 
     // A muted thread is silent whatever the class — muting is the strongest
     // thing a person can say about one conversation, so it outranks "notify me

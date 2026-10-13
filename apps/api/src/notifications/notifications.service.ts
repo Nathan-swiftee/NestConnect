@@ -14,6 +14,7 @@ const SNOOZE_SWEEP_MS = 30_000;
 const PUSH_KIND: Record<NotificationType, PushKind> = {
   mention: "mention",
   snooze_due: "reminder",
+  team_transfer: "team_chat",
   ops_review: "reminder",
   ops_must_read: "assignment",
 };
@@ -80,6 +81,8 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
       conversationId: row.conversationId ?? undefined,
       opsSopId: row.opsSopId ?? undefined,
       actorUserId,
+      // The bell row reaching the screen plays its own sound.
+      cue: false,
     });
   }
 
@@ -104,6 +107,37 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
         actorUserId: authorId,
       });
     }
+  }
+
+  /**
+   * A chat handed to a team with nobody picked: tell the team, or it sits in
+   * their queue until someone happens to look. Everyone in the team except
+   * whoever moved it, and only those who want "new chats for my team" — the
+   * bell row is skipped too for anyone who switched it off, so turning it off
+   * means it, not "no banner but the bell still fills up".
+   */
+  async notifyTeamTransfer(conversation: Conversation, teamId: string, byUserId: string): Promise<number> {
+    const [team, by, members] = await Promise.all([
+      this.store.getTeam(teamId),
+      this.store.getUser(byUserId),
+      this.store.listMembers(),
+    ]);
+    if (!team) return 0;
+    let told = 0;
+    for (const m of members) {
+      if (m.user.id === byUserId || !m.teamIds.includes(teamId)) continue;
+      const prefs = await this.push.preferences(m.user.id);
+      if (!prefs.teamChats) continue;
+      await this.create(m.user.id, {
+        type: "team_transfer",
+        title: by ? `${by.name} sent a chat to ${team.name}` : `A chat was sent to ${team.name}`,
+        body: conversation.contact.displayName,
+        conversationId: conversation.id,
+        actorUserId: byUserId,
+      });
+      told++;
+    }
+    return told;
   }
 
   /** Wake snoozed conversations that have come due and tell their assignee. */

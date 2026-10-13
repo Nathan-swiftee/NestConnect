@@ -146,6 +146,12 @@ jobs:
       - name: Alert policy
         run: pnpm check:alert-policy
 
+      # A chat routed to a team is heard by that team: a transfer rings the
+      # team's bell, phone and screen; a new chat waiting unassigned rings them
+      # as a new chat — under "new chats for my team", on by default.
+      - name: Team alerts
+        run: pnpm check:team-alerts
+
       # Which number, or which address, an outbound message goes out from. A
       # cross-channel reply sends from the channel's inbox, which used to be
       # whichever row an unordered query returned first — with two numbers that

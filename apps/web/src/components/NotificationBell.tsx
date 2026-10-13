@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNotifications, useMarkNotificationsRead } from "../hooks";
 import { relativeTime } from "../lib/format";
-import { BellIcon, AtIcon, OpsIcon, SnoozeIcon } from "../lib/icons";
+import { BellIcon, AtIcon, InboxIcon, OpsIcon, SnoozeIcon } from "../lib/icons";
 import type { Notification } from "@ding/schemas";
 
 /**
@@ -65,7 +65,7 @@ export function NotificationBell({
                     onClick={() => openNotif(n)}
                   >
                     <span className={"notif__ic notif__ic--" + n.type}>
-                      {n.type === "mention" ? <AtIcon /> : n.opsSopId ? <OpsIcon /> : <SnoozeIcon />}
+                      {n.type === "mention" ? <AtIcon /> : n.type === "team_transfer" ? <InboxIcon /> : n.opsSopId ? <OpsIcon /> : <SnoozeIcon />}
                     </span>
                     <span className="notif__meta">
                       <b>{n.title}</b>

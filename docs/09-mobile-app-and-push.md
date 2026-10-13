@@ -538,6 +538,24 @@ the OS will not deliver it to JS. Verify on device before promising it.
 - **Quiet hours**, and a "only when assigned to me" default.
 - Honour the team's working hours, which the workspace already models.
 
+### 5.7 A chat routed to a team
+
+"New chats for my team" (`teamChats`, **on** by default) covers the two ways a
+chat lands in a team's queue with nobody on it:
+
+- **Transferred to the team** (assigned to a team with no person picked): every
+  member except whoever moved it gets a bell row, a push and a screen chime —
+  "James sent a chat to Sales team". Tapping it opens the chat. Moving it to the
+  team it's already in, or handing it to a person, doesn't page the team.
+- **A brand-new chat waiting unassigned** in the team's queue: a push and a
+  chime — "New chat for Sales team" — but no bell row, since it can be frequent.
+  The follow-ups in it stay under the noisy "every message in my team's
+  inboxes" (`teamInbound`, off by default). Someone with that on still hears the
+  first one even with `teamChats` off.
+
+Switching `teamChats` off stops the bell rows too, not just the banners. Checked
+by `pnpm check:team-alerts`.
+
 ---
 
 ## 6. What I need from you
