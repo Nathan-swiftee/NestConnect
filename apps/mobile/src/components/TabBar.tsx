@@ -213,6 +213,11 @@ export type Tab = {
    *  `/customers`, not the on-disk path. */
   href: string;
   icon: (props: { focused: boolean; color: string; size: number }) => React.ReactNode;
+  /** Other routes this tab stands for — More, for the destinations it holds —
+   *  so it's the one lit while any of them is showing. */
+  covers?: string[];
+  /** Instead of going to `href`: More opens its menu, even when it's lit. */
+  onPress?: () => void;
 };
 
 export function TabBar({
@@ -255,7 +260,7 @@ export function TabBar({
   const current = !leaf || leaf.startsWith("(") ? "index" : leaf;
   // -1 while the route showing isn't one of the tabs — reachable by deep link,
   // e.g. an agent opening /insights directly. Nothing to point at.
-  const active = shown.findIndex((t) => t.name === current);
+  const active = shown.findIndex((t) => t.name === current || !!t.covers?.includes(current));
 
   // Where the pill is, in visible-tab units. Fractional while travelling, which
   // is what lets position, width and stretch all be read off one value.
@@ -547,6 +552,11 @@ export function TabBar({
                 // already are. The navigator used to turn this into "scroll to
                 // the top of this section" through its `tabPress` event; that
                 // event belongs to the render prop this bar no longer uses.
+                if (tab.onPress) {
+                  haptics.tap();
+                  tab.onPress();
+                  return;
+                }
                 if (focused) return;
                 haptics.tap();
                 router.navigate(tab.href);

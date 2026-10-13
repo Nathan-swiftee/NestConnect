@@ -75,6 +75,9 @@ export function IconRail({
       {chat.data?.enabled && (
         <button
           className={"railbtn" + (chatOpen ? " active" : "")}
+          // The pop-up closes on a press outside it — except this one, which
+          // toggles it itself.
+          data-chat-toggle
           aria-pressed={chatOpen}
           title={chatUnread ? `Team Chat — ${chatUnread} unread` : "Team Chat"}
           aria-label={chatUnread ? `Team Chat, ${chatUnread} unread` : "Team Chat"}

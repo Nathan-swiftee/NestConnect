@@ -3,6 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { useAnalytics } from "@ding/client";
 import type { AnalyticsRange } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
+import { TabHeader } from "../../../src/components/TabHeader";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { channelColor, channelMeta } from "../../../src/icons";
 import { useTheme } from "../../../src/theme";
@@ -55,11 +56,9 @@ export default function Insights() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: c.bg }}
-      contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 32 + TAB_BAR_H }}
+      contentContainerStyle={{ paddingTop: insets.top, paddingBottom: insets.bottom + 32 + TAB_BAR_H }}
     >
-      <Text accessibilityRole="header" className="px-4 pb-2 text-2xl font-semibold tracking-tight text-fg">
-        Insights
-      </Text>
+      <TabHeader title="Insights" subtitle="How the team is doing" />
 
       <View className="flex-row gap-2 px-4 pb-3">
         {RANGES.map((r) => {
