@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   canEditChatMessage,
   chatSystemText,
@@ -61,6 +61,7 @@ export function ChatConversation({
   roomId,
   focusMessageId,
   onOpenConversation,
+  visible = true,
   onBack,
   onClosed,
   onOpenRoom,
@@ -70,6 +71,8 @@ export function ChatConversation({
   /** Open at this message — from search or starred. */
   focusMessageId?: string | null;
   onOpenConversation?: (id: string) => void;
+  /** Put away (the pop-up closed): it isn't open, so nothing is read and sounds still play. */
+  visible?: boolean;
   onBack?: () => void;
   onClosed: () => void;
   onOpenRoom: (id: string) => void;
@@ -90,12 +93,12 @@ export function ChatConversation({
   const dragDepth = useRef(0);
   const composer = useRef<ChatComposerHandle>(null);
   const stars = useChatStars();
-  useChatRoomOpen(roomId);
+  useChatRoomOpen(visible ? roomId : null);
 
   const r = room.data;
   const mentionables: Mentionable[] = useMemo(() => (people.data ?? []).map((m) => m.user), [people.data]);
   const newest = msgs.messages.at(-1);
-  useMarkChatRead(roomId, newest?.id, !!r?.isMember);
+  useMarkChatRead(roomId, newest?.id, !!r?.isMember && visible);
 
   // Where "unread messages" goes: fixed when the chat opens, so it doesn't
   // jump away the moment the chat is marked read.
@@ -200,7 +203,7 @@ export function ChatConversation({
 
   useEffect(() => {
     if (!lightbox) return;
-    const close = (e: globalThis.KeyboardEvent) => e.key === "Escape" && setLightbox(null);
+    const close = (e: KeyboardEvent) => e.key === "Escape" && setLightbox(null);
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
   }, [lightbox]);
@@ -507,6 +510,7 @@ function Bubble({
   onOpenConversation?: (id: string) => void;
 }) {
   const [menu, setMenu] = useState<"react" | "more" | null>(null);
+  const root = useRef<HTMLDivElement>(null);
   const deleted = !!m.deletedAt;
   const files = deleted ? [] : (m.attachments ?? []);
   const jumbo = !deleted && !m.replyTo && !files.length && !m.shared && isJumboEmoji(m.body);
@@ -516,8 +520,42 @@ function Bubble({
   const ticks = mine && !m.pending && !m.failed ? chatTicks(m, room.members, m.author?.id ?? "") : null;
   const settled = !m.pending && !m.failed && !deleted;
 
-  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") setMenu(null);
+  // The inbox's rule: an open picker or menu stays open until you click
+  // somewhere else or press Esc — not the moment the pointer drifts off.
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setMenu(null);
+    };
+    // Captured, so this Esc closes the menu and not the Team Chat pop-up too.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setMenu(null);
+    };
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [menu]);
+  // Keep what opened inside the message list: slide it sideways off an edge,
+  // and turn the menu upward (the picker downward) where there's no room.
+  const pop = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = pop.current;
+    const box = root.current?.closest(".tc-msgs")?.getBoundingClientRect();
+    if (!menu || !el || !box) return;
+    const r = el.getBoundingClientRect();
+    if (menu === "more" && r.bottom > box.bottom - 6 && r.top - r.height - 30 > box.top) el.classList.add("up");
+    if (menu === "react" && r.top < box.top + 6) el.classList.add("down");
+    const x = r.left < box.left + 6 ? box.left + 6 - r.left : r.right > box.right - 6 ? box.right - 6 - r.right : 0;
+    if (x) el.style.translate = `${x}px 0`;
+  }, [menu]);
+  const pick = (e: string) => {
+    setMenu(null);
+    onReact(e);
   };
 
   return (
@@ -528,13 +566,11 @@ function Bubble({
         (first ? " first" : "") +
         (last ? " last" : "") +
         (flash ? " flash" : "") +
-        (jumbo ? " jumbo" : "") +
-        (m.reactions.length ? " reacted" : "")
+        (jumbo ? " jumbo" : "")
       }
       data-mid={m.id}
-      onKeyDown={onKey}
-      onMouseLeave={() => setMenu(null)}
-      // Right-click, or a long press on a phone: the same actions as the hover bar.
+      ref={root}
+      // Right-click, or a long press on a phone: the same menu as the corner chevron.
       onContextMenu={(e) => {
         if (!settled || window.getSelection()?.toString()) return;
         e.preventDefault();
@@ -565,6 +601,7 @@ function Bubble({
           />
         </span>
       )}
+      <div className={"tc-wrap" + (menu ? " open" : "")}>
       <div className={"tc-bubble" + (deleted ? " deleted" : "") + (files.length ? " has-files" : "") + (visual ? " visual" : "") + (bare ? " bare" : "") + (m.shared ? " has-card" : "")}>
         {group && !mine && first && (
           <span className="tc-bubble__name" style={{ color: chatNameColour(m.author?.id) }}>
@@ -633,6 +670,18 @@ function Bubble({
             Not sent · Retry
           </button>
         )}
+        {settled && (
+          <button
+            type="button"
+            className="tc-menubtn"
+            aria-label="Message actions"
+            aria-haspopup="menu"
+            aria-expanded={menu === "more"}
+            onClick={() => setMenu(menu === "more" ? null : "more")}
+          >
+            <ChevronDown />
+          </button>
+        )}
       </div>
 
       {m.reactions.length > 0 && (
@@ -653,73 +702,70 @@ function Bubble({
         </div>
       )}
 
-      {settled && (
-        <div className={"tc-tools" + (menu ? " open" : "")} role="toolbar" aria-label="Message actions">
-          {canAct && (
-            <button type="button" aria-label="React" title="React" onClick={() => setMenu(menu === "react" ? null : "react")}>
-              <EmojiIcon />
+      {settled && canAct && (
+        <button type="button" className="tc-reactbtn" aria-label="React to message" title="React" onClick={() => setMenu(menu === "react" ? null : "react")}>
+          <EmojiIcon />
+        </button>
+      )}
+      {menu === "react" && (
+        <div className="tc-reactpick" ref={pop} role="menu" aria-label="Pick a reaction">
+          {QUICK_REACTIONS.map((e) => (
+            <button
+              key={e}
+              type="button"
+              role="menuitem"
+              aria-label={`React ${e}`}
+              className={m.reactions.some((rx) => rx.emoji === e && !!meId && rx.userIds.includes(meId)) ? "sel" : undefined}
+              onClick={() => pick(e)}
+            >
+              {e}
             </button>
-          )}
+          ))}
+        </div>
+      )}
+      {menu === "more" && (
+        <div className="tc-msgmenu" ref={pop} role="menu">
           {canAct && (
-            <button type="button" aria-label="Reply" title="Reply" onClick={onReply}>
-              <ReplyIcon />
-            </button>
-          )}
-          <button type="button" aria-label="More" title="More" onClick={() => setMenu(menu === "more" ? null : "more")}>
-            <ChevronDown />
-          </button>
-          {menu === "react" && (
-            <div className="tc-reactpop" role="menu">
+            // No hover smiley on a phone, so a long press reacts from here.
+            <div className="tc-msgmenu__reacts">
               {QUICK_REACTIONS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  role="menuitem"
-                  aria-label={`React ${e}`}
-                  onClick={() => {
-                    setMenu(null);
-                    onReact(e);
-                  }}
-                >
+                <button key={e} type="button" role="menuitem" aria-label={`React ${e}`} onClick={() => pick(e)}>
                   {e}
                 </button>
               ))}
             </div>
           )}
-          {menu === "more" && (
-            <div className="menu tc-moremenu" role="menu">
-              {canAct && (
-                <button type="button" role="menuitem" onClick={() => { setMenu(null); onReply(); }}>
-                  <ReplyIcon /> Reply
-                </button>
-              )}
-              {!!m.body && (
-                <button type="button" role="menuitem" onClick={() => { setMenu(null); onCopy(); }}>
-                  <CopyIcon /> Copy
-                </button>
-              )}
-              <button type="button" role="menuitem" onClick={() => { setMenu(null); onStar(!starred); }}>
-                <StarIcon filled={starred} /> {starred ? "Unstar" : "Star"}
-              </button>
-              {mine && canEditChatMessage(m) && (
-                <button type="button" role="menuitem" onClick={() => { setMenu(null); onEdit(); }}>
-                  <EditIcon /> Edit
-                </button>
-              )}
-              {mine && (
-                <button type="button" role="menuitem" onClick={() => { setMenu(null); onInfo(); }}>
-                  <DetailsIcon /> Info
-                </button>
-              )}
-              {(mine || moderator) && (
-                <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(null); onDelete(); }}>
-                  <TrashIcon /> Delete for everyone
-                </button>
-              )}
-            </div>
+          {canAct && (
+            <button type="button" role="menuitem" onClick={() => { setMenu(null); onReply(); }}>
+              <ReplyIcon /> Reply
+            </button>
+          )}
+          {!!m.body && (
+            <button type="button" role="menuitem" onClick={() => { setMenu(null); onCopy(); }}>
+              <CopyIcon /> Copy
+            </button>
+          )}
+          <button type="button" role="menuitem" onClick={() => { setMenu(null); onStar(!starred); }}>
+            <StarIcon filled={starred} /> {starred ? "Unstar" : "Star"}
+          </button>
+          {mine && canEditChatMessage(m) && (
+            <button type="button" role="menuitem" onClick={() => { setMenu(null); onEdit(); }}>
+              <EditIcon /> Edit
+            </button>
+          )}
+          {mine && (
+            <button type="button" role="menuitem" onClick={() => { setMenu(null); onInfo(); }}>
+              <DetailsIcon /> Info
+            </button>
+          )}
+          {(mine || moderator) && (
+            <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(null); onDelete(); }}>
+              <TrashIcon /> Delete for everyone
+            </button>
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

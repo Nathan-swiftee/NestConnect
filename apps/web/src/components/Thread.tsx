@@ -2809,7 +2809,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </span>
             </div>
             {conv.subject && conv.subject !== conv.contact.displayName && (
-              <div className="text-xs text-fg font-semibold whitespace-nowrap overflow-hidden text-ellipsis max-w-[420px]">{conv.subject}</div>
+              <div className="text-xs text-fg font-semibold whitespace-nowrap overflow-hidden text-ellipsis" title={conv.subject}>{conv.subject}</div>
             )}
             {/* Presence/contact line: secondary to the name, so it sits a step
                 down the type scale (11px) and a step lighter (faint) — it's
@@ -2830,20 +2830,21 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
         </div>
         <div className="thread__actions">
           {isClosed ? (
-            <button className="resolvebtn reopened" onClick={reopenConversation} title="Reopen conversation">
+            <button className="resolvebtn reopened" onClick={reopenConversation} title="Reopen conversation" aria-label="Reopen conversation">
               <ReopenIcon />
-              <span className="lbl">Reopen</span>
             </button>
           ) : (
-            <button className="resolvebtn" onClick={closeConversation} title="Close (resolve) conversation">
+            // Icons, not words: the header carries the log, Discuss, labels and
+            // more now, and the room is better spent on who and what it's about.
+            <button className="resolvebtn" onClick={closeConversation} title="Resolve conversation" aria-label="Resolve conversation">
               <CheckCircleIcon />
-              <span className="lbl">Resolve</span>
             </button>
           )}
           <button
             className="assignbtn"
             onClick={() => { setMenu((v) => !v); setSnoozeMenu(false); }}
             title={!owned ? "Take this conversation" : assignedToMe ? "Assigned to you" : `Assigned to ${assigneeName}`}
+            aria-label={!owned ? "Take this conversation" : assignedToMe ? "Assigned to you — change" : `Assigned to ${assigneeName} — change`}
           >
             {owned ? (
               <>
@@ -2857,23 +2858,17 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                 >
                   {assignedToMe ? (me ? initials(me.user.name) : "") : initials(assigneeName)}
                 </span>
-                <span className="lbl">
-                  {assignedToMe ? "Assigned to you" : `Assigned to ${assigneeName.split(" ")[0]}`}
-                </span>
               </>
             ) : (
-              <>
-                <span className="assignbtn__ic">
-                  <ProfileIcon />
-                </span>
-                <span className="lbl">Take conversation</span>
-              </>
+              <span className="assignbtn__ic">
+                <ProfileIcon />
+              </span>
             )}
             <ChevronDown />
           </button>
           <div className="snoozewrap">
             <button
-              className={"iconbtn hide-sm" + (snoozeMenu ? " on" : "")}
+              className={"iconbtn hide-sm fold" + (snoozeMenu ? " on" : "")}
               title="Snooze"
               onClick={() => { setSnoozeMenu((v) => !v); setMenu(false); }}
             >
@@ -2895,7 +2890,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
           </div>
           <div className="labelwrap">
             <button
-              className={"iconbtn hide-sm" + (labelMenu ? " on" : "")}
+              className={"iconbtn hide-sm fold" + (labelMenu ? " on" : "")}
               title="Labels"
               aria-label="Labels"
               aria-haspopup="menu"
@@ -2915,11 +2910,11 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             )}
           </div>
           {chatOn && (
-            <button className={"iconbtn hide-sm" + (sharing ? " on" : "")} title="Discuss with the team" aria-label="Discuss with the team" onClick={() => setSharing({ message: null })}>
+            <button className={"iconbtn hide-sm fold" + (sharing ? " on" : "")} title="Discuss with the team" aria-label="Discuss with the team" onClick={() => setSharing({ message: null })}>
               <TeamChatIcon />
             </button>
           )}
-          <button className={"iconbtn hide-sm" + (logOpen ? " on" : "")} title="Conversation log" aria-label="Conversation log" onClick={() => setLogOpen(true)}>
+          <button className={"iconbtn hide-sm fold" + (logOpen ? " on" : "")} title="Conversation log" aria-label="Conversation log" onClick={() => setLogOpen(true)}>
             <HistoryIcon />
           </button>
           <button className={"iconbtn hide-sm" + (showPanel ? " on" : "")} title="Details" onClick={onTogglePanel}>

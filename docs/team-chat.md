@@ -16,9 +16,18 @@ deleted: switching back on brings every chat back as it was.
 ## Where it is
 
 - **Web:** the speech-bubbles icon in the rail, second from the top, with the
-  number of unread messages (muted chats left out). At phone width it's in the
-  menu drawer. The screen is two panes, like WhatsApp Web: chats on the left,
-  the open chat on the right; at phone width, one at a time.
+  number of unread messages (muted chats left out). It **pops up** rather than
+  being a page: a panel beside the rail, over the sidebar and the list of
+  conversations, leaving the customer thread you're on in view — a quick word
+  with the team is a click away from the conversation it's about. Nothing
+  behind it is blocked (you can keep working the thread), and the rail icon,
+  ✕ or Esc (outside a text box) puts it away; it reopens where you left it,
+  half-written reply included, and while it's away nothing in it counts as
+  read. Two panes inside, like WhatsApp Web: chats, and the open chat (group
+  info slides over the chat). A mention in the bell, "Open chat" on a
+  discussion and the menu drawer's Chat all open it at the right chat; opening
+  a customer card from it switches the thread behind it and leaves the chat
+  open. At phone width it fills the screen, one pane at a time.
 - **App:** a **Chat** tab, second along, with a green unread count (Insights
   stays for admins and managers, so the bar can carry six). The list reads
   like WhatsApp's; long-press a chat to pin, mute or mark it read. In a chat:
@@ -70,10 +79,13 @@ chats."
 
 ## Messages
 
-- **Replies:** hover a message and press reply (or right-click / long-press);
-  in the app, swipe it. The reply quotes it, and tapping the quote scrolls to
-  the original.
+- **Replies:** on the web, hover a message and open the chevron in its corner
+  (or right-click / long-press) for Reply, Copy, Star, Edit, Info and Delete —
+  the same pattern as WhatsApp messages in the inbox. In the app, swipe it. The
+  reply quotes it, and tapping the quote scrolls to the original.
 - **Reactions:** one per person per message; the same emoji again takes it off.
+  On the web, the smiley beside a hovered message opens the quick reactions;
+  they show as a small pill under the bubble.
 - **@mentions:** type `@` for the people in the chat. Stored as handles
   (`@nathan`), shown by name — the same as internal notes.
 - **Edit:** your own, within 15 minutes; it shows "Edited".

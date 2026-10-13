@@ -25,13 +25,22 @@ type Filter = "all" | "unread" | "groups" | "direct";
  */
 export function TeamChat({
   focusRoomId,
+  focusNonce = 0,
   onToast,
   onOpenConversation,
+  onClose,
+  visible = true,
 }: {
+  /** False while the pop-up is put away: nothing in it counts as read or open. */
+  visible?: boolean;
   focusRoomId?: string | null;
+  /** Bumped on each "open this chat", so asking for the same one again still does. */
+  focusNonce?: number;
   onToast: (m: string) => void;
   /** A shared customer conversation's card was opened. */
   onOpenConversation?: (id: string) => void;
+  /** In the pop-up: put it away. */
+  onClose?: () => void;
 }) {
   const isMobile = useMediaQuery("(max-width: 820px)");
   const me = useMe().data?.user;
@@ -56,7 +65,7 @@ export function TeamChat({
 
   useEffect(() => {
     if (focusRoomId) setSelected(focusRoomId);
-  }, [focusRoomId]);
+  }, [focusRoomId, focusNonce]);
 
   const openAt = (roomId: string, messageId: string | null) => {
     setFocusMessage(messageId);
@@ -115,6 +124,11 @@ export function TeamChat({
               <button type="button" className="iconbtn" title="New chat" aria-label="New chat" onClick={() => setNewOpen(true)}>
                 <ComposeIcon />
               </button>
+              {onClose && (
+                <button type="button" className="iconbtn" title="Close (Esc)" aria-label="Close Team Chat" onClick={onClose}>
+                  <XIcon />
+                </button>
+              )}
             </div>
           </header>
           {oversee && (
@@ -203,6 +217,7 @@ export function TeamChat({
             key={selected}
             roomId={selected}
             focusMessageId={focusMessage}
+            visible={visible}
             onOpenConversation={onOpenConversation}
             onBack={isMobile ? () => setSelected(null) : undefined}
             onClosed={() => setSelected(null)}
@@ -233,6 +248,49 @@ export function TeamChat({
           onToast={onToast}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Team Chat on the web: a pop-up beside the rail, over the sidebar and the
+ * list of conversations, leaving the customer's thread in view — so a quick
+ * word with the team is a click away from the conversation it's about, and a
+ * click back. Nothing behind it is blocked. Esc (outside a text box) or the ✕
+ * puts it away; it opens where it was left.
+ */
+export function ChatPopup({
+  open,
+  focusRoomId,
+  focusNonce,
+  onClose,
+  onToast,
+  onOpenConversation,
+}: {
+  open: boolean;
+  focusRoomId?: string | null;
+  focusNonce?: number;
+  onClose: () => void;
+  onToast: (m: string) => void;
+  onOpenConversation?: (id: string) => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      // Esc in the box you're typing in cancels the reply or edit, not the chat.
+      if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable)) return;
+      // A dialog or the photo viewer over it closes first.
+      if (document.querySelector(".modal, .lightbox")) return;
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+  return (
+    <div className="tc-popup" role="dialog" aria-modal="false" aria-label="Team Chat" hidden={!open}>
+      <TeamChat visible={open} focusRoomId={focusRoomId} focusNonce={focusNonce} onToast={onToast} onOpenConversation={onOpenConversation} onClose={onClose} />
     </div>
   );
 }

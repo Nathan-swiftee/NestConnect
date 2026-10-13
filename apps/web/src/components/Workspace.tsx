@@ -13,7 +13,7 @@ import { Customers } from "./Customers";
 import { Analytics } from "./Analytics";
 import { Organisations } from "./organisations/Organisations";
 import { BusinessOps } from "./ops/BusinessOps";
-import { TeamChat } from "./chat/TeamChat";
+import { ChatPopup } from "./chat/TeamChat";
 import { DiscussionPanel } from "./chat/Discuss";
 import { SignedOutBanner } from "./ReconnectEmail";
 import { useChatRealtime, useChatStatus, useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
@@ -37,6 +37,19 @@ export function Workspace() {
   const [section, setSection] = useState<"inbox" | "chat" | "customers" | "organisations" | "ops" | "settings" | "insights">("inbox");
   const [focusOpsSop, setFocusOpsSop] = useState<string | null>(null);
   const [focusChat, setFocusChat] = useState<string | null>(null);
+  // Team Chat pops up over wherever you are — it's for a quick word with the
+  // team while you work a conversation, not a place you go to.
+  const [chatOpen, setChatOpen] = useState(false);
+  // Once opened it stays mounted, hidden while closed, so it reopens exactly
+  // where it was left — the chat, the scroll, the half-written reply.
+  const [chatMounted, setChatMounted] = useState(false);
+  const [focusNonce, setFocusNonce] = useState(0);
+  const openChat = (roomId: string | null = null) => {
+    setFocusChat(roomId);
+    setFocusNonce((n) => n + 1);
+    setChatMounted(true);
+    setChatOpen(true);
+  };
   // A Team Chat discussion of the open conversation, beside it in the panel's place.
   const [discussion, setDiscussion] = useState<string | null>(null);
   const [focusAccount, setFocusAccount] = useState<string | null>(null);
@@ -165,7 +178,15 @@ export function Workspace() {
         <div className={"app" + (drawerOpen ? " drawer-open" : "")} data-pane={pane}>
           <IconRail
             section={section}
-            onSection={(s) => { setSection(s); setFocusContact(null); setFocusAccount(null); setFocusOpsSop(null); setFocusChat(null); }}
+            chatOpen={chatOpen}
+            onSection={(s) => {
+              if (s === "chat") {
+                setChatMounted(true);
+                setChatOpen((v) => !v);
+                return;
+              }
+              setSection(s); setFocusContact(null); setFocusAccount(null); setFocusOpsSop(null);
+            }}
             onOpenPersonalSettings={() => setPersonalOpen(true)}
           />
 
@@ -181,7 +202,7 @@ export function Workspace() {
                 onOpenCustomers={() => { setSection("customers"); setDrawerOpen(false); }}
                 onOpenOrganisations={() => { setSection("organisations"); setDrawerOpen(false); }}
                 onOpenOps={() => { setFocusOpsSop(null); setSection("ops"); setDrawerOpen(false); }}
-                onOpenChat={() => { setFocusChat(null); setSection("chat"); setDrawerOpen(false); }}
+                onOpenChat={() => { openChat(); setDrawerOpen(false); }}
                 onOpenInsights={() => { setSection("insights"); setDrawerOpen(false); }}
                 onOpenPersonalSettings={() => { setPersonalOpen(true); setDrawerOpen(false); }}
                 isCollapsed={sidebarHidden}
@@ -197,7 +218,7 @@ export function Workspace() {
                 onCompose={() => setComposeOpen(true)}
                 onOpenDrawer={() => setDrawerOpen(true)}
                 onOpenOpsSop={(id) => { setFocusOpsSop(id); setSection("ops"); }}
-                onOpenChat={(id) => { setFocusChat(id); setSection("chat"); }}
+                onOpenChat={(id) => openChat(id)}
                 onOpenChannels={() => setSection("settings")}
               />
               <Thread
@@ -220,7 +241,7 @@ export function Workspace() {
                   <DiscussionPanel
                     cardId={discussion}
                     onClose={() => setDiscussion(null)}
-                    onOpenChat={(roomId) => { setDiscussion(null); setFocusChat(roomId); setSection("chat"); }}
+                    onOpenChat={(roomId) => openChat(roomId)}
                     onToast={notify}
                   />
                 </>
@@ -240,13 +261,6 @@ export function Workspace() {
             </>
           )}
 
-          {section === "chat" && (
-            <TeamChat
-              focusRoomId={focusChat}
-              onToast={notify}
-              onOpenConversation={(id) => { setFocusChat(null); setSection("inbox"); selectConversation(id); }}
-            />
-          )}
 
           {section === "customers" && (
             <Customers
@@ -282,6 +296,18 @@ export function Workspace() {
       </div>
 
       <SignedOutBanner onToast={notify} onOpenChannels={() => setSection("settings")} />
+
+      {chatMounted && (
+        <ChatPopup
+          open={chatOpen}
+          focusRoomId={focusChat}
+          focusNonce={focusNonce}
+          onClose={() => setChatOpen(false)}
+          onToast={notify}
+          // Open the customer's conversation behind it, and leave the chat where it is.
+          onOpenConversation={(id) => { setSection("inbox"); selectConversation(id); }}
+        />
+      )}
 
       {personalOpen && <PersonalSettings onClose={() => setPersonalOpen(false)} onToast={notify} />}
 
