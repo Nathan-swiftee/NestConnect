@@ -76,6 +76,8 @@ function glyph(spec: IconSpec, fallbackSize = 22) {
 
 export const InboxIcon = glyph(icons.inbox);
 export const ContactsIcon = glyph(icons.contacts);
+/** Clipboard of ticked lines — Business Ops. */
+export const OpsIcon = glyph(icons.ops);
 export const InsightsIcon = glyph(icons.insights);
 export const SettingsIcon = glyph(icons.settings);
 /** Half-filled circle — the light/dark control in Settings. */
@@ -131,6 +133,8 @@ export const MacroIcon = glyph(icons.macro);
 export const EditIcon = glyph(icons.edit);
 export const TrashIcon = glyph(icons.trash);
 export const DocIcon = glyph(icons.doc);
+export const LinkIcon = glyph(icons.link);
+export const HistoryIcon = glyph(icons.history);
 export const PlayIcon = glyph(icons.play);
 export const PauseIcon = glyph(icons.pause);
 

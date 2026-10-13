@@ -3,7 +3,7 @@ import { ScrollView, Text, View } from "react-native";
 import { relativeTime, useMarkNotificationsRead, useNotifications } from "@ding/client";
 import type { Notification } from "@ding/schemas";
 import { haptics } from "../haptics";
-import { AtIcon, BellIcon, SnoozeIcon, XIcon } from "../icons";
+import { AtIcon, BellIcon, OpsIcon, SnoozeIcon, XIcon } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
 import { Touchable } from "./Touchable";
@@ -30,10 +30,13 @@ import { Touchable } from "./Touchable";
  */
 export function NotificationBell({
   onOpenConversation,
+  onOpenOpsSop,
 }: {
   /** Where a tapped notification goes. Passed in rather than routed here, so
    *  this doesn't need to know how the app spells its thread route. */
   onOpenConversation: (conversationId: string) => void;
+  /** A must-read or review reminder opens its SOP. */
+  onOpenOpsSop?: (opsSopId: string) => void;
 }) {
   const { c } = useTheme();
   const { data } = useNotifications();
@@ -51,6 +54,7 @@ export function NotificationBell({
     if (!n.read) markRead.mutate([n.id]);
     setOpen(false);
     if (n.conversationId) onOpenConversation(n.conversationId);
+    else if (n.opsSopId) onOpenOpsSop?.(n.opsSopId);
   };
 
   return (
@@ -164,6 +168,8 @@ export function NotificationBell({
                     >
                       {mention ? (
                         <AtIcon size={17} color={c.brandStrong} />
+                      ) : n.opsSopId ? (
+                        <OpsIcon size={17} color={c.amber} />
                       ) : (
                         <SnoozeIcon size={17} color={c.amber} />
                       )}

@@ -529,6 +529,7 @@ export default function Inbox() {
             acts, and the badge is the only part that should catch an eye. */}
         <NotificationBell
           onOpenConversation={(id) => router.push({ pathname: "/(app)/thread/[id]", params: { id } })}
+          onOpenOpsSop={(id) => router.push({ pathname: "/(app)/ops/[id]", params: { id } })}
         />
 
         {/* Start one, rather than only ever answering one. Beside the title
