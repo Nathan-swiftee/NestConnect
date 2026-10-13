@@ -10,6 +10,9 @@ import { DocIcon, DownloadIcon, MicIcon, PauseIcon, PlayIcon, RefreshIcon, XIcon
  * the inbox does.
  */
 
+/** The bars for a voice note that came without its own: a gentle, even ripple. */
+const FLAT_WAVE = Array.from({ length: 32 }, (_, i) => 0.3 + 0.12 * Math.sin(i * 1.7) + 0.08 * Math.sin(i * 0.6));
+
 export function AudioPlayer({ att }: { att: Attachment }) {
   const ref = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -18,7 +21,14 @@ export function AudioPlayer({ att }: { att: Attachment }) {
   const [dur, setDur] = useState(fallback);
   const total = dur > 0 ? dur : fallback;
   const pct = total > 0 ? Math.min(1, cur / total) : 0;
-  const wave = att.waveform && att.waveform.length ? att.waveform : null;
+  // A voice note recorded without a waveform still looks like one: even,
+  // quiet bars rather than a progress line. An audio file keeps the line.
+  const wave =
+    att.waveform && att.waveform.length
+      ? att.waveform
+      : att.kind === "voice"
+        ? FLAT_WAVE
+        : null;
 
   const toggle = () => {
     const a = ref.current;
