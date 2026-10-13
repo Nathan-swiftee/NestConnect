@@ -2069,6 +2069,21 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .reauth-box.bad{background:color-mix(in srgb,var(--danger) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--danger) 30%,transparent)}
 .reauth-box__head{display:flex;align-items:center;gap:8px;font-weight:700;color:var(--danger)}
 .reauth-box__head svg{width:16px;height:16px}
+.reauth-box__actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+/* Bring in what a connected mailbox had since a date. */
+.pullmissed{display:flex;flex-direction:column;gap:6px;align-self:stretch;margin-top:2px;padding:10px 12px;border-radius:var(--r-8);background:var(--surface);border:1px solid var(--border)}
+.pullmissed .field{margin:0}
+.pullmissed small{color:var(--text-muted);font-size:var(--fs-xs);line-height:1.4}
+.pullmissed__row{display:flex;justify-content:flex-end;gap:8px}
+/* Reconnecting a signed-out mailbox: what to do about the email it missed. */
+.reconnect{width:min(480px,calc(100vw - 32px))}
+.reconnect__opts{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.reconnect__opt{display:flex;align-items:flex-start;gap:10px;padding:12px;border-radius:var(--r-12);border:1.5px solid var(--border);background:var(--surface);cursor:pointer;transition:border-color var(--t-fast),background var(--t-fast)}
+.reconnect__opt:hover{border-color:color-mix(in srgb,var(--brand) 40%,var(--border))}
+.reconnect__opt.on{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 6%,var(--surface))}
+.reconnect__opt input{margin-top:3px;accent-color:var(--brand);flex:none}
+.reconnect__opt span{display:flex;flex-direction:column;gap:3px;font-size:var(--fs-sm)}
+.reconnect__opt small{color:var(--text-muted);font-size:var(--fs-xs);line-height:1.45}
 .reauth-note{display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;padding:8px 12px;border-radius:var(--r-12);font-size:var(--fs-xs);line-height:1.4;
   background:color-mix(in srgb,var(--danger) 9%,var(--surface));color:var(--text)}
 .reauth-note svg{width:15px;height:15px;flex:none;margin-top:1px;color:var(--danger)}

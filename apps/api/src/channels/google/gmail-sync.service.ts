@@ -21,6 +21,7 @@ import {
   extractHtml,
   gmail,
   GmailApiError,
+  GmailAuthError,
   headerValue,
   parseAddress,
   parseAddressList,
@@ -29,6 +30,12 @@ import {
 
 /** Re-arm a Gmail watch once it's within this window of expiring. */
 const WATCH_RENEW_BEFORE_MS = 24 * 60 * 60 * 1000;
+/** How far before the sign-out the missed-mail sweep starts. The sign-out is
+ *  noticed at the first refused call, which can trail it; what's already in is
+ *  skipped by its Message-ID, so the overlap costs nothing but a look. */
+const MISSED_OVERLAP_MS = 24 * 60 * 60 * 1000;
+/** The most a missed-mail sweep brings in. */
+const MISSED_MAX = 5000;
 
 /**
  * Pulls new mail from every connected Gmail inbox into the shared inbound
@@ -41,6 +48,8 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
   private readonly logger = new Logger(GmailSyncService.name);
   private timer?: NodeJS.Timeout;
   private running = false;
+  /** Missed-mail sweeps in flight, by inbox: one at a time per mailbox. */
+  private readonly sweeps = new Map<string, Promise<number>>();
 
   constructor(
     private readonly store: Store,
@@ -136,24 +145,85 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
 
   /**
    * Catch up on what arrived while a reconnected mailbox was signed out: from
-   * the cursor it stopped at, not from now. (If Gmail no longer keeps history
-   * that far back, the sync starts again from now — see `syncInbox`.)
+   * the cursor it stopped at, not from now. Gmail keeps that history for about
+   * a week; when the mailbox was out for longer, the sync starts again from now
+   * (see `syncInbox`) and, given when it was signed out, the gap is swept by
+   * date instead — in the background, as it can be a lot of mail.
    */
-  async catchUp(inbox: Inbox): Promise<void> {
+  async catchUp(inbox: Inbox, signedOutAt?: Date): Promise<void> {
     if (this.google.isMock) return;
     const config = (await this.store.getInboxConfig(inbox.id)) ?? {};
     try {
-      await this.syncOrNote(inbox, config);
+      const expired = await this.syncOrNote(inbox, config);
+      if (expired && signedOutAt) this.sweepMissed(inbox, signedOutAt);
     } catch (err) {
       // The next poll tries again.
       this.logger.warn(`Gmail catch-up failed for ${inbox.handle}: ${message(err)}`);
     }
   }
 
-  /** Sync, and if it failed because Google signed the mailbox out, mark it so. */
-  private async syncOrNote(inbox: Inbox, config: Record<string, string>): Promise<void> {
+  /**
+   * Bring in the mail a mailbox received or sent since `since`, oldest first so
+   * threads build in order, through the same path as live mail — anything
+   * already here is skipped. Runs in the background; returns the sweep, which
+   * `sweepDone` also hands back.
+   */
+  sweepMissed(inbox: Inbox, since: Date): Promise<number> {
+    const running = this.sweeps.get(inbox.id);
+    if (running) return running;
+    const sweep = runInTenant(inbox.orgId, () => this.pullSince(inbox, since))
+      .catch(async (err) => {
+        this.logger.warn(`Gmail missed-mail sweep failed for ${inbox.handle}: ${message(err)}`);
+        // Signed out again mid-sweep: say so, as any other refused call does.
+        await runInTenant(inbox.orgId, () => this.google.noteFailure(inbox, err)).catch(() => undefined);
+        return 0;
+      })
+      .finally(() => this.sweeps.delete(inbox.id));
+    this.sweeps.set(inbox.id, sweep);
+    return sweep;
+  }
+
+  /** The missed-mail sweep running for this inbox, if there is one. */
+  sweepDone(inboxId: string): Promise<number> | undefined {
+    return this.sweeps.get(inboxId);
+  }
+
+  private async pullSince(inbox: Inbox, since: Date): Promise<number> {
+    const config = (await this.store.getInboxConfig(inbox.id)) ?? {};
+    const token = await this.google.accessTokenForInbox(inbox, config);
+    const after = Math.floor((since.getTime() - MISSED_OVERLAP_MS) / 1000);
+    // Gmail's own search: received or sent, after a moment (seconds since 1970).
+    const q = `after:${after} {in:inbox in:sent}`;
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const page = await gmail.listMessages(token, q, pageToken);
+      for (const m of page.messages ?? []) ids.push(m.id);
+      pageToken = page.nextPageToken;
+    } while (pageToken && ids.length < MISSED_MAX);
+    // Gmail lists newest first.
+    const oldestFirst = ids.slice(0, MISSED_MAX).reverse();
+    let ingested = 0;
+    for (const id of oldestFirst) {
+      try {
+        if (await this.ingestOne(inbox, config, token, id)) ingested++;
+      } catch (err) {
+        if (err instanceof GmailAuthError) throw err;
+        this.logger.warn(`Gmail ingest of message ${id} failed: ${message(err)}`);
+      }
+    }
+    this.logger.log(
+      `Gmail: brought in ${ingested} of ${oldestFirst.length} message(s) ${inbox.handle} had since ${since.toISOString()}` +
+        (ids.length >= MISSED_MAX ? ` (capped at ${MISSED_MAX})` : ""),
+    );
+    return ingested;
+  }
+
+  /** Sync, and if it failed because Google signed the mailbox out, mark it so.
+   *  True when Gmail's history no longer reached back to where it stopped. */
+  private async syncOrNote(inbox: Inbox, config: Record<string, string>): Promise<boolean> {
     try {
-      await this.syncInbox(inbox, config);
+      return await this.syncInbox(inbox, config);
     } catch (err) {
       await this.google.noteFailure(inbox, err);
       throw err;
@@ -204,13 +274,14 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     return this.google.accessTokenForInbox(inbox, config);
   }
 
-  private async syncInbox(inbox: Inbox, config: Record<string, string>): Promise<void> {
+  /** True when the cursor was older than Gmail keeps, so it started again from now. */
+  private async syncInbox(inbox: Inbox, config: Record<string, string>): Promise<boolean> {
     const token = await this.google.accessTokenForInbox(inbox, config);
 
     const startHistoryId = config[GMAIL_CONFIG.historyId];
     if (!startHistoryId) {
       await this.establishBaseline(inbox, token);
-      return;
+      return false;
     }
 
     const ids = new Set<string>();
@@ -224,7 +295,7 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
         // A 404 means our cursor is older than Gmail retains — rebaseline.
         if (err instanceof GmailApiError && err.status === 404) {
           await this.establishBaseline(inbox, token);
-          return;
+          return true;
         }
         throw err;
       }
@@ -252,6 +323,7 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
 
     // If push is configured, keep the watch alive (it lapses after ~7 days).
     await this.maybeRenewWatch(inbox, config, token);
+    return false;
   }
 
   /**

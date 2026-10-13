@@ -382,6 +382,9 @@ export const api = {
   aiModels: () => get<{ models: { id: string; name: string }[]; error?: string }>("/ai/models"),
   // pull-to-refresh: fetch any new Gmail on demand
   syncGmail: () => post<{ ok: boolean; synced: number }>("/channels/google/sync", {}),
+  /** Bring in the email a connected Gmail channel had since a moment (in the background). */
+  pullMissedEmail: (inboxId: string, since: string) =>
+    post<{ ok: true; since: string }>(`/channels/google/inboxes/${encodeURIComponent(inboxId)}/missed`, { since }),
   // customers (CRM)
   contacts: () => get<Contact[]>("/contacts"),
   contactDuplicates: () => get<ContactDuplicateGroup[]>("/contacts/duplicates"),

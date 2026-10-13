@@ -46,6 +46,9 @@ export interface OAuthState {
   orgId: string;
   /** Reconnecting this inbox, rather than adding one. */
   inboxId?: string;
+  /** Reconnecting, and leaving out the email that arrived while it was signed
+   *  out: it starts again from now. */
+  skipMissed?: boolean;
 }
 
 export interface TokenSet {
@@ -102,7 +105,8 @@ export class GoogleOAuthService {
 
   /** Sign a short-lived state token so the (cookieless) callback can recover the user. */
   signState(state: OAuthState): string {
-    return jwt.sign({ userId: state.userId, orgId: state.orgId, ...(state.inboxId ? { inboxId: state.inboxId } : {}) }, env.auth.jwtSecret, {
+    const extra = { ...(state.inboxId ? { inboxId: state.inboxId } : {}), ...(state.skipMissed ? { skipMissed: true } : {}) };
+    return jwt.sign({ userId: state.userId, orgId: state.orgId, ...extra }, env.auth.jwtSecret, {
       expiresIn: 600,
     });
   }
@@ -111,7 +115,12 @@ export class GoogleOAuthService {
   verifyState(token: string): OAuthState {
     const payload = jwt.verify(token, env.auth.jwtSecret) as jwt.JwtPayload & Partial<OAuthState>;
     if (!payload.userId || !payload.orgId) throw new Error("Invalid OAuth state");
-    return { userId: payload.userId, orgId: payload.orgId, ...(payload.inboxId ? { inboxId: payload.inboxId } : {}) };
+    return {
+      userId: payload.userId,
+      orgId: payload.orgId,
+      ...(payload.inboxId ? { inboxId: payload.inboxId } : {}),
+      ...(payload.skipMissed === true ? { skipMissed: true } : {}),
+    };
   }
 
   /**

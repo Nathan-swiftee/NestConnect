@@ -11,7 +11,11 @@
  *   D  reconnecting signs that channel in again in place: the same mailbox
  *      only, the conversations and settings kept, and it catches up on the
  *      mail it missed from where it stopped rather than starting from now;
- *   E  only managers and admins can start a connection.
+ *   E  only managers and admins can start a connection;
+ *   F  a mailbox out for longer than Gmail keeps its history has the gap swept
+ *      by date — from a day before it was signed out, oldest first, received
+ *      and sent — unless whoever reconnects chooses to start from now; and a
+ *      connected mailbox can be asked to bring in what it had since a date.
  *
  *     pnpm check:gmail-reauth
  */
@@ -100,7 +104,19 @@ async function main() {
     },
   } as unknown as NotificationsService;
   const google = new GoogleOAuthService(store, notifications);
-  const sync = new GmailSyncService(store, {} as never, google, {} as never);
+  // Mail handed on as live mail is, in the order it was.
+  const ingested: string[] = [];
+  const ingest = {
+    ingestEmail: async (m: { subject?: string }) => {
+      ingested.push(`in:${m.subject}`);
+      return {};
+    },
+    ingestOutboundEmail: async (m: { subject?: string }) => {
+      ingested.push(`out:${m.subject}`);
+      return {};
+    },
+  };
+  const sync = new GmailSyncService(store, ingest as never, google, {} as never);
   const provider = new GmailProvider(google, store, {} as never);
   const controller = new GoogleController(google, store, sync, new SandboxPolicy(store));
 
@@ -221,6 +237,105 @@ async function main() {
     calls.length = 0;
     await sync.syncAll();
     ok("and the poll picks it up again", calls.some((u) => u.includes("/history")));
+
+    console.log("\nF — a long time signed out\n");
+    const DAY = 24 * 60 * 60 * 1000;
+    const signOut = async (daysAgo: number) =>
+      store.updateInbox(inbox.id, {
+        channelConfig: {
+          [GMAIL_CONFIG.authError]: "Google signed this mailbox out",
+          [GMAIL_CONFIG.authErrorAt]: new Date(Date.now() - daysAgo * DAY).toISOString(),
+          [GMAIL_CONFIG.historyId]: "150",
+        },
+      });
+    const mail = (id: string, subject: string, labels: string[], from = "Dana <dana@acme.test>") => ({
+      id,
+      threadId: `t_${id}`,
+      labelIds: labels,
+      payload: {
+        mimeType: "text/plain",
+        headers: [
+          { name: "From", value: from },
+          { name: "To", value: "help@swiftee.co.uk" },
+          { name: "Subject", value: subject },
+          { name: "Message-ID", value: `<${id}@acme.test>` },
+        ],
+        body: { data: Buffer.from(`About ${subject}`).toString("base64url") },
+      },
+    });
+    const box = {
+      m1: mail("m1", "First", ["INBOX"]),
+      m2: mail("m2", "Our reply", ["SENT"], "Support <help@swiftee.co.uk>"),
+      m3: mail("m3", "Third", ["INBOX", "UNREAD"]),
+    };
+    const gmailFake = (expired: boolean) => (url: string) => {
+      if (url.includes("oauth2.googleapis.com/token")) return { status: 200, body: { access_token: "new-token", expires_in: 3600 } };
+      if (url.includes("userinfo")) return { status: 200, body: { email: "help@swiftee.co.uk" } };
+      if (url.includes("/history")) return expired ? { status: 404, body: { error: { message: "Requested entity was not found." } } } : { status: 200, body: { history: [], historyId: "160" } };
+      if (url.includes("/profile")) return { status: 200, body: { emailAddress: "help@swiftee.co.uk", historyId: "2000" } };
+      if (url.includes("/messages?")) return { status: 200, body: { messages: [{ id: "m3" }, { id: "m2" }, { id: "m1" }] } };
+      const one = /\/messages\/(m\d)\?/.exec(url)?.[1] as keyof typeof box | undefined;
+      if (one) return { status: 200, body: box[one] };
+      return undefined;
+    };
+    const reconnect = async (missed?: string) => {
+      const { res, result } = popup();
+      await controller.start(DEMO_USER_ID, req, res, inbox.id, missed);
+      const st = new URL(String(result().error).replace(/^REDIRECT /, "")).searchParams.get("state")!;
+      const cb = popup();
+      await controller.callback("code", st, req, cb.res);
+      return cb.result();
+    };
+
+    await signOut(10);
+    calls.length = 0;
+    ingested.length = 0;
+    route = gmailFake(true);
+    const tenDays = await reconnect();
+    ok("out for ten days, it still signs back in", tenDays.ok === true, JSON.stringify(tenDays));
+    await sync.sweepDone(inbox.id);
+    const listed = calls.find((u) => u.includes("/messages?"));
+    const q = listed ? new URL(listed).searchParams.get("q") ?? "" : "";
+    const afterSec = Number(/after:(\d+)/.exec(q)?.[1]);
+    ok("Gmail's history no longer reaching back, it starts the cursor from now", (await config())[GMAIL_CONFIG.historyId] === "2000");
+    ok(
+      "…and sweeps the gap by date, from a day before the sign-out",
+      Math.abs(afterSec * 1000 - (Date.now() - 11 * DAY)) < 60_000 && q.includes("in:inbox") && q.includes("in:sent"),
+      q,
+    );
+    ok("bringing in what was received and sent, oldest first, as live mail", ingested.join() === "in:First,out:Our reply,in:Third", ingested.join());
+
+    await signOut(2);
+    calls.length = 0;
+    ingested.length = 0;
+    route = gmailFake(false);
+    await reconnect();
+    await sync.sweepDone(inbox.id);
+    ok("out for two days, the history covers it: no sweep", calls.some((u) => u.includes("/history")) && !calls.some((u) => u.includes("/messages?")));
+
+    await signOut(10);
+    calls.length = 0;
+    ingested.length = 0;
+    route = gmailFake(true);
+    const fresh2 = await reconnect("skip");
+    await sync.sweepDone(inbox.id);
+    ok(
+      "choosing to start from now skips the gap: no history, no sweep",
+      fresh2.ok === true && !calls.some((u) => u.includes("/history") || u.includes("/messages?")) && calls.some((u) => u.includes("/profile")) && ingested.length === 0,
+      calls.filter((u) => u.includes("gmail")).join(", "),
+    );
+
+    // Later, by hand: bring in what it had since a date.
+    calls.length = 0;
+    ingested.length = 0;
+    const since = new Date(Date.now() - 5 * DAY).toISOString();
+    const asked = await controller.pullMissed(DEMO_USER_ID, inbox.id, { since });
+    await sync.sweepDone(inbox.id);
+    ok("a manager can bring in a connected mailbox's mail since a date", asked.ok === true && ingested.length === 3, ingested.join());
+    ok("an agent can't", (await threw(controller.pullMissed("usr_james", inbox.id, { since }))) instanceof Error);
+    ok("nor from the future, or past 90 days", !!(await threw(controller.pullMissed(DEMO_USER_ID, inbox.id, { since: new Date(Date.now() + DAY).toISOString() }))) && !!(await threw(controller.pullMissed(DEMO_USER_ID, inbox.id, { since: new Date(Date.now() - 120 * DAY).toISOString() }))));
+    await signOut(1);
+    ok("nor while it's signed out — reconnect first", /Reconnect the mailbox first/.test(String(await threw(controller.pullMissed(DEMO_USER_ID, inbox.id, { since })))));
 
     console.log("\nE — who can connect\n");
     const agent = popup();

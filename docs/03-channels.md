@@ -136,10 +136,23 @@ Now:
   editor) runs Google's sign-in for *that* channel (`oauth/start?inboxId=…`,
   with the address offered). It must be the same mailbox — signing in as anyone
   else is refused. The channel keeps its id, conversations, routing, name and
-  signature, and catches up from the history cursor it stopped at, so the mail
-  that arrived while it was signed out comes in (if Gmail no longer keeps
-  history that far back, it starts again from now). Adding the same address
-  again from Add channel does the same.
+  signature. Adding the same address again from Add channel does the same.
+- **The email it missed — your choice.** Before Google's popup, Reconnect asks
+  what to do about the mail that arrived while it was out:
+  - **Bring it in** (the default): it catches up from the history cursor it
+    stopped at. Gmail keeps that history for about a week; when the mailbox
+    was out for longer, the cursor starts again from now and the gap is swept
+    by date instead — everything received and sent from a day before the
+    sign-out, oldest first, through the same path as live mail (new
+    conversations, replies on their threads, the usual routing and alerts).
+    The sweep runs in the background, up to 5,000 messages; anything already
+    in Nest is skipped by its Message-ID.
+  - **Start from now** (`missed=skip`): no catch-up; what it missed stays in
+    Gmail.
+- **Bring in missed email…** on a connected Gmail channel's editor does the
+  same sweep from a date you pick (up to 90 days back) — for a gap an earlier
+  reconnect didn't cover. `POST /channels/google/inboxes/:id/missed {since}`,
+  managers and admins.
 - Starting a Google connection is for managers and admins, like adding any
   channel. A Gmail channel's editor no longer shows the Postmark token field
   (typing there would have overwritten its sign-in).
