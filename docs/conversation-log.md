@@ -26,6 +26,7 @@ Anyone who can see the conversation can see its log. It's read-only.
 | Status | Closed · Reopened (by a teammate, by replying, or because the customer wrote back) · Marked Pending · Snoozed (until when) · Back from snooze |
 | Details | Priority · Labels added / removed · Subject (set automatically, or changed by someone) · Filed under / removed from an organisation · Custom fields (old → new) |
 | Delivery | A message couldn't be sent (and why) · A failed message retried |
+| Team Chat | Shared with a chat to discuss — which chat, and the line that went with it |
 
 Each entry is a sentence and, where there is one, a second line ("Was James",
 "Via their organisation, Acme Ltd", "Order ID: — → DG-1"). The time shows as

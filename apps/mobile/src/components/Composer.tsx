@@ -26,6 +26,7 @@ import {
   useMe,
   usePeople,
   useSendMessage,
+  useShareConversation,
   useTemplatesForInbox,
   useTypingSignal,
   windowLeft,
@@ -34,6 +35,7 @@ import { useStagedAttachments } from "../attachments";
 import { enqueue } from "../send-queue";
 import { Avatar } from "./Avatar";
 import { StagedAttachments } from "./StagedAttachments";
+import { AlsoSendTo } from "./chat/Discuss";
 import { AttachSheet } from "./AttachSheet";
 import { TemplateSheet } from "./TemplateSheet";
 import { MacroSheet } from "./MacroSheet";
@@ -186,6 +188,9 @@ export function Composer({
    *  then, so without this there is nothing on screen saying it's in flight. */
   const [sendingVoice, setSendingVoice] = useState(false);
   const files = useStagedAttachments();
+  // A note can go on to a Team Chat as well, as a card quoting it.
+  const [alsoTo, setAlsoTo] = useState<string | null>(null);
+  const shareToChat = useShareConversation();
   // AI assist. Whether the button exists at all follows the workspace's Claude
   // key — an affordance that always fails is worse than one that isn't there.
   const aiConfigured = Boolean(useIntegrations().data?.anthropic?.configured);
@@ -333,8 +338,9 @@ export function Composer({
     // message itself is about to arrive, and a colleague watching "Nathan is
     // typing…" sit under a message he has already sent looks like a bug.
     typing.stop();
+    const sendOnTo = internal ? alsoTo : null;
     try {
-      await send.mutateAsync({
+      const sent = await send.mutateAsync({
         id: conv.id,
         body: text,
         internal,
@@ -356,6 +362,13 @@ export function Composer({
       haptics.success();
       files.clear();
       onClearReply?.();
+      if (sendOnTo && sent) {
+        setAlsoTo(null);
+        shareToChat.mutate(
+          { roomId: sendOnTo, conversationId: conv.id, messageId: sent.id, body: "" },
+          { onError: () => setError("The note was saved, but couldn't be sent on to the chat.") },
+        );
+      }
     } catch (err) {
       // A 4xx means the server looked at it and refused — the agent needs to see
       // that and change something, so the text goes back in the box. Anything
@@ -1050,6 +1063,7 @@ export function Composer({
       ) : (
       <>
       <StagedAttachments items={files.staged} onRemove={files.remove} onRetry={files.retry} />
+      {internal ? <AlsoSendTo value={alsoTo} onChange={setAlsoTo} /> : null}
 
       {/* compinput: tools left, field centre, one trailing action.
 

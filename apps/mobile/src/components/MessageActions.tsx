@@ -11,7 +11,7 @@ import Animated, {
 import { Gesture, GestureDetector, GestureHandlerRootView } from "react-native-gesture-handler";
 import type { ConversationWithMessages, Message } from "@ding/schemas";
 import { replyAllRecipients } from "@ding/client";
-import { EyeIcon, ForwardIcon, ReplyAllIcon, ReplyIcon } from "../icons";
+import { EyeIcon, ForwardIcon, ReplyAllIcon, ReplyIcon, TeamChatIcon } from "../icons";
 import { fadeTo, spring, springTo, stagger, timing } from "../motion";
 import { elevation, useTheme, useThemeVars } from "../theme";
 import { readSummary } from "./ReadLog";
@@ -90,6 +90,7 @@ export function MessageActions({
   onReplyAll,
   onForward,
   onReceipts,
+  onDiscuss,
   onClose,
   selfAddresses,
 }: {
@@ -102,6 +103,8 @@ export function MessageActions({
   onReplyAll: (cc: string[]) => void;
   onForward: () => void;
   onReceipts: () => void;
+  /** Take this message to a Team Chat to discuss (only while Team Chat is on). */
+  onDiscuss?: () => void;
   onClose: () => void;
   /** Our own addresses, so reply-all never copies the inbox back into itself. */
   selfAddresses?: (string | null | undefined)[];
@@ -347,6 +350,9 @@ export function MessageActions({
                 trailing={`${receipts.seen} of ${receipts.total}`}
                 onPress={() => { onReceipts(); onClose(); }}
               />
+            ) : null}
+            {onDiscuss ? (
+              <Row icon={<TeamChatIcon size={19} color={c.textMuted} />} label="Discuss…" onPress={() => { onClose(); setTimeout(onDiscuss, 250); }} />
             ) : null}
           </View>
         </Animated.View>

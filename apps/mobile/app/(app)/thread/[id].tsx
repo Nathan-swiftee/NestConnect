@@ -24,8 +24,10 @@ import {
   useSnooze,
   useTeams,
   useTypingPresence,
+  useChatStatus,
   type TypingPresence,
 } from "@ding/client";
+import { DiscussionBar, DiscussionSheet, ShareSheet } from "../../../src/components/chat/Discuss";
 import { inboxLabel, mentionParts, sendingInbox, type ChannelType, type ConversationWithMessages, type Message } from "@ding/schemas";
 import { ActionSheet, LEADING, type SheetAction } from "../../../src/components/ActionSheet";
 import { Attachments } from "../../../src/components/Attachments";
@@ -60,6 +62,7 @@ import {
   ReopenIcon,
   SnoozeIcon,
   TagIcon,
+  TeamChatIcon,
   TeamGlyph,
   channelColor,
   channelMeta,
@@ -177,6 +180,11 @@ export default function Thread() {
   /** Reply-all's request to the composer: seed the Cc with these and unfold it.
    *  A token rather than an array so pressing it twice re-seeds. */
   const [ccPrefill, setCcPrefill] = useState<{ at: number; addresses: string[] } | null>(null);
+  // Team Chat: take this conversation (or one message) to a chat, and the
+  // discussion it's part of, opened from the bar under the header.
+  const chatOn = !!useChatStatus().data?.enabled;
+  const [sharing, setSharing] = useState<{ message: { id: string; who: string; text: string } | null } | null>(null);
+  const [discussion, setDiscussion] = useState<string | null>(null);
   const list = useRef<SectionList<Message, DaySection>>(null);
   // Another agent writing on this thread, from the shared hook. The web has had
   // this since typing indicators shipped; the phone showed nothing at all.
@@ -702,6 +710,17 @@ export default function Thread() {
       detail: labelSummary(data),
       onPress: () => setSheet("labels"),
     },
+    ...(chatOn
+      ? [
+          {
+            key: "discuss",
+            label: "Discuss with the team",
+            leading: <TeamChatIcon size={20} color={c.textMuted} />,
+            detail: "Send it to a Team Chat",
+            onPress: () => setSharing({ message: null }),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -737,6 +756,7 @@ export default function Thread() {
         onDetails={() => setSheet("details")}
         onMore={() => setSheet("more")}
       />
+      {chatOn ? <DiscussionBar conversationId={data.id} onOpen={setDiscussion} /> : null}
 
       {/* A section per day, so the date pill can stick without the whole thread
           having to be mounted for it. The web keeps its separator pinned
@@ -937,6 +957,22 @@ export default function Thread() {
           else setForwarding(acting);
         }}
         onReceipts={() => setReadLog(acting)}
+        onDiscuss={
+          chatOn
+            ? () => {
+                const m = acting;
+                if (!m) return;
+                const words = m.body.replace(/\s+/g, " ").trim();
+                setSharing({
+                  message: {
+                    id: m.id,
+                    who: m.internal ? `Note · ${m.authorName ?? "Teammate"}` : m.authorName || (m.direction === "in" ? data.contact.displayName : "Teammate"),
+                    text: words.length > 120 ? `${words.slice(0, 119)}…` : words || "📎 Attachment",
+                  },
+                });
+              }
+            : undefined
+        }
         onClose={() => setActing(null)}
         selfAddresses={[inboxes.data?.find((i) => i.id === data.inboxId)?.handle]}
       />
@@ -971,6 +1007,20 @@ export default function Thread() {
       />
       <ActionSheet visible={sheet === "more"} title={data.contact.displayName} actions={moreActions} onClose={() => setSheet(null)} />
       <LabelSheet conv={data} visible={sheet === "labels"} onClose={() => setSheet(null)} />
+      <ShareSheet
+        visible={!!sharing}
+        conversationId={data.id}
+        contactName={data.contact.displayName}
+        message={sharing?.message ?? null}
+        onClose={() => setSharing(null)}
+        onDone={(text) => toast({ text })}
+      />
+      <DiscussionSheet
+        conversationId={data.id}
+        cardId={discussion}
+        onClose={() => setDiscussion(null)}
+        onOpenChat={(roomId) => router.push({ pathname: "/(app)/chat/[id]", params: { id: roomId } })}
+      />
     </View>
   );
 }
