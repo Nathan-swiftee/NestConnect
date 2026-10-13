@@ -54,6 +54,18 @@ export interface UploadMeta {
   waveform?: number[];
 }
 
+/**
+ * Whether the person is looking at the app right now, and a way to hear when
+ * they come back to it. Team Chat asks before marking a chat read (a chat open
+ * in a background tab hasn't been read) and before making a sound for the chat
+ * that's on screen. Only the app knows what "looking" means where it runs.
+ */
+export interface ClientAttention {
+  isLooking: () => boolean;
+  /** Call `cb` whenever they come back; returns how to stop listening. */
+  onReturn: (cb: () => void) => () => void;
+}
+
 export interface ClientConfig {
   /** API origin. Empty string means "same origin", which is the web's case. */
   baseUrl: string;
@@ -61,6 +73,8 @@ export interface ClientConfig {
   cues: ClientCues;
   /** Called after a successful logout, once the caches are cleared. */
   onSignedOut?: () => void;
+  /** Left unset, the app counts as always looking. */
+  attention?: ClientAttention;
   /**
    * How this platform posts a file that is already on disk.
    *

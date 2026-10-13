@@ -40,8 +40,7 @@ export function setOpenChatRoom(id: string | null): void {
   openRoom = id;
 }
 
-const looking = () =>
-  typeof document === "undefined" || (document.visibilityState === "visible" && (typeof document.hasFocus !== "function" || document.hasFocus()));
+const looking = () => clientConfig().attention?.isLooking() ?? true;
 
 /* ---- queries ---- */
 
@@ -202,9 +201,7 @@ export function useMarkChatRead(roomId: string | null | undefined, newestId: str
       void api.readChatRoom(roomId).then(() => refreshLists(qc), () => undefined);
     };
     mark();
-    if (typeof window === "undefined") return;
-    window.addEventListener("focus", mark);
-    return () => window.removeEventListener("focus", mark);
+    return clientConfig().attention?.onReturn(mark);
   }, [qc, roomId, newestId, canRead]);
 }
 
