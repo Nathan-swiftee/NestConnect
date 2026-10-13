@@ -219,6 +219,13 @@ export function renderConversationEvents(
         text = `${who} retried a message that failed`;
         detail = str(d.preview) ? quote(d.preview) : null;
         break;
+      case "shared_to_chat": {
+        // A direct chat is named by the person; a group or team by itself.
+        const where = str(d.withUserId) ? person(d.withUserId) : str(d.roomName);
+        text = `${who} shared it with ${where ?? "a team chat"}`;
+        detail = [d.messageId ? "One message" : null, str(d.line) ? quote(d.line) : null].filter(Boolean).join(" · ") || null;
+        break;
+      }
     }
     return { id: r.id, type: r.type, at: r.createdAt, actor, text, detail, until };
   });

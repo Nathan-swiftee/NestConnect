@@ -14,7 +14,7 @@
 import { act, fireEvent, render } from "@testing-library/react-native";
 import type { ChatMember, ChatMessage, ChatRoomSummary } from "@ding/schemas";
 
-const mockState: { rooms: ChatRoomSummary[]; pushed: unknown[]; hits: unknown[] } = { rooms: [], pushed: [], hits: [] };
+const mockState: { rooms: ChatRoomSummary[]; pushed: unknown[]; hits: unknown[]; discussions: unknown[] } = { rooms: [], pushed: [], hits: [], discussions: [] };
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -58,11 +58,13 @@ jest.mock("@ding/client", () => {
     useChatMutation: () => ({ mutate: () => {}, isPending: false }),
     useChatSearch: (q: string) => ({ data: q.length >= 2 ? mockState.hits : [] }),
     useChatStarred: () => ({ data: [], isLoading: false, isError: false }),
+    useChatDiscussions: () => ({ data: mockState.discussions }),
   };
 });
 
 import Chat from "../app/(app)/(tabs)/chat";
 import { ChatBubbleRow } from "../src/components/chat/ChatBubble";
+import { DiscussionBar } from "../src/components/chat/Discuss";
 
 const at = new Date().toISOString();
 const msg = (over: Partial<ChatMessage>): ChatMessage => ({
@@ -77,6 +79,7 @@ const msg = (over: Partial<ChatMessage>): ChatMessage => ({
   mentions: [],
   attachments: [],
   link: null,
+  shared: null,
   editedAt: null,
   deletedAt: null,
   createdAt: at,
@@ -116,6 +119,7 @@ beforeEach(() => {
   mockState.rooms = [];
   mockState.pushed = [];
   mockState.hits = [];
+  mockState.discussions = [];
 });
 
 describe("the list of chats", () => {
@@ -132,6 +136,12 @@ describe("the list of chats", () => {
     // Mine, in a direct chat: "You:"
     expect(view.queryByText("You: Thanks!")).not.toBeNull();
     expect(view.queryByLabelText("Online")).not.toBeNull();
+  });
+
+  it("a pinned chat shows its pin", () => {
+    mockState.rooms = [room({ pinned: true }), room({ id: "r2", name: "Quiet group" })];
+    const view = render(<Chat />);
+    expect(view.getAllByLabelText("Pinned")).toHaveLength(1);
   });
 
   it("filters to unread", () => {
@@ -235,5 +245,72 @@ describe("a message", () => {
     expect(view.queryByLabelText("👍 2")).not.toBeNull();
     const gone = render(<ChatBubbleRow {...props} m={msg({ deletedAt: at, body: "" })} mine={false} group={false} members={[]} />);
     expect(gone.queryByText("This message was deleted")).not.toBeNull();
+  });
+});
+
+describe("a customer conversation, discussed", () => {
+  const shared = {
+    conversationId: "conv_north",
+    contactName: "Northside Logistics",
+    contactAvatarColor: null,
+    channel: "whatsapp" as const,
+    subject: null,
+    status: "closed" as const,
+    assigneeName: "Amara",
+    quote: { messageId: "m1", authorName: "Northside Logistics", body: "Is the VAT rate right?", internal: false, at },
+  };
+  const props = {
+    first: true,
+    last: true,
+    meId: "me",
+    people: [],
+    canAct: true,
+    onReply: () => {},
+    onLongPress: () => {},
+    onReact: () => {},
+    onQuote: () => {},
+    onRetry: () => {},
+  };
+
+  it("a card says who, what was asked, where it stands — and opens the conversation", () => {
+    const view = render(<ChatBubbleRow {...props} m={msg({ body: "Can someone check?", shared })} mine={false} group={false} members={[]} />);
+    // Its name, and again as who asked the quoted question.
+    expect(view.getAllByText("Northside Logistics").length).toBe(2);
+    expect(view.queryByText("Is the VAT rate right?")).not.toBeNull();
+    expect(view.queryByText("✓ Resolved")).not.toBeNull();
+    expect(view.queryByText("Assigned to Amara")).not.toBeNull();
+    expect(view.queryByText("Can someone check?")).not.toBeNull();
+    fireEvent.press(view.getByLabelText("Northside Logistics, open the conversation"));
+    expect(mockState.pushed).toEqual([{ pathname: "/(app)/thread/[id]", params: { id: "conv_north" } }]);
+  });
+
+  it("a card for a deleted conversation says so, and goes nowhere", () => {
+    const view = render(<ChatBubbleRow {...props} m={msg({ body: "", shared: { ...shared, status: null, assigneeName: null } })} mine={false} group={false} members={[]} />);
+    expect(view.queryByText("This conversation was deleted")).not.toBeNull();
+    expect(view.queryByLabelText("Northside Logistics, open the conversation")).toBeNull();
+  });
+
+  it("the thread's bar says where it's discussed, and the latest word", () => {
+    const opened: string[] = [];
+    mockState.discussions = [
+      {
+        roomId: "r1",
+        roomName: "Support team",
+        roomKind: "team",
+        canPost: true,
+        card: msg({ id: "card1", shared }),
+        replies: 2,
+        latest: msg({ id: "x", body: "Reissuing it now" }),
+      },
+    ];
+    const view = render(<DiscussionBar conversationId="conv_north" onOpen={(id) => opened.push(id)} />);
+    expect(view.queryByText("Amara: Reissuing it now")).not.toBeNull();
+    fireEvent.press(view.getByLabelText("Discussed in Support team, 2 replies"));
+    expect(opened).toEqual(["card1"]);
+  });
+
+  it("no discussions, no bar", () => {
+    const view = render(<DiscussionBar conversationId="conv_north" onOpen={() => {}} />);
+    expect(view.toJSON()).toBeNull();
   });
 });

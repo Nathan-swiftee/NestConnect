@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
+import { router } from "expo-router";
 import { chatNameColour, clockTime, isJumboEmoji, type ChatBubble as Bubble } from "@ding/client";
 import { chatTicks, mentionParts, type ChatMember, type Mentionable, type MessageStatus } from "@ding/schemas";
 import { mediaSource } from "../../api-config";
@@ -7,6 +8,7 @@ import { haptics } from "../../haptics";
 import { useTheme } from "../../theme";
 import { StarIcon } from "../../icons";
 import { Attachments } from "../Attachments";
+import { SharedCard } from "./Discuss";
 import { Avatar } from "../Avatar";
 import { SwipeToReply } from "../SwipeToReply";
 import { Tail, tailCorner } from "../Tail";
@@ -55,7 +57,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   const { c } = useTheme();
   const deleted = !!m.deletedAt;
   const files = deleted ? [] : (m.attachments ?? []);
-  const jumbo = !deleted && !m.replyTo && !files.length && isJumboEmoji(m.body);
+  const jumbo = !deleted && !m.replyTo && !files.length && !m.shared && isJumboEmoji(m.body);
   const fill = mine ? c.brandTint : c.surface;
   const ticks = mine && !m.pending && !m.failed && !deleted ? chatTicks(m, members, m.author?.id ?? "") : null;
   const status: MessageStatus = m.pending ? "sending" : m.failed ? "failed" : (ticks ?? "sent");
@@ -104,6 +106,11 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
             {m.replyTo.deleted ? "This message was deleted" : m.replyTo.body}
           </Text>
         </Pressable>
+      ) : null}
+      {m.shared && !deleted ? (
+        <View style={{ width: 260, maxWidth: "100%" }} className="mb-1">
+          <SharedCard shared={m.shared} onOpen={() => router.push({ pathname: "/(app)/thread/[id]", params: { id: m.shared!.conversationId } })} />
+        </View>
       ) : null}
       {files.length ? <Attachments items={files} mine={mine} /> : null}
       {!deleted && !m.body ? null : (

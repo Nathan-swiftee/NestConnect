@@ -51,6 +51,20 @@ async function cleanup(root: PrismaClient): Promise<void> {
   const orgs = [A, B];
   await root.notification.deleteMany({ where: { user: { orgId: { in: orgs } } } });
   await root.chatRoom.deleteMany({ where: { orgId: { in: orgs } } }); // members, messages, stars, audits cascade
+  // The customer side, for the conversations each workspace shares.
+  const convs = (await root.conversation.findMany({ where: { orgId: { in: orgs } }, select: { id: true } })).map((c) => c.id);
+  const msgs = (await root.message.findMany({ where: { conversationId: { in: convs } }, select: { id: true } })).map((m) => m.id);
+  await root.attachment.deleteMany({ where: { messageId: { in: msgs } } });
+  await root.message.deleteMany({ where: { id: { in: msgs } } });
+  await root.participant.deleteMany({ where: { conversationId: { in: convs } } });
+  await root.assignmentEvent.deleteMany({ where: { conversationId: { in: convs } } });
+  await root.conversation.deleteMany({ where: { id: { in: convs } } });
+  const contacts = (await root.contact.findMany({ where: { orgId: { in: orgs } }, select: { id: true } })).map((c) => c.id);
+  await root.contactIdentity.deleteMany({ where: { contactId: { in: contacts } } });
+  await root.contact.deleteMany({ where: { id: { in: contacts } } });
+  const inboxes = (await root.inbox.findMany({ where: { orgId: { in: orgs } }, select: { id: true } })).map((i) => i.id);
+  await root.inboxTeam.deleteMany({ where: { inboxId: { in: inboxes } } });
+  await root.inbox.deleteMany({ where: { id: { in: inboxes } } });
   await root.attachment.deleteMany({ where: { orgId: { in: orgs } } });
   await root.chatPresence.deleteMany({ where: { user: { orgId: { in: orgs } } } });
   await root.teamMember.deleteMany({ where: { team: { orgId: { in: orgs } } } });
@@ -99,7 +113,13 @@ async function main(): Promise<void> {
       const group = await svc.createGroup(admin.id, { name: `${tag} group`, memberIds: [agent.id] });
       const upload = await store.createUploadAttachment(org, { storageKey: `chatchk/${tag}.jpg`, kind: "image", mime: "image/jpeg", size: 10, filename: `${tag}.jpg` });
       await svc.star(agent.id, secret.id, true);
-      return { team, admin, agent, teamRoom, dm, secret, group, upload };
+      // A customer conversation, shared into the team's chat.
+      const wa = await store.createInbox({ orgId: org, type: "whatsapp", name: `${tag} WhatsApp`, handle: `chatchk-${tag}`, teamIds: [team.id], routingStrategy: "manual", channelConfig: {} });
+      const contact = await store.upsertContactByIdentity({ orgId: org, kind: "phone", value: `+4470000000${tag === "a" ? 1 : 2}`, displayName: `${tag} customer` });
+      const { conversation } = await store.findOrCreateOpenConversation({ orgId: org, inboxId: wa.id, contact, channel: "whatsapp" });
+      const asked = (await store.appendInboundMessage(conversation.id, { authorName: contact.displayName, body: `${tag} wants 40 units`, channelMsgId: `wamid.chatchk_${tag}`, channel: "whatsapp" }))!;
+      const card = await svc.share(admin.id, { roomId: teamRoom.id, conversationId: conversation.id, messageId: asked.id, body: "Stock?" });
+      return { team, admin, agent, teamRoom, dm, secret, group, upload, conversation, asked, card };
     });
 
   try {
@@ -135,6 +155,11 @@ async function main(): Promise<void> {
       ok("not even asked for A's chat by name", (await chat.searchMessages([a.dm.id], "secret", 10)).length === 0);
       ok("A's starred messages aren't B's to list", (await chat.starsOf(a.agent.id)).length === 0);
       ok("A's upload can't be sent in B", await refuses(() => svc.send(b.agent.id, b.dm.id, sendChatMessageInputSchema.parse({ body: "", attachments: [a.upload] }))));
+      ok("A's conversation can't be shared into B's chat", await refuses(() => svc.share(b.admin.id, { roomId: b.teamRoom.id, conversationId: a.conversation.id, body: "" })));
+      ok("nor quoted from, with B's own conversation", await refuses(() => svc.share(b.admin.id, { roomId: b.teamRoom.id, conversationId: b.conversation.id, messageId: a.asked.id, body: "" })));
+      ok("nor linked through the store", await violation(chat.createMessage({ roomId: b.teamRoom.id, authorUserId: b.admin.id, kind: "text", body: "x", data: null, replyToId: null, mentions: [], conversationId: a.conversation.id })));
+      ok("A's discussions aren't B's to list", (await svc.discussions(b.admin.id, a.conversation.id)).length === 0 && (await chat.sharesOf(a.conversation.id)).length === 0);
+      ok("nor A's card to open", await refuses(() => svc.thread(b.admin.id, a.card.id)));
       ok("switching B off", (await svc.setEnabled(b.admin.id, false)).enabled === false);
     });
     await runInTenant(A, async () => {
@@ -177,11 +202,24 @@ async function main(): Promise<void> {
       await svc.remove(a.agent.id, a.secret.id);
       ok("a deleted message drops out of starred", (await svc.starred(a.agent.id)).length === 0);
 
+      const talk = await svc.discussions(a.agent.id, a.conversation.id);
+      ok("a shared conversation knows where it's discussed", talk.length === 1 && talk[0]!.card.shared?.quote?.body === "a wants 40 units" && talk[0]!.card.shared.status === "open");
+      await svc.send(a.agent.id, a.teamRoom.id, say("40 in stock", a.card.id));
+      await store.setStatus(a.conversation.id, "closed");
+      const after = await svc.discussions(a.agent.id, a.conversation.id);
+      ok("the replies are counted, and the card follows the conversation", after[0]!.replies === 1 && after[0]!.card.shared?.status === "closed");
+      ok("and its log says so", (await store.listConversationEvents(a.conversation.id)).some((e) => e.type === "shared_to_chat"));
+      await root.message.deleteMany({ where: { conversationId: a.conversation.id } });
+      await root.participant.deleteMany({ where: { conversationId: a.conversation.id } });
+      await root.conversation.delete({ where: { id: a.conversation.id } });
+      const gone = (await svc.thread(a.agent.id, a.card.id)).card.shared;
+      ok("a deleted conversation leaves its card, saying it's gone", !!gone && gone.status === null && gone.contactName === "a customer");
+
       await store.deleteTeam(a.team.id);
       const room = await chat.getRoom(a.teamRoom.id);
       ok("deleting the team leaves its chat, detached", !!room && room.teamId === null && room.kind === "team");
       const archived = (await svc.rooms(a.admin.id, true)).find((r) => r.id === a.teamRoom.id);
-      ok("archived, for admins to read", archived?.archived === true && !archived.isMember);
+      ok("archived, for admins to read", archived?.archived === true && !archived.isMember, JSON.stringify(archived && { a: archived.archived, m: archived.isMember }));
 
       await root.chatRoom.delete({ where: { id: a.group.id } });
       ok("deleting a chat takes its messages and members", (await root.chatMessage.count({ where: { roomId: a.group.id } })) === 0 && (await root.chatMember.count({ where: { roomId: a.group.id } })) === 0);

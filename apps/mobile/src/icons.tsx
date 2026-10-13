@@ -124,6 +124,7 @@ export const AttachIcon = glyph(icons.attach);
 export const EmojiIcon = glyph(icons.emoji);
 export const NoteIcon = glyph(icons.note);
 export const TeamChatIcon = glyph(icons.teamChat);
+export const PinIcon = glyph(icons.pin);
 export const CopyIcon = glyph(icons.copy);
 export const SoundOffIcon = glyph(icons.soundOff);
 export const ComposeIcon = glyph(icons.compose);

@@ -109,6 +109,8 @@ export class MemoryChatStore extends ChatStore {
       id: this.id("chm"),
       attachments: clone(f.attachments ?? []),
       link: null,
+      conversationId: f.conversationId ?? null,
+      shared: clone(f.shared ?? null),
       reactions: {},
       editedAt: null,
       deletedAt: null,
@@ -138,7 +140,7 @@ export class MemoryChatStore extends ChatStore {
   }
   async updateMessage(
     id: string,
-    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link">>,
+    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link" | "conversationId" | "shared">>,
   ): Promise<ChatMessageRecord | undefined> {
     const m = this.messages.find((x) => x.id === id && this.roomIsMine(x.roomId));
     if (!m) return undefined;
@@ -181,6 +183,20 @@ export class MemoryChatStore extends ChatStore {
       .filter((m) => want.has(m.roomId) && m.kind === "text" && !m.deletedAt && m.body.toLowerCase().includes(needle))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, limit)
+      .map(clone);
+  }
+
+  async sharesOf(conversationId: string): Promise<ChatMessageRecord[]> {
+    return this.messages
+      .filter((m) => m.conversationId === conversationId && !m.deletedAt && this.roomIsMine(m.roomId))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(clone);
+  }
+  async repliesTo(messageIds: string[]): Promise<ChatMessageRecord[]> {
+    const want = new Set(messageIds);
+    return this.messages
+      .filter((m) => m.replyToId && want.has(m.replyToId) && m.kind === "text" && this.roomIsMine(m.roomId))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
       .map(clone);
   }
 

@@ -9,6 +9,7 @@ import {
   sendChatMessageInputSchema,
   setChatMemberRoleInputSchema,
   setChatModuleInputSchema,
+  shareConversationInputSchema,
   starChatMessageInputSchema,
   updateChatGroupInputSchema,
   type AddChatMembersInput,
@@ -19,6 +20,8 @@ import {
   type ChatRoom,
   type ChatRoomPrefsInput,
   type ChatRoomSummary,
+  type ChatDiscussion,
+  type ChatDiscussionThread,
   type ChatSearchHit,
   type ChatStarred,
   type ChatStatusInfo,
@@ -28,6 +31,7 @@ import {
   type ReactChatMessageInput,
   type SendChatMessageInput,
   type SetChatMemberRoleInput,
+  type ShareConversationInput,
   type UpdateChatGroupInput,
 } from "@ding/schemas";
 import { CurrentUserId } from "../auth/current-user.decorator";
@@ -69,6 +73,21 @@ export class ChatController {
   @Get("starred")
   starred(@CurrentUserId() userId: string): Promise<ChatStarred[]> {
     return this.chat.starred(userId);
+  }
+
+  /** Bring a customer conversation (or one message in it) into a chat to discuss. */
+  @Post("share")
+  share(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(shareConversationInputSchema)) body: ShareConversationInput,
+  ): Promise<ChatMessage> {
+    return this.chat.share(userId, body);
+  }
+
+  /** Where a customer conversation is being discussed — for the bar on its thread. */
+  @Get("discussions")
+  discussions(@CurrentUserId() userId: string, @Query("conversationId") conversationId?: string): Promise<ChatDiscussion[]> {
+    return this.chat.discussions(userId, typeof conversationId === "string" ? conversationId : "");
   }
 
   @Post("direct")
@@ -201,6 +220,12 @@ export class ChatController {
     @Body(new ZodValidationPipe(starChatMessageInputSchema)) body: { starred: boolean },
   ): Promise<{ ok: true }> {
     return this.chat.star(userId, id, body.starred);
+  }
+
+  /** A discussion: a shared conversation's card and the replies to it. */
+  @Get("messages/:id/thread")
+  thread(@CurrentUserId() userId: string, @Param("id") id: string): Promise<ChatDiscussionThread> {
+    return this.chat.thread(userId, id);
   }
 
   @Get("messages/:id/info")

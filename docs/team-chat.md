@@ -150,6 +150,38 @@ to whoever has it open; it's never stored. A green dot means someone has the
 app open somewhere right now; otherwise "last seen today at 14:05" — kept
 per person (`ChatPresence`) when their last tab or phone disconnects.
 
+## Discussing a customer conversation
+
+What WhatsApp groups can't do: take a customer conversation to the team and
+keep the two tied together.
+
+- **Discuss…** — web: the speech-bubbles button in a thread's header (or
+  Discuss… in any message's menu); app: **Discuss with the team** in the
+  thread's ⋯ menu, or Discuss… when you long-press a message. Pick a chat
+  (a group, a team's, or one person), add a line if you like, send.
+- **The card** it makes in the chat shows the customer, the channel and
+  subject, the message it came from (if it did), and where the conversation
+  stands — Open, Pending, Snoozed or ✓ Resolved, and who has it. That part is
+  live: it follows the conversation as it changes, in every chat it's in.
+  Tapping it opens the conversation. If the conversation is later deleted the
+  card stays, saying so.
+- **Notes sent on:** writing a note, pick **Also send to** and the note goes
+  into the thread as usual and into that chat as a card quoting it.
+- **The bar** under a thread's header says where it's being discussed —
+  "Discussed in Ops team · 4 replies" and the latest reply. Clicking it opens
+  the discussion beside the thread (the web) or in a sheet (the app), where
+  you can read it and answer without leaving the customer. A discussion is
+  the card and the replies to it; in the chat it reads as an ordinary
+  conversation. More than one chat discussing it shows as extra chips.
+- **The log:** sharing writes "Nathan A shared it with Ops team" (or "…with
+  James") in the conversation's log, with the line that went with it.
+- Anyone in the workspace can open any conversation, so a card shows its
+  details to everyone in the chat. You can only share into a chat you can
+  write in, and the bar only shows discussions in chats you're in (an admin
+  reading along can still open any chat from All chats). Built on `ChatMessage.conversationId` and `shared` (the card as it was
+  shared); the live part is read from the conversation, and on screen it's
+  patched from the conversation events every client already receives.
+
 ## Notifications
 
 - A new message pushes everyone else in the chat who hasn't muted it, as
@@ -169,7 +201,8 @@ per person (`ChatPresence`) when their last tab or phone disconnects.
 - Tables: `ChatRoom` (kind, name, emoji, `teamId` for a team chat, `directKey`
   for a pair), `ChatMember` (role, joined, read and delivered markers, muted,
   pinned), `ChatMessage` (text or system, reply-to, reactions, mentions, edited,
-  deleted, attachments, link card), `ChatStar` (person × message),
+  deleted, attachments, link card, a shared conversation and its card),
+  `ChatStar` (person × message),
   `ChatAudit`, `ChatPresence`; and `Notification.chatRoomId`.
   Tenant-scoped (`ChatRoom` directly, the rest through it).
 - A team chat's members come from the team at the moment of asking; its
@@ -198,15 +231,19 @@ per person (`ChatPresence`) when their last tab or phone disconnects.
   this workspace's uploads, described by the server's record), voice notes,
   link cards against a local page and the address checks that refuse
   localhost, private networks, metadata, odd ports and inward redirects;
-  search; stars.
+  search; stars; sharing a conversation (with a message, into chats you can
+  and can't write in), the log entry, discussions and their replies, a card
+  following the conversation's status and owner, deleted cards.
 - `pnpm check:team-chat-pg` — on Postgres: one workspace can't list, open, read,
   write, react to, quote or join another's chats, through the service or the
   store — nor star, search or send another's files; paging back; mention
-  flags; files and link cards kept; search; stars; a deleted team's chat;
+  flags; files and link cards kept; search; stars; a shared conversation — B
+  can't share, quote, link to or list A's — its replies, live status and log,
+  and its card outliving a deleted conversation; a deleted team's chat;
   cascades (stars included).
 - `apps/web/src/lib/chat-format.test.ts` — dates, runs, the unread line, ticks,
   previews (photos, voice notes).
 - `apps/mobile/__tests__/team-chat.test.tsx` — the app's list (previews, counts,
   mention flag, filters, opening, photo and voice previews, message search)
   and bubbles (sender, quote, ticks, reactions, deleted, files, link card,
-  star).
+  star), conversation cards and the thread's discussion bar.

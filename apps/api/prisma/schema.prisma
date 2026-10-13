@@ -536,6 +536,7 @@ model Conversation {
   participants     Participant[]
   assignmentEvents AssignmentEvent[]
   events           ConversationEvent[]
+  chatShares       ChatMessage[]
   account          Account?            @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([orgId, inboxId, status, lastActivityAt])
@@ -1198,7 +1199,7 @@ model ConversationEvent {
   conversationId String
   /// created | routed | assigned | unassigned | team_changed | closed | reopened
   /// | snoozed | woke | priority | labels | subject | organisation | fields
-  /// | message_failed | message_retried
+  /// | message_failed | message_retried | shared_to_chat
   type           String
   /// agent | customer | system
   actorKind      String
@@ -1283,6 +1284,10 @@ model ChatMessage {
   attachments  Json      @default("[]")
   /// A preview of the first link in it, once fetched.
   link         Json?
+  /// A customer conversation shared into the chat to discuss, and its card as
+  /// it was when shared (ChatSharedConversation, less the live status).
+  conversationId String?
+  shared         Json?
   editedAt     DateTime?
   deletedAt    DateTime?
   createdAt    DateTime  @default(now())
@@ -1292,8 +1297,11 @@ model ChatMessage {
   replyTo ChatMessage?  @relation("ChatReply", fields: [replyToId], references: [id], onDelete: SetNull)
   replies ChatMessage[] @relation("ChatReply")
   stars   ChatStar[]
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
 
   @@index([roomId, createdAt])
+  @@index([conversationId])
+  @@index([replyToId])
 }
 
 /// An admin opened a chat they aren't in.

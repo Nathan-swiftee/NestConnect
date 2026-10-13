@@ -14,6 +14,7 @@ import { Analytics } from "./Analytics";
 import { Organisations } from "./organisations/Organisations";
 import { BusinessOps } from "./ops/BusinessOps";
 import { TeamChat } from "./chat/TeamChat";
+import { DiscussionPanel } from "./chat/Discuss";
 import { useChatRealtime, useChatStatus, useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
 import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/layout";
@@ -35,6 +36,8 @@ export function Workspace() {
   const [section, setSection] = useState<"inbox" | "chat" | "customers" | "organisations" | "ops" | "settings" | "insights">("inbox");
   const [focusOpsSop, setFocusOpsSop] = useState<string | null>(null);
   const [focusChat, setFocusChat] = useState<string | null>(null);
+  // A Team Chat discussion of the open conversation, beside it in the panel's place.
+  const [discussion, setDiscussion] = useState<string | null>(null);
   const [focusAccount, setFocusAccount] = useState<string | null>(null);
   const [focusContact, setFocusContact] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -127,6 +130,7 @@ export function Workspace() {
   const notify = (msg: string) => setToast(msg);
 
   const selectConversation = (id: string) => {
+    setDiscussion(null);
     setSelectedId(id);
     setMobilePane("thread");
   };
@@ -205,8 +209,20 @@ export function Workspace() {
                 // treat it as on-screen (→ eligible to send read receipts) when
                 // its pane is actually showing.
                 active={pane !== "list"}
+                discussion={discussion}
+                onOpenDiscussion={(cardId) => setDiscussion((cur) => (cur === cardId ? null : cardId))}
               />
-              {showPanel && (
+              {discussion ? (
+                <>
+                  {isPanelOverlay && <div className="panel-backdrop" onClick={() => setDiscussion(null)} />}
+                  <DiscussionPanel
+                    cardId={discussion}
+                    onClose={() => setDiscussion(null)}
+                    onOpenChat={(roomId) => { setDiscussion(null); setFocusChat(roomId); setSection("chat"); }}
+                    onToast={notify}
+                  />
+                </>
+              ) : showPanel && (
                 <>
                   {isPanelOverlay && <div className="panel-backdrop" onClick={() => setShowPanel(false)} />}
                   <ContextPanel
@@ -222,7 +238,13 @@ export function Workspace() {
             </>
           )}
 
-          {section === "chat" && <TeamChat focusRoomId={focusChat} onToast={notify} />}
+          {section === "chat" && (
+            <TeamChat
+              focusRoomId={focusChat}
+              onToast={notify}
+              onOpenConversation={(id) => { setFocusChat(null); setSection("inbox"); selectConversation(id); }}
+            />
+          )}
 
           {section === "customers" && (
             <Customers

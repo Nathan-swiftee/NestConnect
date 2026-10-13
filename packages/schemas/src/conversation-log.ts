@@ -24,6 +24,7 @@ export const CONVERSATION_EVENT_TYPES = [
   "fields",
   "message_failed",
   "message_retried",
+  "shared_to_chat",
 ] as const;
 export const conversationEventTypeSchema = z.enum(CONVERSATION_EVENT_TYPES);
 export type ConversationEventType = z.infer<typeof conversationEventTypeSchema>;

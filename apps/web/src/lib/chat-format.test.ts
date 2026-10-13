@@ -16,6 +16,7 @@ const msg = (id: string, authorId: string | null, at: Date, over: Partial<ChatMe
   mentions: [],
   attachments: [],
   link: null,
+  shared: null,
   editedAt: null,
   deletedAt: null,
   createdAt: at.toISOString(),
@@ -124,6 +125,9 @@ describe("Team Chat: previews", () => {
     expect(chatPreview(msg("1", "amara", NOW, { body: "The van", attachments: [photo] }), { meId: "me", group: false, people })).toBe("📷 The van");
     const voice = { ...photo, kind: "voice" as const, durationMs: 72_000 };
     expect(chatPreview(msg("1", "me", NOW, { body: "", attachments: [voice] }), { meId: "me", group: false, people })).toBe("You: 🎤 Voice message (1:12)");
+    const shared = { conversationId: "c", contactName: "Northside Logistics", contactAvatarColor: null, channel: "whatsapp" as const, subject: null, status: "open" as const, assigneeName: null, quote: null };
+    expect(chatPreview(msg("1", "amara", NOW, { body: "", shared }), { meId: "me", group: true, people })).toBe("Amara: 💬 Northside Logistics");
+    expect(chatPreview(msg("1", "amara", NOW, { body: "Can someone check?", shared }), { meId: "me", group: false, people })).toBe("💬 Can someone check?");
   });
   it("system lines read as sentences", () => {
     expect(chatSystemText({ event: "added", actorName: "Nathan A", targetNames: ["Amara", "James", "Sam"] })).toBe("Nathan A added Amara, James and Sam");

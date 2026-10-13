@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { ChatAttachment, ChatLinkPreview, ChatMemberRole, ChatRoomKind, ChatSystemData } from "@ding/schemas";
+import type { ChatAttachment, ChatLinkPreview, ChatMemberRole, ChatRoomKind, ChatSharedConversation, ChatSystemData } from "@ding/schemas";
 import { PrismaService } from "../data/prisma.service";
 import { tenantScoped, type TenantPrisma } from "../data/tenant-prisma";
 import { currentOrgId } from "../tenancy/tenant-scope";
@@ -60,6 +60,8 @@ function toMessage(m: Prisma.ChatMessageGetPayload<object>): ChatMessageRecord {
     mentions: (m.mentions as unknown as string[]) ?? [],
     attachments: (m.attachments as unknown as ChatAttachment[]) ?? [],
     link: (m.link as unknown as ChatLinkPreview | null) ?? null,
+    conversationId: m.conversationId,
+    shared: (m.shared as unknown as ChatSharedConversation | null) ?? null,
     editedAt: iso(m.editedAt),
     deletedAt: iso(m.deletedAt),
     createdAt: m.createdAt.toISOString(),
@@ -181,6 +183,8 @@ export class PrismaChatStore extends ChatStore {
         replyToId: f.replyToId,
         mentions: json(f.mentions),
         attachments: json(f.attachments ?? []),
+        conversationId: f.conversationId ?? null,
+        shared: f.shared ? json(f.shared) : undefined,
         createdAt: at,
       },
     });
@@ -212,9 +216,11 @@ export class PrismaChatStore extends ChatStore {
   }
   async updateMessage(
     id: string,
-    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link">>,
+    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link" | "conversationId" | "shared">>,
   ): Promise<ChatMessageRecord | undefined> {
     const data: Prisma.ChatMessageUncheckedUpdateInput = {};
+    if (patch.conversationId !== undefined) data.conversationId = patch.conversationId;
+    if (patch.shared !== undefined) data.shared = patch.shared ? json(patch.shared) : Prisma.DbNull;
     if (patch.attachments !== undefined) data.attachments = json(patch.attachments);
     if (patch.link !== undefined) data.link = patch.link ? json(patch.link) : Prisma.DbNull;
     if (patch.body !== undefined) data.body = patch.body;
@@ -268,6 +274,24 @@ export class PrismaChatStore extends ChatStore {
       where: { roomId: { in: roomIds }, kind: "text", deletedAt: null, body: { contains: q, mode: "insensitive" } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: limit,
+    });
+    return rows.map(toMessage);
+  }
+
+  async sharesOf(conversationId: string): Promise<ChatMessageRecord[]> {
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { conversationId, deletedAt: null },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 100,
+    });
+    return rows.map(toMessage);
+  }
+  async repliesTo(messageIds: string[]): Promise<ChatMessageRecord[]> {
+    if (!messageIds.length) return [];
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { replyToId: { in: messageIds }, kind: "text" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: 1000,
     });
     return rows.map(toMessage);
   }

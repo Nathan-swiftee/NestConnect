@@ -4075,6 +4075,73 @@ button.tpl-row:active{transform:scale(.97)}
 .tc-drop{inset:10px;z-index:20}
 .tc-composer__atts{padding:2px 2px 0;margin-bottom:8px}
 .tc-rec{border-radius:24px}
+/* A customer conversation shared into a chat: its card */
+.tc-bubble.has-card{width:320px;max-width:100%}
+.tc-card{display:flex;flex-direction:column;gap:6px;width:100%;margin:2px 0 4px;padding:9px 10px;border-radius:var(--r-8);text-align:left;color:inherit;
+  background:color-mix(in srgb,var(--text) 5%,transparent);border-left:3px solid var(--wa)}
+button.tc-card{cursor:pointer;transition:background var(--t-fast)}
+button.tc-card:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
+.tc-card__head{display:flex;align-items:center;gap:8px;min-width:0}
+.tc-card__who{display:flex;flex-direction:column;min-width:0}
+.tc-card__name{font-size:var(--fs-sm);font-weight:700;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-card__ch{font-size:var(--fs-2xs);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-card__subject{color:var(--text-muted);font-weight:500}
+.tc-card__quote{display:flex;flex-direction:column;gap:1px;padding:5px 8px;border-radius:var(--r-6,6px);background:color-mix(in srgb,var(--surface) 70%,transparent)}
+.tc-card__quote.note{background:color-mix(in srgb,var(--amber,#f59e0b) 14%,transparent)}
+.tc-card__qwho{font-size:var(--fs-2xs);font-weight:700;color:var(--text-muted)}
+.tc-card__qtext{font-size:var(--fs-sm);line-height:1.35;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tc-card__foot{display:flex;align-items:center;gap:8px;font-size:var(--fs-2xs);color:var(--text-muted)}
+.tc-card__status{padding:1px 7px;border-radius:var(--r-full);font-weight:700;background:color-mix(in srgb,var(--wa) 16%,transparent);color:var(--wa)}
+.tc-card__status.s-pending,.tc-card__status.s-snoozed{background:color-mix(in srgb,var(--amber,#f59e0b) 18%,transparent);color:var(--amber,#b45309)}
+.tc-card__status.s-closed{background:color-mix(in srgb,var(--text) 10%,transparent);color:var(--text-muted)}
+.tc-card__gone{font-style:italic}
+
+/* Discuss… — where to send it */
+.tc-share__what{display:flex;align-items:flex-start;gap:10px;margin:0 0 10px;padding:10px 12px;border-radius:var(--r-12);background:var(--surface-2);font-size:var(--fs-sm)}
+.tc-share__what>svg{width:18px;height:18px;flex:none;margin-top:2px;color:var(--wa)}
+.tc-share__what>span{display:flex;flex-direction:column;gap:2px;min-width:0}
+.tc-share__msg{color:var(--text-muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tc-share .tc-picklist{max-height:260px}
+.tc-pickrow[role=radio].on{background:var(--sel)}
+.tc-share__line{margin-top:10px}
+.tc-share__line textarea{width:100%;resize:vertical;min-height:52px}
+
+/* The bar on a customer thread: where it's being discussed */
+.tc-discbar{display:flex;align-items:stretch;gap:6px;padding:6px 14px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--wa) 6%,var(--surface))}
+.tc-discbar__main{flex:1;min-width:0;display:flex;align-items:center;gap:10px;padding:4px 8px;border-radius:var(--r-8);text-align:left;color:var(--text)}
+.tc-discbar__main:hover,.tc-discbar__main.on{background:color-mix(in srgb,var(--wa) 12%,transparent)}
+.tc-discbar__main>svg{width:18px;height:18px;flex:none;color:var(--wa)}
+.tc-discbar__text{display:flex;flex-direction:column;min-width:0}
+.tc-discbar__where{font-size:var(--fs-xs);color:var(--text-muted)}
+.tc-discbar__where b{color:var(--text)}
+.tc-discbar__latest{font-size:var(--fs-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-discbar__more{flex:none;align-self:center;padding:4px 10px;border-radius:var(--r-full);font-size:var(--fs-2xs);font-weight:600;color:var(--text-muted);background:var(--surface-2)}
+.tc-discbar__more:hover,.tc-discbar__more.on{color:var(--wa);background:color-mix(in srgb,var(--wa) 12%,transparent)}
+
+/* …and that discussion, beside the thread */
+.tc-discpanel{min-width:0}
+.tc-discpanel__head{display:flex;align-items:center;gap:8px;padding:12px 10px 12px 16px;border-bottom:1px solid var(--border)}
+.tc-discpanel__head>svg{width:18px;height:18px;color:var(--wa);flex:none}
+.tc-discpanel__title{flex:1;min-width:0;display:flex;flex-direction:column;font-size:var(--fs-2xs);color:var(--text-muted)}
+.tc-discpanel__title b{font-size:var(--fs-md);color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-discpanel__open{font-size:var(--fs-xs);padding:5px 10px}
+.tc-discpanel__body{flex:1;min-height:0;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:var(--surface-2)}
+.tc-discpanel__card{padding:10px;border-radius:var(--r-12);background:var(--surface);box-shadow:0 1px 1.5px rgba(13,21,18,.08)}
+.tc-discpanel__by{display:block;margin-bottom:4px;font-size:var(--fs-2xs);color:var(--text-faint)}
+.tc-discpanel__line{margin:6px 0 0;font-size:var(--fs-sm);white-space:pre-wrap}
+.tc-discpanel__reply{display:flex;flex-direction:column;gap:2px;padding:8px 10px;border-radius:var(--r-12);background:var(--surface)}
+.tc-discpanel__who{display:flex;align-items:baseline;gap:6px;font-size:var(--fs-xs);font-weight:700}
+.tc-discpanel__who time{font-weight:500;color:var(--text-faint);font-size:var(--fs-2xs)}
+.tc-discpanel__text{font-size:var(--fs-sm);white-space:pre-wrap;word-break:break-word}
+.tc-discpanel__none{margin:0;font-size:var(--fs-xs);color:var(--text-faint);text-align:center}
+.tc-discpanel__compose{display:flex;align-items:flex-end;gap:8px;padding:10px 12px;border-top:1px solid var(--border)}
+.tc-discpanel__compose textarea{flex:1;min-width:0;resize:none;border:0;border-radius:20px;background:var(--surface-2);color:var(--text);font:inherit;font-size:var(--fs-sm);padding:10px 14px;outline:none;max-height:120px}
+
+/* On a note: "Also send to [chat]" */
+.tc-alsoto{display:inline-flex;align-items:center;gap:5px;min-width:0;padding:2px 4px 2px 8px;border-radius:var(--r-full);font-size:var(--fs-2xs);color:var(--text-muted);background:var(--surface-2)}
+.tc-alsoto svg{width:13px;height:13px;flex:none}
+.tc-alsoto select{border:0;background:transparent;color:var(--text);font:inherit;font-weight:600;max-width:150px;cursor:pointer;outline:none}
+.tc-alsoto.on{color:var(--wa);background:color-mix(in srgb,var(--wa) 12%,transparent)}
 .tc-retry{display:block;margin-top:4px;font-size:var(--fs-2xs);font-weight:600;color:var(--danger)}
 .tc-quote{display:flex;flex-direction:column;width:100%;min-width:160px;margin:2px 0 5px;padding:5px 9px;border-left:4px solid;border-radius:var(--r-8);background:color-mix(in srgb,var(--text) 6%,transparent);text-align:left}
 .tc-quote__who{font-size:var(--fs-xs);font-weight:700}
@@ -4090,6 +4157,15 @@ button.tpl-row:active{transform:scale(.97)}
 .tc-msg.in .tc-tools{right:-8px;transform:translateX(100%)}
 .tc-msg.out .tc-tools{left:-8px;transform:translateX(-100%)}
 .tc-msg:hover .tc-tools,.tc-tools.open,.tc-tools:focus-within{opacity:1;pointer-events:auto}
+/* The inbox's trick (see .bubblewrap::after): an always-there, invisible strip
+   in the gutter beside the message, tall enough to reach the toolbar above its
+   corner. The pointer crosses it on the way from the bubble to the toolbar, so
+   the message stays hovered and the toolbar stays put long enough to click. */
+.tc-msg.in::after{content:"";position:absolute;top:-16px;bottom:0;left:100%;width:120px}
+.tc-msg.out::after{content:"";position:absolute;top:-16px;bottom:0;right:100%;width:120px}
+@media (hover:none){.tc-msg::after{display:none}}
+/* …and the same across the gap between the toolbar and what it opens. */
+.tc-reactpop::before,.menu.tc-moremenu::before{content:"";position:absolute;left:0;right:0;top:-10px;height:10px}
 .tc-tools>button{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;color:var(--text-muted)}
 .tc-tools>button:hover{background:var(--hover);color:var(--text)}
 .tc-tools>button svg{width:15px;height:15px}

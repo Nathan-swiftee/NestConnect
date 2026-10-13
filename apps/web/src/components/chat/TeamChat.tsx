@@ -11,7 +11,7 @@ import {
   useMediaQuery,
   usePeople,
 } from "../../hooks";
-import { BackIcon, ComposeIcon, EyeIcon, SearchIcon, SoundOffIcon, StarIcon, TeamChatIcon, XIcon } from "../../lib/icons";
+import { BackIcon, ComposeIcon, EyeIcon, PinIcon, SearchIcon, SoundOffIcon, StarIcon, TeamChatIcon, XIcon } from "../../lib/icons";
 import { ChatConversation } from "./ChatConversation";
 import { NewChatDialog } from "./ChatDialogs";
 import { RoomAvatar } from "./RoomAvatar";
@@ -23,7 +23,16 @@ type Filter = "all" | "unread" | "groups" | "direct";
  * the right — WhatsApp Web's shape, because that's the one everybody already
  * knows. On a phone-width window it's one or the other. See docs/team-chat.md.
  */
-export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null; onToast: (m: string) => void }) {
+export function TeamChat({
+  focusRoomId,
+  onToast,
+  onOpenConversation,
+}: {
+  focusRoomId?: string | null;
+  onToast: (m: string) => void;
+  /** A shared customer conversation's card was opened. */
+  onOpenConversation?: (id: string) => void;
+}) {
   const isMobile = useMediaQuery("(max-width: 820px)");
   const me = useMe().data?.user;
   const status = useChatStatus();
@@ -194,6 +203,7 @@ export function TeamChat({ focusRoomId, onToast }: { focusRoomId?: string | null
             key={selected}
             roomId={selected}
             focusMessageId={focusMessage}
+            onOpenConversation={onOpenConversation}
             onBack={isMobile ? () => setSelected(null) : undefined}
             onClosed={() => setSelected(null)}
             onOpenRoom={(id) => openAt(id, null)}
@@ -263,6 +273,11 @@ function ChatRow({
           {r.muted && (
             <span className="tc-row__muted" title="Muted" aria-label="Muted">
               <SoundOffIcon />
+            </span>
+          )}
+          {r.pinned && (
+            <span className="tc-row__muted tc-row__pin" title="Pinned" aria-label="Pinned">
+              <PinIcon />
             </span>
           )}
           {r.mentioned && r.unread > 0 && (

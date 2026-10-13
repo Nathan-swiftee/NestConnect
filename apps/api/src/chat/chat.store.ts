@@ -1,4 +1,4 @@
-import type { ChatAttachment, ChatLinkPreview, ChatMemberRole, ChatRoomKind, ChatSystemData } from "@ding/schemas";
+import type { ChatAttachment, ChatLinkPreview, ChatMemberRole, ChatRoomKind, ChatSharedConversation, ChatSystemData } from "@ding/schemas";
 
 export interface ChatRoomRecord {
   id: string;
@@ -40,13 +40,16 @@ export interface ChatMessageRecord {
   mentions: string[];
   attachments: ChatAttachment[];
   link: ChatLinkPreview | null;
+  /** A customer conversation shared into the chat, and its card as it was then. */
+  conversationId: string | null;
+  shared: ChatSharedConversation | null;
   editedAt: string | null;
   deletedAt: string | null;
   createdAt: string;
 }
 
 export type ChatMessageFields = Pick<ChatMessageRecord, "roomId" | "authorUserId" | "kind" | "body" | "data" | "replyToId" | "mentions"> &
-  Partial<Pick<ChatMessageRecord, "attachments">>;
+  Partial<Pick<ChatMessageRecord, "attachments" | "conversationId" | "shared">>;
 
 /** Where to read from, and how far back. */
 export interface ChatPageQuery {
@@ -86,10 +89,15 @@ export abstract class ChatStore {
   abstract listMessages(roomId: string, q: ChatPageQuery): Promise<ChatMessageRecord[]>;
   abstract updateMessage(
     id: string,
-    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link">>,
+    patch: Partial<Pick<ChatMessageRecord, "body" | "reactions" | "mentions" | "editedAt" | "deletedAt" | "attachments" | "link" | "conversationId" | "shared">>,
   ): Promise<ChatMessageRecord | undefined>;
   /** Text messages in these chats whose words contain `q`, newest first. */
   abstract searchMessages(roomIds: string[], q: string, limit: number): Promise<ChatMessageRecord[]>;
+
+  /** The cards a customer conversation has made, in any chat — not deleted, newest first. */
+  abstract sharesOf(conversationId: string): Promise<ChatMessageRecord[]>;
+  /** Text messages replying to any of these, oldest first. */
+  abstract repliesTo(messageIds: string[]): Promise<ChatMessageRecord[]>;
 
   abstract setStar(userId: string, messageId: string, starred: boolean): Promise<void>;
   /** Newest first. */
