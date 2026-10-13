@@ -57,6 +57,7 @@ const VIA: Record<string, (orgId: string) => Filter> = {
   Note: (orgId) => ({ conversation: { orgId } }),
   ConversationLabel: (orgId) => ({ conversation: { orgId } }),
   AssignmentEvent: (orgId) => ({ conversation: { orgId } }),
+  ConversationEvent: (orgId) => ({ conversation: { orgId } }),
   EmailRecipient: (orgId) => ({ message: { conversation: { orgId } } }),
   InboxTeam: (orgId) => ({ inbox: { orgId } }),
   TeamMember: (orgId) => ({ team: { orgId } }),

@@ -110,6 +110,9 @@ import {
   type TwoFactorState,
   type ViewItem,
   type WebhookDiagnostic,
+  type ConversationState,
+  type ConversationEventInput,
+  type ConversationEventRow,
 } from "./store";
 
 /**
@@ -1630,6 +1633,51 @@ export class PrismaStore extends Store {
       include: convInclude,
     });
     return mapConversation(updated);
+  }
+
+  // ---- the conversation log ----
+
+  async conversationState(conversationId: string): Promise<ConversationState | undefined> {
+    const r = await this.prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { status: true, assigneeUserId: true, assignedTeamId: true, priority: true, snoozedUntil: true },
+    });
+    if (!r) return undefined;
+    return {
+      status: r.status as ConversationStatus,
+      assigneeUserId: r.assigneeUserId,
+      assignedTeamId: r.assignedTeamId,
+      priority: r.priority as Priority,
+      snoozedUntil: r.snoozedUntil ? r.snoozedUntil.toISOString() : null,
+    };
+  }
+
+  async logConversationEvent(conversationId: string, e: ConversationEventInput): Promise<void> {
+    await this.prisma.conversationEvent.create({
+      data: {
+        conversationId,
+        type: e.type,
+        actorKind: e.actorKind,
+        actorUserId: e.actorUserId ?? null,
+        data: (e.data ?? {}) as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  async listConversationEvents(conversationId: string, limit = 500): Promise<ConversationEventRow[]> {
+    const rows = await this.prisma.conversationEvent.findMany({
+      where: { conversationId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit,
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      type: r.type as ConversationEventRow["type"],
+      actorKind: r.actorKind as ConversationEventRow["actorKind"],
+      actorUserId: r.actorUserId,
+      data: (r.data as Record<string, unknown>) ?? {},
+      createdAt: r.createdAt.toISOString(),
+    }));
   }
 
   async setPriority(conversationId: string, priority: Priority): Promise<Conversation | undefined> {

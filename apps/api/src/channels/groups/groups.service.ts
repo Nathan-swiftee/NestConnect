@@ -8,6 +8,7 @@ import { Store } from "../../data/store";
 import { SandboxPolicy } from "../../tenancy/sandbox";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { RoutingService } from "../routing.service";
+import { ConversationLog, agent, SYSTEM } from "../../conversations/conversation-log";
 import { WhatsAppGroupsProvider } from "../whatsapp/whatsapp-groups.provider";
 
 const GROUP_AVATAR = "#6366F1";
@@ -30,7 +31,7 @@ export class GroupsService {
    * its invite link — members JOIN via the link (there's no add-by-phone), and
    * the `group_participants_update` webhook fills the roster in as they do.
    */
-  async createGroup(input: CreateGroupInput): Promise<ConversationWithMessages> {
+  async createGroup(input: CreateGroupInput, userId?: string): Promise<ConversationWithMessages> {
     // Creates a real group on WhatsApp — never from a demo workspace.
     await this.sandbox.assertLive("Creating a WhatsApp group");
     // A WhatsApp group is hosted BY a WhatsApp number (the business number is a
@@ -62,6 +63,12 @@ export class GroupsService {
     const decision = await this.routing.route(inbox, groupContact);
     const assigned = await this.store.assign(conversation.id, decision);
     this.realtime.emitConversationAssigned(assigned ?? conversation, "group-created");
+    await new ConversationLog(this.store).record(conversation.id, "created", userId ? agent(userId) : SYSTEM, { channel: "whatsapp_group" });
+    await new ConversationLog(this.store).record(conversation.id, "routed", SYSTEM, {
+      teamId: decision.assignedTeamId,
+      userId: decision.assigneeUserId,
+      reason: decision.reason,
+    });
 
     const full = await this.store.getConversation(conversation.id);
     if (!full) throw new NotFoundException("Group conversation not found after creation");

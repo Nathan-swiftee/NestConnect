@@ -20,7 +20,7 @@ import { ContactEditor } from "./ContactEditor";
 import { CustomFieldsCard } from "./CustomFieldsCard";
 import { OrganisationCard } from "./OrganisationCard";
 import { TagEditor } from "./TagEditor";
-import { BellIcon, CheckIcon, ChevronRight, TeamGlyph, XIcon, channelMeta } from "../icons";
+import { BellIcon, CheckIcon, ChevronRight, HistoryIcon, TeamGlyph, XIcon, channelMeta } from "../icons";
 import { useTheme } from "../theme";
 import { Sheet } from "./Sheet";
 import { Touchable } from "./Touchable";
@@ -46,11 +46,14 @@ export function DetailsPanel({
   visible,
   onClose,
   onOpenConversation,
+  onOpenLog,
 }: {
   conv: ConversationWithMessages;
   visible: boolean;
   onClose: () => void;
   onOpenConversation: (id: string) => void;
+  /** Close Details and open the conversation log — one sheet at a time on iOS. */
+  onOpenLog?: () => void;
 }) {
   const { c } = useTheme();
   const { data: pushPrefs } = usePushPreferences();
@@ -174,7 +177,21 @@ export function DetailsPanel({
                   tone={conv.waWindow.open ? c.brandStrong : c.amber}
                 />
               ) : null}
-              <Field label="Last activity" value={`${relativeTime(conv.lastActivityAt)} ago`} last />
+              <Field label="Last activity" value={`${relativeTime(conv.lastActivityAt)} ago`} last={!onOpenLog} />
+              {/* Who routed, assigned, moved, closed, snoozed… — not needed at
+                  a glance, so it's a tap away rather than on this sheet. */}
+              {onOpenLog ? (
+                <Touchable feel="row"
+                  onPress={onOpenLog}
+                  accessibilityRole="button"
+                  accessibilityLabel="Conversation log"
+                  className="flex-row items-center gap-3 px-4 py-2.5"
+                >
+                  <HistoryIcon size={16} color={c.textMuted} />
+                  <Text className="flex-1 text-md font-medium text-fg">Conversation log</Text>
+                  <ChevronRight size={14} color={c.textFaint} />
+                </Touchable>
+              ) : null}
             </Card>
 
             {/* The channel's own fields — the order number an app's SDK attached

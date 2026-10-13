@@ -2,6 +2,7 @@ import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy }
 import type { Conversation, Notification, NotificationType } from "@ding/schemas";
 import { mentionHandle, mentionsToNames } from "@ding/schemas";
 import { Store } from "../data/store";
+import { ConversationLog, SYSTEM } from "../conversations/conversation-log";
 import { runInTenant } from "../tenancy/tenant-scope";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { PushService, type PushKind } from "../push/push.service";
@@ -147,7 +148,7 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
       const due = await this.store.listDueSnoozed();
       for (const conv of due) {
         await runInTenant(conv.orgId, async () => {
-          const woken = await this.store.wakeSnoozed(conv.id);
+          const woken = await new ConversationLog(this.store).track(conv.id, SYSTEM, () => this.store.wakeSnoozed(conv.id));
           if (!woken) return;
           this.realtime.emitConversationUpdated(woken);
           if (conv.assigneeUserId) {

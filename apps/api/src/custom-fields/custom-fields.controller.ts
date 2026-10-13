@@ -26,6 +26,7 @@ import {
   type UpdateCustomFieldInput,
 } from "@ding/schemas";
 import { CurrentUserId } from "../auth/current-user.decorator";
+import { ConversationLog, agent, SYSTEM } from "../conversations/conversation-log";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { currentOrgId } from "../tenancy/tenant-scope";
 import { Store } from "../data/store";
@@ -181,12 +182,28 @@ export class CustomFieldsController {
     @Param("entity") entity: string,
     @Param("entityId") entityId: string,
     @Body(new ZodValidationPipe(setCustomFieldValuesInputSchema)) body: SetCustomFieldValuesInput,
+    @CurrentUserId() userId?: string,
   ): Promise<{ values: CustomFieldValue[]; unknown: string[] }> {
     const kind = this.entity(entity);
+    const before =
+      kind === "conversation" ? ((await this.store.customFieldValues(currentOrgId(), kind, [entityId])).get(entityId) ?? []) : [];
     const result = await this.store.setCustomFieldValues(currentOrgId(), kind, entityId, body.values);
+    if (kind === "conversation") await this.logFieldChanges(userId, entityId, before, result.values);
     // A conversation's values sit at the front of its automatic subject.
     if (kind === "conversation") await this.subjects?.fieldsChanged(entityId);
     return result;
+  }
+
+  /** A conversation's field edits go in its log, old → new, by label. */
+  private async logFieldChanges(userId: string | undefined, conversationId: string, before: CustomFieldValue[], after: CustomFieldValue[]): Promise<void> {
+    const was = new Map(before.map((v) => [v.key, v.value]));
+    const now = new Map(after.map((v) => [v.key, v.value]));
+    const keys = [...new Set([...was.keys(), ...now.keys()])].filter((k) => (was.get(k) ?? null) !== (now.get(k) ?? null));
+    if (!keys.length) return;
+    const labels = new Map((await this.store.listCustomFields(currentOrgId())).map((f) => [f.key, f.label]));
+    await new ConversationLog(this.store).record(conversationId, "fields", userId ? agent(userId) : SYSTEM, {
+      changes: keys.map((k) => ({ label: labels.get(k) ?? k, from: was.get(k) ?? null, to: now.get(k) ?? null })),
+    });
   }
 
   /** A path segment is not a validated body, so it is checked here. */

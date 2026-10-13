@@ -11,7 +11,8 @@ import { Store, type AttachmentInput } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { TenantContext } from "../tenancy/tenant-context";
 import { PushService } from "../push/push.service";
-import { RoutingService } from "./routing.service";
+import { RoutingService, type RoutingDecision } from "./routing.service";
+import { ConversationLog, customer, SYSTEM } from "../conversations/conversation-log";
 import { sanitizeEmailHtml } from "./email/html-sanitize";
 import { ConversationSubjectService } from "../ai/conversation-subject.service";
 
@@ -102,6 +103,37 @@ export class IngestService {
     private readonly push: PushService,
     private readonly subjects: ConversationSubjectService,
   ) {}
+
+  /** The conversation log (docs/conversation-log.md). */
+  private get log(): ConversationLog {
+    return new ConversationLog(this.store);
+  }
+
+  /** A new conversation: how it started, and where routing sent it and why. */
+  private async logArrival(
+    conversationId: string,
+    contactName: string,
+    channel: string,
+    decision: RoutingDecision,
+    option?: string,
+  ): Promise<void> {
+    await this.log.record(conversationId, "created", customer(contactName), { channel });
+    await this.log.record(conversationId, "routed", SYSTEM, {
+      teamId: decision.assignedTeamId,
+      userId: decision.assigneeUserId,
+      reason: decision.reason,
+      ...(decision.organisation ? { organisation: decision.organisation } : {}),
+      ...(option ? { option } : {}),
+    });
+  }
+
+  /** A customer's message, with what it did to the conversation logged: a
+   *  reply to a snoozed or closed chat reopens it. */
+  private appendInbound(conversationId: string, input: Parameters<Store["appendInboundMessage"]>[1]) {
+    return this.log.track(conversationId, customer(input.authorName || "The customer"), () =>
+      this.store.appendInboundMessage(conversationId, input),
+    );
+  }
 
   /**
    * Tell whoever owns this conversation that a customer has written.
@@ -209,13 +241,14 @@ export class IngestService {
       if (assigned) conv = assigned;
       await this.applyTeamSla(conv);
       this.realtime.emitConversationAssigned(conv, "auto-routing");
+      await this.logArrival(conv.id, contact.displayName, inbox.type, decision);
       this.logger.log(
         `New WhatsApp conversation ${conv.id} from ${input.from} → ` +
           `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
       );
     }
 
-    const message = await this.store.appendInboundMessage(conv.id, {
+    const message = await this.appendInbound(conv.id, {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.channelMsgId,
@@ -279,7 +312,7 @@ export class IngestService {
       await this.store.addParticipant(conversationId, contact);
     }
 
-    const message = await this.store.appendInboundMessage(conversationId, {
+    const message = await this.appendInbound(conversationId, {
       authorName: contact.displayName,
       body: input.text,
       channelMsgId: input.channelMsgId,
@@ -373,6 +406,7 @@ export class IngestService {
       const assigned = await this.store.assign(conversationId, decision);
       if (assigned) await this.applyTeamSla(assigned);
       this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
+      await this.logArrival(conversationId, input.contact.displayName, "nestchat", decision, input.option?.label);
       this.logger.log(
         `New NestChat conversation ${conversationId} from ${input.contact.displayName}` +
           `${input.option ? ` about "${input.option.label}"` : ""} → ` +
@@ -388,7 +422,7 @@ export class IngestService {
     // never seen them, and quoting one would be the first time they did.
     const quotedMsgId = await this.resolveNestChatQuote(conversationId, input.quotedMsgId);
 
-    const message = await this.store.appendInboundMessage(conversationId, {
+    const message = await this.appendInbound(conversationId, {
       authorName: input.contact.displayName,
       body: input.text,
       channel: "nestchat",
@@ -482,6 +516,7 @@ export class IngestService {
         const assigned = await this.store.assign(conversationId, decision);
         if (assigned) await this.applyTeamSla(assigned);
         this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
+        await this.logArrival(conversationId, contact.displayName, "email", decision);
         this.logger.log(
           `New email conversation ${conversationId} from ${input.from} → ` +
             `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
@@ -510,7 +545,7 @@ export class IngestService {
     // always safe for the sandboxed iframe to render (remote images pre-blocked).
     const { html: bodyHtml } = sanitizeEmailHtml(input.html);
 
-    const message = await this.store.appendInboundMessage(conversationId, {
+    const message = await this.appendInbound(conversationId, {
       authorName: contact.displayName,
       body: input.text,
       bodyHtml: bodyHtml || undefined,

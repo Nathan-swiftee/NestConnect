@@ -3889,3 +3889,27 @@ button.tpl-row:active{transform:scale(.97)}
 .org-routing__acts{display:flex;justify-content:flex-end;gap:8px}
 .routing-inherit{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:var(--fs-xs);color:var(--brand-strong);font-weight:500}
 .routing-inherit svg{width:13px;height:13px;flex:none}
+
+/* ─── Conversation log (components/ConversationLog.tsx) ───
+   A drawer from the right on desktop; on a phone it's the usual full-screen sheet. */
+@media (min-width:641px){
+  .modal.modal--side{justify-content:flex-end;align-items:stretch}
+  .modal--side .modal__box.convlog{margin:0;width:min(420px,100vw);height:100%;border-radius:0;border-left:1px solid var(--glass-line);animation:convlogIn .26s var(--ease)}
+  .modal--side .convlog .modal__body{flex:1;min-height:0;max-height:none}
+}
+@keyframes convlogIn{from{opacity:.4;transform:translateX(24px)}to{opacity:1;transform:none}}
+.convlog__body{overflow-y:auto}
+.convlog__list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.convlog__item{position:relative;display:flex;align-items:flex-start;gap:10px;padding:9px 0}
+/* the thread line between entries */
+.convlog__item:not(:last-child)::before{content:"";position:absolute;left:12.5px;top:38px;bottom:-4px;width:1px;background:var(--glass-line)}
+.convlog__who{flex:0 0 26px;height:26px;display:flex;align-items:center;justify-content:center}
+.convlog__dot{width:9px;height:9px;border-radius:50%;background:var(--text-faint);}
+.convlog__item--customer .convlog__dot{background:var(--brand-strong)}
+.convlog__main{flex:1;min-width:0;padding-top:3px}
+.convlog__text{font-size:var(--fs-sm);line-height:1.4;color:var(--text);word-break:break-word}
+.convlog__detail{margin-top:2px;font-size:var(--fs-xs);line-height:1.4;color:var(--text-muted);word-break:break-word}
+.convlog__time{flex:0 0 auto;padding-top:4px;font-size:var(--fs-2xs);color:var(--text-faint);white-space:nowrap;font-variant-numeric:tabular-nums}
+.convlog__empty{display:flex;flex-direction:column;align-items:center;gap:8px;margin:24px 0;text-align:center;font-size:var(--fs-sm);color:var(--text-muted)}
+.convlog__empty svg{width:22px;height:22px;opacity:.6}
+.convlog__empty p{margin:0;max-width:300px}

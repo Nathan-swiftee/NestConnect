@@ -1280,6 +1280,18 @@ export function useMacroMutation<TArgs, TResult>(fn: (args: TArgs) => Promise<TR
   });
 }
 
+/* ---- The conversation log ---- */
+
+/** A conversation's log, fetched only while it's being looked at. */
+export function useConversationEvents(conversationId: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["conversation-events", conversationId],
+    queryFn: () => api.conversationEvents(conversationId!),
+    enabled: !!conversationId && enabled,
+    staleTime: 5_000,
+  });
+}
+
 /* ---- Business Ops ---- */
 
 /** Whether the module is on, whether I write SOPs, and my waiting must-reads. */
@@ -1547,8 +1559,15 @@ export function useRealtime(openConversationId: string | null) {
       patchThread(p.conversationId, p.message);
     };
     // Assignment/status/snooze change the lists → refresh them (infrequent).
-    const onConversation = () => invalidateLists();
-    const onAssigned = () => invalidateLists();
+    // A change to a conversation is also a new line in its log, if it's open.
+    const onConversation = () => {
+      invalidateLists();
+      qc.invalidateQueries({ queryKey: ["conversation-events"] });
+    };
+    const onAssigned = () => {
+      invalidateLists();
+      qc.invalidateQueries({ queryKey: ["conversation-events"] });
+    };
     // A bell notification (mention / snooze due) → prepend it and give a cue.
     const onNotification = (p: { notification: Notification }) => {
       qc.setQueryData<Notification[]>(["notifications"], (cur) =>

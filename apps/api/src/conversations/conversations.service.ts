@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { randomUUID } from "node:crypto";
 import type {
   AssignConversationInput,
+  ConversationEvent,
   Conversation,
   ConversationFilterCounts,
   ConversationPage,
@@ -16,6 +17,7 @@ import type {
   ChannelType,
 } from "@ding/schemas";
 import { FORWARD_MAX_TARGETS, renderEmailSignature, sendingInbox } from "@ding/schemas";
+import { ConversationLog, agent, renderConversationEvents, SYSTEM } from "./conversation-log";
 import { Store, type OutboundDeliveryMeta } from "../data/store";
 import { currentOrgId } from "../tenancy/tenant-scope";
 import { isWaChannel } from "../data/mappers";
@@ -76,6 +78,26 @@ export class ConversationsService {
     private readonly push: PushService,
     private readonly nestchat: NestChatService,
   ) {}
+
+  /** The conversation log (docs/conversation-log.md). */
+  private get log(): ConversationLog {
+    return new ConversationLog(this.store);
+  }
+
+  /** The conversation's log, newest first, names resolved now. */
+  async events(id: string): Promise<ConversationEvent[]> {
+    if (!(await this.store.conversationState(id))) throw new NotFoundException(`Conversation ${id} not found`);
+    const [rows, members, teams] = await Promise.all([
+      this.store.listConversationEvents(id),
+      this.store.listMembers(),
+      this.store.listTeams(),
+    ]);
+    return renderConversationEvents(
+      rows,
+      new Map(members.map((m) => [m.user.id, m.user])),
+      new Map(teams.map((t) => [t.id, t])),
+    );
+  }
 
   list(
     view: string,
@@ -219,8 +241,10 @@ export class ConversationsService {
     if (sendingEmail && !input.internal && input.subject !== undefined) {
       const next = input.subject.trim();
       if ((next || null) !== (conv.subject ?? null)) {
+        const from = conv.subject ?? null;
         const updated = await this.store.setSubject(id, next || null);
         if (updated) {
+          await this.log.record(id, "subject", agent(userId), { from, to: next || null });
           conv.subject = updated.subject;
           this.realtime.emitConversationUpdated(updated);
         }
@@ -259,7 +283,8 @@ export class ConversationsService {
     // Idempotency key doubles as the delivery job id, so duplicate sends collapse.
     const idempotencyKey = input.internal ? undefined : randomUUID();
 
-    const message = await this.store.addMessage(
+    // A reply can claim an unassigned chat, or wake a snoozed one: logged as such.
+    const message = await this.log.track(id, agent(userId), () => this.store.addMessage(
       id,
       {
         body,
@@ -273,7 +298,7 @@ export class ConversationsService {
         forwarded: opts.forwarded,
       },
       author,
-    );
+    ), { byReply: true, claimed: true });
     if (!message) throw new NotFoundException(`Conversation ${id} not found`);
 
     // Broadcast immediately so every open client updates the thread + previews.
@@ -363,7 +388,11 @@ export class ConversationsService {
           // Whoever forwards owns the thread they've just started.
           assigneeUserId: me.id,
         });
-        if (created) this.realtime.emitConversationUpdated(conversation);
+        if (created) {
+          this.realtime.emitConversationUpdated(conversation);
+          await this.log.record(conversation.id, "created", agent(me.id), { channel: "whatsapp", forwarded: true });
+          await this.log.record(conversation.id, "assigned", agent(me.id), { toUserId: me.id });
+        }
 
         // Cloned per target: each send claims its own attachment rows, so two
         // targets can't race to claim the same staged upload.
@@ -392,10 +421,14 @@ export class ConversationsService {
   }
 
   /** Manually retry a failed outbound message: reset it to queued and re-enqueue. */
-  async retryMessage(messageId: string): Promise<Message> {
+  async retryMessage(messageId: string, userId?: string): Promise<Message> {
     const key = randomUUID();
     const change = await this.store.resetMessageForRetry(messageId, key);
     if (!change) throw new BadRequestException("Message is not in a retryable state");
+    await this.log.record(change.conversationId, "message_retried", userId ? agent(userId) : SYSTEM, {
+      messageId,
+      preview: change.message.body.slice(0, 80),
+    });
     this.realtime.emitMessageUpdated(change.conversationId, change.message);
     await this.queue.enqueueDelivery(
       { messageId, conversationId: change.conversationId, orgId: currentOrgId() },
@@ -406,7 +439,7 @@ export class ConversationsService {
 
   async assign(id: string, input: AssignConversationInput, byUserId: string): Promise<Conversation> {
     const before = await this.store.getConversation(id);
-    const conv = await this.store.assign(id, input, byUserId);
+    const conv = await this.log.track(id, agent(byUserId), () => this.store.assign(id, input, byUserId));
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     const by = (await this.store.getUser(byUserId))?.name;
     this.realtime.emitConversationAssigned(conv, by);
@@ -429,8 +462,8 @@ export class ConversationsService {
     return conv;
   }
 
-  async setStatus(id: string, input: UpdateStatusInput): Promise<Conversation> {
-    const conv = await this.store.setStatus(id, input.status);
+  async setStatus(id: string, input: UpdateStatusInput, userId?: string): Promise<Conversation> {
+    const conv = await this.log.track(id, userId ? agent(userId) : SYSTEM, () => this.store.setStatus(id, input.status));
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     // Broadcast so every client drops (or restores) it from the active lists live.
     this.realtime.emitConversationUpdated(conv);
@@ -444,15 +477,15 @@ export class ConversationsService {
     return conv;
   }
 
-  async setPriority(id: string, input: UpdatePriorityInput): Promise<Conversation> {
-    const conv = await this.store.setPriority(id, input.priority);
+  async setPriority(id: string, input: UpdatePriorityInput, userId?: string): Promise<Conversation> {
+    const conv = await this.log.track(id, userId ? agent(userId) : SYSTEM, () => this.store.setPriority(id, input.priority));
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     this.realtime.emitConversationUpdated(conv);
     return conv;
   }
 
-  async snooze(id: string, until: string): Promise<Conversation> {
-    const conv = await this.store.snooze(id, until);
+  async snooze(id: string, until: string, userId?: string): Promise<Conversation> {
+    const conv = await this.log.track(id, userId ? agent(userId) : SYSTEM, () => this.store.snooze(id, until));
     if (!conv) throw new NotFoundException(`Conversation ${id} not found`);
     // Drops it from the active lists and into "Later" on every client live.
     this.realtime.emitConversationUpdated(conv);
@@ -515,9 +548,17 @@ export class ConversationsService {
   }
 
   /** Replace a conversation's labels with exactly this set (organising/triage). */
-  async setLabels(id: string, labelIds: string[]): Promise<Conversation> {
+  async setLabels(id: string, labelIds: string[], userId?: string): Promise<Conversation> {
+    const before = (await this.store.getConversation(id))?.labels ?? [];
     const updated = await this.store.setConversationLabels(id, labelIds);
     if (!updated) throw new NotFoundException(`Conversation ${id} not found`);
+    const was = new Set(before.map((l) => l.id));
+    const now = new Set((updated.labels ?? []).map((l) => l.id));
+    const added = (updated.labels ?? []).filter((l) => !was.has(l.id)).map((l) => l.name);
+    const removed = before.filter((l) => !now.has(l.id)).map((l) => l.name);
+    if (added.length || removed.length) {
+      await this.log.record(id, "labels", userId ? agent(userId) : SYSTEM, { added, removed });
+    }
     this.realtime.emitConversationUpdated(updated);
     return updated;
   }

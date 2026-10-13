@@ -22,6 +22,7 @@ import type {
   MessagePage,
   Priority,
   ConversationWithMessages,
+  ConversationEvent,
   CreateContactInput,
   CreateGroupInput,
   CreateInboxInput,
@@ -414,6 +415,8 @@ export const api = {
         (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""),
     ),
   conversation: (id: string) => get<ConversationWithMessages>(`/conversations/${id}`),
+  /** The conversation's log — routing, assignment, status and changes, newest first. */
+  conversationEvents: (id: string) => get<ConversationEvent[]>(`/conversations/${encodeURIComponent(id)}/events`),
   // Older thread history (scroll-up), before a seq cursor.
   olderMessages: (id: string, before?: string) =>
     get<MessagePage>(`/conversations/${id}/messages${before ? `?before=${encodeURIComponent(before)}` : ""}`),

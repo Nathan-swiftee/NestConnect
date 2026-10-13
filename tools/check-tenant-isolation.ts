@@ -203,6 +203,10 @@ async function main(): Promise<void> {
 
   /* ---------------- 3. writes aimed across ---------------- */
   console.log("\nWrites aimed at A change nothing there (acting as B)\n");
+  await runInTenant(A, () => store.logConversationEvent(a.conversation.id, { type: "closed", actorKind: "system" }));
+  await runInTenant(A, async () => {
+    ok("A can read its own conversation log", (await store.listConversationEvents(a.conversation.id)).length > 0);
+  });
   await runInTenant(B, async () => {
     const attempt = (fn: () => Promise<unknown>) => fn().catch(() => undefined);
     await attempt(() => store.setStatus(a.conversation.id, "closed"));
@@ -229,6 +233,12 @@ async function main(): Promise<void> {
     ok("B can't claim A's visitor-email marker", !(await store.claimVisitorEmail(a.conversation.id, 0, 99)));
     ok("B can't read A's visitor-email marker", (await store.getVisitorEmailedSeq(a.conversation.id)) === undefined);
     ok("B can't read A's workspace name", (await store.getOrganizationName(A)) === undefined);
+    ok("B can't read A's conversation log", (await store.listConversationEvents(a.conversation.id)).length === 0);
+    ok("or its state", (await store.conversationState(a.conversation.id)) === undefined);
+    ok(
+      "or write to its log",
+      await rejects(() => store.logConversationEvent(a.conversation.id, { type: "closed", actorKind: "system" }), TenantViolationError),
+    );
     await attempt(() => store.setCustomFieldValues(B, "conversation", a.conversation.id, { b_order: "x" }));
     await attempt(() => store.revokeSession(a.user.id, a.session.id));
     await attempt(() => store.revokeOtherSessions(a.user.id, ""));

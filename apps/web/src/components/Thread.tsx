@@ -11,6 +11,7 @@ import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSno
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
 import { GlideMenu } from "./GlideMenu";
+import { ConversationLog } from "./ConversationLog";
 import { getSocket } from "../lib/socket";
 import { relativeTime, seenAt, lastActive, clockTime, initials, formatBytes, formatDuration, windowLeft, avatarBg, groupMessagesByDay, speakerKey } from "../lib/format";
 import { hasOtherRecipients, replyAllRecipients } from "@ding/client";
@@ -27,6 +28,7 @@ import {
   SnoozeIcon,
   TagIcon,
   DetailsIcon,
+  HistoryIcon,
   MoreIcon,
   SendIcon,
   SparkleIcon,
@@ -1628,6 +1630,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   // The id of the sent email whose read receipts are open (resolved live from the
   // thread each render, so the modal updates as opens arrive over the socket).
   const [receiptsMsgId, setReceiptsMsgId] = useState<string | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
   // Rich-text HTML for an email reply (mirrors the Tiptap editor's content).
   const [html, setHtml] = useState("");
   // Drives whether the Polish button exists at all: no Claude key, no button.
@@ -1990,6 +1993,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
   useEffect(() => {
     setSlash(null);
     setMacroOpen(false);
+    setLogOpen(false);
   }, [conversationId]);
 
   // Dismiss an open reaction row / actions menu on outside click or Esc.
@@ -3185,6 +3189,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               </>
             )}
           </div>
+          <button className={"iconbtn hide-sm" + (logOpen ? " on" : "")} title="Conversation log" aria-label="Conversation log" onClick={() => setLogOpen(true)}>
+            <HistoryIcon />
+          </button>
           <button className={"iconbtn hide-sm" + (showPanel ? " on" : "")} title="Details" onClick={onTogglePanel}>
             <DetailsIcon />
           </button>
@@ -3213,6 +3220,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                   </button>
                   <button onClick={() => { setMoreMenu(false); onTogglePanel(); }}>
                     <DetailsIcon /> {showPanel ? "Hide details" : "Details"}
+                  </button>
+                  <button onClick={() => { setMoreMenu(false); setLogOpen(true); }}>
+                    <HistoryIcon /> Conversation log
                   </button>
                 </GlideMenu>
               </>
@@ -4065,6 +4075,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
             />
           );
         })()}
+
+      {logOpen && <ConversationLog conversationId={conv.id} onClose={() => setLogOpen(false)} />}
 
       {(() => {
         // Resolve the message live from the thread so opens arriving over the

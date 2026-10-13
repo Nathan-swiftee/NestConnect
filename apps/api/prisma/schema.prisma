@@ -525,6 +525,7 @@ model Conversation {
   labels           ConversationLabel[]
   participants     Participant[]
   assignmentEvents AssignmentEvent[]
+  events           ConversationEvent[]
   account          Account?            @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([orgId, inboxId, status, lastActivityAt])
@@ -1179,3 +1180,26 @@ model OpsChecklist {
 
   @@id([opsSopId, userId])
 }
+
+/// The conversation's log: routing, assignment, status and every change made
+/// to it, besides its messages. See docs/conversation-log.md.
+model ConversationEvent {
+  id             String   @id @default(cuid())
+  conversationId String
+  /// created | routed | assigned | unassigned | team_changed | closed | reopened
+  /// | snoozed | woke | priority | labels | subject | organisation | fields
+  /// | message_failed | message_retried
+  type           String
+  /// agent | customer | system
+  actorKind      String
+  /// The teammate, when it was one. Names are resolved when the log is read.
+  actorUserId    String?
+  /// What changed — ids, old and new values, a reason — as the type needs.
+  data           Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+

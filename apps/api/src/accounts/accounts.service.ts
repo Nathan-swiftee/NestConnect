@@ -25,6 +25,7 @@ import {
   routingAccount,
   type AccountRoutingInput,
 } from "@ding/schemas";
+import { ConversationLog, agent } from "../conversations/conversation-log";
 import { Store } from "../data/store";
 import { AccountStore, type AccountCounts, type AccountFields, type AccountRow, type LinkRow, type ResourceRow } from "./account.store";
 import { knowledgeText, sanitizeKnowledgeHtml } from "./knowledge-html";
@@ -716,13 +717,17 @@ export class AccountsService {
     const { actor } = await this.actor(userId);
     const conv = await this.store.getConversation(conversationId);
     if (!conv) throw new NotFoundException("Conversation not found");
+    const fromName = (await this.conversationContext(conversationId)).account?.account.name ?? null;
+    const log = new ConversationLog(this.store);
     if (accountId) {
       const account = await this.mustGet(accountId);
       if (account.archivedAt) throw new BadRequestException("That organisation is archived");
       await this.accounts.setConversationAccount(conversationId, accountId);
       await this.accounts.logActivity(accountId, actor, "conversation.linked", `Marked a conversation with ${conv.contact.displayName} as about ${account.name}`);
+      if (fromName !== account.name) await log.record(conversationId, "organisation", agent(userId), { accountId, name: account.name, fromName });
     } else {
       await this.accounts.setConversationAccount(conversationId, null);
+      if (fromName) await log.record(conversationId, "organisation", agent(userId), { accountId: null, name: null, fromName });
     }
     return this.conversationContext(conversationId);
   }

@@ -15,6 +15,7 @@ import type {
   Conversation,
   ConversationPage,
   ConversationStatus,
+  ConversationEventType,
   ConversationWithMessages,
   CreateTemplateInput,
   Inbox,
@@ -310,6 +311,27 @@ export interface AnalyticsBundle {
  * depend on this abstract token, never on a concrete store — so persistence is
  * a swap in `DataModule`, nothing more.
  */
+/** What the conversation log compares before and after a change. */
+export interface ConversationState {
+  status: ConversationStatus;
+  assigneeUserId: string | null;
+  assignedTeamId: string | null;
+  priority: Priority;
+  snoozedUntil: string | null;
+}
+
+export interface ConversationEventInput {
+  type: ConversationEventType;
+  actorKind: "agent" | "customer" | "system";
+  actorUserId?: string | null;
+  data?: Record<string, unknown>;
+}
+
+export interface ConversationEventRow extends Required<ConversationEventInput> {
+  id: string;
+  createdAt: string;
+}
+
 export abstract class Store {
   /** The current demo user until real auth resolves identity per-request. */
   abstract get demoUserId(): string;
@@ -778,6 +800,14 @@ export abstract class Store {
    *  it; it's cleared when the agent opens the conversation). No-op unless the
    *  conversation is currently snoozed. */
   abstract wakeSnoozed(conversationId: string): Promise<Conversation | undefined>;
+
+  /* ---- the conversation log (docs/conversation-log.md) ---- */
+  /** Just what the log compares before and after a change — cheap to read. */
+  abstract conversationState(conversationId: string): Promise<ConversationState | undefined>;
+  /** Append one entry. The conversation must be the bound workspace's. */
+  abstract logConversationEvent(conversationId: string, event: ConversationEventInput): Promise<void>;
+  /** Newest first, capped. */
+  abstract listConversationEvents(conversationId: string, limit?: number): Promise<ConversationEventRow[]>;
 
   /* ---- Notifications (the bell) ---- */
   abstract createNotification(input: {
