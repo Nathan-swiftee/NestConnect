@@ -147,7 +147,10 @@ describe("the list of chats", () => {
   it("filters to unread", () => {
     mockState.rooms = [room({ unread: 2 }), room({ id: "r2", name: "Quiet group", unread: 0 })];
     const view = render(<Chat />);
-    fireEvent.press(view.getByText("Unread 1"));
+    // The Inbox's pill: the label, with its count beside it.
+    const pill = view.getByRole("tab", { name: /^Unread/ });
+    expect(view.getByText("Unread")).toBeTruthy();
+    fireEvent.press(pill);
     expect(view.queryByText("Dispatch London")).not.toBeNull();
     expect(view.queryByText("Quiet group")).toBeNull();
   });

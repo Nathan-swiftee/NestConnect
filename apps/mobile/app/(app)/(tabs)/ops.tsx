@@ -5,6 +5,8 @@ import { relativeTime, useOpsLibrary, useOpsStatus, useTeams } from "@ding/clien
 import type { OpsFilter, OpsSopCard } from "@ding/schemas";
 import { opsCardMatches, sortOpsCards } from "@ding/schemas";
 import { OpsChip, OpsTile, SopFlags, teamsLabel } from "../../../src/components/OpsParts";
+import { haptics } from "../../../src/haptics";
+import { FilterChip } from "../../../src/components/FilterChip";
 import { TabHeader } from "../../../src/components/TabHeader";
 import { EmptyState, QueryState } from "../../../src/components/States";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
@@ -37,9 +39,9 @@ export default function Ops() {
   const shown = useMemo(() => sortOpsCards(all.filter((s) => opsCardMatches(s, filter, collectionId))), [all, filter, collectionId]);
   const waiting = status.data?.pendingAcks ?? 0;
 
-  const filters: Array<{ key: OpsFilter; label: string }> = [
+  const filters: Array<{ key: OpsFilter; label: string; count?: number }> = [
     { key: "all", label: "All" },
-    { key: "must_read", label: waiting ? `Must read · ${waiting}` : "Must read" },
+    { key: "must_read", label: "Must read", count: waiting || undefined },
     ...(canEdit
       ? ([
           { key: "review", label: "Due for review" },
@@ -132,25 +134,20 @@ export default function Ops() {
               </ScrollView>
             ) : null}
 
-            <View className="flex-row flex-wrap gap-1.5">
-              {filters.map((f) => {
-                const on = filter === f.key;
-                return (
-                  <Touchable
-                    key={f.key}
-                    feel="chip"
-                    onPress={() => setFilter(f.key)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: on }}
-                    style={{ backgroundColor: on ? c.brandTint : c.surface2 }}
-                    className="rounded-full px-3 py-1"
-                  >
-                    <Text style={{ color: on ? c.brandStrong : c.textMuted }} className="text-sm font-medium">
-                      {f.label}
-                    </Text>
-                  </Touchable>
-                );
-              })}
+            {/* The same pills as the Inbox and Chat. */}
+            <View className="flex-row flex-wrap gap-2">
+              {filters.map((f) => (
+                <FilterChip
+                  key={f.key}
+                  label={f.label}
+                  count={f.count}
+                  active={filter === f.key}
+                  onPress={() => {
+                    haptics.select();
+                    setFilter(f.key);
+                  }}
+                />
+              ))}
             </View>
           </View>
         }
