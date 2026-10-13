@@ -5,6 +5,8 @@ import type {
   Contact,
   ContactDuplicateGroup,
   MergeContactsInput,
+  BulkContactsInput,
+  BulkContactsResult,
   CreateCustomFieldInput,
   CustomField,
   CustomFieldEntity,
@@ -382,6 +384,9 @@ export const api = {
   aiModels: () => get<{ models: { id: string; name: string }[]; error?: string }>("/ai/models"),
   // pull-to-refresh: fetch any new Gmail on demand
   syncGmail: () => post<{ ok: boolean; synced: number }>("/channels/google/sync", {}),
+  /** Bring in the email a connected Gmail channel had since a moment (in the background). */
+  pullMissedEmail: (inboxId: string, since: string) =>
+    post<{ ok: true; since: string }>(`/channels/google/inboxes/${encodeURIComponent(inboxId)}/missed`, { since }),
   // customers (CRM)
   contacts: () => get<Contact[]>("/contacts"),
   contactDuplicates: () => get<ContactDuplicateGroup[]>("/contacts/duplicates"),
@@ -394,6 +399,7 @@ export const api = {
     post<ImportContactsResult>("/contacts/import", input),
   updateContact: (id: string, input: UpdateContactInput) => patch<Contact>(`/contacts/${id}`, input),
   deleteContact: (id: string) => del<{ ok: boolean }>(`/contacts/${id}`),
+  bulkContacts: (input: BulkContactsInput) => post<BulkContactsResult>("/contacts/bulk", input),
   // Open (or start) this customer's conversation on another channel. An explicit
   // inboxId picks which number/inbox to send from when several are connected.
   reachContact: (contactId: string, channel: "whatsapp" | "email", inboxId?: string) =>

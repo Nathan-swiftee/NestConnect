@@ -224,6 +224,17 @@ jobs:
       - name: Macros
         run: pnpm check:macros
 
+      # A Gmail mailbox Google signs out: flagged once, reconnected in place,
+      # and the email it missed brought in (or not, if you choose) — swept by
+      # date when Gmail's history no longer reaches back.
+      - name: Gmail reconnect
+        run: pnpm check:gmail-reauth
+
+      # Customers › select: tag, block and delete many at once, and merge
+      # customers that share nothing.
+      - name: Customer bulk actions
+        run: pnpm check:customer-bulk
+
       # Email signatures: each email channel's design, filled in per sender —
       # a missing position drops its line, and an email signs as the mailbox it
       # really leaves from.

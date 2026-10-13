@@ -9,7 +9,7 @@ import {
 } from "../lib/nestchat-embed";
 import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
-import { signedOutSince, useReconnectEmail } from "./ReconnectEmail";
+import { PullMissedEmail, ReconnectEmailDialog, signedOutSince, useReconnectEmail } from "./ReconnectEmail";
 import { MacrosPane } from "./MacrosPane";
 import { OpsModulesPane } from "./ops/OpsModulesPane";
 import { ChannelSignature, signatureDraftFor, signatureInput, type SignatureDraft } from "./ChannelSignature";
@@ -566,6 +566,7 @@ function ChannelEditor({
   const isEmail = inbox.type === "email";
   const isGmail = isEmail && inbox.channelConfigPublic?.provider === "gmail";
   const reconnect = useReconnectEmail(onToast);
+  const [askReconnect, setAskReconnect] = useState(false);
   const [tab, setTab] = useState<"settings" | "signature">("settings");
   const [sig, setSig] = useState<SignatureDraft>(() => signatureDraftFor(inbox));
   const saveSig = useSetInboxSignature();
@@ -733,8 +734,8 @@ function ChannelEditor({
               </div>
               <p>
                 {inbox.signedOut.reason}. New email isn't arriving and replies can't be sent. Reconnect with{" "}
-                <b>{inbox.handle}</b> — the channel keeps its conversations, routing and signature, and the email that arrived
-                meanwhile is brought in.
+                <b>{inbox.handle}</b> — the channel keeps its conversations, routing and signature, and you choose whether the
+                email that arrived meanwhile is brought in.
               </p>
             </>
           ) : (
@@ -742,9 +743,19 @@ function ChannelEditor({
               Signed in with Google as <b>{inbox.handle}</b>. If it ever stops working, reconnect here — nothing on the channel is lost.
             </p>
           )}
-          <button type="button" className={inbox.signedOut ? "btn-primary" : "btn-ghost"} onClick={() => reconnect(inbox)}>
-            {inbox.signedOut ? "Reconnect with Google" : "Reconnect"}
-          </button>
+          <div className="reauth-box__actions">
+            <button
+              type="button"
+              className={inbox.signedOut ? "btn-primary" : "btn-ghost"}
+              onClick={() => (inbox.signedOut ? setAskReconnect(true) : reconnect(inbox))}
+            >
+              {inbox.signedOut ? "Reconnect with Google" : "Reconnect"}
+            </button>
+            {!inbox.signedOut && <PullMissedEmail inbox={inbox} onToast={onToast} />}
+          </div>
+          {askReconnect && inbox.signedOut && (
+            <ReconnectEmailDialog inbox={inbox} onClose={() => setAskReconnect(false)} onToast={onToast} />
+          )}
         </div>
       )}
       {kind && kind.fields.length > 0 && !isGmail && (

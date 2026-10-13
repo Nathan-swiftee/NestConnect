@@ -11,11 +11,13 @@ import {
   Post,
 } from "@nestjs/common";
 import {
+  bulkContactsInputSchema,
   createContactInputSchema,
   importContactsInputSchema,
   mergeContactsInputSchema,
   reachInputSchema,
   updateContactInputSchema,
+  type BulkContactsResult,
   type CreateContactInput,
   type ImportContactsInput,
   type ImportContactsResult,
@@ -29,6 +31,7 @@ import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { AccountsService } from "../accounts/accounts.service";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
+import type { z } from "zod";
 
 /** The customer directory (CRM): list, view, add, tag and pin-route contacts. */
 @Controller("contacts")
@@ -149,6 +152,53 @@ export class ContactsController {
     }
     const contact = await this.store.mergeContacts(body);
     return { contact };
+  }
+
+  /**
+   * One action on many customers: tag (add and take off, never replacing what
+   * else they have), block or unblock, or delete. Deleting many at once is for
+   * admins and managers, as importing is; the rest is anyone's, as it is one
+   * customer at a time.
+   */
+  @Post("bulk")
+  async bulk(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(bulkContactsInputSchema)) body: z.output<typeof bulkContactsInputSchema>,
+  ): Promise<BulkContactsResult> {
+    if (body.action === "delete") {
+      const me = await this.store.getUser(userId);
+      if (me?.role !== "admin" && me?.role !== "manager") {
+        throw new ForbiddenException("Only admins and managers can delete customers in bulk");
+      }
+    }
+    if (body.action === "tag" && !body.add.length && !body.remove.length) {
+      throw new BadRequestException("Pick a tag to add or take off");
+    }
+    const result: BulkContactsResult = { done: 0, missing: 0 };
+    for (const id of [...new Set(body.ids)]) {
+      const contact = await this.store.getContact(id);
+      if (!contact) {
+        result.missing++;
+        continue;
+      }
+      if (body.action === "delete") {
+        await this.store.deleteContact(id);
+      } else if (body.action === "block") {
+        if (!!contact.blocked === body.blocked) continue;
+        await this.store.updateContact(id, { blocked: body.blocked });
+      } else {
+        // Tags match whatever their case, as the filter does.
+        const off = new Set(body.remove.map((t) => t.toLowerCase()));
+        const kept = (contact.tags ?? []).filter((t) => !off.has(t.toLowerCase()));
+        const tags = [...kept];
+        for (const t of body.add) if (!tags.some((x) => x.toLowerCase() === t.toLowerCase())) tags.push(t);
+        const same = tags.length === (contact.tags ?? []).length && tags.every((t, i) => t === contact.tags?.[i]);
+        if (same) continue;
+        await this.store.updateContact(id, { tags });
+      }
+      result.done++;
+    }
+    return result;
   }
 
   @Patch(":id")

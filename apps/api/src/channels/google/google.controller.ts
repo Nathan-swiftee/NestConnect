@@ -1,14 +1,19 @@
 import {
+  BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
+  NotFoundException,
+  Param,
   Post,
   Query,
   Req,
   Res,
   UnauthorizedException,
 } from "@nestjs/common";
+import { EMAIL_CUTOVER_DAYS } from "@ding/schemas";
 import { SkipThrottle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { env } from "../../config/env";
@@ -59,6 +64,9 @@ export class GoogleController {
     @Res() res: Response,
     /** Sign this existing channel in again, keeping everything on it. */
     @Query("inboxId") inboxId?: string,
+    /** "skip": reconnect without bringing in the email that arrived while it
+     *  was signed out. By default it's brought in. */
+    @Query("missed") missed?: string,
   ): Promise<void> {
     const redirectUri = googleRedirectUri(req);
     const user = await this.store.getUser(userId);
@@ -90,7 +98,11 @@ export class GoogleController {
       });
       return;
     }
-    const state = this.google.signState({ userId: user.id, orgId: user.orgId, ...(reconnecting ? { inboxId: reconnecting.id } : {}) });
+    const state = this.google.signState({
+      userId: user.id,
+      orgId: user.orgId,
+      ...(reconnecting ? { inboxId: reconnecting.id, skipMissed: missed === "skip" } : {}),
+    });
     const authUrl = await this.google.authUrl(user.orgId, redirectUri, state, reconnecting?.handle);
     res.redirect(302, authUrl);
   }
@@ -110,7 +122,7 @@ export class GoogleController {
     try {
       if (!code) throw new Error("Missing authorization code");
       if (!state) throw new Error("Missing state");
-      const { userId, orgId, inboxId } = this.google.verifyState(state);
+      const { userId, orgId, inboxId, skipMissed } = this.google.verifyState(state);
       void userId; // bound for CSRF/user verification; teams drive routing below
       // The redirect carries no session; the signed state says whose workspace
       // started the flow, and the rest of it acts there.
@@ -157,8 +169,12 @@ export class GoogleController {
         target ??
         (await this.store.listInboxes()).find((i) => i.type === "email" && i.handle.toLowerCase() === email.toLowerCase());
       let inbox;
-      // Where the last sync got to, before this sign-in: a reconnect catches up from there.
-      const resumeFrom = existing ? (await this.store.getInboxConfig(existing.id))?.[GMAIL_CONFIG.historyId] : undefined;
+      // Where the last sync got to, before this sign-in: a reconnect catches up
+      // from there. And when Google signed it out — read now, as signing in
+      // clears it — for the mail Gmail's history no longer reaches back to.
+      const before = existing ? await this.store.getInboxConfig(existing.id) : undefined;
+      const resumeFrom = before?.[GMAIL_CONFIG.historyId];
+      const signedOutAt = before?.[GMAIL_CONFIG.authErrorAt] ? new Date(before[GMAIL_CONFIG.authErrorAt]!) : undefined;
       if (existing) {
         inbox = (await this.store.updateInbox(existing.id, { channelConfig })) ?? existing;
       } else {
@@ -181,10 +197,11 @@ export class GoogleController {
       // org has a Pub/Sub topic configured. (Real mode only.)
       //
       // A reconnect does neither: it picks up from where the mailbox stopped,
-      // so mail that arrived while it was signed out still comes in.
+      // so mail that arrived while it was signed out still comes in — unless
+      // whoever reconnected chose to start from now.
       if (!this.google.isMock) {
-        if (resumeFrom) {
-          await this.gmailSync.catchUp(inbox);
+        if (resumeFrom && !skipMissed) {
+          await this.gmailSync.catchUp(inbox, signedOutAt && !Number.isNaN(signedOutAt.getTime()) ? signedOutAt : undefined);
         } else {
           await this.gmailSync.establishBaseline(inbox, accessToken);
         }
@@ -246,6 +263,38 @@ export class GoogleController {
   async sync(): Promise<{ ok: boolean; synced: number }> {
     const synced = await this.gmailSync.syncAll();
     return { ok: true, synced };
+  }
+
+  /**
+   * Bring in the email a connected Gmail channel received or sent since a
+   * moment — for a gap a reconnect didn't cover (one made before it could, or
+   * a mailbox out for longer than Gmail keeps its history). Starts the sweep and
+   * answers at once; the mail arrives in the inbox as it's read. What's
+   * already here is skipped. Managers and admins, as reconnecting is.
+   */
+  @Post("inboxes/:id/missed")
+  @HttpCode(202)
+  async pullMissed(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body() body: { since?: string },
+  ): Promise<{ ok: true; since: string }> {
+    // The demo workspace answers first, as connecting does.
+    await this.sandbox.assertLive("Bringing in email");
+    const user = await this.store.getUser(userId);
+    if (!user || (user.role !== "admin" && user.role !== "manager")) {
+      throw new ForbiddenException("Only managers and admins can do this");
+    }
+    const inbox = await this.store.getInbox(id);
+    const config = inbox?.type === "email" ? await this.store.getInboxConfig(inbox.id) : undefined;
+    if (!inbox || config?.[GMAIL_CONFIG.provider] !== "gmail") throw new NotFoundException("That Gmail channel no longer exists");
+    if (config[GMAIL_CONFIG.authError]) throw new BadRequestException("Reconnect the mailbox first");
+    const since = new Date(body?.since ?? "");
+    const earliest = Date.now() - EMAIL_CUTOVER_DAYS * 24 * 60 * 60 * 1000;
+    if (Number.isNaN(since.getTime()) || since.getTime() > Date.now()) throw new BadRequestException("Pick a date in the past");
+    if (since.getTime() < earliest) throw new BadRequestException(`It can reach back ${EMAIL_CUTOVER_DAYS} days at most`);
+    if (!this.google.isMock) void this.gmailSync.sweepMissed(inbox, since);
+    return { ok: true, since: since.toISOString() };
   }
 
   /** Render the tiny HTML page that posts the result to the opener and closes. */
