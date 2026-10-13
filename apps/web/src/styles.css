@@ -1032,6 +1032,8 @@ input,textarea{font:inherit}
 .mentionpop__row.sel{background:color-mix(in srgb,var(--brand) 14%,transparent)}
 .mentionpop__av{width:30px;height:30px;flex:0 0 30px;font-size:var(--fs-xs)}
 .mentionpop__meta{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+/* Between the people on this conversation's inbox and everyone else. */
+.mentionpop__sep{margin:4px 8px 2px;padding-top:6px;border-top:1px solid var(--border);font-size:var(--fs-2xs);font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--text-faint)}
 .mentionpop__meta b{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mentionpop__meta small{color:var(--text-faint);font-size:var(--fs-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 

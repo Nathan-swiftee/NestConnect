@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mentionHandle, mentionLabel, mentionParts, mentionsToNames, namesToHandles } from "@ding/schemas";
+import { mentionHandle, mentionLabel, mentionParts, mentionsToNames, namesToHandles, noteMentionCandidates } from "@ding/schemas";
 
 /**
  * @-mentions: people see names, the server routes by handle. The note is
@@ -57,5 +57,34 @@ describe("reading a mention", () => {
   });
   it("the handle is the email's local part, lower-cased", () => {
     expect(mentionHandle({ email: "Nathan@Swiftee.co.uk" })).toBe("@nathan");
+  });
+});
+
+describe("noteMentionCandidates", () => {
+  const p = (name: string, teamIds: string[]) => ({ user: { name, email: `${name.toLowerCase()}@swiftee.co.uk` }, teamIds });
+  const people = [p("Amara", ["sales"]), p("Ben", ["support"]), p("Cara", []), p("Dev", ["support", "sales"])];
+
+  it("puts the people on the conversation's inbox first, then everyone else", () => {
+    const { list, here } = noteMentionCandidates(people, ["support"], "");
+    expect(list.map((u) => u.name)).toEqual(["Ben", "Dev", "Amara", "Cara"]);
+    expect(here).toBe(2);
+  });
+
+  it("keeps that order while filtering", () => {
+    const { list, here } = noteMentionCandidates(people, ["sales"], "a");
+    expect(list.map((u) => u.name)).toEqual(["Amara", "Cara"]);
+    expect(here).toBe(1);
+  });
+
+  it("is one list when the inbox has no teams", () => {
+    const { list, here } = noteMentionCandidates(people, [], "");
+    expect(list.map((u) => u.name)).toEqual(["Amara", "Ben", "Cara", "Dev"]);
+    expect(here).toBe(0);
+  });
+
+  it("caps the list, counting only what's shown", () => {
+    const { list, here } = noteMentionCandidates(people, ["support"], "", 1);
+    expect(list.map((u) => u.name)).toEqual(["Ben"]);
+    expect(here).toBe(1);
   });
 });

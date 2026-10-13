@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent, PointerEvent as RPointerEvent } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -6,7 +6,7 @@ import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import type { Message, Contact, Macro, Mentionable, MessageStatus, ChannelType, TemplateFillContext, WaWindow } from "@ding/schemas";
-import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, isEmailAddress, macroQueryAt, mentionLabel, mentionParts, namesToHandles, renderEmailSignature, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, signedAsLine, templatesForWaba, typingPingMs } from "@ding/schemas";
+import { ClientEvent, FORWARD_MAX_TARGETS, autoTemplateParams, autoTemplateSlot, fillTemplatePreview, inboxLabel, isEmailAddress, macroQueryAt, mentionLabel, mentionParts, namesToHandles, noteMentionCandidates, renderEmailSignature, replyTargetsFor, resolveTemplateDefault, searchMacros, sendingInbox, signedAsLine, templatesForWaba, typingPingMs } from "@ding/schemas";
 import { useConversation, useMe, useSendMessage, useAssign, useSetStatus, useSnooze, useTeams, useMarkRead, useMarkUnread, useReact, useLoadOlderMessages, usePeople, useRetryMessage, useIntegrations, useTemplates, useContacts, useForwardMessage, useMediaQuery, useInboxes, useTypingPresence, useConversationMacros, useChatStatus, useShareConversation } from "../hooks";
 import { api } from "../lib/api";
 import { LabelPicker } from "./LabelPicker";
@@ -2251,16 +2251,15 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
 
   // ─── @-mention autocomplete (internal notes) ───
   // Teammates matching the current @query — empty unless a note @token is open.
-  const mentionList = mention
-    ? (people ?? [])
-        .map((m) => m.user)
-        .filter((u) => {
-          const q = mention.query.toLowerCase();
-          if (!q) return true;
-          return u.name.toLowerCase().includes(q) || u.email.split("@")[0].toLowerCase().includes(q);
-        })
-        .slice(0, 6)
-    : [];
+  // The people on this conversation's inbox (and its assigned team) first,
+  // then everyone else, with a divider between.
+  const mentionInboxTeams = [
+    ...(inboxes?.find((i) => i.id === conv.inboxId)?.teamIds ?? []),
+    ...(conv.assignedTeamId ? [conv.assignedTeamId] : []),
+  ];
+  const { list: mentionList, here: mentionHere } = mention
+    ? noteMentionCandidates(people ?? [], mentionInboxTeams, mention.query)
+    : { list: [], here: 0 };
 
   // On each note keystroke, detect an "@query" ending at the caret and open the
   // picker. Only in note mode — customers can't be @-mentioned.
@@ -3487,8 +3486,9 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
               {internal && mention && mentionList.length > 0 && (
                 <div className="mentionpop" role="listbox" aria-label="Mention a teammate">
                   {mentionList.map((u, i) => (
+                    <Fragment key={u.email}>
+                    {i === mentionHere && mentionHere > 0 && <div className="mentionpop__sep">Others</div>}
                     <button
-                      key={u.email}
                       type="button"
                       role="option"
                       aria-selected={i === mentionSel}
@@ -3506,6 +3506,7 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                         <small>{u.position || u.email}</small>
                       </span>
                     </button>
+                    </Fragment>
                   ))}
                 </div>
               )}

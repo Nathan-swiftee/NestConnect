@@ -87,3 +87,30 @@ export function mentionsToNames(body: string, people: Mentionable[]): string {
     .map((p) => p.text)
     .join("");
 }
+
+/**
+ * Who to offer for an @ in a conversation's note, and in what order: the
+ * people who answer the conversation's inbox (its teams, and the team it's
+ * assigned to) first — they're who a note there is usually for — then
+ * everyone else. An inbox with no teams has no "here", so it's one list.
+ * Within each group the order is the one given.
+ *
+ * `here` is how many of the returned list are on the inbox, for the divider.
+ */
+export function noteMentionCandidates<U extends Mentionable>(
+  people: Array<{ user: U; teamIds: string[] }>,
+  inboxTeamIds: string[],
+  query: string,
+  limit = 8,
+): { list: U[]; here: number } {
+  const q = query.trim().toLowerCase();
+  const matches = people.filter(
+    ({ user }) => !q || user.name.toLowerCase().includes(q) || user.email.split("@")[0]!.toLowerCase().includes(q),
+  );
+  const teams = new Set(inboxTeamIds);
+  if (!teams.size) return { list: matches.slice(0, limit).map((m) => m.user), here: 0 };
+  const onInbox = matches.filter((m) => m.teamIds.some((t) => teams.has(t)));
+  const rest = matches.filter((m) => !m.teamIds.some((t) => teams.has(t)));
+  const list = [...onInbox, ...rest].slice(0, limit).map((m) => m.user);
+  return { list, here: Math.min(onInbox.length, list.length) };
+}
