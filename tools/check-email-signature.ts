@@ -67,6 +67,15 @@ async function main() {
   ok("on either side", text(sep2) === "Support team", text(sep2));
   const both = fillSignatureHtml("<p>A</p><p>{{agent.position}} · {{team.name}}</p><p>B</p>", { agentName: "x" });
   ok("a line with nothing left is dropped whole", both === "<p>A</p><p>B</p>", both);
+  // A logo, then a banner under it: the editor keeps each as a block, written
+  // out as bare <img> tags — which a mail client would put side by side.
+  const pics = renderEmailSignature(
+    { layoutHtml: '<p>{{agent.name}}</p><img src="https://x/logo.png" width="120"><img src="https://x/banner.png">', footerHtml: null } as never,
+    NATHAN,
+  );
+  ok("images on their own lines stay on their own lines", pics.includes('<div><img src="https://x/logo.png" width="120"></div><div><img src="https://x/banner.png"></div>'), pics);
+  const icon = renderEmailSignature({ layoutHtml: '<p>Call <img src="https://x/phone.png" width="12"> us</p>', footerHtml: null } as never, NATHAN);
+  ok("an icon inside a line of text stays in the line", icon === '<p>Call <img src="https://x/phone.png" width="12"> us</p>', icon);
   const esc = renderEmailSignature(null, { ...NATHAN, agentName: "<b>Eve</b> & Co" });
   ok("values are escaped, not markup", esc.includes("&lt;b&gt;Eve&lt;/b&gt; &amp; Co") && !esc.includes("<b>Eve"), esc);
   const unknown = fillSignatureHtml("<p>Ref {{order.number}}</p>", NATHAN);

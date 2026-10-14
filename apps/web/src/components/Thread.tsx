@@ -2188,7 +2188,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       (subject ? `Subject: ${escapeHtml(subject)}<br>` : "") +
       `Date: ${escapeHtml(when)}</p><blockquote>${origHtml}</blockquote>`;
     send.mutate(
-      { id: conv.id, body: note.trim(), bodyHtml: forwardHtml, forwardTo: toList },
+      // `forwardOfId`: the original's attachments go along with it.
+      { id: conv.id, body: note.trim(), bodyHtml: forwardHtml, forwardTo: toList, forwardOfId: m.id },
       { onError: () => onToast("Couldn’t forward the email. Please try again.") },
     );
     setForwardMsg(null);

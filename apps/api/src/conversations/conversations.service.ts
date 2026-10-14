@@ -286,6 +286,19 @@ export class ConversationsService {
     if (isForward && !forwardTo!.every((a) => a.includes("@"))) {
       throw new BadRequestException("Forward needs a valid email address.");
     }
+    // A forward carries the original's files, as any mail client's does.
+    // Copies, so the original message keeps its own attachments.
+    let attachmentIds = input.attachmentIds;
+    if (isForward && input.forwardOfId) {
+      // It may be older than the page loaded with the conversation.
+      const source = await this.store.getMessagePlace(input.forwardOfId);
+      if (!source || source.conversationId !== conv.id) {
+        throw new NotFoundException("The message being forwarded isn't in this conversation");
+      }
+      if (source.internal) throw new BadRequestException("Internal notes can't be forwarded.");
+      const copies = await this.store.stageAttachmentCopies(input.forwardOfId);
+      if (copies.length) attachmentIds = [...(attachmentIds ?? []), ...copies];
+    }
     // Record the subject on email sends so the message can show it. A forward
     // carries the "Fwd:" subject it was actually sent with; a reply carries the
     // thread's subject (just updated above from any edit).
@@ -313,7 +326,7 @@ export class ConversationsService {
         body,
         bodyHtml,
         internal: input.internal,
-        attachmentIds: input.attachmentIds,
+        attachmentIds,
         quotedMsgId: input.quotedMsgId,
         channel: channelOverride,
         idempotencyKey,

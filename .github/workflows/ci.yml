@@ -134,6 +134,10 @@ jobs:
       - name: Email Reply-To decides who the customer is
         run: pnpm check:reply-to
 
+      # Forwarding an email takes its attachments, as copies (the original keeps its own).
+      - name: Forwarded email carries its attachments
+        run: pnpm check:email-forward
+
       # Registering a WhatsApp number on the Cloud API. Fails silently in the
       # worst way available: a number Meta has left at PENDING has perfectly
       # good credentials saved, so it reads as "Connected" everywhere in the app

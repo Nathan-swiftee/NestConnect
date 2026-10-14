@@ -929,6 +929,8 @@ export function useSendMessage() {
       channel?: ChannelType;
       /** Forward this email on to other people (fresh "Fwd:" thread, logged here). */
       forwardTo?: string[];
+      /** With `forwardTo`: the message being forwarded, so its attachments go too. */
+      forwardOfId?: string;
     }) =>
       api.sendMessage(v.id, v.body, v.internal ?? false, v.attachmentIds, {
         template: v.template,
@@ -939,6 +941,7 @@ export function useSendMessage() {
         bcc: v.bcc,
         channel: v.channel,
         forwardTo: v.forwardTo,
+        forwardOfId: v.forwardOfId,
       }),
     // Optimistically render a plain text/HTML reply immediately (skip when it
     // carries attachments or a template — those render from the server result).

@@ -1628,6 +1628,9 @@ export const sendMessageInputSchema = z
      *  the timeline shows the forward (Front-style). The first address is the To;
      *  any others ride as Cc. */
     forwardTo: z.array(z.string()).optional(),
+    /** With `forwardTo`: the message being forwarded. Its attachments go along
+     *  (as copies, so the original keeps its own). */
+    forwardOfId: z.string().optional(),
   })
   // Must carry something — text, an attachment, a template, or a forward (which
   // carries the original email it's passing on).

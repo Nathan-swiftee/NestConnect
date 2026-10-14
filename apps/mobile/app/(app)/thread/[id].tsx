@@ -1000,6 +1000,8 @@ export default function Thread() {
               fromLabel: data.contact.displayName,
             }),
             forwardTo: to,
+            // The original's attachments go along with it.
+            forwardOfId: m.id,
           });
           setEmailForwarding(null);
         }}

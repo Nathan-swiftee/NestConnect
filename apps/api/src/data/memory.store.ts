@@ -1359,6 +1359,16 @@ export class MemoryStore extends Store {
     return att;
   }
 
+  async getMessagePlace(messageId: string): Promise<{ conversationId: string; internal: boolean } | undefined> {
+    const orgId = boundOrgId();
+    for (const c of this.conversations) {
+      if (orgId && c.orgId !== orgId) continue;
+      const m = c.messages.find((x) => x.id === messageId);
+      if (m) return { conversationId: c.id, internal: m.internal };
+    }
+    return undefined;
+  }
+
   async stageAttachmentCopies(messageId: string): Promise<string[]> {
     let source: Attachment[] | undefined;
     for (const rec of this.conversations) {

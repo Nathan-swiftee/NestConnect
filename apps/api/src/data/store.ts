@@ -708,6 +708,10 @@ export abstract class Store {
    */
   abstract stageAttachmentCopies(messageId: string): Promise<string[]>;
 
+  /** Where one message lives and whether it's a note — for acting on a message
+   *  that may be older than the conversation's loaded page (e.g. forwarding it). */
+  abstract getMessagePlace(messageId: string): Promise<{ conversationId: string; internal: boolean } | undefined>;
+
   /** Resolve a provider message id (WhatsApp wamid) to our stored message. */
   abstract getMessageRefByChannelId(
     channelMsgId: string,
