@@ -287,7 +287,18 @@ export class BusinessProfileService {
       // Meta's code 100 is any "invalid parameter", not only an unknown number.
       // Where its reasons are the point (an application it turned down), its
       // own words say more than our guess at what went wrong.
-      const e = (json.error ?? {}) as { code?: number; message?: string; error_user_msg?: string };
+      const e = (json.error ?? {}) as { code?: number; message?: string; error_user_msg?: string; fbtrace_id?: string };
+      // Codes 1 and 2 are Meta failing on its own side ("An unknown error has
+      // occurred"), which says nothing a person can act on. Say what usually
+      // causes it, and give the trace id Meta's support asks for.
+      if (opts?.metaWords && (e.code === 1 || e.code === 2) && !e.error_user_msg) {
+        throw new BadGatewayException(
+          "WhatsApp couldn't process this request (Meta returned an internal error). " +
+            "This usually means the number isn't eligible yet: check two-step verification is on, the display name is approved, " +
+            "and the business is verified in Meta Business Manager — or apply from WhatsApp Manager instead." +
+            (e.fbtrace_id ? ` Meta reference: ${e.fbtrace_id}` : ""),
+        );
+      }
       if (opts?.metaWords && e.code !== 190 && (e.error_user_msg || e.message)) {
         throw new BadGatewayException(`WhatsApp: ${e.error_user_msg || e.message}`);
       }

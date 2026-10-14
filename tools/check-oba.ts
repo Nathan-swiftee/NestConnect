@@ -91,6 +91,14 @@ async function main(): Promise<void> {
       if (err instanceof BadGatewayException) said = err.message;
     }
     ok("Meta's refusal reaches the admin", /Two-step verification/.test(said), said);
+    reply = (c) => (c.method === "POST" ? { status: 500, json: { error: { message: "An unknown error has occurred.", type: "OAuthException", code: 1, fbtrace_id: "AgF-trace" } } } : { status: 200, json: {} });
+    said = "";
+    try {
+      await svc.requestOba(wa.id, input);
+    } catch (err) {
+      if (err instanceof BadGatewayException) said = err.message;
+    }
+    ok("Meta's own internal error is explained, with its reference", /isn't eligible yet/.test(said) && /AgF-trace/.test(said), said);
     ok("a website that isn't one is refused here", !requestWhatsAppObaInputSchema.safeParse({ ...input, businessWebsiteUrl: "swiftee" }).success);
     ok("as are six supporting links", !requestWhatsAppObaInputSchema.safeParse({ ...input, supportingLinks: Array.from({ length: 6 }, (_, i) => `https://x.com/${i}`) }).success);
     const other = await store.createInbox({ orgId: ORG_ID, type: "email", name: "Mail", handle: "m@x.com", teamIds: ["team_support"], routingStrategy: "manual" });
