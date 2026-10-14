@@ -1560,10 +1560,17 @@ export const connectCoexistenceInputSchema = z.object({
   code: z.string().min(1).max(2000),
   wabaId: z.string().regex(/^\d{5,30}$/, "That isn't a WhatsApp Business Account id"),
   phoneNumberId: z.string().regex(/^\d{5,30}$/, "That isn't a phone number id"),
+  /** How Meta's sign-up said it finished. `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`
+   *  is a number that stayed on the phone app; a plain `FINISH` is an ordinary
+   *  API number, which Meta can hand back even from the Business-app card. */
+  finishEvent: z.string().max(80).optional(),
 });
 export type ConnectCoexistenceInput = z.infer<typeof connectCoexistenceInputSchema>;
 
 /** What the web needs to open Meta's sign-up (all public). */
+/** The session event Meta sends when a WhatsApp Business app number was linked. */
+export const BUSINESS_APP_FINISH_EVENT = "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING";
+
 export interface CoexistenceSetup {
   /** The Meta app's id and its Embedded Signup configuration — both set in Settings › Setup. */
   appId: string;

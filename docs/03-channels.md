@@ -135,6 +135,14 @@ A number that already runs on the **WhatsApp Business app** can join Nest Connec
 4. Subscribes the app to the account.
 5. Creates the channel unrouted, like every one-click connect, so the admin picks the team in the editor that opens.
 
+**Checking it really is a Business app number.** Meta's sign-up can hand back an ordinary API number even from the Business-app card: for example a number Meta judged ineligible, or a new number typed in and verified by text. The two need opposite treatment. An API number has to be registered; a Business app number must never be. So the server doesn't trust the card. It decides like this:
+
+1. Ask Meta (`GET /{phone-number-id}?fields=is_on_biz_app`).
+2. If Meta won't say, use how the sign-up finished: `FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING` versus a plain `FINISH`.
+3. If Meta then refuses the phone's contacts with "only available to WhatsApp Business App phone numbers" (131000/10), it's an API number after all.
+
+An ordinary number is saved as a regular WhatsApp channel, with the Register step. Connecting again puts right a channel that was wrongly flagged.
+
 **It is never registered.** The usual API `register` step would take the number off the phone. The registration panel is replaced by a coexistence box, and `register()` refuses a coexistence channel.
 
 **History and contacts.** Straight after connecting, the server asks Meta for the phone's contacts (`smb_app_state_sync`), then its chat history (`history`). Meta allows each **once, within 24 hours** of onboarding. Then:

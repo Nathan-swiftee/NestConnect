@@ -1,6 +1,11 @@
 import { BadRequestException, Body, Controller, ForbiddenException, Get, Logger, Post, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { connectCoexistenceInputSchema, type CoexistenceSetup, type ConnectCoexistenceInput } from "@ding/schemas";
+import {
+  BUSINESS_APP_FINISH_EVENT,
+  connectCoexistenceInputSchema,
+  type CoexistenceSetup,
+  type ConnectCoexistenceInput,
+} from "@ding/schemas";
 import { Public } from "../../auth/public.decorator";
 import { ZodValidationPipe } from "../../common/zod-validation.pipe";
 import { CurrentUserId } from "../../auth/current-user.decorator";
@@ -180,7 +185,7 @@ export class MetaController {
   async connectCoexistence(
     @CurrentUserId() userId: string,
     @Body(new ZodValidationPipe(connectCoexistenceInputSchema)) body: ConnectCoexistenceInput,
-  ): Promise<{ inboxId: string; handle: string; displayNumber: string; sync: string }> {
+  ): Promise<{ inboxId: string; handle: string; displayNumber: string; sync: string; coexistence: boolean }> {
     const user = await this.store.getUser(userId);
     if (!user) throw new ForbiddenException("Not signed in");
     if (user.role !== "admin" && user.role !== "manager") {
@@ -205,6 +210,15 @@ export class MetaController {
     }
     await this.meta.subscribeApp(number.wabaId, accessToken);
 
+    // Whether the number really stayed on the phone app. The card that was
+    // clicked doesn't settle it: Meta's sign-up can add an ordinary API number
+    // from it too (a number Meta judged ineligible, or a new one typed in), and
+    // that number needs registering — which a Business app number must never
+    // get, or the phone loses it. Meta's own answer first, then how its
+    // sign-up said it finished.
+    const onApp = await this.meta.onBusinessApp(number.phoneNumberId, accessToken);
+    let coexistence = onApp ?? (body.finishEvent ? body.finishEvent === BUSINESS_APP_FINISH_EVENT : true);
+
     const name = number.verifiedName ? `${number.verifiedName} (${number.displayNumber})` : number.displayNumber;
     const channelConfig: Record<string, string> = {
       [META_CONFIG.provider]: "meta_cloud",
@@ -212,8 +226,7 @@ export class MetaController {
       [META_CONFIG.accessToken]: accessToken,
       [META_CONFIG.wabaId]: number.wabaId,
       [META_CONFIG.displayNumber]: number.displayNumber,
-      [META_CONFIG.coexistence]: "true",
-      [META_CONFIG.coexistenceState]: "connected",
+      ...appFlags(coexistence),
     };
     const existing = (await this.store.listInboxes()).find((i) => i.type === "whatsapp" && i.handle === number.phoneNumberId);
     const inbox = existing
@@ -231,18 +244,31 @@ export class MetaController {
 
     // Contacts first, then history: a history thread then finds its customer
     // already there, with the name the phone knew them by.
-    let sync: string;
-    try {
-      await this.meta.requestAppData(number.phoneNumberId, accessToken, "smb_app_state_sync");
-      await this.meta.requestAppData(number.phoneNumberId, accessToken, "history");
-      sync = `requested ${new Date().toISOString()}`;
-    } catch (err) {
-      sync = `failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300);
-      this.logger.warn(`Coexistence sync request for ${number.phoneNumberId} ${sync}`);
+    let sync = "";
+    if (coexistence) {
+      try {
+        await this.meta.requestAppData(number.phoneNumberId, accessToken, "smb_app_state_sync");
+        await this.meta.requestAppData(number.phoneNumberId, accessToken, "history");
+        sync = `requested ${new Date().toISOString()}`;
+      } catch (err) {
+        if (MetaOAuthService.notBusinessAppNumber(err)) {
+          // Meta says outright this isn't a Business app number.
+          coexistence = false;
+        } else {
+          sync = `failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300);
+          this.logger.warn(`Coexistence sync request for ${number.phoneNumberId} ${sync}`);
+        }
+      }
     }
-    await this.store.updateInbox(inbox.id, { channelConfig: { [META_CONFIG.coexistenceSync]: sync } });
-    this.logger.log(`Connected WhatsApp Business app number ${number.displayNumber} (coexistence) to inbox ${inbox.id}`);
-    return { inboxId: inbox.id, handle: number.phoneNumberId, displayNumber: number.displayNumber, sync };
+    await this.store.updateInbox(inbox.id, {
+      channelConfig: { ...appFlags(coexistence), [META_CONFIG.coexistenceSync]: sync },
+    });
+    this.logger.log(
+      coexistence
+        ? `Connected WhatsApp Business app number ${number.displayNumber} (coexistence) to inbox ${inbox.id}`
+        : `Connected ${number.displayNumber} to inbox ${inbox.id} as an ordinary API number: Meta didn't link it to the WhatsApp Business app (${onApp === false ? "is_on_biz_app false" : body.finishEvent ? `sign-up finished ${body.finishEvent}` : "app data refused"})`,
+    );
+    return { inboxId: inbox.id, handle: number.phoneNumberId, displayNumber: number.displayNumber, sync, coexistence };
   }
 
   /** Render the tiny HTML page that posts the result to the opener and closes. */
@@ -269,6 +295,18 @@ export class MetaController {
 </html>`;
     res.set("Content-Type", "text/html; charset=utf-8").send(html);
   }
+}
+
+/**
+ * The channel flags that say whether a number stays on the WhatsApp Business
+ * app. Written out in full either way, so a channel that was taken for one
+ * (and so refused registration) is put right when it's connected again.
+ */
+function appFlags(coexistence: boolean): Record<string, string> {
+  return {
+    [META_CONFIG.coexistence]: coexistence ? "true" : "false",
+    [META_CONFIG.coexistenceState]: coexistence ? "connected" : "",
+  };
 }
 
 /** Escape user-facing text placed into the HTML fallback body. */

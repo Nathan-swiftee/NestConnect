@@ -11,6 +11,9 @@
  *   D  The phone's contacts fill in names we only had numbers for, and leave
  *      names we have alone.
  *   E  Meta unlinking the number shows on the channel.
+ *   F  A number Meta added as an ordinary API number, from the same card, is
+ *      connected as one — registrable, nothing asked of the phone — and a
+ *      channel wrongly taken for a Business app number is put right.
  *
  *     pnpm check:coexistence
  */
@@ -72,7 +75,8 @@ async function main(): Promise<void> {
   );
   const wa = new WhatsAppService(ingest, {} as GroupsService, store, realtime, {} as MediaService);
   const sandbox = { assertLive: async () => {}, current: async () => false } as unknown as SandboxPolicy;
-  const meta = new MetaController(new MetaOAuthService(store), store, sandbox);
+  const oauth = new MetaOAuthService(store);
+  const meta = new MetaController(oauth, store, sandbox);
   const registration = new WhatsAppRegistrationService(store);
 
   await runInTenant(ORG_ID, async () => {
@@ -158,6 +162,61 @@ async function main(): Promise<void> {
     ok("Meta unlinking it shows on the channel", (await store.getInboxConfig(inbox.id))?.coexistenceState === "disconnected");
     await meta.connectCoexistence(DEMO_USER_ID, { code: "mock-code", wabaId: WABA, phoneNumberId: PNID });
     ok("connecting again links it again, same channel", (await store.getInboxConfig(inbox.id))?.coexistenceState === "connected" && (await store.listInboxes(ORG_ID)).filter((i) => i.handle === PNID).length === 1);
+
+    console.log("\nF — an ordinary API number from the same card\n");
+    const PNID2 = "100000000000003";
+    const flags = async (id: string) => {
+      const c = await store.getInboxConfig(id);
+      return { coexistence: c?.coexistence, state: c?.coexistenceState, sync: c?.coexistenceSync };
+    };
+    const plain = await meta.connectCoexistence(DEMO_USER_ID, { code: "mock-code", wabaId: WABA, phoneNumberId: PNID2, finishEvent: "FINISH" });
+    const plainInbox = (await store.listInboxes(ORG_ID)).find((i) => i.handle === PNID2)!;
+    ok("Meta finishing a plain sign-up connects it as an ordinary number", plain.coexistence === false);
+    const f1 = await flags(plainInbox.id);
+    ok("…not marked as on the Business app, nothing asked of the phone", f1.coexistence === "false" && !f1.state && !f1.sync, JSON.stringify(f1));
+    let why = "";
+    try {
+      await registration.register(plainInbox.id, "123456");
+    } catch (err) {
+      why = err instanceof Error ? err.message : String(err);
+    }
+    ok("…and the register step isn't refused for it", !/must not be registered/.test(why), why);
+
+    const linked = await meta.connectCoexistence(DEMO_USER_ID, {
+      code: "mock-code",
+      wabaId: WABA,
+      phoneNumberId: PNID2,
+      finishEvent: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+    });
+    ok("connecting it again as a Business app number marks it so", linked.coexistence && (await flags(plainInbox.id)).coexistence === "true");
+
+    // What production saw: the card, then Meta refusing the phone's data because
+    // the number is an ordinary API one.
+    const PROD = `Meta request smb_app_state_sync failed (400): {"error":{"message":"This API is only available to WhatsApp Business App phone numbers onboarded on to WhatsApp Business Platform","code":131000,"type":"OAuthException","error_subcode":10,"fbtrace_id":"x"}}`;
+    ok("Meta's 'not a Business app number' refusal is recognised", MetaOAuthService.notBusinessAppNumber(new Error(PROD)));
+    ok("…and a different failure isn't", !MetaOAuthService.notBusinessAppNumber(new Error(`Meta request history failed (400): {"error":{"code":100,"error_subcode":33}}`)));
+    const realRequest = oauth.requestAppData.bind(oauth);
+    oauth.requestAppData = async () => {
+      throw new Error(PROD);
+    };
+    const repaired = await meta.connectCoexistence(DEMO_USER_ID, { code: "mock-code", wabaId: WABA, phoneNumberId: PNID2 });
+    const f2 = await flags(plainInbox.id);
+    ok("a channel taken for a Business app number is put right when Meta refuses", !repaired.coexistence && f2.coexistence === "false" && !f2.state && !f2.sync, JSON.stringify(f2));
+    oauth.requestAppData = realRequest;
+
+    const realAsk = oauth.onBusinessApp.bind(oauth);
+    oauth.onBusinessApp = async () => false;
+    const askedNo = await meta.connectCoexistence(DEMO_USER_ID, {
+      code: "mock-code",
+      wabaId: WABA,
+      phoneNumberId: PNID2,
+      finishEvent: "FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING",
+    });
+    ok("Meta saying it isn't on the app outranks the sign-up event", !askedNo.coexistence);
+    oauth.onBusinessApp = async () => true;
+    const askedYes = await meta.connectCoexistence(DEMO_USER_ID, { code: "mock-code", wabaId: WABA, phoneNumberId: PNID2, finishEvent: "FINISH" });
+    ok("…and so does Meta saying it is", askedYes.coexistence && (await flags(plainInbox.id)).coexistence === "true");
+    oauth.onBusinessApp = realAsk;
   });
 
   console.log(failed ? `\n${failed} failed` : "\nall good");
