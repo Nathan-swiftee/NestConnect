@@ -13,9 +13,12 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import {
+  requestWhatsAppObaInputSchema,
   updateWhatsAppBusinessProfileInputSchema,
+  type RequestWhatsAppObaInput,
   type UpdateWhatsAppBusinessProfileInput,
   type WhatsAppBusinessProfile,
+  type WhatsAppObaStatus,
 } from "@ding/schemas";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
@@ -65,6 +68,24 @@ export class BusinessProfileController {
     await this.requireManager(userId);
     if (!file) throw new BadRequestException("No image received.");
     return this.profiles.setPhoto(inboxId, file);
+  }
+
+  /** The number's Official Business Account (verified badge) status, read live from Meta. */
+  @Get(":inboxId/oba")
+  async oba(@CurrentUserId() userId: string, @Param("inboxId") inboxId: string): Promise<WhatsAppObaStatus> {
+    await this.requireManager(userId);
+    return this.profiles.obaStatus(inboxId);
+  }
+
+  /** Apply for the badge. Meta reviews it; the status says how it's going. */
+  @Post(":inboxId/oba")
+  async requestOba(
+    @CurrentUserId() userId: string,
+    @Param("inboxId") inboxId: string,
+    @Body(new ZodValidationPipe(requestWhatsAppObaInputSchema)) body: RequestWhatsAppObaInput,
+  ): Promise<WhatsAppObaStatus> {
+    await this.requireManager(userId);
+    return this.profiles.requestOba(inboxId, body);
   }
 
   private async requireManager(userId: string): Promise<void> {

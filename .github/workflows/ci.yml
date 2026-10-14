@@ -138,6 +138,11 @@ jobs:
       - name: Forwarded email carries its attachments
         run: pnpm check:email-forward
 
+      # The WhatsApp verified badge (Official Business Account): status read and
+      # application sent the way Meta's API expects, against a stand-in for Meta.
+      - name: WhatsApp Official Business Account status and request
+        run: pnpm check:oba
+
       # Registering a WhatsApp number on the Cloud API. Fails silently in the
       # worst way available: a number Meta has left at PENDING has perfectly
       # good credentials saved, so it reads as "Connected" everywhere in the app

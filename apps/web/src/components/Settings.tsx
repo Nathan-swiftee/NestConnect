@@ -99,6 +99,8 @@ import {
   useWhatsappProfile,
   useUpdateWhatsappProfile,
   useSetWhatsappProfilePhoto,
+  useWhatsappOba,
+  useRequestWhatsappOba,
   useSendBroadcast,
   useEmailCutoverPreview,
   useEmailCutoverStatus,
@@ -4408,7 +4410,157 @@ function ProfilePane({ onToast }: { onToast: (msg: string) => void }) {
           {profile.data && (
             <ProfileForm key={inboxId} inboxId={inboxId as string} profile={profile.data} onToast={onToast} />
           )}
+          {/* Its own read from Meta, so it shows even if the profile didn't load. */}
+          <ObaSection key={`oba-${inboxId}`} inboxId={inboxId as string} website={profile.data?.websites?.[0]} onToast={onToast} />
         </>
+      )}
+    </div>
+  );
+}
+
+/** Meta's oba_status, said the way a person would. */
+const OBA_STATUS: Record<string, { label: string; tone: "muted" | "amber" | "green" | "red"; hint: string }> = {
+  NOT_STARTED: { label: "Not requested", tone: "muted", hint: "This number doesn’t have the verified badge, and nobody has applied for it yet." },
+  PENDING: { label: "Under review", tone: "amber", hint: "Meta is reviewing the request. It usually takes a few days — check back here." },
+  APPROVED: { label: "Approved", tone: "green", hint: "The verified badge shows next to your business name in WhatsApp." },
+  REJECTED: { label: "Rejected", tone: "red", hint: "Meta turned the request down. Strengthen the supporting links and apply again once Meta allows (usually after 30 days)." },
+  CANCELLED: { label: "Withdrawn", tone: "muted", hint: "The last request was withdrawn. You can apply again." },
+};
+
+/**
+ * WhatsApp's Official Business Account — the verified badge by the business
+ * name. Shows where this number stands (read live from Meta) and lets an
+ * admin or manager apply. Meta decides, from the business's notability:
+ * independent press coverage counts most.
+ */
+function ObaSection({ inboxId, website, onToast }: { inboxId: string; website?: string; onToast: (msg: string) => void }) {
+  const oba = useWhatsappOba(inboxId);
+  const request = useRequestWhatsappOba();
+  const [open, setOpen] = useState(false);
+  const [site, setSite] = useState(website ?? "");
+  // The profile can arrive after this does: take its website if nothing's typed.
+  useEffect(() => {
+    if (website) setSite((cur) => cur || website);
+  }, [website]);
+  const [country, setCountry] = useState("United Kingdom");
+  const [language, setLanguage] = useState("English");
+  const [parent, setParent] = useState("");
+  const [links, setLinks] = useState("");
+  const [extra, setExtra] = useState("");
+
+  const status = oba.data?.status ?? "";
+  const known = OBA_STATUS[status] ?? { label: status.replace(/_/g, " ").toLowerCase() || "Unknown", tone: "muted" as const, hint: "" };
+  // Applying again only makes sense when there's nothing live: never while one
+  // is being reviewed, and not once it's approved.
+  const canApply = !!oba.data && status !== "PENDING" && status !== "APPROVED";
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const supportingLinks = links
+      .split(/[\n,]+/)
+      .map((l) => normalizeUrl(l.trim()))
+      .filter(Boolean);
+    request.mutate(
+      {
+        inboxId,
+        input: {
+          businessWebsiteUrl: normalizeUrl(site.trim()),
+          primaryCountryOfOperation: country.trim(),
+          primaryLanguage: language.trim(),
+          ...(parent.trim() ? { parentBusinessOrBrand: parent.trim() } : {}),
+          supportingLinks,
+          ...(extra.trim() ? { additionalSupportingInformation: extra.trim() } : {}),
+        },
+      },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          onToast("Sent to Meta — the status will show here");
+        },
+        onError: (err) => onToast((err as Error)?.message ?? "Meta didn’t accept the request"),
+      },
+    );
+  };
+
+  return (
+    <div className="setform oba">
+      <div className="oba__head">
+        <div>
+          <h3>Official Business Account</h3>
+          <p className="fieldhint">The verified badge next to your business name in WhatsApp.</p>
+        </div>
+        <button type="button" className="btn-ghost sm" onClick={() => void oba.refetch()} disabled={oba.isFetching}>
+          {oba.isFetching ? "Checking…" : "Check status"}
+        </button>
+      </div>
+
+      {oba.isLoading && <p className="fieldhint">Asking WhatsApp…</p>}
+      {oba.isError && <p className="fieldhint">Couldn’t read the status from WhatsApp. {(oba.error as Error)?.message ?? ""}</p>}
+      {oba.data && (
+        <div className="oba__status">
+          <span className={`oba__pill oba__pill--${known.tone}`}>{known.label}</span>
+          <span className="oba__hint">{oba.data.message || known.hint}</span>
+        </div>
+      )}
+
+      {canApply && !open && (
+        <div>
+          <button type="button" className="btn-primary sm" onClick={() => setOpen(true)}>
+            {status === "REJECTED" || status === "CANCELLED" ? "Apply again" : "Request the verified badge"}
+          </button>
+        </div>
+      )}
+
+      {canApply && open && (
+        <form className="oba__form" onSubmit={submit}>
+          <p className="fieldhint">
+            Meta grants the badge to notable, authentic brands. Before applying: the number needs two-step
+            verification on, an approved display name, and your business verified in Meta Business Manager.
+          </p>
+          <div className="setform__grid two">
+            <label className="field">
+              <span>Business website</span>
+              <input value={site} onChange={(e) => setSite(e.target.value)} placeholder="https://swiftee.co.uk" required />
+            </label>
+            <label className="field">
+              <span>Parent business or brand <em>optional</em></span>
+              <input value={parent} onChange={(e) => setParent(e.target.value)} placeholder="If you’re part of a larger group" />
+            </label>
+            <label className="field">
+              <span>Main country of operation</span>
+              <input value={country} onChange={(e) => setCountry(e.target.value)} required />
+            </label>
+            <label className="field">
+              <span>Main language</span>
+              <input value={language} onChange={(e) => setLanguage(e.target.value)} required />
+            </label>
+          </div>
+          <label className="field">
+            <span>Supporting links <em>up to 5, one per line</em></span>
+            <textarea
+              rows={3}
+              value={links}
+              onChange={(e) => setLinks(e.target.value)}
+              placeholder={"https://www.bbc.co.uk/news/…\nhttps://www.thetimes.co.uk/article/…"}
+            />
+            <small className="fieldhint">
+              News articles or other coverage of your business by someone else — not your own site, social media or paid
+              ads. This is what Meta weighs most.
+            </small>
+          </label>
+          <label className="field">
+            <span>Anything else <em>optional</em></span>
+            <textarea rows={2} maxLength={1000} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Awards, notable customers, how long you’ve traded…" />
+          </label>
+          <div className="setform__foot">
+            <button type="button" className="btn-ghost sm" onClick={() => setOpen(false)} disabled={request.isPending}>
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary sm" disabled={request.isPending || !site.trim()}>
+              {request.isPending ? "Sending…" : "Send to Meta"}
+            </button>
+          </div>
+        </form>
       )}
     </div>
   );

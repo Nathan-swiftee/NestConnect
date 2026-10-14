@@ -1,5 +1,12 @@
 import { BadGatewayException, BadRequestException, Injectable, Logger } from "@nestjs/common";
-import type { OpeningDay, OpeningHours, UpdateWhatsAppBusinessProfileInput, WhatsAppBusinessProfile } from "@ding/schemas";
+import type {
+  OpeningDay,
+  OpeningHours,
+  RequestWhatsAppObaInput,
+  UpdateWhatsAppBusinessProfileInput,
+  WhatsAppBusinessProfile,
+  WhatsAppObaStatus,
+} from "@ding/schemas";
 import { env } from "../config/env";
 import { Store } from "../data/store";
 import { SandboxPolicy } from "../tenancy/sandbox";
@@ -217,8 +224,56 @@ export class BusinessProfileService {
     return this.get(inboxId);
   }
 
+  /**
+   * The number's Official Business Account status — the verified badge.
+   * `GET /{phone-number-id}?fields=official_business_account`.
+   */
+  async obaStatus(inboxId: string): Promise<WhatsAppObaStatus> {
+    const creds = await this.credsFor(inboxId);
+    const json = await this.metaJson(
+      `https://graph.facebook.com/${env.whatsapp.apiVersion}/${creds.phoneNumberId}?fields=official_business_account`,
+      { method: "GET", headers: { authorization: `Bearer ${creds.accessToken}` } },
+    );
+    const oba = (json.official_business_account ?? {}) as { oba_status?: unknown; status_message?: unknown };
+    return {
+      // No field at all means Meta has nothing on file: nobody has applied.
+      status: typeof oba.oba_status === "string" && oba.oba_status ? oba.oba_status : "NOT_STARTED",
+      ...(typeof oba.status_message === "string" && oba.status_message ? { message: oba.status_message } : {}),
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Apply for the badge. `POST /{phone-number-id}/official_business_account`
+   * with what Meta reviews: the website, country, language, parent brand, and
+   * independent coverage. Meta decides; this returns the status as it reads
+   * straight after.
+   */
+  async requestOba(inboxId: string, input: RequestWhatsAppObaInput): Promise<WhatsAppObaStatus> {
+    const creds = await this.credsFor(inboxId);
+    const body: Record<string, unknown> = {
+      business_website_url: input.businessWebsiteUrl,
+      primary_country_of_operation: input.primaryCountryOfOperation,
+      primary_language: input.primaryLanguage,
+    };
+    if (input.parentBusinessOrBrand) body.parent_business_or_brand = input.parentBusinessOrBrand;
+    if (input.supportingLinks.length) body.supporting_links = input.supportingLinks;
+    if (input.additionalSupportingInformation) body.additional_supporting_information = input.additionalSupportingInformation;
+    await this.metaJson(
+      `https://graph.facebook.com/${env.whatsapp.apiVersion}/${creds.phoneNumberId}/official_business_account`,
+      {
+        method: "POST",
+        headers: { authorization: `Bearer ${creds.accessToken}`, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      { metaWords: true },
+    );
+    this.logger.log(`Requested Official Business Account for inbox ${inboxId}`);
+    return this.obaStatus(inboxId);
+  }
+
   /** POST/GET Meta, returning parsed JSON or throwing a friendly BadGateway. */
-  private async metaJson(url: string, init: RequestInit): Promise<Record<string, any>> {
+  private async metaJson(url: string, init: RequestInit, opts?: { metaWords?: boolean }): Promise<Record<string, any>> {
     let res: Response;
     let json: { error?: unknown; [k: string]: unknown };
     try {
@@ -229,6 +284,13 @@ export class BusinessProfileService {
     }
     if (!res.ok) {
       this.logger.warn(`Meta ${init.method} HTTP ${res.status}: ${JSON.stringify(json.error ?? json)}`);
+      // Meta's code 100 is any "invalid parameter", not only an unknown number.
+      // Where its reasons are the point (an application it turned down), its
+      // own words say more than our guess at what went wrong.
+      const e = (json.error ?? {}) as { code?: number; message?: string; error_user_msg?: string };
+      if (opts?.metaWords && e.code !== 190 && (e.error_user_msg || e.message)) {
+        throw new BadGatewayException(`WhatsApp: ${e.error_user_msg || e.message}`);
+      }
       throw new BadGatewayException(metaErrorMessage(json.error, res.status));
     }
     return json;

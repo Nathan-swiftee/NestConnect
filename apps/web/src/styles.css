@@ -2661,6 +2661,17 @@ button.tpl-row:active{transform:scale(.97)}
 .tpl-item__name{font-size:var(--fs-md);font-weight:600;color:var(--text);word-break:break-word}
 .tpl-item__body{font-size:var(--fs-xs);color:var(--text-muted);line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .tpl-langfield{max-width:200px}
+/* Official Business Account (verified badge) on the business profile page */
+.oba__head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.oba__head h3{margin:0;font-size:var(--fs-md);font-weight:600;color:var(--text)}
+.oba__status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.oba__pill{display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:var(--r-full);font-size:var(--fs-xs);font-weight:600;white-space:nowrap}
+.oba__pill--muted{background:var(--surface-2);color:var(--text-muted)}
+.oba__pill--amber{background:var(--amber-tint);color:var(--amber)}
+.oba__pill--green{background:var(--brand-tint);color:var(--brand-strong)}
+.oba__pill--red{background:var(--danger-tint);color:var(--danger)}
+.oba__hint{font-size:var(--fs-sm);color:var(--text-muted);flex:1;min-width:200px}
+.oba__form{display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--border);padding-top:14px}
 .setempty{padding:var(--sp-5) var(--sp-4);text-align:center;font-size:var(--fs-sm);color:var(--text-faint);border:1px dashed var(--border);border-radius:var(--r-12);background:var(--surface-2)}
 .wa-profile__photo{display:flex;flex-direction:column;gap:var(--sp-2);align-items:flex-start}
 .wa-profile__photo img{width:72px;height:72px;border-radius:var(--r-12);object-fit:cover;border:1px solid var(--border);background:var(--surface-2)}
