@@ -29,6 +29,7 @@ import type {
   MessageAuto,
   MessagePage,
   MessageStatus,
+  MessageType,
   Notification,
   Participant,
   ParticipantRole,
@@ -1819,6 +1820,13 @@ export class MemoryStore extends Store {
     return unconfigured.length === 1 ? unconfigured[0] : undefined;
   }
 
+  async getInboxesByWabaId(wabaId: string): Promise<Inbox[]> {
+    if (!wabaId) return [];
+    return this.inboxes.filter(
+      (i) => (i.type === "whatsapp" || i.type === "whatsapp_group") && this.inboxConfig.get(i.id)?.wabaId === wabaId,
+    );
+  }
+
   async getInboxByWidgetKey(widgetKey: string): Promise<Inbox | undefined> {
     const key = widgetKey.trim();
     if (!key) return undefined;
@@ -2070,33 +2078,47 @@ export class MemoryStore extends Store {
     return message;
   }
 
-  async appendSyncedOutboundEmail(
+  async appendSyncedOutbound(
     conversationId: string,
-    input: { body: string; bodyHtml?: string; channelMsgId?: string; authorName?: string; attachments?: AttachmentInput[] },
+    input: {
+      body: string;
+      bodyHtml?: string;
+      channelMsgId?: string;
+      authorName?: string;
+      attachments?: AttachmentInput[];
+      channel?: "email" | "whatsapp";
+      messageType?: MessageType;
+      markRead?: boolean;
+    },
   ): Promise<Message | undefined> {
     const rec = this.conversations.find((c) => c.id === conversationId);
     if (!rec) return undefined;
+    const channel = input.channel ?? "email";
     const message: Message = {
       id: `msg_out_${++this.idSeq}`,
       conversationId,
       seq: ++rec.seq,
       direction: "out",
       authorType: "system",
-      authorName: input.authorName ?? "Gmail",
+      authorName: input.authorName ?? (channel === "email" ? "Gmail" : "WhatsApp Business app"),
       body: input.body,
       bodyHtml: input.bodyHtml,
       status: "sent",
       internal: false,
       channelMsgId: input.channelMsgId,
-      channel: "email",
-      messageType: "text",
+      channel,
+      messageType: input.messageType ?? "text",
       attachments: this.storeAttachments(input.attachments),
       reactions: [],
       createdAt: new Date().toISOString(),
     };
     rec.messages.push(message);
     rec.lastActivityAt = message.createdAt;
-    rec.preview = previewFromBody(input.body) || "Email";
+    rec.preview = previewFromBody(input.body) || (channel === "email" ? "Email" : "Message");
+    if (input.markRead) {
+      rec.unread = false;
+      rec.unreadCount = 0;
+    }
     // A reply sent straight from Gmail is still a reply → clear the "Back from
     // Later" marker (a past snooze time left on an active chat), same as an
     // in-app reply. A still-snoozed chat's future timer is left untouched.
@@ -2152,6 +2174,83 @@ export class MemoryStore extends Store {
     const before = this.conversations.length;
     this.conversations = this.conversations.filter((c) => c.channel !== "email");
     return before - this.conversations.length;
+  }
+
+  async importWhatsAppHistory(input: {
+    orgId: string;
+    inboxId: string;
+    contactId: string;
+    messages: Array<{
+      direction: "in" | "out";
+      authorName: string;
+      body: string;
+      channelMsgId: string;
+      sentAt: Date;
+      messageType?: MessageType;
+      attachments?: AttachmentInput[];
+    }>;
+  }): Promise<{ conversationId: string; added: number }> {
+    const contact = this.contacts.find((c) => c.id === input.contactId);
+    if (!contact) throw new Error(`No contact ${input.contactId}`);
+    const ref = `wa-history:${input.inboxId}`;
+    let rec = this.conversations.find(
+      (c) => c.orgId === input.orgId && c.inboxId === input.inboxId && c.contact.id === input.contactId && c.channelRef === ref,
+    );
+    if (!rec) {
+      rec = {
+        id: `conv_${++this.idSeq}`,
+        orgId: input.orgId,
+        inboxId: input.inboxId,
+        channel: "whatsapp",
+        contact,
+        status: "closed",
+        assigneeUserId: null,
+        assignedTeamId: null,
+        priority: "normal",
+        labels: [],
+        unread: false,
+        unreadCount: 0,
+        slaDueAt: null,
+        channelRef: ref,
+        lastActivityAt: new Date().toISOString(),
+        seq: 0,
+        preview: "",
+        messages: [],
+      } as unknown as (typeof this.conversations)[number];
+      this.conversations.push(rec);
+    }
+    const stored = new Set(this.conversations.filter((c) => c.orgId === input.orgId).flatMap((c) => c.messages.map((m) => m.channelMsgId)));
+    let added = 0;
+    for (const m of input.messages) {
+      if (stored.has(m.channelMsgId)) continue;
+      stored.add(m.channelMsgId);
+      rec.messages.push({
+        id: `msg_hist_${++this.idSeq}`,
+        conversationId: rec.id,
+        seq: 0,
+        direction: m.direction,
+        authorType: m.direction === "in" ? "contact" : "system",
+        authorName: m.authorName,
+        body: m.body,
+        status: m.direction === "in" ? "delivered" : "sent",
+        internal: false,
+        channelMsgId: m.channelMsgId,
+        channel: "whatsapp",
+        messageType: m.messageType ?? "text",
+        attachments: this.storeAttachments(m.attachments),
+        reactions: [],
+        createdAt: m.sentAt.toISOString(),
+      });
+      added++;
+    }
+    // Back into date order: Meta sends the newest history first.
+    rec.messages.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    rec.messages.forEach((m, i) => (m.seq = i + 1));
+    rec.seq = rec.messages.length;
+    const last = rec.messages.at(-1);
+    rec.preview = last ? previewFromBody(last.body) || "Message" : "";
+    if (last) rec.lastActivityAt = last.createdAt;
+    return { conversationId: rec.id, added };
   }
 
   async importEmailThread(input: ImportEmailThreadInput): Promise<string> {

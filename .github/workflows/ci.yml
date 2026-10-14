@@ -58,6 +58,7 @@ jobs:
           pnpm check:email-signature-pg
           pnpm check:business-ops-pg
           pnpm check:team-chat-pg
+          pnpm check:coexistence-pg
 
       - name: Tenant isolation (HTTP, Postgres)
         env:
@@ -142,6 +143,12 @@ jobs:
       # application sent the way Meta's API expects, against a stand-in for Meta.
       - name: WhatsApp Official Business Account status and request
         run: pnpm check:oba
+
+      # A WhatsApp number that stays on the WhatsApp Business app (coexistence):
+      # connect without registering, phone replies, history in date order,
+      # contacts, and Meta unlinking it — against simulated Meta events.
+      - name: WhatsApp Business app numbers (coexistence)
+        run: pnpm check:coexistence
 
       # Registering a WhatsApp number on the Cloud API. Fails silently in the
       # worst way available: a number Meta has left at PENDING has perfectly

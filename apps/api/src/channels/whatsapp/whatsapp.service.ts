@@ -20,6 +20,24 @@ interface WaMedia {
   voice?: boolean;
 }
 
+/** A message as Meta sends it in coexistence echoes and history. */
+interface WaSyncedMessage {
+  from?: string;
+  to?: string;
+  id: string;
+  timestamp?: string;
+  type?: string;
+  text?: { body?: string };
+  image?: WaMedia;
+  video?: WaMedia;
+  audio?: WaMedia;
+  document?: WaMedia;
+  sticker?: WaMedia;
+}
+
+/** Meta's account-level events that mean a number is no longer linked to us. */
+const DISCONNECT_EVENTS = new Set(["PARTNER_REMOVED", "ACCOUNT_OFFBOARDED", "ACCOUNT_DELETED", "DISCONNECTED"]);
+
 /* Minimal shape of the Meta WhatsApp Cloud API webhook payload we consume. */
 export interface WhatsAppWebhookBody {
   object?: string;
@@ -65,6 +83,22 @@ export interface WhatsAppWebhookBody {
           }>;
         }>;
         participants?: Array<{ wa_id?: string; user?: string; action?: string; profile?: { name?: string } }>;
+        /** smb_message_echoes: what the business sent from the WhatsApp Business app. */
+        message_echoes?: WaSyncedMessage[];
+        /** history: the app's past chats, in batches (newest first). */
+        history?: Array<{
+          metadata?: { phase?: number; chunk_order?: number; progress?: number };
+          threads?: Array<{ id?: string; messages?: WaSyncedMessage[] }>;
+          errors?: Array<{ code?: number; title?: string; message?: string }>;
+        }>;
+        /** smb_app_state_sync: the app's address book. */
+        state_sync?: Array<{
+          type?: string;
+          action?: string;
+          contact?: { full_name?: string; first_name?: string; phone_number?: string };
+        }>;
+        /** account_update: something happened to the account itself. */
+        event?: string;
       };
     }>;
   }>;
@@ -94,6 +128,12 @@ export class WhatsAppService {
       for (const change of entry.changes ?? []) {
         const value = change.value;
         if (!value) continue;
+        // Account-level events name the WhatsApp Business Account (the entry
+        // id), not a number — so they're matched to inboxes that way.
+        if (change.field === "account_update") {
+          await this.accountUpdate(entry.id ?? "", value.event);
+          continue;
+        }
         const phoneNumberId = value.metadata?.phone_number_id ?? "";
         // Which workspace this change is for: the one whose inbox receives on
         // this number. Meta batches changes for every number on the app into
@@ -114,6 +154,45 @@ export class WhatsAppService {
         await runInTenant(inbox.orgId, async () => {
           const valueGroupId = value.metadata?.group_id ?? value.group_id;
           const nameOf = (waId: string) => value.contacts?.find((c) => c.wa_id === waId)?.profile?.name;
+
+          // A WhatsApp Business app number (coexistence): its own three feeds.
+          if (change.field === "smb_message_echoes") {
+            for (const echo of value.message_echoes ?? []) {
+              try {
+                if (!echo.to) continue;
+                const { text, messageType, attachments } = await this.resolveInbound(echo, phoneNumberId);
+                const res = await this.ingest.ingestWhatsAppEcho({
+                  phoneNumberId,
+                  to: echo.to,
+                  channelMsgId: echo.id,
+                  text,
+                  messageType,
+                  attachments,
+                });
+                if (res) messages += 1;
+              } catch (err) {
+                this.logger.error(`Failed to record WhatsApp app message ${echo.id}: ${String(err)}`);
+              }
+            }
+            return;
+          }
+          if (change.field === "history") {
+            // Can be hundreds of messages with media to fetch: answer Meta now
+            // and import behind it. Batches are idempotent, so a retry is harmless.
+            const batches = value.history ?? [];
+            const business = value.metadata?.display_phone_number ?? "";
+            void this.importHistory(inbox.id, phoneNumberId, business, batches).catch((err) =>
+              this.logger.error(`WhatsApp history import failed for ${phoneNumberId}: ${String(err)}`),
+            );
+            return;
+          }
+          if (change.field === "smb_app_state_sync") {
+            const contacts = (value.state_sync ?? [])
+              .filter((x) => x.type === "contact" && x.action !== "remove" && x.contact?.phone_number)
+              .map((x) => ({ phone: x.contact!.phone_number!, name: x.contact!.full_name || x.contact!.first_name }));
+            await this.ingest.syncWhatsAppContacts({ phoneNumberId, contacts });
+            return;
+          }
 
           // Group membership changes (someone joined/left via the invite link).
           if (change.field === "group_participants_update" && value.group_id && value.participants) {
@@ -225,6 +304,72 @@ export class WhatsAppService {
       }
     }
     return { messages, statuses, groupEvents, reactions };
+  }
+
+  /**
+   * Import history batches into the customers' history conversations, then
+   * note how far it got on the channel ("history imported", or why not).
+   */
+  private async importHistory(
+    inboxId: string,
+    phoneNumberId: string,
+    businessNumber: string,
+    batches: NonNullable<NonNullable<NonNullable<NonNullable<WhatsAppWebhookBody["entry"]>[number]["changes"]>[number]["value"]>["history"]>,
+  ): Promise<void> {
+    let imported = 0;
+    let done = false;
+    let declined: string | undefined;
+    for (const batch of batches) {
+      if (batch.errors?.length) {
+        const e = batch.errors[0];
+        declined = e.title || e.message || `code ${e.code}`;
+        continue;
+      }
+      if ((batch.metadata?.progress ?? 0) >= 100) done = true;
+      for (const thread of batch.threads ?? []) {
+        if (!thread.id) continue;
+        const msgs = [];
+        for (const m of thread.messages ?? []) {
+          try {
+            const { text, messageType, attachments } = await this.resolveInbound(m, phoneNumberId);
+            msgs.push({
+              from: m.from ?? "",
+              id: m.id,
+              sentAt: m.timestamp ? new Date(Number(m.timestamp) * 1000) : new Date(),
+              text,
+              messageType,
+              attachments,
+            });
+          } catch (err) {
+            this.logger.warn(`History message ${m.id} skipped: ${String(err)}`);
+          }
+        }
+        const res = await this.ingest.importWhatsAppHistory({ phoneNumberId, businessNumber, waId: thread.id, messages: msgs });
+        imported += res?.added ?? 0;
+      }
+    }
+    const note = declined
+      ? `history not shared: ${declined}`.slice(0, 300)
+      : done
+        ? `history imported ${new Date().toISOString()}`
+        : undefined;
+    if (note) await this.store.updateInbox(inboxId, { channelConfig: { coexistenceSync: note } });
+    this.logger.log(`WhatsApp history for ${phoneNumberId}: ${imported} message(s) imported${note ? ` — ${note}` : ""}`);
+  }
+
+  /** Meta says an account changed. A disconnect is shown on its coexistence channels. */
+  private async accountUpdate(wabaId: string, event: string | undefined): Promise<void> {
+    if (!wabaId || !event) return;
+    for (const inbox of await this.store.getInboxesByWabaId(wabaId)) {
+      await runInTenant(inbox.orgId, async () => {
+        const config = await this.store.getInboxConfig(inbox.id);
+        if (config?.coexistence !== "true") return;
+        this.logger.log(`WhatsApp account_update ${event} for coexistence inbox ${inbox.id}`);
+        if (DISCONNECT_EVENTS.has(event.toUpperCase())) {
+          await this.store.updateInbox(inbox.id, { channelConfig: { coexistenceState: "disconnected" } });
+        }
+      });
+    }
   }
 
   /**

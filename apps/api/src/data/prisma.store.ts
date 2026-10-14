@@ -42,6 +42,7 @@ import type {
   UpdateTemplateInput,
   User,
   AvailabilitySchedule,
+  MessageType,
 } from "@ding/schemas";
 import {
   CONVERSATIONS_PAGE_SIZE,
@@ -2151,6 +2152,15 @@ export class PrismaStore extends Store {
     return undefined; // no deterministic match — caller records a diagnostic
   }
 
+  async getInboxesByWabaId(wabaId: string): Promise<Inbox[]> {
+    if (!wabaId) return [];
+    const rows = await this.root.inbox.findMany({
+      where: { type: { in: ["whatsapp", "whatsapp_group"] } },
+      include: { teams: true },
+    });
+    return rows.filter((i) => (i.channelConfig as { wabaId?: string } | null)?.wabaId === wabaId).map(mapInbox);
+  }
+
   async getInboxByWidgetKey(widgetKey: string): Promise<Inbox | undefined> {
     const key = widgetKey.trim();
     if (!key) return undefined;
@@ -2540,13 +2550,23 @@ export class PrismaStore extends Store {
     return mapMessage(message);
   }
 
-  async appendSyncedOutboundEmail(
+  async appendSyncedOutbound(
     conversationId: string,
-    input: { body: string; bodyHtml?: string; channelMsgId?: string; authorName?: string; attachments?: AttachmentInput[] },
+    input: {
+      body: string;
+      bodyHtml?: string;
+      channelMsgId?: string;
+      authorName?: string;
+      attachments?: AttachmentInput[];
+      channel?: "email" | "whatsapp";
+      messageType?: MessageType;
+      markRead?: boolean;
+    },
   ): Promise<Message | undefined> {
     const conv = await this.prisma.conversation.findUnique({ where: { id: conversationId } });
     if (!conv) return undefined;
     const seq = conv.seq + 1;
+    const channel = input.channel ?? "email";
     const [message] = await this.prisma.$transaction([
       this.prisma.message.create({
         data: {
@@ -2554,13 +2574,13 @@ export class PrismaStore extends Store {
           seq,
           direction: "out",
           authorType: "system",
-          authorName: input.authorName ?? "Gmail",
+          authorName: input.authorName ?? (channel === "email" ? "Gmail" : "WhatsApp Business app"),
           body: input.body,
           bodyHtml: input.bodyHtml ?? null,
           status: "sent",
           channelMsgId: input.channelMsgId,
-          channel: "email",
-          messageType: "text",
+          channel,
+          messageType: input.messageType ?? "text",
           ...(input.attachments?.length
             ? { attachments: { create: input.attachments.map(toAttachmentCreate) } }
             : {}),
@@ -2572,7 +2592,8 @@ export class PrismaStore extends Store {
         data: {
           seq,
           lastActivityAt: new Date(),
-          preview: previewFromBody(input.body) || "Email",
+          preview: previewFromBody(input.body) || (channel === "email" ? "Email" : "Message"),
+          ...(input.markRead ? { unread: false, unreadCount: 0 } : {}),
           // A reply sent straight from Gmail is still a reply → clear the "Back
           // from Later" marker, same as an in-app reply. A still-snoozed chat's
           // future timer is left untouched.
@@ -2617,6 +2638,100 @@ export class PrismaStore extends Store {
       });
       deleted += convIds.length;
     }
+  }
+
+  async importWhatsAppHistory(input: {
+    orgId: string;
+    inboxId: string;
+    contactId: string;
+    messages: Array<{
+      direction: "in" | "out";
+      authorName: string;
+      body: string;
+      channelMsgId: string;
+      sentAt: Date;
+      messageType?: MessageType;
+      attachments?: AttachmentInput[];
+    }>;
+  }): Promise<{ conversationId: string; added: number }> {
+    // One history conversation per customer per number, found by its marker.
+    const ref = `wa-history:${input.inboxId}`;
+    let conv = await this.prisma.conversation.findFirst({
+      where: { orgId: input.orgId, inboxId: input.inboxId, contactId: input.contactId, channelRef: ref },
+    });
+    const sorted = [...input.messages].sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime());
+    if (!conv) {
+      conv = await this.prisma.conversation.create({
+        data: {
+          orgId: input.orgId,
+          inboxId: input.inboxId,
+          contactId: input.contactId,
+          channel: "whatsapp",
+          channelRef: ref,
+          // Past chats, already dealt with on the phone: closed and read, so
+          // nothing lands in anyone's queue, timer or badge.
+          status: "closed",
+          priority: "normal",
+          unread: false,
+          unreadCount: 0,
+          seq: 0,
+          preview: "",
+          lastActivityAt: sorted.at(-1)?.sentAt ?? new Date(),
+          createdAt: sorted[0]?.sentAt ?? new Date(),
+        },
+      });
+    }
+    // Skip anything already stored — a batch sent twice, or a message that
+    // also came in live.
+    const ids = sorted.map((m) => m.channelMsgId);
+    const have = new Set(
+      (
+        await this.prisma.message.findMany({
+          where: { channelMsgId: { in: ids }, conversation: { orgId: input.orgId } },
+          select: { channelMsgId: true },
+        })
+      ).map((r) => r.channelMsgId),
+    );
+    const fresh = sorted.filter((m, i) => !have.has(m.channelMsgId) && ids.indexOf(m.channelMsgId) === i);
+    for (const m of fresh) {
+      await this.prisma.message.create({
+        data: {
+          conversationId: conv.id,
+          seq: 0,
+          direction: m.direction,
+          authorType: m.direction === "in" ? "contact" : "system",
+          authorName: m.authorName,
+          body: m.body,
+          status: m.direction === "in" ? "delivered" : "sent",
+          channelMsgId: m.channelMsgId,
+          channel: "whatsapp",
+          messageType: m.messageType ?? "text",
+          createdAt: m.sentAt,
+          ...(m.attachments?.length ? { attachments: { create: m.attachments.map(toAttachmentCreate) } } : {}),
+        },
+      });
+    }
+    // Back into date order: Meta sends the newest history first.
+    const all = await this.prisma.message.findMany({
+      where: { conversationId: conv.id },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, seq: true, body: true, createdAt: true },
+    });
+    for (const [i, m] of all.entries()) {
+      if (m.seq !== i + 1) await this.prisma.message.update({ where: { id: m.id }, data: { seq: i + 1 } });
+    }
+    const first = all[0];
+    const last = all.at(-1);
+    await this.prisma.conversation.update({
+      where: { id: conv.id },
+      data: {
+        seq: all.length,
+        preview: last ? previewFromBody(last.body) || "Message" : "",
+        ...(last ? { lastActivityAt: last.createdAt } : {}),
+        ...(first ? { createdAt: first.createdAt } : {}),
+      },
+    });
+    return { conversationId: conv.id, added: fresh.length };
   }
 
   async importEmailThread(input: ImportEmailThreadInput): Promise<string> {

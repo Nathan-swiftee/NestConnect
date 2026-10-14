@@ -19,6 +19,8 @@
     "check:reply-to": "tsx --tsconfig apps/api/tsconfig.json tools/check-reply-to.ts",
     "check:email-forward": "tsx --tsconfig apps/api/tsconfig.json tools/check-email-forward.ts",
     "check:oba": "tsx --tsconfig apps/api/tsconfig.json tools/check-oba.ts",
+    "check:coexistence": "tsx --tsconfig apps/api/tsconfig.json tools/check-coexistence.ts",
+    "check:coexistence-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-coexistence-pg.ts",
     "check:whatsapp-register": "tsx tools/check-whatsapp-register.ts",
     "check:whatsapp-delivery": "tsx tools/check-whatsapp-delivery.ts",
     "check:template-scope": "tsx tools/check-template-scope.ts",

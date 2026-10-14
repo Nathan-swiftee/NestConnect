@@ -38,7 +38,11 @@ async function bootstrap() {
   // Security headers. CSP is left to the app (it serves the SPA and renders
   // email in a sandboxed iframe with its own strict CSP), so helmet's default
   // CSP is disabled to avoid breaking those; the rest of the headers stay on.
-  app.use(helmet({ contentSecurityPolicy: false }));
+  // Cross-Origin-Opener-Policy relaxed to "same-origin-allow-popups": Meta's
+  // sign-up (WhatsApp Business app numbers) runs in a facebook.com popup that
+  // reports the onboarded number back to this page. Helmet's default
+  // ("same-origin") cuts that popup off from us, and the connect never ends.
+  app.use(helmet({ contentSecurityPolicy: false, crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" } }));
   /**
    * The NestChat widget is the one thing here meant to be loaded BY other
    * websites, and helmet's defaults exist to stop exactly that.
