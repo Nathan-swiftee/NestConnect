@@ -520,6 +520,7 @@ input,textarea{font:inherit}
 .note__who{font-size:var(--fs-xs);font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
 .note__tag{font-size:var(--fs-2xs);font-weight:500;text-transform:uppercase;letter-spacing:var(--ls-caps);color:var(--amber);border:0;border-radius:0;padding:0;flex:0 0 auto}
 .note__t{margin-left:auto;font-size:var(--fs-2xs);color:var(--text-faint);font-weight:500;padding-left:6px;flex:0 0 auto}
+.note__atts{display:flex;flex-direction:column;gap:var(--sp-2);margin:var(--sp-1) 0 var(--sp-1);max-width:320px}
 .note__body{font-size:var(--fs-lg);line-height:1.42;white-space:pre-wrap;word-break:break-word;color:var(--text)}
 .note__body .men{color:var(--brand-strong);font-weight:600}
 
