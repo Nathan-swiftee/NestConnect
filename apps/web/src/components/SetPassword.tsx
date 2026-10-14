@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { TwoFactorChallenge } from "@ding/schemas";
 import { api } from "../lib/api";
-import { Logo } from "../lib/icons";
+import { Lockup } from "../lib/icons";
 
 /** Public page reached from an emailed link — an invite (`/?invite=<token>`) or a
  *  password reset (`/?reset=<token>`): choose a password, which signs you in and
@@ -77,12 +77,7 @@ export function SetPassword({ token, reset = false }: { token: string; reset?: b
     <div className="login login--single">
       <form className="login__card" onSubmit={challenge ? submitCode : submit}>
         <div className="login__brand">
-          <div className="brandmark">
-            <Logo />
-          </div>
-          <span className="wordmark">
-            Nest <span className="dot">Connect</span>
-          </span>
+          <Lockup />
         </div>
 
         {challenge ? (

@@ -30,14 +30,7 @@ body {
   -webkit-backdrop-filter: saturate(1.4) blur(10px);
 }
 .pp__brand { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text); text-decoration: none; }
-/* Same navy tile as the inbox's .brandmark — the mark is green artwork. */
-.pp__mark {
-  width: 30px; height: 30px; border-radius: var(--r-8); background: #071634;
-  display: grid; place-items: center; flex: 0 0 30px;
-}
-.pp__mark img { width: 19px; height: 19px; object-fit: contain; }
-.pp__wordmark { font-size: var(--fs-lg); font-weight: var(--fw-semibold); letter-spacing: var(--ls-tight); }
-.pp__dot { color: var(--brand); }
+.pp__lockup { display: block; height: 22px; width: auto; }
 
 .pp__main {
   max-width: 760px; margin: 0 auto;

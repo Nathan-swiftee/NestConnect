@@ -108,7 +108,7 @@ export class DevicesController {
     const { sent, failed } = await this.push.notifyAndWait({
       userIds: [userId],
       kind: "test",
-      title: "Nest Connect",
+      title: "NestConnect",
       body: "Notifications are working on this device.",
     });
     return { devices, sent, failed };

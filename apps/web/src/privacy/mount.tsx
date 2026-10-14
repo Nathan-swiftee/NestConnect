@@ -11,7 +11,7 @@ import "./privacy.css";
  * already locked body scrolling, so the page becomes its own scroll container.
  */
 export function mountPrivacyPage(el: HTMLElement, opts: { contained?: boolean } = {}): void {
-  document.title = "Privacy Policy · Nest Connect";
+  document.title = "Privacy Policy · NestConnect";
   ReactDOM.createRoot(el).render(
     <React.StrictMode>
       <div className={opts.contained ? "pp--contained" : undefined}>

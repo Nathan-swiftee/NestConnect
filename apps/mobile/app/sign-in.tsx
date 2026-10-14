@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ScrollView, Text, TextInput, useWindowDimensions } from "react-native";
+import { Image, ScrollView, Text, TextInput, useWindowDimensions } from "react-native";
 import Animated, { FadeIn, ReduceMotion, ZoomIn } from "react-native-reanimated";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
@@ -8,8 +8,7 @@ import { api, seedIdentity, type MeResponse } from "@ding/client";
 import type { TwoFactorChallenge } from "@ding/schemas";
 import { Button } from "../src/components/Button";
 import { Field } from "../src/components/Field";
-import { BRAND } from "@ding/design/logo";
-import { AuthGlow, NestMark } from "../src/components/NestMark";
+import { AuthGlow } from "../src/components/NestMark";
 import { rowIn } from "../src/motion";
 import { loadTrustedDevice, saveSession, saveTrustedDevice } from "../src/session";
 import { useTheme } from "../src/theme";
@@ -130,33 +129,27 @@ export default function SignIn() {
             one moment in the app with nothing else to look at, so it's worth
             the half-second — and it covers the gap while the stored session is
             being checked. */}
-        <Animated.View
-          entering={ZoomIn.springify().damping(16).stiffness(220).mass(0.8).reduceMotion(ReduceMotion.System)}
-          style={{
-            // The brand's navy, not the UI's green: the mark is green now, and
-            // green on green is nothing. This is the ground the app icon uses,
-            // so the tile someone taps to open the app and the tile that greets
-            // them inside it are the same object.
-            backgroundColor: BRAND.navy,
-            shadowColor: BRAND.navy,
-            shadowOpacity: 0.32,
-            shadowRadius: 20,
-            shadowOffset: { width: 0, height: 8 },
-            elevation: 8,
-          }}
-          className="h-16 w-16 items-center justify-center rounded-20"
-        >
-          <NestMark size={34} />
+        <Animated.View entering={ZoomIn.springify().damping(16).stiffness(220).mass(0.8).reduceMotion(ReduceMotion.System)}>
+          {/* The full logo, as delivered. */}
+          <Image
+            source={require("../assets/logo-lockup.png")}
+            accessibilityRole="header"
+            accessibilityLabel="NestConnect"
+            resizeMode="contain"
+            style={{ width: 224, height: 28 }}
+          />
         </Animated.View>
 
         <Animated.View entering={rowIn(1)}>
-          <Text
-            accessibilityRole="header"
-            style={{ fontSize: 34, lineHeight: 38, letterSpacing: -0.8 }}
-            className="mt-5 font-semibold text-fg"
-          >
-            {challenge ? "Almost there" : "Nest Connect"}
-          </Text>
+          {challenge ? (
+            <Text
+              accessibilityRole="header"
+              style={{ fontSize: 34, lineHeight: 38, letterSpacing: -0.8 }}
+              className="mt-5 font-semibold text-fg"
+            >
+              Almost there
+            </Text>
+          ) : null}
           <Text className="mt-2 text-lg leading-snug text-muted">
             {challenge
               ? "Enter your second factor to finish signing in."

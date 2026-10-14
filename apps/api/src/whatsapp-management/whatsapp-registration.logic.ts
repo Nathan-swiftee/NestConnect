@@ -14,7 +14,7 @@ import { metaErrorMessage } from "../channels/whatsapp/whatsapp-creds";
  * onboarding. Until somebody calls `POST /{phone-number-id}/register`, Meta
  * leaves the number at PENDING and shows "Please register this phone number
  * using the registration API or contact your partner to register the phone
- * number." Nothing in Nest Connect made that call, so a number could look
+ * number." Nothing in NestConnect made that call, so a number could look
  * perfectly configured here and be unable to send a single message.
  */
 

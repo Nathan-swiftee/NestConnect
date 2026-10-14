@@ -63,7 +63,7 @@ export function IconRail({
       className="w-[60px] flex-none bg-surface [border-right:1px_solid_var(--border)] flex flex-col items-center py-[14px] gap-1.5 max-[820px]:hidden"
       aria-label="Primary"
     >
-      <div className="brandmark" title="Nest Connect">
+      <div className="brandmark" title="NestConnect">
         <Logo />
       </div>
       <button

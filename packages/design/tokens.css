@@ -20,7 +20,7 @@
   --border:#E8E7E4; --border-strong:#D8D7D3;
   --text:#1A1A18; --text-muted:#6B6B67; --text-faint:#9A9A95;
   /* brand + accents */
-  --brand:#0FA47A; --brand-strong:#0B7E5E; --brand-tint:#E4F5EE; --brand-ring:rgba(15,164,122,.35);
+  --brand:#1DAA61; --brand-strong:#128048; --brand-tint:#E3F6E9; --brand-ring:rgba(29,170,97,.35);
   --amber:#E68A00; --amber-tint:#FBEFD9;
   --danger:#E0544D; --danger-tint:#FBE7E5;
   /* channels */
@@ -39,7 +39,7 @@
     --bg:#0D0D0C; --surface:#151514; --surface-2:#1C1C1A; --elevated:#1F1F1D;
     --border:#282826; --border-strong:#383835;
     --text:#ECECEA; --text-muted:#9A9A94; --text-faint:#6E6E69;
-    --brand:#28C795; --brand-strong:#1DA47A; --brand-tint:#0F241D; --brand-ring:rgba(40,199,149,.4);
+    --brand:#3CC27A; --brand-strong:#2BA866; --brand-tint:#0E2418; --brand-ring:rgba(60,194,122,.4);
     --amber:#F2A73C; --amber-tint:#2A2012;
     --danger:#F0716B; --danger-tint:#2B1615;
     --wa:#33D06B; --email:#78A0F5; --group:#B98BF6; --nestchat:#F077B8;
@@ -53,7 +53,7 @@
   --bg:#FAFAF9; --surface:#FFFFFF; --surface-2:#F1F3F5; --elevated:#FFFFFF;
   --border:#E8E7E4; --border-strong:#D8D7D3;
   --text:#1A1A18; --text-muted:#6B6B67; --text-faint:#9A9A95;
-  --brand:#0FA47A; --brand-strong:#0B7E5E; --brand-tint:#E4F5EE; --brand-ring:rgba(15,164,122,.35);
+  --brand:#1DAA61; --brand-strong:#128048; --brand-tint:#E3F6E9; --brand-ring:rgba(29,170,97,.35);
   --amber:#E68A00; --amber-tint:#FBEFD9; --danger:#E0544D; --danger-tint:#FBE7E5;
   --wa:#1FBE5B; --email:#5B8DEF; --group:#A06CF2; --nestchat:#D94590;
   --ai:#C15F3C;
@@ -65,7 +65,7 @@
   --bg:#0D0D0C; --surface:#151514; --surface-2:#1C1C1A; --elevated:#1F1F1D;
   --border:#282826; --border-strong:#383835;
   --text:#ECECEA; --text-muted:#9A9A94; --text-faint:#6E6E69;
-  --brand:#28C795; --brand-strong:#1DA47A; --brand-tint:#0F241D; --brand-ring:rgba(40,199,149,.4);
+  --brand:#3CC27A; --brand-strong:#2BA866; --brand-tint:#0E2418; --brand-ring:rgba(60,194,122,.4);
   --amber:#F2A73C; --amber-tint:#2A2012; --danger:#F0716B; --danger-tint:#2B1615;
   --wa:#33D06B; --email:#78A0F5; --group:#B98BF6; --nestchat:#F077B8;
   --ai:#E08159;

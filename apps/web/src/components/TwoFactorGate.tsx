@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLogout } from "../hooks";
 import { TwoFactorSettings } from "./TwoFactorSettings";
-import { Logo } from "../lib/icons";
+import { Lockup } from "../lib/icons";
 
 /**
  * Mandatory-2FA gate: shown after login to anyone who hasn't enrolled yet. It
@@ -20,12 +20,7 @@ export function TwoFactorGate() {
     <div className="tfa-gate">
       <div className="tfa-gate__card">
         <div className="flex items-center gap-2 mb-1">
-          <div className="brandmark">
-            <Logo />
-          </div>
-          <span className="wordmark">
-            Nest <span className="dot">Connect</span>
-          </span>
+          <Lockup />
         </div>
         <h1>Set up two-factor authentication</h1>
         <p className="m-0 mb-1 text-muted text-sm">

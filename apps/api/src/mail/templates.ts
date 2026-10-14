@@ -1,7 +1,7 @@
 import { env } from "../config/env";
 
 /**
- * The look of Nest Connect's own email — invites, password resets, login codes.
+ * The look of NestConnect's own email — invites, password resets, login codes.
  *
  * These are the first thing a new colleague ever sees of the product, and until
  * now they were a stack of bare `<p>` tags. This is a small design system for
@@ -41,9 +41,9 @@ const C = {
   body: "#3F3F3B",
   muted: "#6B6B67",
   faint: "#9A9A95",
-  brand: "#0FA47A",
-  brandStrong: "#0B7E5E",
-  brandTint: "#E4F5EE",
+  brand: "#1DAA61",
+  brandStrong: "#128048",
+  brandTint: "#E3F6E9",
   amber: "#E68A00",
   amberTint: "#FDF3E3",
 };
@@ -75,7 +75,7 @@ function safeUrl(url: string): string {
  *
  * `preheader` is the grey line a mail client shows next to the subject in the
  * list. Left unset it fills with whatever text comes first — usually the
- * wordmark, so every email previews identically as "Nest Connect Nest
+ * wordmark, so every email previews identically as "NestConnect Nest
  * Connect…". Setting it deliberately is one of the cheapest things that
  * separates a designed email from a default one.
  */
@@ -83,7 +83,7 @@ function layout(opts: { preheader: string; body: string; brand?: string; footer?
   // A business's own email to its customer carries the business's name, not
   // ours: the person reading it chatted with them and has never heard of us.
   const brand = opts.brand ? escapeHtml(opts.brand) : "Nest&nbsp;Connect";
-  const footer = opts.footer ?? "Sent by Nest Connect — WhatsApp, email and group chats in one shared inbox.";
+  const footer = opts.footer ?? "Sent by NestConnect — WhatsApp, email and group chats in one shared inbox.";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -247,18 +247,18 @@ export function visitorReplyEmail(opts: {
 export function inviteEmail(name: string, url: string): Composed {
   const who = name.trim() || "there";
   return {
-    subject: "You've been invited to Nest Connect",
+    subject: "You've been invited to NestConnect",
     text: [
       `Hi ${who},`,
       ``,
-      `You've been invited to Nest Connect — the shared inbox where your team answers WhatsApp, email and group chats in one place.`,
+      `You've been invited to NestConnect — the shared inbox where your team answers WhatsApp, email and group chats in one place.`,
       ``,
       `Set your password to get started:`,
       url,
       ``,
       `This link expires in 7 days. If you weren't expecting it, you can ignore this email.`,
       ``,
-      `— Nest Connect`,
+      `— NestConnect`,
     ].join("\n"),
     html: layout({
       preheader: "Set your password and join your team's shared inbox.",
@@ -266,7 +266,7 @@ export function inviteEmail(name: string, url: string): Composed {
         h1("You've been invited") +
         p(`Hi ${escapeHtml(who)},`) +
         p(
-          `You've been added to <b style="color:${C.text};">Nest Connect</b> — the shared inbox where your team answers WhatsApp, email and group chats in one place.`,
+          `You've been added to <b style="color:${C.text};">NestConnect</b> — the shared inbox where your team answers WhatsApp, email and group chats in one place.`,
         ) +
         p(`Pick a password and you're in.`) +
         button("Set your password", url) +
@@ -279,25 +279,25 @@ export function inviteEmail(name: string, url: string): Composed {
 export function passwordResetEmail(name: string, url: string): Composed {
   const who = name.trim() || "there";
   return {
-    subject: "Reset your Nest Connect password",
+    subject: "Reset your NestConnect password",
     text: [
       `Hi ${who},`,
       ``,
-      `We received a request to reset your Nest Connect password. Choose a new one here:`,
+      `We received a request to reset your NestConnect password. Choose a new one here:`,
       url,
       ``,
       `This link expires in 7 days.`,
       ``,
       `If you didn't ask for this, you can ignore this email — your password stays as it is.`,
       ``,
-      `— Nest Connect`,
+      `— NestConnect`,
     ].join("\n"),
     html: layout({
       preheader: "Choose a new password. The link expires in 7 days.",
       body:
         h1("Reset your password") +
         p(`Hi ${escapeHtml(who)},`) +
-        p(`We received a request to reset the password for your Nest Connect account.`) +
+        p(`We received a request to reset the password for your NestConnect account.`) +
         button("Choose a new password", url) +
         fallbackLink(url) +
         caution(
@@ -310,9 +310,9 @@ export function passwordResetEmail(name: string, url: string): Composed {
 
 export function loginCodeEmail(code: string, minutes: number): Composed {
   return {
-    subject: `${code} is your Nest Connect code`,
+    subject: `${code} is your NestConnect code`,
     text: [
-      `Your Nest Connect verification code is:`,
+      `Your NestConnect verification code is:`,
       ``,
       code,
       ``,
@@ -320,7 +320,7 @@ export function loginCodeEmail(code: string, minutes: number): Composed {
       ``,
       `If you didn't try to sign in, someone may have your password — change it as soon as you can.`,
       ``,
-      `— Nest Connect`,
+      `— NestConnect`,
     ].join("\n"),
     html: layout({
       // The code goes in the preview line on purpose: on a phone this is often
@@ -341,23 +341,23 @@ export function loginCodeEmail(code: string, minutes: number): Composed {
 export function testEmail(): Composed {
   const appUrl = env.appUrl;
   return {
-    subject: "Nest Connect — test email",
+    subject: "NestConnect — test email",
     text: [
-      `This is a test email from Nest Connect.`,
+      `This is a test email from NestConnect.`,
       ``,
       `If you're reading it, your sending setup is working and invites, password resets and login codes will reach people.`,
       ``,
-      `— Nest Connect`,
+      `— NestConnect`,
     ].join("\n"),
     html: layout({
       preheader: "Your sending setup is working.",
       body:
         h1("Sending works") +
-        p(`This is a test email from Nest Connect.`) +
+        p(`This is a test email from NestConnect.`) +
         p(
           `If you're reading it, your setup is working — invites, password resets and login codes will reach people.`,
         ) +
-        (/^https?:\/\//i.test(appUrl) ? button("Open Nest Connect", appUrl) : "") +
+        (/^https?:\/\//i.test(appUrl) ? button("Open NestConnect", appUrl) : "") +
         note(`Nothing to do here. You can delete this email.`),
     }),
   };

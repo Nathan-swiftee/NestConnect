@@ -1,25 +1,6 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useChatStatus, useLogout, useMe, useOpsStatus, useSound, useTeams, useTheme, useViews } from "../hooks";
-import {
-  ChevronRight,
-  ChevronsLeftIcon,
-  ContactsIcon,
-  OrganisationsIcon,
-  OpsIcon,
-  TeamChatIcon,
-  InboxIcon,
-  InsightsIcon,
-  SnoozeIcon,
-  TeamGlyph,
-  ThemeIcon,
-  SunIcon,
-  SoundOnIcon,
-  SoundOffIcon,
-  SettingsIcon,
-  LogoutIcon,
-  XIcon,
-  channelMeta,
-} from "../lib/icons";
+import { ChevronRight, ChevronsLeftIcon, ContactsIcon, OrganisationsIcon, OpsIcon, TeamChatIcon, InboxIcon, InsightsIcon, SnoozeIcon, TeamGlyph, ThemeIcon, SunIcon, SoundOnIcon, SoundOffIcon, SettingsIcon, LogoutIcon, XIcon, channelMeta, Lockup } from "../lib/icons";
 import { initials, avatarBg } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 
@@ -143,9 +124,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
   return (
     <aside className={"side" + (isCollapsed ? " is-collapsed" : "")} aria-label="Inboxes">
       <div className="side__head">
-        <span className="wordmark">
-          Nest <span className="dot">Connect</span>
-        </span>
+        <Lockup />
         <span className="side__sub">Swiftee</span>
         {onToggleCollapse && (
           <button

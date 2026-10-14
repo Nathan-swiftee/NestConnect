@@ -12,7 +12,7 @@ import { useRegisterWhatsappNumber, useWhatsappNumberStatus } from "@ding/client
  * A number added and verified in WhatsApp Manager still sits at "Pending" until
  * something calls the Cloud API's registration endpoint — Meta's own advice is
  * "register this phone number using the registration API or contact your
- * partner". Nest Connect is the partner, so this is where that happens.
+ * partner". NestConnect is the partner, so this is where that happens.
  *
  * Everything here deals in one 6-digit PIN. The Phone number ID and access
  * token are never sent from the browser: the server reads them from the

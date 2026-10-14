@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Linking, ScrollView, Text, View, useWindowDimensions } from "react-native";
+import { Image, Linking, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import Animated, { ReduceMotion, ZoomIn } from "react-native-reanimated";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
@@ -8,8 +8,7 @@ import { api, useLogout } from "@ding/client";
 import type { TotpSetup } from "@ding/schemas";
 import { Button } from "../src/components/Button";
 import { Field } from "../src/components/Field";
-import { BRAND } from "@ding/design/logo";
-import { AuthGlow, NestMark } from "../src/components/NestMark";
+import { AuthGlow } from "../src/components/NestMark";
 import { rowIn } from "../src/motion";
 import { useTheme } from "../src/theme";
 import { useInsets } from "../src/insets";
@@ -119,19 +118,15 @@ export default function Enrol2fa() {
         keyboardShouldPersistTaps="handled"
         className="px-6"
       >
-        <Animated.View
-          entering={ZoomIn.springify().damping(16).stiffness(220).mass(0.8).reduceMotion(ReduceMotion.System)}
-          style={{
-            backgroundColor: BRAND.navy,
-            shadowColor: BRAND.navy,
-            shadowOpacity: 0.32,
-            shadowRadius: 20,
-            shadowOffset: { width: 0, height: 8 },
-            elevation: 8,
-          }}
-          className="h-16 w-16 items-center justify-center rounded-20"
-        >
-          <NestMark size={34} />
+        <Animated.View entering={ZoomIn.springify().damping(16).stiffness(220).mass(0.8).reduceMotion(ReduceMotion.System)}>
+          {/* The full logo, as delivered. */}
+          <Image
+            source={require("../assets/logo-lockup.png")}
+            accessibilityRole="header"
+            accessibilityLabel="NestConnect"
+            resizeMode="contain"
+            style={{ width: 224, height: 28 }}
+          />
         </Animated.View>
 
         <Animated.View entering={rowIn(1)}>
@@ -186,7 +181,7 @@ export default function Enrol2fa() {
               {flow === "totp" && setup ? (
                 <View className="gap-3">
                   <Text className="text-lg leading-snug text-muted">
-                    Add Nest Connect to your authenticator app, then enter the code it shows.
+                    Add NestConnect to your authenticator app, then enter the code it shows.
                   </Text>
                   <Button
                     title="Open my authenticator app"

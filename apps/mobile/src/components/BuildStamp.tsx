@@ -44,7 +44,7 @@ export function BuildStamp() {
   return (
     <View className="items-center gap-0.5 px-4 pb-2 pt-6">
       <Text style={{ color: c.textFaint }} className="text-2xs">
-        Nest Connect {version} · {channel} · runtime {runtime}
+        NestConnect {version} · {channel} · runtime {runtime}
       </Text>
       <Text style={{ color: c.textFaint }} className="text-2xs">
         {embedded || !update ? "Running the build installed on this phone" : `Update ${update}`}
