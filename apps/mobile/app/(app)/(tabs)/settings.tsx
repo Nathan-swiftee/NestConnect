@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
-import { Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import {
+  api,
   useLogout,
   useMe,
   usePushPreferences,
@@ -12,6 +14,8 @@ import {
 } from "@ding/client";
 import { availableNow, type PushPreferences } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
+import { ActionSheet, type SheetAction } from "../../../src/components/ActionSheet";
+import { mediaSource } from "../../../src/api-config";
 import { TabHeader } from "../../../src/components/TabHeader";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { BellIcon, ContrastIcon, LogoutIcon } from "../../../src/icons";
@@ -58,6 +62,55 @@ export default function Settings() {
     if (next === (me?.position ?? "")) return;
     profile.mutate({ position: next }, { onError: () => setPosition(me?.position ?? "") });
   }
+
+  // Profile photo: the face colleagues see in Team Chat, mentions and
+  // assignments. Cropped square here, since it's shown as a circle everywhere.
+  const [photoSheet, setPhotoSheet] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  async function choosePhoto(from: "camera" | "library") {
+    const perm =
+      from === "camera"
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert(
+        from === "camera" ? "Camera access needed" : "Photos access needed",
+        from === "camera" ? "Allow camera access to take your photo." : "Allow photo access to choose your photo.",
+      );
+      return;
+    }
+    const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.8 };
+    const res = from === "camera" ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
+    const a = res.canceled ? undefined : res.assets[0];
+    if (!a) return;
+    setPhotoBusy(true);
+    try {
+      const name = a.fileName ?? `profile-${Date.now()}.jpg`;
+      const att = await api.uploadMedia(
+        { uri: a.uri, name, type: a.mimeType ?? "image/jpeg" },
+        { kind: "image", filename: name, width: a.width, height: a.height },
+      );
+      await profile.mutateAsync({ avatarUrl: att.url });
+    } catch {
+      Alert.alert("Couldn't update your photo", "Check your connection and try again.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+  function removePhoto() {
+    profile.mutate(
+      { avatarUrl: "" },
+      { onError: () => Alert.alert("Couldn't remove your photo", "Check your connection and try again.") },
+    );
+  }
+  // After the sheet has gone: iOS won't present the picker over a sheet
+  // that's still dismissing (see AttachSheet).
+  const later = (run: () => void) => () => setTimeout(run, 350);
+  const photoActions: SheetAction[] = [
+    { key: "camera", label: "Take a photo", onPress: later(() => void choosePhoto("camera")) },
+    { key: "library", label: "Choose from library", onPress: later(() => void choosePhoto("library")) },
+    ...(me?.avatarUrl ? [{ key: "remove", label: "Remove photo", destructive: true, onPress: removePhoto }] : []),
+  ];
   const pushPrefs = usePushPreferences();
   const chatOn = !!useChatStatus().data?.enabled;
   const updatePush = useUpdatePushPreferences();
@@ -132,7 +185,36 @@ export default function Settings() {
       {/* Who you are */}
       <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 rounded-16 border p-4">
         <View className="flex-row items-center gap-3">
-          <Avatar name={me?.name ?? ""} color={me?.avatarColor} size={52} />
+          <Pressable
+            onPress={() => setPhotoSheet(true)}
+            disabled={photoBusy || !me}
+            accessibilityRole="button"
+            accessibilityLabel={me?.avatarUrl ? "Change your profile photo" : "Add a profile photo"}
+            hitSlop={6}
+          >
+            <Avatar
+              // A fresh one per photo, so a photo that failed to load doesn't
+              // leave the next one stuck on initials.
+              key={me?.avatarUrl ?? "none"}
+              name={me?.name ?? ""}
+              color={me?.avatarColor}
+              size={52}
+              photo={me?.avatarUrl ? mediaSource(me.avatarUrl) : null}
+            />
+            {photoBusy ? (
+              <View style={{ backgroundColor: "rgba(0,0,0,0.35)" }} className="absolute inset-0 items-center justify-center rounded-full">
+                <ActivityIndicator color="#fff" size="small" />
+              </View>
+            ) : null}
+            <View
+              style={{ backgroundColor: c.surface, borderColor: c.border }}
+              className="absolute -bottom-1 -right-1 rounded-full border px-1.5 py-px"
+            >
+              <Text style={{ color: c.brandStrong }} className="text-2xs font-semibold">
+                Edit
+              </Text>
+            </View>
+          </Pressable>
           <View className="flex-1">
             <Text className="text-lg font-semibold text-fg">{me?.name ?? "—"}</Text>
             <Text numberOfLines={1} className="text-sm text-muted">
@@ -409,6 +491,7 @@ export default function Settings() {
       </Touchable>
 
       <BuildStamp />
+      <ActionSheet visible={photoSheet} title="Profile photo" actions={photoActions} onClose={() => setPhotoSheet(false)} />
     </ScrollView>
   );
 }
