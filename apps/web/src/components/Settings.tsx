@@ -4447,6 +4447,9 @@ function ObaSection({ inboxId, website, onToast }: { inboxId: string; website?: 
   const [parent, setParent] = useState("");
   const [links, setLinks] = useState("");
   const [extra, setExtra] = useState("");
+  // What Meta said when it refused, kept on screen: a toast is gone before
+  // anyone can copy the reference Meta's support will ask for.
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   const status = oba.data?.status ?? "";
   const known = OBA_STATUS[status] ?? { label: status.replace(/_/g, " ").toLowerCase() || "Unknown", tone: "muted" as const, hint: "" };
@@ -4460,6 +4463,7 @@ function ObaSection({ inboxId, website, onToast }: { inboxId: string; website?: 
       .split(/[\n,]+/)
       .map((l) => normalizeUrl(l.trim()))
       .filter(Boolean);
+    setRefusal(null);
     request.mutate(
       {
         inboxId,
@@ -4477,7 +4481,7 @@ function ObaSection({ inboxId, website, onToast }: { inboxId: string; website?: 
           setOpen(false);
           onToast("Sent to Meta — the status will show here");
         },
-        onError: (err) => onToast((err as Error)?.message ?? "Meta didn’t accept the request"),
+        onError: (err) => setRefusal((err as Error)?.message || "Meta didn’t accept the request."),
       },
     );
   };
@@ -4552,6 +4556,11 @@ function ObaSection({ inboxId, website, onToast }: { inboxId: string; website?: 
             <span>Anything else <em>optional</em></span>
             <textarea rows={2} maxLength={1000} value={extra} onChange={(e) => setExtra(e.target.value)} placeholder="Awards, notable customers, how long you’ve traded…" />
           </label>
+          {refusal && (
+            <div className="oba__refusal" role="alert">
+              {refusal}
+            </div>
+          )}
           <div className="setform__foot">
             <button type="button" className="btn-ghost sm" onClick={() => setOpen(false)} disabled={request.isPending}>
               Cancel

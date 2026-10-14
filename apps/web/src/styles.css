@@ -2671,6 +2671,7 @@ button.tpl-row:active{transform:scale(.97)}
 .oba__pill--green{background:var(--brand-tint);color:var(--brand-strong)}
 .oba__pill--red{background:var(--danger-tint);color:var(--danger)}
 .oba__hint{font-size:var(--fs-sm);color:var(--text-muted);flex:1;min-width:200px}
+.oba__refusal{padding:10px 12px;border-radius:var(--r-8);background:var(--danger-tint);color:var(--danger);font-size:var(--fs-sm);line-height:1.45;user-select:text}
 .oba__form{display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--border);padding-top:14px}
 .setempty{padding:var(--sp-5) var(--sp-4);text-align:center;font-size:var(--fs-sm);color:var(--text-faint);border:1px dashed var(--border);border-radius:var(--r-12);background:var(--surface-2)}
 .wa-profile__photo{display:flex;flex-direction:column;gap:var(--sp-2);align-items:flex-start}
