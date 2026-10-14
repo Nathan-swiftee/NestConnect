@@ -113,7 +113,7 @@ export function TeamChat({
                 <button
                   type="button"
                   className={"iconbtn" + (oversee ? " on" : "")}
-                  title={oversee ? "Back to my chats" : "All chats (admin)"}
+                  title={oversee ? "Back to my chats" : "All chats"}
                   aria-label={oversee ? "Back to my chats" : "All chats in the workspace"}
                   aria-pressed={oversee}
                   onClick={() => setOversee((v) => !v)}
@@ -206,7 +206,7 @@ export function TeamChat({
               </>
             )}
           </div>
-          <footer className="tc-list__foot">Admins in your workspace can read team chats.</footer>
+          <footer className="tc-list__foot">Admins and managers in your workspace can read and write in any team chat.</footer>
           </>
           )}
         </aside>

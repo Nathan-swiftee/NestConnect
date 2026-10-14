@@ -214,7 +214,7 @@ export default function ChatScreen() {
         <View style={{ backgroundColor: c.amberTint }} className="flex-row items-center gap-2 px-4 py-2">
           <EyeIcon size={15} color={c.amber} />
           <Text className="flex-1 text-xs text-fg">
-            {r.archived ? "This team was deleted. Its chat is kept here, read-only." : "You're reading this as an admin. You can't write here, and this visit is recorded."}
+            {r.archived ? "This team was deleted. Its chat is kept here, read-only." : "You aren’t in this chat. Anything you write is seen by everyone in it, and this visit is recorded."}
           </Text>
         </View>
       ) : null}
@@ -273,7 +273,8 @@ export default function ChatScreen() {
               last={item.last}
               mine={m.author?.id === me?.id}
               meId={me?.id}
-              group={group}
+              // An admin or manager who stepped into a direct chat is named, not taken for the other person.
+              group={group || !r.members.some((p) => p.id === m.author?.id)}
               members={r.members}
               people={mentionables}
               canAct={r.canPost}
@@ -333,7 +334,7 @@ export default function ChatScreen() {
         ) : (
           <View style={{ backgroundColor: c.surface, borderTopColor: c.border }} className="border-t px-4 py-3">
             <Text className="text-center text-md text-muted">
-              {r.oversight ? "Read-only — you aren't in this chat." : r.archived ? "This team was deleted, so its chat is read-only." : "You can't send messages here."}
+              {r.archived ? "This team was deleted, so its chat is read-only." : r.kind === "direct" ? "They're no longer in this workspace." : "You can't send messages here."}
             </Text>
           </View>
         )}

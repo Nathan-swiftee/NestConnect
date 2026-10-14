@@ -299,7 +299,7 @@ export function ChatConversation({
         {r.oversight && (
           <div className="tc-banner" role="note">
             <EyeIcon />
-            <span>{r.archived ? "This team was deleted. Its chat is kept here, read-only." : "You're reading this as an admin. You can't write here, and this visit is recorded."}</span>
+            <span>{r.archived ? "This team was deleted. Its chat is kept here, read-only." : "You aren’t in this chat. Anything you write is seen by everyone in it, and this visit is recorded."}</span>
           </div>
         )}
 
@@ -347,7 +347,8 @@ export function ChatConversation({
                       mine={it.message.author?.id === me?.id}
                       meId={me?.id}
                       // Reading someone else's direct chat, there are two other people: say who's who.
-                      group={r.kind !== "direct" || r.oversight}
+                      // And in your own, an admin or manager who stepped in is named, not taken for them.
+                      group={r.kind !== "direct" || r.oversight || !r.members.some((p) => p.id === it.message.author?.id)}
                       room={r}
                       people={mentionables}
                       flash={flash === it.message.id}
@@ -409,10 +410,10 @@ export function ChatConversation({
           />
         ) : (
           <div className="tc-cantpost">
-            {r.oversight
-              ? "Read-only — you aren't in this chat."
-              : r.archived
-                ? "This team was deleted, so its chat is read-only."
+            {r.archived
+              ? "This team was deleted, so its chat is read-only."
+              : r.kind === "direct"
+                ? "They're no longer in this workspace."
                 : "You can't send messages here."}
           </div>
         )}

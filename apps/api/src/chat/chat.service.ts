@@ -80,7 +80,7 @@ interface Access {
   /** My own row, when I'm in it. */
   me: ChatMemberRecord | undefined;
   isMember: boolean;
-  /** An admin reading a chat they aren't in. */
+  /** An admin or manager reading a chat they aren't in. */
   oversight: boolean;
   team: Team | undefined;
   archived: boolean;
@@ -128,10 +128,10 @@ export class ChatService implements OnModuleInit {
   async status(userId: string): Promise<ChatStatusInfo> {
     const user = await this.user(userId);
     const elevated = user.role === "admin" || user.role === "manager";
-    if (!(await this.enabled())) return { enabled: false, canCreateGroups: elevated, canOversee: user.role === "admin", unread: 0 };
+    if (!(await this.enabled())) return { enabled: false, canCreateGroups: elevated, canOversee: oversees(user), unread: 0 };
     const rooms = await this.rooms(userId);
     const unread = rooms.filter((r) => !r.muted).reduce((n, r) => n + r.unread, 0);
-    return { enabled: true, canCreateGroups: elevated, canOversee: user.role === "admin", unread };
+    return { enabled: true, canCreateGroups: elevated, canOversee: oversees(user), unread };
   }
 
   /** Admins only. Off hides it everywhere and keeps every chat for switching back on. */
@@ -145,7 +145,7 @@ export class ChatService implements OnModuleInit {
   /* ---- the list ---- */
 
   /**
-   * My chats, pinned first then most recent. With `all`, an admin sees every
+   * My chats, pinned first then most recent. With `all`, an admin or manager sees every
    * chat in the workspace — the ones they aren't in marked as such.
    *
    * Reading the list is also my app saying it has everything up to now, so
@@ -177,7 +177,7 @@ export class ChatService implements OnModuleInit {
       });
   }
 
-  /** The chats this person is in — or, for an admin asking for `all`, every chat. */
+  /** The chats this person is in — or, for an admin or manager asking for `all`, every chat. */
   private async visibleRooms(user: User, all: boolean): Promise<Access[]> {
     await this.ensureTeamRooms();
     const [teams, memberships, members] = await Promise.all([this.store.listTeams(), this.chat.membershipsOf(user.id), this.store.listMembers()]);
@@ -191,7 +191,7 @@ export class ChatService implements OnModuleInit {
       // A team chat's members are its team, whatever rows of markers it holds — so
       // once the team is gone, nobody is in it (admins can still read it).
       const isMember = room.kind === "team" ? inTeam : mine.has(room.id);
-      if (!isMember && !(all && user.role === "admin")) continue;
+      if (!isMember && !(all && oversees(user))) continue;
       visible.push({
         room,
         memberIds: await this.memberIds(room, team),
@@ -240,7 +240,7 @@ export class ChatService implements OnModuleInit {
   /** My starred messages, newest star first — only from chats I can still open. */
   async starred(userId: string): Promise<ChatStarred[]> {
     const user = await this.open(userId);
-    const [stars, rooms, people] = await Promise.all([this.chat.starsOf(userId), this.visibleRooms(user, user.role === "admin"), this.people()]);
+    const [stars, rooms, people] = await Promise.all([this.chat.starsOf(userId), this.visibleRooms(user, oversees(user)), this.people()]);
     const byId = new Map(rooms.map((a) => [a.room.id, a]));
     const msgs = new Map((await this.chat.getMessages(stars.map((s) => s.messageId))).map((m) => [m.id, m]));
     const quotes = await this.quotesFor([...msgs.values()], people);
@@ -263,6 +263,9 @@ export class ChatService implements OnModuleInit {
   async share(userId: string, input: ShareConversationInput): Promise<ChatMessage> {
     const user = await this.open(userId);
     const a = await this.writable(user, input.roomId);
+    // Discuss… offers the chats you're in. Stepping into one you oversee is
+    // for saying something, not for filing customer threads there.
+    if (!a.isMember) throw new ForbiddenException("Discuss it in a chat you're in");
     const conv = await this.store.getConversation(input.conversationId);
     if (!conv) throw new NotFoundException("Conversation not found");
     let quote: ChatSharedConversation["quote"] = null;
@@ -300,7 +303,7 @@ export class ChatService implements OnModuleInit {
       conversationId: conv.id,
       shared,
     });
-    await this.chat.upsertMember(a.room.id, userId, { lastReadAt: chatClock() });
+    if (a.isMember) await this.chat.upsertMember(a.room.id, userId, { lastReadAt: chatClock() });
     const message = this.message(rec, people, new Map());
     this.emit(a, ChatServerEvent.Message, { roomId: a.room.id, message });
     this.emitReceipt(a, userId, await this.chat.getMember(a.room.id, userId));
@@ -414,7 +417,8 @@ export class ChatService implements OnModuleInit {
   }
 
   private canPost(a: Access): boolean {
-    return a.isMember && !a.archived && !(a.room.kind === "direct" && a.memberIds.length < 2);
+    // `access` only lets a non-member in to oversee, so everyone here may write.
+    return !a.archived && !(a.room.kind === "direct" && a.memberIds.length < 2);
   }
 
   /* ---- one chat ---- */
@@ -466,8 +470,9 @@ export class ChatService implements OnModuleInit {
       mentions,
       attachments,
     });
-    // Writing in a chat is reading it.
-    await this.chat.upsertMember(roomId, userId, { lastReadAt: chatClock() });
+    // Writing in a chat is reading it. Not for someone overseeing it: a row
+    // here would make them a member of a group or direct chat.
+    if (a.isMember) await this.chat.upsertMember(roomId, userId, { lastReadAt: chatClock() });
     const quotes = await this.quotesFor([rec], people);
     const message = { ...this.message(rec, people, quotes), clientId: input.clientId ?? null };
     this.emit(a, ChatServerEvent.Message, { roomId, message });
@@ -760,10 +765,10 @@ export class ChatService implements OnModuleInit {
     this.realtime.emitToUsers(a.memberIds, ChatServerEvent.Room, { roomId });
   }
 
-  /** When admins have read a chat they aren't in. Admins only. */
+  /** When admins and managers have read a chat they aren't in. Theirs to see. */
   async audits(userId: string, roomId: string): Promise<Array<{ person: ChatPerson; at: string }>> {
     const user = await this.open(userId);
-    if (user.role !== "admin") throw new ForbiddenException("Admins only");
+    if (!oversees(user)) throw new ForbiddenException("Admins and managers only");
     await this.access(user, roomId);
     const [rows, people] = await Promise.all([this.chat.listAudits(roomId), this.people()]);
     return rows.flatMap((r) => (people.has(r.userId) ? [{ person: person(people.get(r.userId)!), at: r.at }] : []));
@@ -814,7 +819,7 @@ export class ChatService implements OnModuleInit {
     const memberIds = await this.memberIds(room, team);
     const isMember = memberIds.includes(user.id);
     // Somebody who can't see a chat is told it doesn't exist, not that it's private.
-    if (!isMember && user.role !== "admin") throw new NotFoundException("Chat not found");
+    if (!isMember && !oversees(user)) throw new NotFoundException("Chat not found");
     return {
       room,
       memberIds,
@@ -826,10 +831,13 @@ export class ChatService implements OnModuleInit {
     };
   }
 
-  /** …and write in it: members only, and not in a team chat whose team is gone. */
+  /**
+   * …and write in it: its members, and admins and managers overseeing it —
+   * who can step in without joining, so the members list stays the team's.
+   * Never in a team chat whose team is gone.
+   */
   private async writable(user: User, roomId: string): Promise<Access> {
     const a = await this.access(user, roomId);
-    if (!a.isMember) throw new ForbiddenException("Admins can read this chat but not write in it");
     if (a.archived) throw new ForbiddenException("This team has been deleted; its chat is read-only");
     if (a.room.kind === "direct" && a.memberIds.length < 2) throw new ForbiddenException("They're no longer in this workspace");
     return a;
@@ -1108,6 +1116,11 @@ export class ChatService implements OnModuleInit {
       createdAt: m.createdAt,
     };
   }
+}
+
+/** Admins and managers: they can open any chat (the eye) and write in it. */
+function oversees(u: User): boolean {
+  return u.role === "admin" || u.role === "manager";
 }
 
 function person(u: User): ChatPerson {
