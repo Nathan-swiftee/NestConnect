@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type {
   AssignConversationInput,
@@ -99,30 +99,53 @@ export class ConversationsService {
     );
   }
 
-  list(
+  /**
+   * The sidebar only offers an agent the teams they're on and the channels
+   * routed to those teams (`Store.views`). This holds the list itself to the
+   * same rule, so another channel's conversations can't be opened by link or by
+   * a view left over from before a routing change. Admins and managers oversee
+   * the whole workspace and see every one.
+   */
+  async assertViewAllowed(view: string, userId: string): Promise<void> {
+    if (!view.startsWith("team:") && !view.startsWith("inbox:")) return;
+    const me = await this.store.getUser(userId);
+    if (me?.role === "admin" || me?.role === "manager") return;
+    const myTeams = await this.store.teamsForUser(userId);
+    const allowed = view.startsWith("team:")
+      ? myTeams.includes(view.slice(5))
+      : (await this.store.listInboxes()).some(
+          (i) => i.id === view.slice(6) && i.teamIds.some((t) => myTeams.includes(t)),
+        );
+    if (!allowed) throw new ForbiddenException("That channel isn't routed to your team");
+  }
+
+  async list(
     view: string,
     userId: string,
     opts?: { cursor?: string; limit?: number; field?: { key: string; value?: string } },
   ): Promise<ConversationPage> {
+    await this.assertViewAllowed(view, userId);
     return this.store.listConversations(view, userId, opts);
   }
 
   /** How many conversations each of the list's filter chips holds. */
-  counts(
+  async counts(
     view: string,
     userId: string,
     opts?: { field?: { key: string; value?: string } },
   ): Promise<ConversationFilterCounts> {
+    await this.assertViewAllowed(view, userId);
     return this.store.conversationFilterCounts(view, userId, opts);
   }
 
   /** Search across conversations (contact, subject, preview, body). Scoped to
    *  one view when the caller names one — the search field lives inside an
    *  inbox, so its results should belong to that inbox. */
-  search(
+  async search(
     query: string,
     opts?: { cursor?: string; limit?: number; view?: string; userId?: string },
   ): Promise<ConversationPage> {
+    if (opts?.view && opts.userId) await this.assertViewAllowed(opts.view, opts.userId);
     return this.store.searchConversations(query, opts);
   }
 

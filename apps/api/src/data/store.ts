@@ -399,6 +399,8 @@ export abstract class Store {
       teamIds?: string[];
       routingStrategy?: RoutingStrategy;
       channelConfig?: Record<string, string>;
+      contactTag?: string;
+      conversationLabelId?: string | null;
     },
   ): Promise<Inbox | undefined>;
   /** Save an email channel's signature design (already sanitised). */

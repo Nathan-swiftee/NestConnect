@@ -191,7 +191,10 @@ export function renderConversationEvents(
       case "labels": {
         const added = (Array.isArray(d.added) ? d.added : []) as string[];
         const removed = (Array.isArray(d.removed) ? d.removed : []) as string[];
-        if (added.length === 1 && !removed.length) text = `${who} added the label “${added[0]}”`;
+        if (d.byChannel && added.length === 1) {
+          text = `Labelled “${added[0]}”`;
+          detail = "Every conversation on this channel is";
+        } else if (added.length === 1 && !removed.length) text = `${who} added the label “${added[0]}”`;
         else if (removed.length === 1 && !added.length) text = `${who} removed the label “${removed[0]}”`;
         else {
           text = `${who} changed the labels`;

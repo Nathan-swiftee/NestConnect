@@ -138,13 +138,10 @@ export function appSetupGuide(input: AppSetupInput): AppSetupStep[] {
 }
 
 function identityStep(app: NestChatApp, hasSecret: boolean): AppSetupStep {
-  const tag = app.contactTag.trim();
-  const tagged = tag ? ` Everyone who chats here is tagged “${tag}”.` : "";
-
   if (app.identity === "required") {
     return {
       title: "Say who the user is",
-      body: `This channel only believes a signed claim, so \`userHash\` is required — without it the chat opens anonymously and the name, email and phone are discarded.${tagged}`,
+      body: `This channel only believes a signed claim, so \`userHash\` is required — without it the chat opens anonymously and the name, email and phone are discarded.`,
       code: [
         "await chat.login(",
         "  userId: user.id,        // your own id — this is the contact key",
@@ -163,7 +160,7 @@ function identityStep(app: NestChatApp, hasSecret: boolean): AppSetupStep {
   if (app.identity === "optional") {
     return {
       title: "Say who the user is",
-      body: `\`userId\` is your own id and becomes the contact key, so a reinstall or a new phone resumes the same history. \`userHash\` is optional today and checked when sent.${tagged}`,
+      body: `\`userId\` is your own id and becomes the contact key, so a reinstall or a new phone resumes the same history. \`userHash\` is optional today and checked when sent.`,
       code: [
         "await chat.login(",
         "  userId: user.id,        // your own id — this is the contact key",
@@ -180,7 +177,7 @@ function identityStep(app: NestChatApp, hasSecret: boolean): AppSetupStep {
 
   return {
     title: "Say who the user is",
-    body: `Whatever the app sends is believed, which is fine while nobody signs in and wrong the moment the app knows who its user is.${tagged}`,
+    body: `Whatever the app sends is believed, which is fine while nobody signs in and wrong the moment the app knows who its user is.`,
     code: [
       "await chat.login(",
       "  userId: user.id,   // your own id — this is the contact key",

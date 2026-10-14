@@ -200,6 +200,10 @@ export class WorkspaceController {
     const current = await this.store.getInbox(id);
     if (!current) throw new NotFoundException("Channel not found");
     await this.assertChannelKeyFree(current.type, current.handle, body.channelConfig, id);
+    if (body.conversationLabelId) {
+      const labels = await this.store.listLabels(current.orgId);
+      if (!labels.some((l) => l.id === body.conversationLabelId)) throw new BadRequestException("That label doesn't exist");
+    }
     const inbox = await this.store.updateInbox(id, body);
     if (!inbox) throw new NotFoundException("Channel not found");
     await this.subscribeWhatsAppWebhook(inbox.id, inbox.type);
