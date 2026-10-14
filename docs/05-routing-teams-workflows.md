@@ -54,6 +54,16 @@ flowchart TD
     K --> L["Everyone's My Inbound / shared views update live"]
 ```
 
+### 0. Conversations an agent starts
+
+An agent who starts a conversation from **Compose** (or a customer's profile) owns it:
+
+- **A new thread** is assigned to them, and the customer's answer lands in it.
+- **The customer already has an open thread there** (say one waiting in the queue): Compose opens it, and the agent takes it if nobody had. Someone else's thread stays theirs.
+- **The thread was resolved before the customer answered**: the answer starts a new conversation as usual, but it goes **back to the agent who wrote**, not into the queue. That applies while they're available, within 14 days (`OUTREACH_WINDOW_DAYS`), and only when the customer hadn't written in that thread. Otherwise it's routed by the rules below. The log says *Answering {agent}'s message*.
+
+`pnpm check:outreach` covers it.
+
 ### 1. Auto per-customer routing (a headline requirement)
 
 Each **Contact** can carry an **owner** (`owner_user_id` or `owner_team_id`). When a message comes in from a known client, Nest Connect assigns the conversation to that owner automatically — so a client always reaches "their" person/team. Owners are set:

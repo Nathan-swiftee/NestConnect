@@ -262,6 +262,15 @@ export class ContactsController {
       const log = new ConversationLog(this.store);
       await log.record(conversation.id, "created", agent(me.id), { channel: body.channel });
       await log.record(conversation.id, "assigned", agent(me.id), { toUserId: me.id });
+    } else if (!conversation.assigneeUserId) {
+      // Their open thread here was waiting in the queue. Starting a
+      // conversation with them is taking it on: it's theirs now, so the answer
+      // comes to them, not back to the queue. (Someone else's stays theirs.)
+      const taken = await this.store.assign(conversation.id, { assigneeUserId: me.id, assignedTeamId: conversation.assignedTeamId }, me.id);
+      if (taken) {
+        this.realtime.emitConversationAssigned(taken, me.id);
+        await new ConversationLog(this.store).record(conversation.id, "assigned", agent(me.id), { toUserId: me.id });
+      }
     }
     return { conversationId: conversation.id, created };
   }

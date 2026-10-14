@@ -1092,6 +1092,20 @@ export abstract class Store {
    * thread, or when this number's own open thread with them has moved more
    * recently (then that is the conversation they are in).
    */
+  /**
+   * An agent wrote to this customer first, on this inbox, and the thread was
+   * closed before they answered: who wrote, so the answer goes back to them
+   * rather than to the queue. Only the customer's latest conversation here
+   * counts, it must have no message from the customer, and it must have moved
+   * since `since`. Undefined otherwise.
+   */
+  abstract findRecentOutreach(params: {
+    orgId: string;
+    inboxId: string;
+    contactId: string;
+    since: string;
+  }): Promise<{ userId: string; teamId: string | null } | undefined>;
+
   abstract findCrossChannelReplyThread(params: {
     orgId: string;
     inboxId: string;

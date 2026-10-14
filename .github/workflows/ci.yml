@@ -112,6 +112,12 @@ jobs:
       - name: Routing rule
         run: pnpm check:routing
 
+      # A conversation an agent starts stays theirs: Compose takes a queued
+      # thread, and an answer to a resolved outreach goes back to the agent
+      # who wrote rather than into the queue.
+      - name: Agent outreach comes back to the agent
+        run: pnpm check:outreach
+
       # Registering a WhatsApp number on the Cloud API. Fails silently in the
       # worst way available: a number Meta has left at PENDING has perfectly
       # good credentials saved, so it reads as "Connected" everywhere in the app

@@ -1915,6 +1915,21 @@ export class MemoryStore extends Store {
     return contact;
   }
 
+  async findRecentOutreach(params: {
+    orgId: string;
+    inboxId: string;
+    contactId: string;
+    since: string;
+  }): Promise<{ userId: string; teamId: string | null } | undefined> {
+    const last = this.conversations
+      .filter((c) => c.orgId === params.orgId && c.inboxId === params.inboxId && c.contact.id === params.contactId && c.messages.length)
+      .sort((a, b) => (a.lastActivityAt < b.lastActivityAt ? 1 : -1))[0];
+    if (!last?.assigneeUserId || last.lastActivityAt < params.since) return undefined;
+    const theirs = last.messages.some((m) => m.direction === "in");
+    const ours = last.messages.some((m) => m.direction === "out" && !m.internal);
+    return !theirs && ours ? { userId: last.assigneeUserId, teamId: last.assignedTeamId ?? null } : undefined;
+  }
+
   async findCrossChannelReplyThread(params: { orgId: string; inboxId: string; contactId: string }): Promise<string | undefined> {
     const live = (c: ConversationRecord) =>
       c.orgId === params.orgId && c.contact.id === params.contactId && (THREADABLE_STATUSES as readonly string[]).includes(c.status);
