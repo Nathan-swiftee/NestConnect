@@ -2,8 +2,10 @@
  * An agent starts a conversation; the customer's answer comes back to them.
  *
  *   A  Compose opens a new thread: it's the agent's, and an answer lands in it.
- *   B  Compose reuses the customer's open thread from the queue: the agent takes
- *      it (someone else's stays theirs).
+ *   B  The customer already has an open thread that isn't the agent's (a
+ *      colleague's, or the queue's): Compose starts a new one beside it, the
+ *      agent's, and says the other is there — Front's and Intercom's way. The
+ *      answer goes to the newest. The agent's own open thread is just opened.
  *   C  The agent's thread was resolved before the customer answered: the answer
  *      goes back to that agent, not into the queue — while they're available,
  *      within OUTREACH_WINDOW_DAYS, and only if the customer hadn't written in
@@ -77,21 +79,37 @@ async function main(): Promise<void> {
     ok("her answer lands in it", aReply?.conversationId === a.conversationId && !aReply.created);
     ok("still James's", (await conv(a.conversationId)).assigneeUserId === JAMES);
 
-    console.log("\nB — Compose for a customer whose thread is waiting in the queue\n");
-    const ben = await customer("Ben");
-    const queued = await reply(ben.from, "Hello?");
-    ok("his message opened a thread in the queue", !!queued?.created && (await conv(queued!.conversationId)).assigneeUserId === null);
-    const b = await reach(JAMES, ben.contact.id);
-    ok("Compose opens that thread", b.conversationId === queued!.conversationId && !b.created);
-    ok("and James takes it", (await conv(b.conversationId)).assigneeUserId === JAMES);
-    ok("in the same team", (await conv(b.conversationId)).assignedTeamId === "team_support");
-    const events = (await convs.events(b.conversationId)).map((e) => e.text);
-    ok("logged as James taking it", events.includes("James took the conversation"), events.join(" | "));
+    console.log("\nB — the customer already has an open thread that isn't James's (Front's way)\n");
+    // The reported case: Dmitry starts a WhatsApp chat with a customer whose
+    // open thread is a colleague's. It used to open that thread and leave it
+    // the colleague's — gone from his inbox on reload, and the reply landed
+    // with the colleague. Now it starts a new one beside it, his.
     const cara = await customer("Cara");
     const c0 = await reply(cara.from, "Hi");
     await store.assign(c0!.conversationId, { assigneeUserId: NATHAN }, NATHAN);
-    await reach(JAMES, cara.contact.id);
-    ok("someone else's thread stays theirs", (await conv(c0!.conversationId)).assigneeUserId === NATHAN);
+    const c1 = await reach(JAMES, cara.contact.id);
+    ok("a new conversation is started", c1.created && c1.conversationId !== c0!.conversationId);
+    ok("and it's James's", (await conv(c1.conversationId)).assigneeUserId === JAMES);
+    ok("Nathan's is left exactly as it was", (await conv(c0!.conversationId)).assigneeUserId === NATHAN && (await conv(c0!.conversationId)).status === "open");
+    ok("James is told it's there, and whose", c1.alsoOpenWith === "Nathan A", String(c1.alsoOpenWith));
+    await say(c1.conversationId);
+    const cReply = await reply(cara.from, "Great, thanks");
+    ok("her answer goes to James's new one — the latest she's been written in", cReply?.conversationId === c1.conversationId, `${cReply?.conversationId}`);
+    ok("still James's", (await conv(c1.conversationId)).assigneeUserId === JAMES);
+    ok("Nathan's gets nothing new", (await conv(c0!.conversationId)).messages.length === 1);
+
+    const ben = await customer("Ben");
+    const queued = await reply(ben.from, "Hello?");
+    ok("Ben's message is waiting in the queue", !!queued?.created && (await conv(queued!.conversationId)).assigneeUserId === null);
+    const b = await reach(JAMES, ben.contact.id);
+    ok("Compose starts James's own beside it", b.created && b.conversationId !== queued!.conversationId && (await conv(b.conversationId)).assigneeUserId === JAMES);
+    ok("and says one is waiting in the queue", b.alsoOpenWith === "the queue", String(b.alsoOpenWith));
+    ok("the queued one stays in the queue", (await conv(queued!.conversationId)).assigneeUserId === null);
+
+    const before = (await convs.events(c1.conversationId)).length;
+    const again = await reach(JAMES, cara.contact.id);
+    ok("his own open thread: Compose just opens it", again.conversationId === c1.conversationId && !again.created && !again.alsoOpenWith);
+    ok("with nothing changed", (await convs.events(c1.conversationId)).length === before);
 
     console.log("\nC — the agent's thread was resolved before the customer answered\n");
     const dan = await customer("Dan");

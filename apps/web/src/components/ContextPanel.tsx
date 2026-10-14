@@ -24,6 +24,7 @@ import {
   useSetPriority,
   useTeams,
   useUpdateContact,
+  startedAlongside,
 } from "../hooks";
 import { useQueryClient } from "@tanstack/react-query";
 import { relativeTime, slaCountdown } from "../lib/format";
@@ -632,7 +633,8 @@ export function ContextPanel({ conversationId, onToast, onClose, onOpenConversat
   // if needed) and jump to it. Closing the panel reveals the thread on mobile.
   const switchChannel = async (channel: "whatsapp" | "email") => {
     try {
-      const { conversationId } = await api.reachContact(conv.contact.id, channel);
+      const { conversationId, alsoOpenWith } = await api.reachContact(conv.contact.id, channel);
+      if (alsoOpenWith) onToast(startedAlongside(conv.contact.displayName, alsoOpenWith));
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["conversations"] }),
         qc.invalidateQueries({ queryKey: ["views"] }),

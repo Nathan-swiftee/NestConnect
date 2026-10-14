@@ -197,3 +197,15 @@ export function groupMessagesByDay<T extends { createdAt: string }>(
 export function speakerKey(m: Message, fallbackChannel: string): string {
   return `${m.direction}|${m.internal ? "n" : "m"}|${m.channel ?? fallbackChannel}|${m.authorUserId ?? m.authorName ?? ""}`;
 }
+
+/**
+ * What Compose says when it started a new conversation beside an open one
+ * someone else has (Front's and Intercom's way: a new conversation is the
+ * starter's; the other is left alone). `who` is a colleague's name, or "the
+ * queue".
+ */
+export function startedAlongside(name: string, who: string): string {
+  return who === "the queue"
+    ? `New conversation started. ${name} also has one waiting in the queue.`
+    : `New conversation started. ${name} also has one open with ${who}.`;
+}

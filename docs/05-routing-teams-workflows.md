@@ -56,11 +56,13 @@ flowchart TD
 
 ### 0. Conversations an agent starts
 
-An agent who starts a conversation from **Compose** (or a customer's profile) owns it:
+Front's and Intercom's rule: starting a conversation from **Compose** (or moving a customer to another channel from their profile) **starts a new conversation, and it's yours.**
 
-- **A new thread** is assigned to them, and the customer's answer lands in it.
-- **The customer already has an open thread there** (say one waiting in the queue): Compose opens it, and the agent takes it if nobody had. Someone else's thread stays theirs.
-- **The thread was resolved before the customer answered**: the answer starts a new conversation as usual, but it goes **back to the agent who wrote**, not into the queue. That applies while they're available, within 14 days (`OUTREACH_WINDOW_DAYS`), and only when the customer hadn't written in that thread. Otherwise it's routed by the rules below. The log says *Answering {agent}'s message*.
+- **The customer has no open conversation there:** a new one, assigned to you.
+- **They already have one that's yours:** Compose just opens it.
+- **They have one open with a colleague, or waiting in the queue:** it's left exactly as it is. A new conversation is started beside it, assigned to you, and Compose says so ("New conversation started. Nathan Zalcberg also has one open with Nathan A.").
+- **Their answer** goes to the most recently active open conversation with them on that number or address. That's the one you've just written in, so it comes to you.
+- **Your conversation was resolved before they answered:** the answer starts a new conversation as usual, but it goes **back to you** rather than the queue. This applies while you're available, within 14 days (`OUTREACH_WINDOW_DAYS`), and only if they hadn't written in it. Otherwise it's routed by the rules below. The log says *Answering {agent}'s message*.
 
 `pnpm check:outreach` covers it.
 

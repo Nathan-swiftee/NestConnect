@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Contact, Inbox } from "@ding/schemas";
-import { useContacts, useInboxes } from "../hooks";
+import { startedAlongside, useContacts, useInboxes } from "../hooks";
 import { api } from "../lib/api";
 import { channelMeta, XIcon, BackIcon, SearchIcon } from "../lib/icons";
 import { useScrollLock } from "../lib/useScrollLock";
@@ -95,7 +95,8 @@ export function Compose({
   const start = async (contact: Contact, channel: Channel, inboxId?: string) => {
     setBusy(channel);
     try {
-      const { conversationId } = await api.reachContact(contact.id, channel, inboxId);
+      const { conversationId, alsoOpenWith } = await api.reachContact(contact.id, channel, inboxId);
+      if (alsoOpenWith) onToast(startedAlongside(contact.displayName, alsoOpenWith));
       onOpen(conversationId);
     } catch {
       const need = channel === "email" ? "an email address" : "a phone number";
@@ -116,7 +117,8 @@ export function Compose({
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
       });
-      const { conversationId } = await api.reachContact(contact.id, channel, inboxId);
+      const { conversationId, alsoOpenWith } = await api.reachContact(contact.id, channel, inboxId);
+      if (alsoOpenWith) onToast(startedAlongside(contact.displayName, alsoOpenWith));
       onOpen(conversationId);
     } catch {
       onToast("Couldn't start that conversation. Check the details and try again.");

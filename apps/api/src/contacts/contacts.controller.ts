@@ -218,15 +218,16 @@ export class ContactsController {
     return { ok: true };
   }
 
-  /** Reach this customer on a channel: return their open conversation there, or
-   *  start a fresh one (assigned to the agent reaching out). Lets an agent move
-   *  a customer who's reachable on several channels between them. */
+  /** Reach this customer on a channel: open your own conversation with them
+   *  there, or start a new one that's yours. `alsoOpenWith` says who has the
+   *  other open one you've started beside (a colleague, or "the queue"). Lets
+   *  an agent move a customer who's reachable on several channels between them. */
   @Post(":id/reach")
   async reach(
     @CurrentUserId() userId: string,
     @Param("id") id: string,
     @Body(new ZodValidationPipe(reachInputSchema)) body: ReachInput,
-  ): Promise<{ conversationId: string; created: boolean }> {
+  ): Promise<{ conversationId: string; created: boolean; alsoOpenWith?: string }> {
     const me = await this.store.getUser(userId);
     if (!me) throw new NotFoundException("Current user not found");
     const contact = await this.store.getContactWithConversations(id);
@@ -249,29 +250,27 @@ export class ContactsController {
       throw new BadRequestException(`No ${body.channel} inbox is connected yet.`);
     }
 
-    const { conversation, created } = await this.store.findOrCreateOpenConversation({
-      orgId: me.orgId,
-      inboxId: inbox.id,
-      contact,
-      channel: body.channel,
-      // The agent starting the outreach owns the new thread.
-      assigneeUserId: me.id,
-    });
+    // Front and Intercom's rule: starting a conversation starts a new one,
+    // and it's yours. The only exception is a thread already yours — opening
+    // that is what you meant. A colleague's open thread, or one waiting in the
+    // queue, is left exactly as it is: a new conversation beside it, owned by
+    // whoever started it. The customer's answer goes to the most recently
+    // active open thread (see `findOrCreateOpenConversation`), which is the new
+    // one, so it comes to them.
+    const target = { orgId: me.orgId, inboxId: inbox.id, contact, channel: body.channel, assigneeUserId: me.id };
+    let { conversation, created } = await this.store.findOrCreateOpenConversation(target);
+    let alsoOpenWith: string | undefined;
+    if (!created && conversation.assigneeUserId !== me.id) {
+      const other = conversation.assigneeUserId ? await this.store.getUser(conversation.assigneeUserId) : undefined;
+      alsoOpenWith = other ? other.name : "the queue";
+      ({ conversation, created } = await this.store.findOrCreateOpenConversation({ ...target, forceNew: true }));
+    }
     if (created) {
       this.realtime.emitConversationUpdated(conversation);
       const log = new ConversationLog(this.store);
       await log.record(conversation.id, "created", agent(me.id), { channel: body.channel });
       await log.record(conversation.id, "assigned", agent(me.id), { toUserId: me.id });
-    } else if (!conversation.assigneeUserId) {
-      // Their open thread here was waiting in the queue. Starting a
-      // conversation with them is taking it on: it's theirs now, so the answer
-      // comes to them, not back to the queue. (Someone else's stays theirs.)
-      const taken = await this.store.assign(conversation.id, { assigneeUserId: me.id, assignedTeamId: conversation.assignedTeamId }, me.id);
-      if (taken) {
-        this.realtime.emitConversationAssigned(taken, me.id);
-        await new ConversationLog(this.store).record(conversation.id, "assigned", agent(me.id), { toUserId: me.id });
-      }
     }
-    return { conversationId: conversation.id, created };
+    return { conversationId: conversation.id, created, ...(alsoOpenWith ? { alsoOpenWith } : {}) };
   }
 }
