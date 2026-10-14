@@ -99,7 +99,7 @@ export function ChatConversation({
   const r = room.data;
   const mentionables: Mentionable[] = useMemo(() => (people.data ?? []).map((m) => m.user), [people.data]);
   const newest = msgs.messages.at(-1);
-  useMarkChatRead(roomId, newest?.id, !!r?.isMember && visible);
+  useMarkChatRead(roomId, newest?.id, (!!r?.isMember || !!r?.watching) && visible);
 
   // Where "unread messages" goes: fixed when the chat opens, so it doesn't
   // jump away the moment the chat is marked read.
@@ -608,6 +608,7 @@ function Bubble({
               pinned: false,
               muted: false,
               isMember: true,
+              watching: false,
               archived: false,
             }}
             size={28}

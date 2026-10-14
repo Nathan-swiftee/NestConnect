@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import type { ChatAttachment, ChatLinkPreview, ChatMemberRole, ChatRoomKind, ChatSharedConversation, ChatSystemData } from "@ding/schemas";
+import type { ChatAttachment, ChatLinkPreview, ChatRoomKind, ChatSharedConversation, ChatSystemData } from "@ding/schemas";
 import { PrismaService } from "../data/prisma.service";
 import { tenantScoped, type TenantPrisma } from "../data/tenant-prisma";
 import { currentOrgId } from "../tenancy/tenant-scope";
@@ -13,6 +13,7 @@ import {
   type ChatPageQuery,
   type ChatRoomFields,
   type ChatRoomRecord,
+  type ChatRowRole,
 } from "./chat.store";
 import { chatClock } from "./chat-clock";
 
@@ -38,7 +39,7 @@ function toMember(m: Prisma.ChatMemberGetPayload<object>): ChatMemberRecord {
   return {
     roomId: m.roomId,
     userId: m.userId,
-    role: m.role as ChatMemberRole,
+    role: m.role as ChatRowRole,
     joinedAt: m.joinedAt.toISOString(),
     lastReadAt: iso(m.lastReadAt),
     lastDeliveredAt: iso(m.lastDeliveredAt),

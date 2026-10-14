@@ -3071,7 +3071,13 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
                       <span className="note__tag">Internal</span>
                       <span className="note__t">{relativeTime(m.createdAt)}</span>
                     </div>
-                    <div className="note__body">{renderMention(m.body, mentionPeople)}</div>
+                    {/* A note can carry files: a photo of the damage, the signed PDF. */}
+                    {(m.attachments?.length ?? 0) > 0 && (
+                      <div className="note__atts">
+                        {m.attachments!.map((a) => <AttachmentView key={a.id} att={a} onImage={setLightbox} />)}
+                      </div>
+                    )}
+                    {m.body.trim() && <div className="note__body">{renderMention(m.body, mentionPeople)}</div>}
                   </div>
                 </div>
               ) : (
