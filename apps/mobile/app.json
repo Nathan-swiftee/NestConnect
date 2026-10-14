@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Nest Connect",
+    "name": "NestConnect",
     "slug": "nest-connect",
     "owner": "swiftee",
     "scheme": "nestconnect",
@@ -33,7 +33,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#071634"
+        "backgroundColor": "#1DAA61"
       },
       "permissions": [
         "POST_NOTIFICATIONS",
@@ -47,21 +47,21 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Nest Connect uses your photos so you can send one to a customer.",
-          "cameraPermission": "Nest Connect uses the camera so you can photograph something for a customer."
+          "photosPermission": "NestConnect uses your photos so you can send one to a customer.",
+          "cameraPermission": "NestConnect uses the camera so you can photograph something for a customer."
         }
       ],
       [
         "expo-audio",
         {
-          "microphonePermission": "Nest Connect uses the microphone so you can reply with a voice note.",
+          "microphonePermission": "NestConnect uses the microphone so you can reply with a voice note.",
           "enableBackgroundPlayback": false
         }
       ],
       [
         "expo-notifications",
         {
-          "color": "#0FA47A",
+          "color": "#1DAA61",
           "defaultChannel": "messages"
         }
       ],
