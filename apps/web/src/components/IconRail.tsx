@@ -34,6 +34,7 @@ export function IconRail({
 }) {
   const { data } = useMe();
   const me = data?.user;
+  const canAdmin = me?.role === "admin" || me?.role === "manager";
   const logout = useLogout();
   const sound = useSound();
   const theme = useTheme();
@@ -121,13 +122,17 @@ export function IconRail({
           <InsightsIcon />
         </button>
       )}
-      <button
-        className={"railbtn" + (section === "settings" ? " active" : "")}
-        title="Settings"
-        onClick={() => onSection("settings")}
-      >
-        <SettingsIcon />
-      </button>
+      {/* Workspace settings — channels, people, integrations — are for the
+          people who run the workspace. Everyone has Personal settings. */}
+      {canAdmin && (
+        <button
+          className={"railbtn" + (section === "settings" ? " active" : "")}
+          title="Settings"
+          onClick={() => onSection("settings")}
+        >
+          <SettingsIcon />
+        </button>
+      )}
       <div className="flex-1" />
       <button
         className={"railbtn" + (sound.on ? " active" : "")}
@@ -182,7 +187,7 @@ export function IconRail({
                 </span>
               </button>
               <button onClick={() => { setMenu(false); onOpenPersonalSettings(); }}>Personal settings</button>
-              <button onClick={() => { setMenu(false); onSection("settings"); }}>Settings</button>
+              {canAdmin && <button onClick={() => { setMenu(false); onSection("settings"); }}>Settings</button>}
               <button className="danger" onClick={() => logout.mutate()}>
                 Sign out
               </button>
