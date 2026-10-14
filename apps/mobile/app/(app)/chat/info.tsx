@@ -47,7 +47,7 @@ export default function ChatInfo() {
   const audits = useQuery({
     queryKey: ["chat", "audits", id],
     queryFn: () => api.chatAudits(id),
-    enabled: me?.role === "admin" && room.data?.kind !== "team" && !!room.data,
+    enabled: (me?.role === "admin" || me?.role === "manager") && room.data?.kind !== "team" && !!room.data,
   });
 
   const r = room.data;
@@ -215,7 +215,7 @@ export default function ChatInfo() {
           </View>
         ) : null}
 
-        {me?.role === "admin" && audits.data && audits.data.length ? (
+        {(me?.role === "admin" || me?.role === "manager") && audits.data && audits.data.length ? (
           <View style={{ backgroundColor: c.surface }} className="mt-2 px-4 py-3">
             <Text className="pb-1 text-sm font-semibold text-muted">Read by admins</Text>
             {audits.data.slice(0, 10).map((a, i) => (
@@ -261,7 +261,7 @@ export default function ChatInfo() {
         ) : null}
 
         <Text style={{ color: c.textFaint }} className="px-6 pt-5 text-center text-2xs">
-          Admins in your workspace can read team chats.
+          Admins and managers in your workspace can read and write in any team chat.
         </Text>
       </ScrollView>
 

@@ -10,7 +10,7 @@
  *      everyone, one reaction each;
  *   F  ticks and unread counts come from each person's read marker;
  *   G  who's told: everyone else, not a muted chat — but a mention always;
- *   H  admins read any chat, read-only, and each look is recorded;
+ *   H  admins and managers open any chat and can write in it without joining; each look is recorded;
  *   I  pinned chats first; a deleted team's chat stays, read-only;
  *   J  photos, voice notes and files (only this workspace's uploads, described
  *      by the server's own record); link cards, fetched safely; search only
@@ -239,20 +239,32 @@ async function main() {
     await svc.send(JAMES, dm.id, say("One more thing"));
     ok("in a direct chat, the push is from them", pushes[0]?.title === "James" && pushes[0]?.body === "One more thing");
 
-    console.log("\nH — admins read along\n");
+    console.log("\nH — admins and managers oversee\n");
     const all = await svc.rooms(NATHAN, true);
     const theirs = all.find((x) => x.id === dm.id);
     ok("an admin's 'all chats' includes other people's direct chats", !!theirs && theirs.isMember === false && theirs.name === "James & Amara", theirs?.name);
     const amaraAll = await svc.rooms(AMARA, true);
     ok("an agent asking for all gets only their own", amaraAll.every((x) => x.isMember) && !amaraAll.some((x) => x.id === support.id));
     const peek = await svc.room(NATHAN, dm.id);
-    ok("an admin opens it read-only", peek.oversight && !peek.canPost && peek.myRole === null);
-    ok("and can't write in it", await refuses(svc.send(NATHAN, dm.id, say("hello")), 403));
-    ok("or react", await refuses(svc.react(NATHAN, reply.id, "👍"), 403));
+    ok("an admin opens it, and may write in it", peek.oversight && peek.canPost && peek.myRole === null);
+    pushes.length = 0;
+    const steppedIn = await svc.send(NATHAN, dm.id, say("Quick one from me"));
+    ok("what they write is theirs", steppedIn.author?.id === NATHAN && steppedIn.body === "Quick one from me");
+    ok("and both people in the chat hear it", pushes[0]?.userIds.slice().sort().join() === [JAMES, AMARA].sort().join() && pushes[0]?.title === "Nathan A", JSON.stringify(pushes[0] && { u: pushes[0].userIds, t: pushes[0].title }));
+    const stillTwo = await svc.room(JAMES, dm.id);
+    ok("without joining it: still the two of them", stillTwo.memberCount === 2 && stillTwo.name === "Amara" && !(await svc.room(NATHAN, dm.id)).isMember, `${stillTwo.memberCount} ${stillTwo.name}`);
+    ok("and can react", (await svc.react(NATHAN, reply.id, "👍")).reactions.some((r) => r.emoji === "👍"));
+    ok("but can't file a customer thread there", await refuses(svc.share(NATHAN, { roomId: dm.id, conversationId: "conv_1", body: "" }), 403));
+    const { user: mgr } = await store.createUser({ orgId: ORG_ID, name: "Mo Manager", email: "mo@example.com", role: "manager", teamIds: [] });
+    ok("a manager has the eye too", (await svc.status(mgr.id)).canOversee && (await svc.rooms(mgr.id, true)).some((x) => x.id === dm.id));
+    ok("and can write in a chat they're not in", (await svc.send(mgr.id, dm.id, say("Me too"))).author?.id === mgr.id);
+    const private_ = await svc.createGroup(mgr.id, { name: "Managers", memberIds: [AMARA] });
+    ok("an agent can't open a chat they're not in", await refuses(svc.room(JAMES, private_.id), 404));
+    ok("…or write in it", await refuses(svc.send(JAMES, private_.id, say("hi")), 404));
     await svc.room(NATHAN, dm.id);
     const looks = await svc.audits(NATHAN, dm.id);
-    ok("the look is recorded, once for a quick re-open", looks.length === 1 && looks[0]!.person.id === NATHAN);
-    ok("only admins see that record", await refuses(svc.audits(JAMES, dm.id), 403));
+    ok("the look is recorded, once for a quick re-open", looks.filter((l) => l.person.id === NATHAN).length === 1);
+    ok("only admins and managers see that record", await refuses(svc.audits(JAMES, dm.id), 403));
     ok("an admin reading along gets no unread counts or delivered ticks", (await svc.room(NATHAN, dm.id)).unread === 0);
 
     console.log("\nI — the list, and deleted teams\n");

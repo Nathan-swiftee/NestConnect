@@ -57,7 +57,7 @@ export class ChatController {
     return this.chat.setEnabled(userId, body.enabled);
   }
 
-  /** `?all=1`: an admin's view of every chat in the workspace. */
+  /** `?all=1`: an admin or manager's view of every chat in the workspace. */
   @Get("rooms")
   rooms(@CurrentUserId() userId: string, @Query("all") all?: string): Promise<ChatRoomSummary[]> {
     return this.chat.rooms(userId, all === "1" || all === "true");

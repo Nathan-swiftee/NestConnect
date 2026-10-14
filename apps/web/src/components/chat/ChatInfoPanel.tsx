@@ -41,7 +41,7 @@ export function ChatInfoPanel({
   const audits = useQuery({
     queryKey: ["chat", "audits", room.id],
     queryFn: () => api.chatAudits(room.id),
-    enabled: me?.role === "admin" && room.kind !== "team",
+    enabled: (me?.role === "admin" || me?.role === "manager") && room.kind !== "team",
   });
 
   const notIn = useMemo(() => {
@@ -203,7 +203,7 @@ export function ChatInfoPanel({
           </section>
         )}
 
-        {me?.role === "admin" && audits.data && audits.data.length > 0 && (
+        {(me?.role === "admin" || me?.role === "manager") && audits.data && audits.data.length > 0 && (
           <section className="tc-infopanel__sec">
             <h4>Read by admins</h4>
             <p className="fieldhint">When an admin who isn't in this chat opened it.</p>
@@ -237,7 +237,7 @@ export function ChatInfoPanel({
             </button>
           </section>
         )}
-        <p className="tc-infopanel__note">Admins in your workspace can read team chats.</p>
+        <p className="tc-infopanel__note">Admins and managers in your workspace can read and write in any team chat.</p>
       </div>
     </aside>
   );

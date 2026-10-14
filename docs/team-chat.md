@@ -35,7 +35,7 @@ deleted: switching back on brings every chat back as it was.
   swipe a message to reply, long-press it for reactions, edit, info and
   delete; tap the header for the group's info (members, mute, pin, rename,
   icon, add people, leave). A push opens the chat, and an @mention in the bell
-  does too. Admins get the same **All chats** eye.
+  does too. Admins and managers get the same **All chats** eye.
 
 ## Kinds of chat
 
@@ -65,18 +65,26 @@ deleted: switching back on brings every chat back as it was.
 | Create a group | — | ✓ | ✓ |
 | Rename, change the icon, add/remove people, make admins | Groups where they're a group admin | Groups where they're a group admin | Any group |
 | Delete someone else's message | Groups where they're a group admin | Groups where they're a group admin | Any chat they're in |
-| Read every chat, read-only | — | — | ✓ |
+| Read and write in every chat (the eye) | — | ✓ | ✓ |
 | Switch the module on or off | — | — | ✓ |
 
-### Admins reading along
+### Admins and managers overseeing
 
-Admins get **All chats** (the eye at the top of the list): every chat in the
-workspace, including direct chats between other people. A chat they aren't in
-opens read-only — no composer, no reactions — with a banner saying so, and each
-visit is recorded (`ChatAudit`; a re-open within ten minutes counts once). The
-record shows in the chat's info panel, to admins. Everyone is told: the foot of
-the chat list and every info panel say "Admins in your workspace can read team
-chats."
+Admins and managers get **All chats** (the eye at the top of the list): every
+chat in the workspace, including direct chats between other people. They can
+write and react in a chat they aren't in without joining it. Nothing is added
+to the members list, and a direct chat stays between its two people. Its
+members are notified as usual. In a direct chat, their messages carry their
+name, so nobody mistakes them for the other person.
+
+They can't Discuss a customer conversation into a chat they only oversee.
+Discuss… is for the chats you're in.
+
+A banner says they aren't in the chat, and each visit is recorded
+(`ChatAudit`; a re-open within ten minutes counts once). The record shows in
+the chat's info panel, to admins and managers. Everyone is told: the foot of
+the chat list and every info panel say "Admins and managers in your workspace
+can read and write in any team chat."
 
 ## Messages
 
