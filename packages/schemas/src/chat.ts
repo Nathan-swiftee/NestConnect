@@ -299,6 +299,23 @@ export const setChatModuleInputSchema = z.object({ enabled: z.boolean() });
 
 /* ---- live events (Socket.IO) ---- */
 
+/**
+ * "Something arrived in a chat" — sent only to the people the push rules let
+ * know (not muted, not the sender). Carries what the push says, so a screen
+ * can show it without fetching the chat.
+ */
+export interface ChatCue {
+  roomId: string;
+  mention: boolean;
+  /** The chat's name, or the sender's in a direct chat. */
+  title?: string;
+  /** "Name: text" in a group, the text in a direct chat. */
+  body?: string;
+  actorUserId?: string;
+  /** Show it, but make no sound: something else (the bell, for a mention) already does. */
+  silent?: boolean;
+}
+
 export const ChatServerEvent = {
   /** A new message, to everyone in the chat. */
   Message: "chat.message",
@@ -329,7 +346,7 @@ export interface ChatServerEvents {
   [ChatServerEvent.Room]: (p: { roomId: string; removed?: boolean }) => void;
   [ChatServerEvent.Typing]: (p: { roomId: string; userId: string; name: string; typing: boolean }) => void;
   [ChatServerEvent.Presence]: (p: { userId: string; online: boolean; lastSeenAt: string | null }) => void;
-  [ChatServerEvent.Cue]: (p: { roomId: string; mention: boolean }) => void;
+  [ChatServerEvent.Cue]: (p: ChatCue) => void;
 }
 
 export interface ChatClientEvents {

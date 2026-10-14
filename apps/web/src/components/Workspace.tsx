@@ -14,6 +14,7 @@ import { Analytics } from "./Analytics";
 import { Organisations } from "./organisations/Organisations";
 import { BusinessOps } from "./ops/BusinessOps";
 import { ChatPopup } from "./chat/TeamChat";
+import { ChatCuePill } from "./chat/ChatCuePill";
 import { DiscussionPanel } from "./chat/Discuss";
 import { SignedOutBanner } from "./ReconnectEmail";
 import { useChatRealtime, useChatStatus, useConversations, useMe, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
@@ -71,7 +72,8 @@ export function Workspace() {
   useEffect(() => writeSidebarCollapsed(sidebarCollapsed), [sidebarCollapsed]);
 
   useRealtime(selectedId);
-  useChatRealtime(!!useChatStatus().data?.enabled);
+  const chatOn = !!useChatStatus().data?.enabled;
+  useChatRealtime(chatOn);
   useSnoozeSweep();
   const views = useViews();
   const convos = useConversations(view);
@@ -304,6 +306,8 @@ export function Workspace() {
       </div>
 
       <SignedOutBanner onToast={notify} onOpenChannels={() => openSettings?.()} />
+
+      {chatOn && <ChatCuePill onOpen={(roomId) => openChat(roomId)} />}
 
       {chatMounted && (
         <ChatPopup
