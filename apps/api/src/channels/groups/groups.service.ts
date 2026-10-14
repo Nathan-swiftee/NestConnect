@@ -8,6 +8,7 @@ import { Store } from "../../data/store";
 import { SandboxPolicy } from "../../tenancy/sandbox";
 import { RealtimeGateway } from "../../realtime/realtime.gateway";
 import { RoutingService } from "../routing.service";
+import { fileArrival } from "../arrival-tags";
 import { ConversationLog, agent, SYSTEM } from "../../conversations/conversation-log";
 import { WhatsAppGroupsProvider } from "../whatsapp/whatsapp-groups.provider";
 
@@ -69,6 +70,7 @@ export class GroupsService {
       userId: decision.assigneeUserId,
       reason: decision.reason,
     });
+    await fileArrival(this.store, inbox, groupContact.id, conversation.id);
 
     const full = await this.store.getConversation(conversation.id);
     if (!full) throw new NotFoundException("Group conversation not found after creation");

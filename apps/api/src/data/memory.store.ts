@@ -291,6 +291,8 @@ export class MemoryStore extends Store {
       teamIds?: string[];
       routingStrategy?: RoutingStrategy;
       channelConfig?: Record<string, string>;
+      contactTag?: string;
+      conversationLabelId?: string | null;
     },
   ): Promise<Inbox | undefined> {
     const inbox = this.inboxes.find((i) => i.id === id);
@@ -298,6 +300,8 @@ export class MemoryStore extends Store {
     if (params.name !== undefined) inbox.name = params.name;
     if (params.teamIds !== undefined) inbox.teamIds = params.teamIds;
     if (params.routingStrategy !== undefined) inbox.routingStrategy = params.routingStrategy;
+    if (params.contactTag !== undefined) inbox.contactTag = params.contactTag;
+    if (params.conversationLabelId !== undefined) inbox.conversationLabelId = params.conversationLabelId;
     if (params.channelConfig !== undefined) {
       const merged = { ...(this.inboxConfig.get(id) ?? {}), ...params.channelConfig };
       this.inboxConfig.set(id, merged);

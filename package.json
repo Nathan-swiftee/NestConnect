@@ -14,6 +14,7 @@
     "check:threading": "tsx --tsconfig apps/api/tsconfig.json tools/check-threading.ts",
     "check:routing": "tsx --tsconfig apps/api/tsconfig.json tools/check-routing.ts",
     "check:outreach": "tsx --tsconfig apps/api/tsconfig.json tools/check-outreach.ts",
+    "check:arrival-tags": "tsx --tsconfig apps/api/tsconfig.json tools/check-arrival-tags.ts",
     "check:whatsapp-register": "tsx tools/check-whatsapp-register.ts",
     "check:whatsapp-delivery": "tsx tools/check-whatsapp-delivery.ts",
     "check:template-scope": "tsx tools/check-template-scope.ts",

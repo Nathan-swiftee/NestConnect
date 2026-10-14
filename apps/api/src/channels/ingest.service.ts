@@ -12,6 +12,7 @@ import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { TenantContext } from "../tenancy/tenant-context";
 import { PushService } from "../push/push.service";
 import { RoutingService, type RoutingDecision } from "./routing.service";
+import { fileArrival } from "./arrival-tags";
 import { ConversationLog, customer, SYSTEM } from "../conversations/conversation-log";
 import { sanitizeEmailHtml } from "./email/html-sanitize";
 import { ConversationSubjectService } from "../ai/conversation-subject.service";
@@ -242,6 +243,7 @@ export class IngestService {
       await this.applyTeamSla(conv);
       this.realtime.emitConversationAssigned(conv, "auto-routing");
       await this.logArrival(conv.id, contact.displayName, inbox.type, decision);
+      await fileArrival(this.store, inbox, contact.id, conv.id);
       this.logger.log(
         `New WhatsApp conversation ${conv.id} from ${input.from} → ` +
           `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
@@ -407,6 +409,7 @@ export class IngestService {
       if (assigned) await this.applyTeamSla(assigned);
       this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
       await this.logArrival(conversationId, input.contact.displayName, "nestchat", decision, input.option?.label);
+      await fileArrival(this.store, input.inbox, input.contact.id, conversationId);
       this.logger.log(
         `New NestChat conversation ${conversationId} from ${input.contact.displayName}` +
           `${input.option ? ` about "${input.option.label}"` : ""} → ` +
@@ -517,6 +520,7 @@ export class IngestService {
         if (assigned) await this.applyTeamSla(assigned);
         this.realtime.emitConversationAssigned(assigned ?? res.conversation, "auto-routing");
         await this.logArrival(conversationId, contact.displayName, "email", decision);
+        await fileArrival(this.store, inbox, contact.id, conversationId);
         this.logger.log(
           `New email conversation ${conversationId} from ${input.from} → ` +
             `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,

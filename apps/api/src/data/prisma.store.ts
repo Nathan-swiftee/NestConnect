@@ -299,6 +299,8 @@ export class PrismaStore extends Store {
       teamIds?: string[];
       routingStrategy?: RoutingStrategy;
       channelConfig?: Record<string, string>;
+      contactTag?: string;
+      conversationLabelId?: string | null;
     },
   ): Promise<Inbox | undefined> {
     const existing = await this.prisma.inbox.findUnique({ where: { id } });
@@ -318,6 +320,8 @@ export class PrismaStore extends Store {
       data: {
         name: params.name ?? undefined,
         routingStrategy: params.routingStrategy ?? undefined,
+        ...(params.contactTag !== undefined ? { contactTag: params.contactTag } : {}),
+        ...(params.conversationLabelId !== undefined ? { conversationLabelId: params.conversationLabelId } : {}),
         ...(mergedConfig !== undefined ? { channelConfig: mergedConfig } : {}),
         ...(params.teamIds !== undefined
           ? { teams: { deleteMany: {}, create: params.teamIds.map((teamId) => ({ teamId })) } }

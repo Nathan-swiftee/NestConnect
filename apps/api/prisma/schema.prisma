@@ -388,6 +388,11 @@ model Inbox {
   /// Null layout = never designed, so the default one is used.
   signatureHtml       String?
   signatureFooterHtml String?
+  /// Put on every customer who starts a conversation here (a contact tag),
+  /// and on every conversation that starts here (a label) — where they came
+  /// from, without anyone having to file it.
+  contactTag          String?
+  conversationLabelId String?
   createdAt       DateTime        @default(now())
 
   org           Organization     @relation(fields: [orgId], references: [id])

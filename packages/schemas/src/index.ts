@@ -494,6 +494,10 @@ export const inboxSchema = z.object({
   /** An email channel's signature design (layout with tags + marketing
    *  section). Absent on other channels. See signatures.ts. */
   signature: z.object({ layoutHtml: z.string().nullable(), footerHtml: z.string().nullable() }).optional(),
+  /** Added to every customer who starts a conversation on this channel. */
+  contactTag: z.string().optional(),
+  /** The label put on every conversation that starts on this channel. */
+  conversationLabelId: z.string().nullable().optional(),
 });
 export type Inbox = z.infer<typeof inboxSchema>;
 
@@ -1717,6 +1721,10 @@ export const updateInboxInputSchema = z.object({
   teamIds: z.array(z.string()).min(1).optional(),
   routingStrategy: routingStrategySchema.optional(),
   channelConfig: z.record(z.string()).optional(),
+  /** Tag every customer who starts a conversation here. "" turns it off. */
+  contactTag: z.string().trim().max(40).optional(),
+  /** Label every conversation that starts here. null turns it off. */
+  conversationLabelId: z.string().nullable().optional(),
 });
 export type UpdateInboxInput = z.infer<typeof updateInboxInputSchema>;
 

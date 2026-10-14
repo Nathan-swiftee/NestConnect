@@ -13,6 +13,7 @@ import {
   Query,
   Res,
 } from "@nestjs/common";
+import { channelContactTag } from "../arrival-tags";
 import { Throttle } from "@nestjs/throttler";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Response } from "express";
@@ -441,7 +442,7 @@ export class NestChatController {
     // ever applied to verified ones. Attribution is not an identity claim, and
     // withholding it meant a channel's own customers could not be found by the
     // tag that exists to find them.
-    await this.nestchat.applyContactTag(contact.id, app.contactTag);
+    await this.nestchat.applyContactTag(contact.id, await channelContactTag(this.store, inbox));
 
     const { values, unknown } = await this.nestchat.validateFields(inbox.id, body.fields ?? {});
     const conversationId = await this.nestchat.threadFor(inbox, contact.id, app, values, visitorId);

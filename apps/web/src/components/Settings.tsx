@@ -560,6 +560,12 @@ function ChannelEditor({
   const [name, setName] = useState(inbox.name);
   const [teamIds, setTeamIds] = useState<string[]>(inbox.teamIds);
   const [strategy, setStrategy] = useState<RoutingStrategy>(inbox.routingStrategy);
+  // Filed on whatever starts here: a tag on the customer, a label on the
+  // conversation. Applied once, when the conversation starts, so taking either
+  // off by hand sticks.
+  const labels = useLabels();
+  const [contactTag, setContactTag] = useState(inbox.contactTag ?? "");
+  const [labelId, setLabelId] = useState(inbox.conversationLabelId ?? "");
   // Pre-fill the non-secret config (e.g. Phone number ID) so it's visible and
   // verifiable; secret fields (tokens) stay blank and are kept unless re-entered.
   const [cfg, setCfg] = useState<Record<string, string>>(inbox.channelConfigPublic ?? {});
@@ -604,6 +610,8 @@ function ChannelEditor({
           name: name.trim(),
           teamIds,
           routingStrategy: strategy,
+          contactTag: contactTag.trim(),
+          conversationLabelId: labelId || null,
           ...(Object.keys(channelConfig).length ? { channelConfig } : {}),
         },
       },
@@ -679,6 +687,28 @@ function ChannelEditor({
           <span>Also move this channel’s open conversations to the new routing (chats on a team it no longer serves).</span>
         </label>
       )}
+      <div className="setform__grid two">
+        <label className="field">
+          <span>Tag every customer from here</span>
+          <input
+            value={contactTag}
+            onChange={(e) => setContactTag(e.target.value)}
+            placeholder="e.g. Ding"
+            maxLength={40}
+          />
+          <em className="fieldhint">Added to the customer when they start a conversation here.</em>
+        </label>
+        <label className="field">
+          <span>Label every conversation from here</span>
+          <select value={labelId} onChange={(e) => setLabelId(e.target.value)}>
+            <option value="">No label</option>
+            {(labels.data ?? []).map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+          <em className="fieldhint">Put on each new conversation that starts here. Labels live in Settings › Labels.</em>
+        </label>
+      </div>
       {/* Which of several numbers/mailboxes this channel replies from.
 
           Only shown when there is more than one of the type, because with one
@@ -2891,20 +2921,10 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                     <p className="fieldhint">Save to mint the key this app will carry.</p>
                   )}
 
-                  <label className="field">
-                    <span>Tag every customer from here</span>
-                    <input
-                      value={draft.app.contactTag}
-                      onChange={(e) => setApp("contactTag", e.target.value)}
-                      placeholder="Ding app"
-                      maxLength={40}
-                    />
-                    <em className="fieldhint">
-                      Added to a customer the first time they chat from this app, so you can tell
-                      where somebody came from. Changing it later affects new customers only —
-                      the old tag is where they actually came from.
-                    </em>
-                  </label>
+                  <p className="fieldhint">
+                    To tag every customer (or label every conversation) that starts here, edit the
+                    channel in Settings › Channels — it works the same on every channel.
+                  </p>
 
                   <label className="field">
                     <span>One conversation per</span>

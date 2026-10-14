@@ -338,6 +338,17 @@ export function mapTeam(t: Prisma.TeamGetPayload<object>): Team {
   return { id: t.id, orgId: t.orgId, name: t.name, icon: t.icon ?? null, order: t.order, slaMinutes: t.slaMinutes ?? null };
 }
 
+/** The in-app SDK's "tag every customer from here", from a NestChat channel's
+ *  config — "" when there isn't one or it doesn't parse. */
+function legacyAppTag(config: Record<string, string> | null): string {
+  try {
+    const app = config?.app ? (JSON.parse(config.app) as { contactTag?: unknown }) : undefined;
+    return typeof app?.contactTag === "string" ? app.contactTag.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
 export function mapInbox(i: InboxWithTeams): Inbox {
   const type = i.type as ChannelType;
   return {
@@ -354,6 +365,10 @@ export function mapInbox(i: InboxWithTeams): Inbox {
     ...inboxStatus(type, i.channelConfig as Record<string, string> | null),
     channelConfigPublic: publicChannelConfig(i.channelConfig as Record<string, string> | null),
     ...(type === "email" ? { signature: { layoutHtml: i.signatureHtml, footerHtml: i.signatureFooterHtml } } : {}),
+    // Never set (null): a NestChat channel's in-app SDK tag, where the Ding
+    // app's was first kept. Set, even to "" (turned off): the channel's own.
+    contactTag: i.contactTag ?? legacyAppTag(i.channelConfig as Record<string, string> | null),
+    conversationLabelId: i.conversationLabelId ?? null,
   };
 }
 

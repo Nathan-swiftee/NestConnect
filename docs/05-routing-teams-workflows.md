@@ -121,6 +121,30 @@ to which colleague happened to look would be both wrong and invisible to us.
 > table and is a larger change; the rule above fixes the failure that actually
 > loses messages.
 
+## Tagging and labelling by channel
+
+Each channel (Settings › Channels › edit) can carry two fields:
+
+- **Tag every customer from here.** A contact tag, added to the customer when
+  they start a conversation on this channel. It is skipped if they already
+  have it.
+- **Label every conversation from here.** A workspace label, put on every new
+  conversation that starts here. The conversation log records it as “Labelled
+  ‘X’ — every conversation on this channel is”.
+
+Both apply on every channel type: WhatsApp, email, the NestChat website
+widget, the NestChat in-app SDK and groups. They apply **once, when the
+conversation is created**. A reply on an existing conversation changes
+nothing, so an agent who takes the tag or label off has the final word. A
+deleted label is skipped.
+
+This is a general version of the Ding app's tag. Before this, only the in-app
+SDK could tag (`channelConfig.app.contactTag`, applied when the session
+opens). That value is still read as a fallback while the channel's own
+`Inbox.contactTag` is null. Saving the channel copies it across, and an empty
+value then means off (`apps/api/src/channels/arrival-tags.ts`; check:
+`pnpm check:arrival-tags`).
+
 ## "My Inbound" — precise semantics
 
 A conversation is in user *U*'s **My Inbound** when it's `open`/`pending` **and** either:

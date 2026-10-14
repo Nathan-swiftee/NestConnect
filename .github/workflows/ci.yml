@@ -118,6 +118,11 @@ jobs:
       - name: Agent outreach comes back to the agent
         run: pnpm check:outreach
 
+      # A channel can tag every customer and label every conversation that
+      # starts on it — once, at the start, so taking either off by hand sticks.
+      - name: Channel tags and labels new conversations
+        run: pnpm check:arrival-tags
+
       # Registering a WhatsApp number on the Cloud API. Fails silently in the
       # worst way available: a number Meta has left at PENDING has perfectly
       # good credentials saved, so it reads as "Connected" everywhere in the app
