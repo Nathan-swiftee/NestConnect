@@ -116,7 +116,7 @@ input,textarea{font:inherit}
 .side__head{padding:var(--sp-4) var(--sp-4) var(--sp-2);display:flex;align-items:center;gap:8px}
 
 .side__sub{font-size:var(--fs-2xs);color:var(--text-faint);margin-left:auto;letter-spacing:.02em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.side__head .lockup{height:16px}
+.side__head .wordmark{display:block;height:15px;width:auto;flex:0 0 auto}
 /* collapse toggle in the sidebar header (desktop only — ≤1023 it's a drawer) */
 .side__collapse{width:28px;height:28px;color:var(--text-faint);flex:0 0 28px}
 .side__collapse svg{width:17px;height:17px}
@@ -127,7 +127,7 @@ input,textarea{font:inherit}
 @media (min-width:1024px){
   .side.is-collapsed{width:64px;flex:0 0 64px;min-width:64px;overflow:hidden}
   .side.is-collapsed .side__head{justify-content:center;padding:var(--sp-4) 0 var(--sp-2)}
-  .side.is-collapsed .lockup,
+  .side.is-collapsed .wordmark,
   .side.is-collapsed .side__sub,
   .side.is-collapsed .sect-label,
   .side.is-collapsed .navrow .lbl,

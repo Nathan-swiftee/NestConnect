@@ -92,15 +92,17 @@ const TARGETS = [
   // (The app's sign-in shows the delivered lockup, apps/mobile/assets/logo-lockup.png.)
 
   // ── the browser ────────────────────────────────────────────────────────
-  // The green mark, for the narrow rail. The full logo (logo-lockup.png) is the
-  // delivered lockup file itself, copied as is.
-  { out: "apps/web/public/logo-mark.png", src: "mark", size: 512, ink: 0.96, bg: null },
+  // The green mark, for the narrow rail. The full logo (brand/lockup.png) and the
+  // wordmark (brand/wordmark.png) are the delivered files themselves, as is.
+  // Everything lives under /brand/ so a browser that cached the old logo under
+  // the old names never shows it again.
+  { out: "apps/web/public/brand/mark.png", src: "mark", size: 512, ink: 0.96, bg: null },
   // A tab favicon is 16 or 32 real pixels, so it is trimmed hard — any margin
   // baked in here is margin the glyph doesn't get. Green on a transparent tab.
-  { out: "apps/web/public/favicon-32.png", src: "mark", size: 32, ink: 0.96, bg: null },
-  { out: "apps/web/public/favicon-64.png", src: "mark", size: 64, ink: 0.96, bg: null },
+  { out: "apps/web/public/brand/favicon-32.png", src: "mark", size: 32, ink: 0.96, bg: null },
+  { out: "apps/web/public/brand/favicon-64.png", src: "mark", size: 64, ink: 0.96, bg: null },
   // An iOS home screen composites onto white, so this one is the app tile.
-  { out: "apps/web/public/favicon-180.png", src: "markWhite", size: 180, bg: BRAND.green, ...TILE },
+  { out: "apps/web/public/brand/favicon-180.png", src: "markWhite", size: 180, bg: BRAND.green, ...TILE },
 ].filter((t) => NATIVE || !t.native);
 
 const browser = await chromium.launch({
