@@ -168,6 +168,15 @@ Sub-filters expose the pieces: `Mine · Up for grabs · @Mentions · Following �
 
 RBAC is enforced server-side (role on `User` + team role on `TeamMember`), via WorkOS/Clerk-backed sessions.
 
+**Which teams and channels an agent sees.** An agent's sidebar lists only the
+teams they belong to and the channels routed to those teams (`Store.views`).
+The lists themselves follow the same rule: opening, counting or searching
+another team's or channel's list returns 403
+(`ConversationsService.assertViewAllowed`, check: `pnpm check:channel-access`).
+Admins and managers oversee the whole workspace, so they see every team and
+every channel. To narrow what an agent sees, change which teams they belong to
+or which teams a channel routes to.
+
 ---
 
 ## Workflows (Phase 5 — designed now, built later)

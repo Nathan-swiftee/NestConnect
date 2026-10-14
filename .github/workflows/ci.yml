@@ -123,6 +123,12 @@ jobs:
       - name: Channel tags and labels new conversations
         run: pnpm check:arrival-tags
 
+      # An agent's sidebar offers only their teams and the channels routed to
+      # them; the lists themselves hold to the same rule, so a link can't get
+      # round it. Admins and managers see everything.
+      - name: Agents open only their own teams and channels
+        run: pnpm check:channel-access
+
       # Registering a WhatsApp number on the Cloud API. Fails silently in the
       # worst way available: a number Meta has left at PENDING has perfectly
       # good credentials saved, so it reads as "Connected" everywhere in the app
