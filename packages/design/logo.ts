@@ -28,7 +28,9 @@ export const BRAND = {
  */
 export const BRAND_ASSETS = {
   /** Web, served from `public/`. The green mark, for narrow spots. */
-  mark: "/logo-mark.png",
+  mark: "/brand/mark.png",
   /** The full logo, mark and "NestConnect", as delivered. */
-  lockup: "/logo-lockup.png",
+  lockup: "/brand/lockup.png",
+  /** "NestConnect" on its own, as delivered — beside the mark in the rail. */
+  wordmark: "/brand/wordmark.png",
 } as const;

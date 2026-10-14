@@ -202,6 +202,12 @@ export const Logo = (): JSX.Element => (
   <img src={BRAND_ASSETS.mark} alt="" aria-hidden="true" draggable={false} />
 );
 
+/** "NestConnect", the wordmark on its own, as delivered — the dashboard's
+ *  sidebar, beside the mark in the rail. */
+export const Wordmark = (): JSX.Element => (
+  <img className="wordmark" src={BRAND_ASSETS.wordmark} alt="NestConnect" draggable={false} />
+);
+
 /** The full logo — mark and "NestConnect" — exactly as delivered. */
 export const Lockup = (): JSX.Element => (
   <img className="lockup" src={BRAND_ASSETS.lockup} alt="NestConnect" draggable={false} />

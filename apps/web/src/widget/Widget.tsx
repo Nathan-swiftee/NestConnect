@@ -1864,7 +1864,7 @@ export function Widget({
         <div className="nc__brand">
           Powered by{" "}
           <a href="https://nestconnect.io" target="_blank" rel="noreferrer">
-            <img className="nc__brand-mark" src="/favicon-64.png" alt="" aria-hidden="true" />
+            <img className="nc__brand-mark" src="/brand/favicon-64.png" alt="" aria-hidden="true" />
             NestConnect
           </a>
         </div>
