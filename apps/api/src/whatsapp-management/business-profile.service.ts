@@ -91,7 +91,7 @@ export class BusinessProfileService {
     return `wa_opening_hours:${inboxId}`;
   }
 
-  /** Opening hours live in Nest Connect (WhatsApp has no hours field). */
+  /** Opening hours live in NestConnect (WhatsApp has no hours field). */
   private async readHours(inboxId: string): Promise<OpeningHours | undefined> {
     const orgId = (await this.store.getInbox(inboxId))?.orgId;
     if (!orgId) return undefined;
@@ -110,7 +110,7 @@ export class BusinessProfileService {
     input: UpdateWhatsAppBusinessProfileInput,
   ): Promise<WhatsAppBusinessProfile> {
     const creds = await this.credsFor(inboxId);
-    // Opening hours are stored in Nest Connect (WhatsApp has no hours field).
+    // Opening hours are stored in NestConnect (WhatsApp has no hours field).
     if (input.openingHours !== undefined) {
       const orgId = (await this.store.getInbox(inboxId))?.orgId;
       if (orgId) await this.store.setAppSetting(orgId, this.hoursKey(inboxId), JSON.stringify(input.openingHours));
@@ -267,7 +267,7 @@ export class BusinessProfileService {
       // The profile + local hours already saved; make clear only the WhatsApp
       // calling-hours push failed (e.g. the number isn't enabled for Calling).
       throw new BadGatewayException(
-        `Saved in Nest Connect, but WhatsApp wouldn't accept the calling hours: ${
+        `Saved in NestConnect, but WhatsApp wouldn't accept the calling hours: ${
           (err as Error)?.message ?? String(err)
         }. This number may not be enabled for WhatsApp Calling yet.`,
       );

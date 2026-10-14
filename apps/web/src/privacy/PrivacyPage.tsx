@@ -15,13 +15,8 @@ export function PrivacyPage({ fields = OWNER_FIELDS }: { fields?: PrivacyOwnerFi
   return (
     <div className="pp">
       <header className="pp__bar">
-        <a className="pp__brand" href="/" aria-label="Nest Connect home">
-          <span className="pp__mark">
-            <img src={BRAND_ASSETS.mark} alt="" aria-hidden="true" draggable={false} />
-          </span>
-          <span className="pp__wordmark">
-            Nest <span className="pp__dot">Connect</span>
-          </span>
+        <a className="pp__brand" href="/" aria-label="NestConnect home">
+          <img className="pp__lockup" src={BRAND_ASSETS.lockup} alt="NestConnect" draggable={false} />
         </a>
       </header>
 

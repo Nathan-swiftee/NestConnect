@@ -16,7 +16,7 @@ import { BusinessOps } from "./ops/BusinessOps";
 import { ChatPopup } from "./chat/TeamChat";
 import { DiscussionPanel } from "./chat/Discuss";
 import { SignedOutBanner } from "./ReconnectEmail";
-import { useChatRealtime, useChatStatus, useConversations, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
+import { useChatRealtime, useChatStatus, useConversations, useMe, useMediaQuery, useRealtime, useSnoozeSweep, useViews } from "../hooks";
 import { unlock } from "../lib/sound";
 import { readSidebarCollapsed, writeSidebarCollapsed } from "../lib/layout";
 
@@ -35,6 +35,14 @@ export function Workspace() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [section, setSection] = useState<"inbox" | "chat" | "customers" | "organisations" | "ops" | "settings" | "insights">("inbox");
+  // Workspace settings are for admins and managers (the server already refuses
+  // anyone else's changes); everyone else has Personal settings.
+  const role = useMe().data?.user.role;
+  const canAdmin = role === "admin" || role === "manager";
+  const openSettings = canAdmin ? () => setSection("settings") : undefined;
+  useEffect(() => {
+    if (section === "settings" && role && !canAdmin) setSection("inbox");
+  }, [section, role, canAdmin]);
   const [focusOpsSop, setFocusOpsSop] = useState<string | null>(null);
   const [focusChat, setFocusChat] = useState<string | null>(null);
   // Team Chat pops up over wherever you are — it's for a quick word with the
@@ -198,7 +206,7 @@ export function Workspace() {
                 onSelectView={selectView}
                 onSelectConversation={(id) => { selectConversation(id); setDrawerOpen(false); }}
                 onClose={isCompact ? () => setDrawerOpen(false) : undefined}
-                onOpenSettings={() => { setSection("settings"); setDrawerOpen(false); }}
+                onOpenSettings={openSettings && (() => { openSettings(); setDrawerOpen(false); })}
                 onOpenCustomers={() => { setSection("customers"); setDrawerOpen(false); }}
                 onOpenOrganisations={() => { setSection("organisations"); setDrawerOpen(false); }}
                 onOpenOps={() => { setFocusOpsSop(null); setSection("ops"); setDrawerOpen(false); }}
@@ -219,7 +227,7 @@ export function Workspace() {
                 onOpenDrawer={() => setDrawerOpen(true)}
                 onOpenOpsSop={(id) => { setFocusOpsSop(id); setSection("ops"); }}
                 onOpenChat={(id) => openChat(id)}
-                onOpenChannels={() => setSection("settings")}
+                onOpenChannels={openSettings}
               />
               <Thread
                 conversationId={selectedId}
@@ -289,13 +297,13 @@ export function Workspace() {
             />
           )}
 
-          {section === "settings" && <Settings onClose={() => setSection("inbox")} onToast={notify} />}
+          {section === "settings" && canAdmin && <Settings onClose={() => setSection("inbox")} onToast={notify} />}
 
           {section === "insights" && <Analytics />}
         </div>
       </div>
 
-      <SignedOutBanner onToast={notify} onOpenChannels={() => setSection("settings")} />
+      <SignedOutBanner onToast={notify} onOpenChannels={() => openSettings?.()} />
 
       {chatMounted && (
         <ChatPopup

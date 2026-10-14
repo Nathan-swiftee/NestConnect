@@ -7,10 +7,13 @@ export interface RoutingDecision {
   assigneeUserId: string | null;
   assignedTeamId: string | null;
   /** Why — for the conversation log. */
-  reason?: "menu" | "contact" | "organisation" | "channel";
+  reason?: "menu" | "outreach" | "contact" | "organisation" | "channel";
   /** The organisation that decided, when one did. */
   organisation?: string;
 }
+
+/** How long after an agent's outreach the customer's answer still goes back to them. */
+export const OUTREACH_WINDOW_DAYS = 14;
 
 export interface RoutingHints {
   /**
@@ -23,6 +26,9 @@ export interface RoutingHints {
 
 /**
  * Decides who a newly-created conversation goes to.
+ *   0. Back to the agent who wrote to them, when this is the customer answering
+ *      an agent's outreach (Compose) whose thread was closed before they did —
+ *      while that agent is available (see `OUTREACH_WINDOW_DAYS`)
  *   1. A team the customer explicitly asked for (the NestChat routing menu)
  *   2. Per-customer owner (a client always reaches "their" person/team)
  *   3. Their organisation's routing — the one organisation they're in, or the
@@ -60,6 +66,8 @@ export class RoutingService {
   async route(inbox: Inbox, contact: Contact, hints?: RoutingHints): Promise<RoutingDecision> {
     const asked = hints?.optionTeamId;
     if (asked) return { ...(await this.decide(inbox, contact, hints)), reason: "menu" };
+    const back = await this.outreachRoute(inbox, contact);
+    if (back) return back;
     if (contact.ownerUserId || contact.ownerTeamId) return { ...(await this.decide(inbox, contact, hints)), reason: "contact" };
     const decision = await this.decide(inbox, contact, hints);
     return decision.reason ? decision : { ...decision, reason: "channel" };
@@ -109,6 +117,20 @@ export class RoutingService {
     }
 
     return this.withinTeam(inbox, inbox.teamIds[0] ?? null);
+  }
+
+  /**
+   * An agent started this — wrote to the customer from Compose — and the
+   * thread was closed before the customer answered. The answer is theirs: it
+   * goes back to the agent who asked, not into the team's queue, as long as
+   * they're available to take it. (While the thread is still open the answer
+   * simply lands in it, already theirs; this is for the one that was closed.)
+   */
+  private async outreachRoute(inbox: Inbox, contact: Contact): Promise<RoutingDecision | null> {
+    const since = new Date(Date.now() - OUTREACH_WINDOW_DAYS * 86_400_000).toISOString();
+    const sent = await this.store.findRecentOutreach({ orgId: inbox.orgId, inboxId: inbox.id, contactId: contact.id, since });
+    if (!sent || !(await this.isAvailable(sent.userId))) return null;
+    return { assigneeUserId: sent.userId, assignedTeamId: sent.teamId ?? inbox.teamIds[0] ?? null, reason: "outreach" };
   }
 
   /** The organisation that decides for this contact, if one does, and its team still exists. */

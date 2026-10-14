@@ -54,6 +54,18 @@ flowchart TD
     K --> L["Everyone's My Inbound / shared views update live"]
 ```
 
+### 0. Conversations an agent starts
+
+Front's and Intercom's rule: starting a conversation from **Compose** (or moving a customer to another channel from their profile) **starts a new conversation, and it's yours.**
+
+- **The customer has no open conversation there:** a new one, assigned to you.
+- **They already have one that's yours:** Compose just opens it.
+- **They have one open with a colleague, or waiting in the queue:** it's left exactly as it is. A new conversation is started beside it, assigned to you, and Compose says so ("New conversation started. Nathan Zalcberg also has one open with Nathan A.").
+- **Their answer** goes to the most recently active open conversation with them on that number or address. That's the one you've just written in, so it comes to you.
+- **Your conversation was resolved before they answered:** the answer starts a new conversation as usual, but it goes **back to you** rather than the queue. This applies while you're available, within 14 days (`OUTREACH_WINDOW_DAYS`), and only if they hadn't written in it. Otherwise it's routed by the rules below. The log says *Answering {agent}'s message*.
+
+`pnpm check:outreach` covers it.
+
 ### 1. Auto per-customer routing (a headline requirement)
 
 Each **Contact** can carry an **owner** (`owner_user_id` or `owner_team_id`). When a message comes in from a known client, Nest Connect assigns the conversation to that owner automatically — so a client always reaches "their" person/team. Owners are set:

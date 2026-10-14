@@ -1,33 +1,5 @@
-import { Image, View } from "react-native";
+import { View } from "react-native";
 import Svg, { Circle, Defs, RadialGradient, Rect, Stop } from "react-native-svg";
-
-/**
- * The app's mark.
- *
- * It used to be three nested bowls drawn here in SVG, while the web drew a chat
- * bubble with an amber dot — two hand-maintained logos for one product, neither
- * aware of the other. Both now come from the artwork in
- * `packages/design/brand`, and every size either platform needs is cut from it
- * by `tools/render-logo.mjs` rather than redrawn.
- *
- * The mark is a fixed green and carries no `color`: it is the same green on the
- * sign-in tile, in a launcher and on a browser tab, which is what a logo is for.
- * Anywhere it needs a ground of its own, the ground is the brand's navy — see
- * the sign-in screen, and the app icon it matches.
- */
-export function NestMark({ size = 28 }: { size?: number }) {
-  return (
-    <Image
-      source={require("../../assets/logo-mark.png")}
-      style={{ width: size, height: size }}
-      // The source is square and trimmed to the mark, so `contain` only ever
-      // letterboxes by a rounding error — but it is the difference between a
-      // mark that stays itself at any size and one that stretches.
-      resizeMode="contain"
-      accessibilityIgnoresInvertColors
-    />
-  );
-}
 
 /**
  * The atmosphere behind the sign-in screen.

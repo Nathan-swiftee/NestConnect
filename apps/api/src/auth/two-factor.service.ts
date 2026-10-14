@@ -9,7 +9,7 @@ import { loginCodeEmail } from "../mail/templates";
 import { SecretEncryptionService } from "../crypto/secret-encryption.service";
 import { Mailer } from "../mail/mailer.service";
 
-const ISSUER = "Nest Connect";
+const ISSUER = "NestConnect";
 const RECOVERY_CODE_COUNT = 10;
 const EMAIL_CODE_TTL_MS = 10 * 60 * 1000;
 

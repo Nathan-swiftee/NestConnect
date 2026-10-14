@@ -128,7 +128,7 @@ export function EmailHtml({ html }: { html: string }) {
       `body{padding:2px 3px;color:#1a1a1a;` +
       `font:15px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;` +
       `word-break:break-word;overflow-wrap:anywhere}` +
-      `img{max-width:100%;height:auto}a{color:#0a7c66}` +
+      `img{max-width:100%;height:auto}a{color:#128048}` +
       `table{border-collapse:collapse}html.fit table{max-width:100%}` +
       `blockquote{margin:6px 0 6px 4px;padding-left:11px;border-left:3px solid #dcdcdc;color:#555}` +
       `pre{white-space:pre-wrap;word-break:break-word}` +

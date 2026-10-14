@@ -227,7 +227,7 @@ export class CustomerPushService {
     const result = await this.fcm.send(credential, {
       token: device.token,
       // The channel's own name, not ours. This notification lands on a
-      // customer's phone under the business's app icon, and "Nest Connect"
+      // customer's phone under the business's app icon, and "NestConnect"
       // there names a company they have never heard of and did not install.
       title: await this.channelName(inboxId),
       body: "Notifications are working on this device.",

@@ -1446,7 +1446,7 @@ export const WHATSAPP_VERTICALS = [
 export const whatsAppVerticalSchema = z.enum(WHATSAPP_VERTICALS);
 export type WhatsAppVertical = z.infer<typeof whatsAppVerticalSchema>;
 
-/** Opening hours are kept in Nest Connect (WhatsApp's profile has no hours
+/** Opening hours are kept in NestConnect (WhatsApp's profile has no hours
  *  field); one entry per weekday, "HH:MM" 24-hour, or marked closed. */
 export const OPENING_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 export type OpeningDay = (typeof OPENING_DAYS)[number];
@@ -1482,7 +1482,7 @@ export const whatsAppBusinessProfileSchema = z.object({
   websites: z.array(z.string()).optional(),
   /** Current profile photo (from Meta's `profile_picture_url`; set via upload). */
   profilePictureUrl: z.string().optional(),
-  /** Kept in Nest Connect, not sent to WhatsApp. */
+  /** Kept in NestConnect, not sent to WhatsApp. */
   openingHours: openingHoursSchema.optional(),
 });
 export type WhatsAppBusinessProfile = z.infer<typeof whatsAppBusinessProfileSchema>;
@@ -1495,7 +1495,7 @@ export const updateWhatsAppBusinessProfileInputSchema = z.object({
   email: z.string().max(128, "Keep the email under 128 characters").optional(),
   vertical: whatsAppVerticalSchema.optional(),
   websites: z.array(z.string()).max(2, "At most two websites").optional(),
-  /** Stored in Nest Connect only (WhatsApp has no hours field). */
+  /** Stored in NestConnect only (WhatsApp has no hours field). */
   openingHours: openingHoursSchema.optional(),
 });
 export type UpdateWhatsAppBusinessProfileInput = z.infer<

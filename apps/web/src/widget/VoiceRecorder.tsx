@@ -112,7 +112,7 @@ export function VoiceRecorder({
         reset();
         // One sentence, and it names the fix. "NotAllowedError" is the
         // browser's word for it and means nothing to the person reading.
-        onError("Nest Connect needs permission to use your microphone.");
+        onError("NestConnect needs permission to use your microphone.");
       }
     },
     [disabled, finish, onError, reset],

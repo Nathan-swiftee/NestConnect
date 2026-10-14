@@ -1,26 +1,25 @@
 /**
  * The brand's own colours, and where its artwork lives.
  *
- * The mark itself is a picture, not geometry — `brand/mark.png` and its two
- * siblings are the files as delivered, and everything the apps and the browser
- * use is derived from them by `tools/render-logo.mjs`. That indirection is the
- * point: before it, the web drew a chat bubble with an amber dot and the phone
- * drew three nested bowls, two hand-maintained logos for one product, neither
- * aware of the other. Now there is one set of source files and every size is a
- * build product of them.
+ * The mark itself is a picture, not geometry — `brand/mark.png` and its
+ * siblings are the files as delivered (cleaned to a crisp edge at 2300px), and
+ * everything the apps and the browser use is derived from them by
+ * `tools/render-logo.mjs`. One set of source files; every size a build product.
  *
- * These values are sampled from that artwork rather than typed from memory —
- * the green is the commonest opaque pixel in the mark, the navy is the tile the
- * app icon stands on.
+ * The 2026 brand: a two-part leaf mark and the "NestConnect" wordmark, in
+ * green, mint and ink. These values are sampled from the delivered artwork.
  */
 export const BRAND = {
-  /** The mark's green. Not `colors.brand`, which is tuned for small UI text and
-   *  filled buttons against an app surface; a logo keeps its own value in every
-   *  context, including on somebody else's white page. */
-  green: "#02D6A2",
-  /** The ground under the app icon, and under the mark wherever it needs a tile
-   *  of its own — the web's rail badge, the Apple touch icon. */
-  navy: "#071634",
+  /** The mark's green, and the ground of the app icon and every logo tile. A
+   *  logo keeps its own value in every context — this is not `colors.brand`,
+   *  which is tuned for UI text and filled buttons. */
+  green: "#1DAA61",
+  /** The second green in the brand set. */
+  leaf: "#75B94E",
+  /** The pale green of the brand set (the app icon's mark is white). */
+  mint: "#E1FBD6",
+  /** The mark and wordmark in one colour, on light grounds. */
+  ink: "#262626",
 } as const;
 
 /**
@@ -28,7 +27,8 @@ export const BRAND = {
  * rather than import one. Kept beside the colours so the two cannot drift.
  */
 export const BRAND_ASSETS = {
-  /** Web, served from `public/`. */
+  /** Web, served from `public/`. The green mark, for narrow spots. */
   mark: "/logo-mark.png",
+  /** The full logo, mark and "NestConnect", as delivered. */
   lockup: "/logo-lockup.png",
 } as const;

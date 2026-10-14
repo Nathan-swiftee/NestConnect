@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useLogin, useLoginTwoFactor } from "../hooks";
 import { api } from "../lib/api";
-import { Logo, channelMeta, CheckDouble, SendIcon } from "../lib/icons";
+import { channelMeta, CheckDouble, SendIcon, Lockup } from "../lib/icons";
 
 const wa = channelMeta("whatsapp");
 const email = channelMeta("email");
@@ -57,12 +57,7 @@ export function LoginScreen() {
 
         <div className="hero__content">
           <div className="hero__brand">
-            <div className="brandmark">
-              <Logo />
-            </div>
-            <span className="wordmark">
-              Nest <span className="dot">Connect</span>
-            </span>
+            <Lockup />
           </div>
 
           <h2 className="hero__title">
@@ -132,12 +127,7 @@ export function LoginScreen() {
       <section className="login__panel">
         <form className="login__card" onSubmit={challenge || mode === "signin" ? submit : submitForgot}>
           <div className="flex items-center gap-2 mb-1">
-            <div className="brandmark">
-              <Logo />
-            </div>
-            <span className="wordmark">
-              Nest <span className="dot">Connect</span>
-            </span>
+            <Lockup />
           </div>
           {challenge ? (
             <>

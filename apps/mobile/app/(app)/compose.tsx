@@ -3,7 +3,7 @@ import { ActivityIndicator, FlatList, ScrollView, Text, TextInput, View } from "
 import Animated from "react-native-reanimated";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
-import { api, useContacts, useInboxes } from "@ding/client";
+import { api, startedAlongside, useContacts, useInboxes } from "@ding/client";
 import type { ChannelType, Contact, Inbox } from "@ding/schemas";
 import { Avatar } from "../../src/components/Avatar";
 import { Field } from "../../src/components/Field";
@@ -14,6 +14,7 @@ import { rowIn } from "../../src/motion";
 import { useTheme } from "../../src/theme";
 import { useInsets } from "../../src/insets";
 import { Touchable } from "../../src/components/Touchable";
+import { useToast } from "../../src/components/Toast";
 
 type Channel = "whatsapp" | "email";
 
@@ -50,6 +51,7 @@ type Channel = "whatsapp" | "email";
  */
 export default function Compose() {
   const insets = useInsets();
+  const toast = useToast();
   const { c } = useTheme();
   const { data: contacts, isLoading } = useContacts();
   const { data: inboxes } = useInboxes();
@@ -105,7 +107,8 @@ export default function Compose() {
     setBusy(channel);
     setError(null);
     try {
-      const { conversationId } = await api.reachContact(contact.id, channel, inboxId);
+      const { conversationId, alsoOpenWith } = await api.reachContact(contact.id, channel, inboxId);
+      if (alsoOpenWith) toast({ text: startedAlongside(contact.displayName, alsoOpenWith) });
       opened(conversationId);
     } catch (err) {
       haptics.error();

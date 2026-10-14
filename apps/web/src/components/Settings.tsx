@@ -386,7 +386,7 @@ const CHANNEL_KINDS: ChannelKind[] = [
   {
     type: "email",
     label: "Email inbox",
-    desc: "A shared mailbox, forwarded into Nest Connect.",
+    desc: "A shared mailbox, forwarded into NestConnect.",
     handleLabel: "Inbox address",
     handlePlaceholder: "support@swiftee.co.uk",
     fields: [
@@ -2748,7 +2748,7 @@ function NestChatPane({ onToast }: { onToast: (msg: string) => void }) {
                   checked={draft.appearance.showBranding}
                   onChange={(e) => set("showBranding", e.target.checked)}
                 />
-                Show “Powered by Nest Connect”
+                Show “Powered by NestConnect”
               </label>
             </section>
 
@@ -3833,7 +3833,7 @@ function NestChatPreview({
           <i />
         </div>
       )}
-      {appearance.showBranding && <div className="ncprev__brand">Powered by Nest Connect</div>}
+      {appearance.showBranding && <div className="ncprev__brand">Powered by NestConnect</div>}
     </div>
   );
 }
@@ -4591,7 +4591,7 @@ function ProfileForm({
           })}
         </div>
         <small className="fieldhint">
-          Saved in Nest Connect and pushed to WhatsApp as your <strong>call hours</strong> — when the number accepts
+          Saved in NestConnect and pushed to WhatsApp as your <strong>call hours</strong> — when the number accepts
           WhatsApp voice calls (saving enables Calling on the number). WhatsApp has no general profile-hours field, so
           these don’t appear on the business card. Changes can take a few days to show for customers.
         </small>
@@ -6021,7 +6021,7 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
                 value={resendFrom}
                 autoComplete="off"
                 onChange={(e) => setResendFrom(e.target.value)}
-                placeholder="Nest Connect <noreply@yourdomain.com>"
+                placeholder="NestConnect <noreply@yourdomain.com>"
               />
             </label>
           </div>

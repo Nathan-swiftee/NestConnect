@@ -1001,6 +1001,16 @@ body {
 
 .nc__brand a {
   color: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: bottom;
+}
+
+/* The leaf mark beside the name, at text size. */
+.nc__brand-mark {
+  width: 12px;
+  height: 12px;
 }
 
 /* ── whole-widget states ────────────────────────────────────────────────── */

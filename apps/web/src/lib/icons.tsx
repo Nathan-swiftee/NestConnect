@@ -196,10 +196,13 @@ export function TeamGlyph({ icon }: { icon?: string | null }): JSX.Element {
  * cuts the sizes out of it. Redrawing it in code is exactly how this app came to
  * have one logo on the web and a different one on the phone.
  *
- * No colour prop and nothing inherited: a logo is the same green on a rail
- * badge, a login screen and a browser tab. Where it needs a ground of its own,
- * `.brandmark` supplies the brand's navy — the same navy as the app icon.
+ * No colour prop and nothing inherited: the green mark as delivered.
  */
 export const Logo = (): JSX.Element => (
   <img src={BRAND_ASSETS.mark} alt="" aria-hidden="true" draggable={false} />
+);
+
+/** The full logo — mark and "NestConnect" — exactly as delivered. */
+export const Lockup = (): JSX.Element => (
+  <img className="lockup" src={BRAND_ASSETS.lockup} alt="NestConnect" draggable={false} />
 );

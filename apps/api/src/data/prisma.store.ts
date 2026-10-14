@@ -2355,6 +2355,27 @@ export class PrismaStore extends Store {
     }
   }
 
+  async findRecentOutreach(params: {
+    orgId: string;
+    inboxId: string;
+    contactId: string;
+    since: string;
+  }): Promise<{ userId: string; teamId: string | null } | undefined> {
+    // The latest conversation with anything in it — the one being created for
+    // this reply has nothing yet, so it's never the one found.
+    const last = await this.prisma.conversation.findFirst({
+      where: { orgId: params.orgId, inboxId: params.inboxId, contactId: params.contactId, messages: { some: {} } },
+      orderBy: { lastActivityAt: "desc" },
+      select: { id: true, assigneeUserId: true, assignedTeamId: true, lastActivityAt: true },
+    });
+    if (!last?.assigneeUserId || last.lastActivityAt < new Date(params.since)) return undefined;
+    const [theirs, ours] = await Promise.all([
+      this.prisma.message.count({ where: { conversationId: last.id, direction: "in" } }),
+      this.prisma.message.count({ where: { conversationId: last.id, direction: "out", internal: false } }),
+    ]);
+    return theirs === 0 && ours > 0 ? { userId: last.assigneeUserId, teamId: last.assignedTeamId } : undefined;
+  }
+
   async findCrossChannelReplyThread(params: { orgId: string; inboxId: string; contactId: string }): Promise<string | undefined> {
     const sent = await this.prisma.message.findFirst({
       where: {

@@ -139,7 +139,9 @@ export function renderConversationEvents(
         detail =
           reason === "menu"
             ? `They picked ${quote(d.option)} in the chat menu`
-            : reason === "contact"
+            : reason === "outreach"
+              ? `Answering ${p ?? "an agent"}'s message`
+              : reason === "contact"
               ? "The customer's own routing"
               : reason === "organisation"
                 ? `Via their organisation, ${str(d.organisation) ?? "since removed"}`

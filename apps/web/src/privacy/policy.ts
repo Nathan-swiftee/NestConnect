@@ -271,7 +271,7 @@ export function buildPolicy(f: ResolvedOwnerFields): PolicyDocument {
     title: "Who we are",
     blocks: [
       p(
-        `NestConnect is a shared team inbox that lets a business (a "workspace") talk to its customers over several channels from one place. It is operated by ${f.controllerName} (${f.companyDetails}), ${f.postalAddress} ("we", "us"). It is available at nestconnect.io and as the Nest Connect mobile app for iOS and Android.`,
+        `NestConnect is a shared team inbox that lets a business (a "workspace") talk to its customers over several channels from one place. It is operated by ${f.controllerName} (${f.companyDetails}), ${f.postalAddress} ("we", "us"). It is available at nestconnect.io and as the NestConnect mobile app for iOS and Android.`,
       ),
       p("For anything about this policy or your information, contact us at ", mail(f.contactEmail), "."),
     ],
@@ -307,7 +307,7 @@ export function buildPolicy(f: ResolvedOwnerFields): PolicyDocument {
         "Sign-in credentials: your password is stored only as a bcrypt hash. Invitation and password-reset links use single-use tokens that are stored hashed, with an expiry.",
         `Two-step verification: the method you chose, your authenticator (TOTP) secret${f.secretEncryptionEnabledInProduction ? ", which is stored encrypted" : ""}, and hashed one-time email codes and recovery codes. After you complete two-step verification, a "trusted device" cookie (valid for 30 days) can skip the code on that browser or device.`,
         "Sessions: for each sign-in we record the IP address, the browser or device user agent, when it started, when it was last used and when it was signed out, so you can see where you are signed in and sign out remotely.",
-        "Mobile devices: if you allow notifications in the Nest Connect app, we store the device's push token, platform, app version, operating-system version and device name, linked to the sign-in that registered it.",
+        "Mobile devices: if you allow notifications in the NestConnect app, we store the device's push token, platform, app version, operating-system version and device name, linked to the sign-in that registered it.",
         "Preferences: which push notifications you want, conversations you have muted, and in-app notifications sent to you (such as mentions, assignments and reminders).",
         "What you write and do in the inbox: replies, internal notes, templates, labels, assignments and the history of who a conversation was assigned to.",
         ...(f.gmailIntegrationInUse
@@ -350,7 +350,7 @@ export function buildPolicy(f: ResolvedOwnerFields): PolicyDocument {
 
   const pushBlocks: Block[] = [
     p(
-      "Workspace users: the Nest Connect app sends notifications through the Expo push notification service, which delivers them through Firebase Cloud Messaging (Android) and the Apple Push Notification service (iOS). A notification contains the sender's name, a preview of up to 140 characters of the message (or \"Sent an attachment\"), the kind of notification, a conversation reference and an unread count. You choose which notifications you get in the app, and can turn them off in your device's settings. Signing a device out stops its notifications.",
+      "Workspace users: the NestConnect app sends notifications through the Expo push notification service, which delivers them through Firebase Cloud Messaging (Android) and the Apple Push Notification service (iOS). A notification contains the sender's name, a preview of up to 140 characters of the message (or \"Sent an attachment\"), the kind of notification, a conversation reference and an unread count. You choose which notifications you get in the app, and can turn them off in your device's settings. Signing a device out stops its notifications.",
     ),
   ];
   if (f.sdkCustomerPushInUse) {
@@ -402,11 +402,11 @@ export function buildPolicy(f: ResolvedOwnerFields): PolicyDocument {
   if (f.sentryEnabledInProduction) {
     logs.push(
       p(
-        "The Nest Connect mobile app sends crash and error reports to Sentry. Reports include technical details such as the app version, device and operating-system information and the error itself. They are configured not to include message content: request bodies, cookies and headers are removed, network breadcrumbs keep only the address and status code, default personal information is turned off, and no screenshots or session replays are taken. Performance traces are sampled for 10% of sessions.",
+        "The NestConnect mobile app sends crash and error reports to Sentry. Reports include technical details such as the app version, device and operating-system information and the error itself. They are configured not to include message content: request bodies, cookies and headers are removed, network breadcrumbs keep only the address and status code, default personal information is turned off, and no screenshots or session replays are taken. Performance traces are sampled for 10% of sessions.",
       ),
     );
   } else {
-    logs.push(p("The Nest Connect mobile app does not send crash reports to a third party."));
+    logs.push(p("The NestConnect mobile app does not send crash reports to a third party."));
   }
 
   sections.push({ id: "diagnostics", title: "Logs and crash reports", blocks: logs });
@@ -420,7 +420,7 @@ export function buildPolicy(f: ResolvedOwnerFields): PolicyDocument {
     ...(f.postmarkInUse ? [["Postmark — sends and receives email for email inboxes, and may send account emails and website-chat reply emails."]] : []),
     ...(f.resendInUse ? [["Resend — sends account emails (invitations, password resets, verification codes) and website-chat reply emails."]] : []),
     ...(f.smtpInUse ? [["An SMTP email provider — sends account emails and website-chat reply emails."]] : []),
-    ["Expo, Google Firebase Cloud Messaging and Apple Push Notification service — deliver notifications to the Nest Connect app."],
+    ["Expo, Google Firebase Cloud Messaging and Apple Push Notification service — deliver notifications to the NestConnect app."],
     ...(f.sdkCustomerPushInUse ? [["Google Firebase Cloud Messaging (the business's own project) — delivers notifications to customers in a business's app."]] : []),
     ...(f.anthropicPolishAvailable ? [["Anthropic — processes drafts and recent conversation text when an agent uses Polish, and the opening messages and custom field values of new WhatsApp and website-chat conversations to write their subjects."]] : []),
     ...(f.sentryEnabledInProduction ? [["Sentry — receives crash and error reports from the mobile app."]] : []),

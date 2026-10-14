@@ -142,7 +142,7 @@ export class Mailer {
       const domain = from.split("@")[1] || env.email.domain;
       const raw = buildMime({
         from,
-        fromName: inbox.name || "Nest Connect",
+        fromName: inbox.name || "NestConnect",
         to: input.to,
         subject: input.subject,
         body: input.text,

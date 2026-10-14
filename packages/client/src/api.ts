@@ -406,7 +406,9 @@ export const api = {
   // Open (or start) this customer's conversation on another channel. An explicit
   // inboxId picks which number/inbox to send from when several are connected.
   reachContact: (contactId: string, channel: "whatsapp" | "email", inboxId?: string) =>
-    post<{ conversationId: string; created: boolean }>(`/contacts/${contactId}/reach`, {
+    // `alsoOpenWith`: who has the other open conversation with them that this
+    // new one was started beside — a colleague's name, or "the queue".
+    post<{ conversationId: string; created: boolean; alsoOpenWith?: string }>(`/contacts/${contactId}/reach`, {
       channel,
       ...(inboxId ? { inboxId } : {}),
     }),

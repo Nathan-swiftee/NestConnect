@@ -93,7 +93,11 @@ export class IntegrationsController {
   @Get()
   async get(@CurrentUserId() userId: string, @Req() req: Request): Promise<IntegrationSettings> {
     const me = await this.requireUser(userId);
-    return this.snapshot(me.orgId, req);
+    const full = await this.snapshot(me.orgId, req);
+    // An agent's composer only needs to know what's switched on (is Polish
+    // there?). The ids, hosts, buckets and prompts are for the people who
+    // run the workspace — secrets are never returned to anyone.
+    return me.role === "admin" || me.role === "manager" ? full : onlySwitches(full);
   }
 
   @Patch()
@@ -266,4 +270,14 @@ export class IntegrationsController {
     }
     return me;
   }
+}
+
+/** The same shape with every value blanked but the on/off flags. */
+export function onlySwitches<T>(value: T): T {
+  if (typeof value === "string") return "" as T;
+  if (Array.isArray(value)) return [] as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, onlySwitches(v)])) as T;
+  }
+  return value;
 }

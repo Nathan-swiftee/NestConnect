@@ -1,9 +1,16 @@
 /**
  * Cut every size the apps and the browser need out of the delivered artwork.
  *
- *   node --experimental-strip-types tools/render-logo.mjs
+ *   node --experimental-strip-types tools/render-logo.mjs            # web + in-app
+ *   node --experimental-strip-types tools/render-logo.mjs --native   # + app icons
  *
- * Three files arrive from design — the mark, the lockup, the app tile — and
+ * The app icons are part of the app's build fingerprint (Expo's
+ * `runtimeVersion: fingerprint`): change them and every installed build stops
+ * receiving over-the-air updates until new store builds are out. So they're
+ * only rewritten when asked for, as a step of its own beside a store release.
+ *
+ * Files arrive from design — the mark (green, and white for the green tile) and the
+ * lockup — and
  * about eight are needed: a 1024 app icon, an Android foreground that survives
  * being cropped to a circle, a favicon, an Apple touch icon, and copies for each
  * app to bundle. Doing that by hand is how this repo ended up with *two*
@@ -36,18 +43,17 @@ const dataUrl = (rel) =>
 
 const SRC = {
   mark: dataUrl("packages/design/brand/mark.png"),
-  lockup: dataUrl("packages/design/brand/lockup.png"),
-  icon: dataUrl("packages/design/brand/app-icon.png"),
+  markWhite: dataUrl("packages/design/brand/mark-white.png"),
 };
+const NATIVE = process.argv.includes("--native");
 
 /**
- * The delivered app tile, measured off `brand/app-icon.png` rather than chosen:
- * the mark spans 49.2% of the tile and sits a touch right of centre and a touch
- * high. Every icon that is meant to look like that tile is built from these
- * numbers, so "the same logo, the same size" holds across platforms instead of
- * being re-guessed per file.
+ * The delivered app tile (the white mark on green), measured off the artwork
+ * rather than chosen: the mark spans 63% of the tile's width, centred. Every
+ * icon meant to look like that tile is built from these numbers, so "the same
+ * logo, the same size" holds across platforms.
  */
-const TILE = { ink: 0.492, centre: { x: 0.51, y: 0.483 } };
+const TILE = { ink: 0.63, centre: { x: 0.5, y: 0.5 } };
 
 /**
  * How much of an Android adaptive icon you actually see. The drawable is 108dp
@@ -74,35 +80,28 @@ const inAdaptiveWindow = ({ ink, centre }) => ({
  * source, for a target that is already composed.
  */
 const TARGETS = [
-  // ── the phone ──────────────────────────────────────────────────────────
+  // ── the phone: app icons (native — only with --native) ─────────────────
   // iOS and the Play Store both want 1024 and neither may be transparent; the
   // system applies its own mask, so this is square and unrounded.
-  //
-  // Rebuilt from the mark rather than upscaled from app-icon.png: the mark needs
-  // 503 pixels here, and mark.png has 911 to give where the 512 tile has only
-  // 252 to stretch. Same composition to a tenth of a percent — the numbers in
-  // TILE were measured off the delivered tile — on the same navy the Android
-  // background uses, so the two platforms show one object.
-  { out: "apps/mobile/assets/icon.png", src: "mark", size: 1024, ...TILE },
+  { out: "apps/mobile/assets/icon.png", src: "markWhite", size: 1024, bg: BRAND.green, native: true, ...TILE },
   // Android adaptive foreground, sized against the window the launcher actually
-  // shows. At a flat 26% margin the mark filled 72% of that window against 49%
-  // in the delivered tile — the same logo half again too big on the home screen.
-  { out: "apps/mobile/assets/adaptive-icon.png", src: "mark", size: 1024, bg: null, ...inAdaptiveWindow(TILE) },
-  // The mark on its own, for the sign-in screen and anywhere else in the app.
-  { out: "apps/mobile/assets/logo-mark.png", src: "mark", size: 512, ink: 0.96, bg: null },
+  // shows; app.json's adaptive background is BRAND.green.
+  { out: "apps/mobile/assets/adaptive-icon.png", src: "markWhite", size: 1024, bg: null, native: true, ...inAdaptiveWindow(TILE) },
+
+  // ── the phone: in the app (bundled JS assets, ship over the air) ───────
+  // (The app's sign-in shows the delivered lockup, apps/mobile/assets/logo-lockup.png.)
 
   // ── the browser ────────────────────────────────────────────────────────
+  // The green mark, for the narrow rail. The full logo (logo-lockup.png) is the
+  // delivered lockup file itself, copied as is.
   { out: "apps/web/public/logo-mark.png", src: "mark", size: 512, ink: 0.96, bg: null },
-  { out: "apps/web/public/logo-lockup.png", src: "lockup", size: 1024, ink: 0.96, bg: null, wide: true },
   // A tab favicon is 16 or 32 real pixels, so it is trimmed hard — any margin
-  // baked in here is margin the glyph doesn't get.
+  // baked in here is margin the glyph doesn't get. Green on a transparent tab.
   { out: "apps/web/public/favicon-32.png", src: "mark", size: 32, ink: 0.96, bg: null },
   { out: "apps/web/public/favicon-64.png", src: "mark", size: 64, ink: 0.96, bg: null },
-  // An iOS home screen composites onto white, so this one needs its own ground.
-  // Straight off the delivered tile: 512 down to 180 is a downscale, so there is
-  // nothing to gain by recomposing it.
-  { out: "apps/web/public/favicon-180.png", src: "icon", size: 180, trim: false },
-];
+  // An iOS home screen composites onto white, so this one is the app tile.
+  { out: "apps/web/public/favicon-180.png", src: "markWhite", size: 180, bg: BRAND.green, ...TILE },
+].filter((t) => NATIVE || !t.native);
 
 const browser = await chromium.launch({
   executablePath:
@@ -164,7 +163,7 @@ for (const t of TARGETS) {
     inner = `<img src="${src}" style="position:absolute;left:0;top:0;width:${W}px;height:${H}px">`;
   }
 
-  const bg = t.bg === null ? "transparent" : (t.bg ?? BRAND.navy);
+  const bg = t.bg === null ? "transparent" : (t.bg ?? BRAND.green);
   await page.setViewportSize({ width: W, height: H });
   await page.setContent(
     `<style>html,body{margin:0;width:${W}px;height:${H}px}
