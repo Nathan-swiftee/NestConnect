@@ -18,6 +18,7 @@ import {
   ChatServerEvent,
   ClientEvent,
   ServerEvent,
+  type ChatCue,
   type ChatServerEvents,
   type ClientToServerEvents,
   type Conversation,
@@ -307,8 +308,8 @@ export class RealtimeGateway
     this.server.to(orgRoom(orgId)).emit(ChatServerEvent.Presence, { userId, online, lastSeenAt });
   }
 
-  emitChatCue(userIds: string[], roomId: string, mention: boolean): void {
-    this.emitToUsers(userIds, ChatServerEvent.Cue, { roomId, mention });
+  emitChatCue(userIds: string[], cue: ChatCue): void {
+    this.emitToUsers(userIds, ChatServerEvent.Cue, cue);
   }
 
   /** Has this person got this chat open, on any device? Push asks, as for conversations. */

@@ -978,6 +978,11 @@ export class ChatService implements OnModuleInit {
     if (told.length) {
       this.push.notify({ userIds: told, kind: "chat_message", title, body, chatRoomId: a.room.id, actorUserId: author.id });
     }
+    // A mention reaches them muted or not, as a bell entry (which makes the
+    // sound); the screen pops it up as well.
+    if (mentioned.size) {
+      this.realtime.emitChatCue([...mentioned], { roomId: a.room.id, mention: true, title, body, actorUserId: author.id, silent: true });
+    }
     for (const id of mentioned) {
       await this.notifications.create(id, {
         type: "chat_mention",

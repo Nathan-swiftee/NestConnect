@@ -278,7 +278,14 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     // Team Chat rings its own way: the chat screen knows which chat is open.
     if (audience.length && req.chatRoomId && req.cue !== false) {
-      this.realtime.emitChatCue(audience, req.chatRoomId, req.kind === "chat_mention");
+      this.realtime.emitChatCue(audience, {
+        roomId: req.chatRoomId,
+        mention: req.kind === "chat_mention",
+        // What the push says, for the web's pop-up.
+        title: req.title,
+        body: req.body,
+        ...(req.actorUserId ? { actorUserId: req.actorUserId } : {}),
+      });
     }
 
     if (!recipients.length) return { sent: 0, failed: 0 };

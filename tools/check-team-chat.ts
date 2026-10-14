@@ -90,12 +90,17 @@ async function main() {
   const pushes: PushRequest[] = [];
   const bells: Array<{ userId: string; type: string; chatRoomId?: string | null }> = [];
   const emitted: Array<{ users: string[]; event: string }> = [];
+  const cues: Array<{ users: string[]; mention: boolean; silent?: boolean; title?: string }> = [];
   const realtime = {
     registerChat() {},
     emitToUsers(users: string[], event: string) {
       emitted.push({ users, event });
     },
     emitChatPresence() {},
+    emitChatCue(users: string[], cue: { mention: boolean; silent?: boolean; title?: string }) {
+      emitted.push({ users, event: "chat.cue" });
+      cues.push({ users, ...cue });
+    },
     onlineAmong: async () => new Set<string>(),
     isViewingChat: async () => false,
   } as unknown as RealtimeGateway;
@@ -229,9 +234,12 @@ async function main() {
     ok("as the group, from whom", pushes[0]?.title === "Three of us" && pushes[0]?.body === "Nathan A: Lunch at 1?", `${pushes[0]?.title} / ${pushes[0]?.body}`);
     ok("never the author", !pushes.some((p) => p.userIds.includes(NATHAN)));
     pushes.length = 0;
+    cues.length = 0;
     await svc.send(NATHAN, ops2.id, say("@amara can you book it?"));
     ok("a mention reaches a muted person, as a bell entry", bells.length === 1 && bells[0]!.userId === AMARA && bells[0]!.type === "chat_mention" && bells[0]!.chatRoomId === ops2.id);
     ok("and isn't pushed twice", !pushes.some((p) => p.userIds.includes(AMARA)));
+    const pop = cues.find((c) => c.users.includes(AMARA));
+    ok("their screen pops it up, quietly (the bell makes the sound)", !!pop?.mention && pop.silent === true && pop.title === "Three of us", JSON.stringify(pop));
     const amaraRoom = (await svc.rooms(AMARA)).find((x) => x.id === ops2.id)!;
     ok("the list flags the mention", amaraRoom.mentioned && amaraRoom.muted);
     const amaraUnread = (await svc.rooms(AMARA)).filter((x) => !x.muted).reduce((n, x) => n + x.unread, 0);

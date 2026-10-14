@@ -10,6 +10,7 @@ import {
   type ChatSharedConversation,
   type Conversation,
   type ShareConversationInput,
+  type ChatCue,
   type ChatMessage,
   type ChatMessagePage,
   type ChatPerson,
@@ -49,6 +50,23 @@ let openRoom: string | null = null;
 /** The chat screen says which chat it has open, so a sound for that one isn't made. */
 export function setOpenChatRoom(id: string | null): void {
   openRoom = id;
+}
+
+/* ---- "a message arrived", for a screen that wants to show it ---- */
+
+type CueListener = (cue: ChatCue & { onScreen: boolean }) => void;
+const cueListeners = new Set<CueListener>();
+
+/**
+ * Hear about each chat message the server says this person should know of
+ * (not muted, not their own). `onScreen` is true when that chat is open in
+ * front of them, so a pop-up can stay out of the way. Returns the unsubscribe.
+ */
+export function onChatCue(listener: CueListener): () => void {
+  cueListeners.add(listener);
+  return () => {
+    cueListeners.delete(listener);
+  };
 }
 
 const looking = () => clientConfig().attention?.isLooking() ?? true;
@@ -464,7 +482,11 @@ export function useChatRealtime(enabled: boolean): void {
     // The server already left out everyone muted or not asking. The chat
     // that's open in front of me rings too, as a WhatsApp conversation in the
     // inbox does: it's how you know the reply landed without looking up.
-    const onCue = () => clientConfig().cues.received?.();
+    const onCue = (cue: ChatCue) => {
+      if (!cue.silent) clientConfig().cues.received?.();
+      const onScreen = openRoom === cue.roomId && looking();
+      for (const l of cueListeners) l({ ...cue, onScreen });
+    };
     socket.on(ChatServerEvent.Message, onMessage);
     socket.on(ChatServerEvent.MessageUpdated, onUpdated);
     socket.on(ChatServerEvent.Receipt, onReceipt);
