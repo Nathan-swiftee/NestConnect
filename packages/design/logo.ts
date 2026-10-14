@@ -16,7 +16,7 @@ export const BRAND = {
   green: "#1DAA61",
   /** The second green in the brand set. */
   leaf: "#75B94E",
-  /** The light mark that sits on a green tile. */
+  /** The pale green of the brand set (the app icon's mark is white). */
   mint: "#E1FBD6",
   /** The mark and wordmark in one colour, on light grounds. */
   ink: "#262626",

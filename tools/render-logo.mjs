@@ -9,7 +9,7 @@
  * receiving over-the-air updates until new store builds are out. So they're
  * only rewritten when asked for, as a step of its own beside a store release.
  *
- * Files arrive from design — the mark (green, and mint for a green tile) and the
+ * Files arrive from design — the mark (green, and white for the green tile) and the
  * lockup — and
  * about eight are needed: a 1024 app icon, an Android foreground that survives
  * being cropped to a circle, a favicon, an Apple touch icon, and copies for each
@@ -43,12 +43,12 @@ const dataUrl = (rel) =>
 
 const SRC = {
   mark: dataUrl("packages/design/brand/mark.png"),
-  markLight: dataUrl("packages/design/brand/mark-light.png"),
+  markWhite: dataUrl("packages/design/brand/mark-white.png"),
 };
 const NATIVE = process.argv.includes("--native");
 
 /**
- * The delivered app tile (the mint mark on green), measured off the artwork
+ * The delivered app tile (the white mark on green), measured off the artwork
  * rather than chosen: the mark spans 63% of the tile's width, centred. Every
  * icon meant to look like that tile is built from these numbers, so "the same
  * logo, the same size" holds across platforms.
@@ -83,10 +83,10 @@ const TARGETS = [
   // ── the phone: app icons (native — only with --native) ─────────────────
   // iOS and the Play Store both want 1024 and neither may be transparent; the
   // system applies its own mask, so this is square and unrounded.
-  { out: "apps/mobile/assets/icon.png", src: "markLight", size: 1024, bg: BRAND.green, native: true, ...TILE },
+  { out: "apps/mobile/assets/icon.png", src: "markWhite", size: 1024, bg: BRAND.green, native: true, ...TILE },
   // Android adaptive foreground, sized against the window the launcher actually
   // shows; app.json's adaptive background is BRAND.green.
-  { out: "apps/mobile/assets/adaptive-icon.png", src: "markLight", size: 1024, bg: null, native: true, ...inAdaptiveWindow(TILE) },
+  { out: "apps/mobile/assets/adaptive-icon.png", src: "markWhite", size: 1024, bg: null, native: true, ...inAdaptiveWindow(TILE) },
 
   // ── the phone: in the app (bundled JS assets, ship over the air) ───────
   // (The app's sign-in shows the delivered lockup, apps/mobile/assets/logo-lockup.png.)
@@ -100,7 +100,7 @@ const TARGETS = [
   { out: "apps/web/public/favicon-32.png", src: "mark", size: 32, ink: 0.96, bg: null },
   { out: "apps/web/public/favicon-64.png", src: "mark", size: 64, ink: 0.96, bg: null },
   // An iOS home screen composites onto white, so this one is the app tile.
-  { out: "apps/web/public/favicon-180.png", src: "markLight", size: 180, bg: BRAND.green, ...TILE },
+  { out: "apps/web/public/favicon-180.png", src: "markWhite", size: 180, bg: BRAND.green, ...TILE },
 ].filter((t) => NATIVE || !t.native);
 
 const browser = await chromium.launch({
