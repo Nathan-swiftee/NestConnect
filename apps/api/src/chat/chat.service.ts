@@ -184,6 +184,9 @@ export class ChatService implements OnModuleInit {
     const teamById = new Map(teams.map((t) => [t.id, t]));
     const myTeams = new Set(members.find((m) => m.user.id === user.id)?.teamIds ?? []);
     const mine = new Map(memberships.map((m) => [m.roomId, m]));
+    // An admin or manager who has written in a chat they aren't in keeps it in
+    // their own list, marked as one they aren't in, so they can follow it up.
+    const steppedIn = !all && oversees(user) ? new Set(await this.chat.roomsWrittenIn(user.id)) : new Set<string>();
     const visible: Access[] = [];
     for (const room of await this.chat.listRooms()) {
       const team = room.teamId ? teamById.get(room.teamId) : undefined;
@@ -191,7 +194,7 @@ export class ChatService implements OnModuleInit {
       // A team chat's members are its team, whatever rows of markers it holds — so
       // once the team is gone, nobody is in it (admins can still read it).
       const isMember = room.kind === "team" ? inTeam : mine.has(room.id);
-      if (!isMember && !(all && oversees(user))) continue;
+      if (!isMember && !(all && oversees(user)) && !(steppedIn.has(room.id) && !(room.kind === "team" && !team))) continue;
       visible.push({
         room,
         memberIds: await this.memberIds(room, team),
@@ -328,7 +331,8 @@ export class ChatService implements OnModuleInit {
     const user = await this.open(userId);
     const cards = await this.chat.sharesOf(conversationId);
     if (!cards.length) return [];
-    const rooms = new Map((await this.visibleRooms(user, false)).map((a) => [a.room.id, a]));
+    // The chats you're in: one you only stepped into isn't where you discuss things.
+    const rooms = new Map((await this.visibleRooms(user, false)).filter((a) => a.isMember).map((a) => [a.room.id, a]));
     const mine = cards.filter((c) => {
       const a = rooms.get(c.roomId);
       const from = a ? this.visibleFrom(a) : null;
@@ -972,8 +976,20 @@ export class ChatService implements OnModuleInit {
     event: typeof ChatServerEvent.Message | typeof ChatServerEvent.MessageUpdated | typeof ChatServerEvent.Room,
     payload: { roomId: string; message?: ChatMessage },
   ): void {
-    // Members wherever they are in the app, and an admin reading along with it open.
-    this.realtime.emitToUsers(a.memberIds, event, payload as never, a.room.id);
+    // Members wherever they are in the app, and an admin reading along with it
+    // open — plus any admin or manager who has written in it without joining,
+    // whose list carries it too.
+    void this.audience(a)
+      .then((ids) => this.realtime.emitToUsers(ids, event, payload as never, a.room.id))
+      .catch((err) => this.logger.warn(`Chat emit failed: ${String(err)}`));
+  }
+
+  /** Members, and the admins and managers who stepped into the chat. */
+  private async audience(a: Access): Promise<string[]> {
+    const outside = (await this.chat.authorsIn(a.room.id)).filter((id) => !a.memberIds.includes(id));
+    if (!outside.length) return a.memberIds;
+    const users = await Promise.all(outside.map((id) => this.store.getUser(id)));
+    return [...a.memberIds, ...users.flatMap((u) => (u && oversees(u) ? [u.id] : []))];
   }
 
   private emitReceipt(a: Access, userId: string, me: ChatMemberRecord | undefined): void {

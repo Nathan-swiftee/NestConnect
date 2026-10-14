@@ -186,6 +186,13 @@ export class MemoryChatStore extends ChatStore {
       .map(clone);
   }
 
+  async roomsWrittenIn(userId: string): Promise<string[]> {
+    return [...new Set(this.messages.filter((m) => m.authorUserId === userId && this.roomIsMine(m.roomId)).map((m) => m.roomId))];
+  }
+  async authorsIn(roomId: string): Promise<string[]> {
+    if (!this.roomIsMine(roomId)) return [];
+    return [...new Set(this.messages.flatMap((m) => (m.roomId === roomId && m.authorUserId ? [m.authorUserId] : [])))];
+  }
   async sharesOf(conversationId: string): Promise<ChatMessageRecord[]> {
     return this.messages
       .filter((m) => m.conversationId === conversationId && !m.deletedAt && this.roomIsMine(m.roomId))

@@ -77,6 +77,10 @@ to the members list, and a direct chat stays between its two people. Its
 members are notified as usual. In a direct chat, their messages carry their
 name, so nobody mistakes them for the other person.
 
+A chat they have written in stays in their own list too, tagged "Not in it",
+so they can follow up without opening the eye again. New messages there
+reach them live. It isn't counted as unread, because they aren't a member.
+
 They can't Discuss a customer conversation into a chat they only oversee.
 Discuss… is for the chats you're in.
 

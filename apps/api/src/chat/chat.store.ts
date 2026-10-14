@@ -94,6 +94,10 @@ export abstract class ChatStore {
   /** Text messages in these chats whose words contain `q`, newest first. */
   abstract searchMessages(roomIds: string[], q: string, limit: number): Promise<ChatMessageRecord[]>;
 
+  /** The chats this person has written in (oversight: ones they stepped into). */
+  abstract roomsWrittenIn(userId: string): Promise<string[]>;
+  /** Everyone who has written in this chat. */
+  abstract authorsIn(roomId: string): Promise<string[]>;
   /** The cards a customer conversation has made, in any chat — not deleted, newest first. */
   abstract sharesOf(conversationId: string): Promise<ChatMessageRecord[]>;
   /** Text messages replying to any of these, oldest first. */

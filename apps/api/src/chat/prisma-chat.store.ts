@@ -278,6 +278,18 @@ export class PrismaChatStore extends ChatStore {
     return rows.map(toMessage);
   }
 
+  async roomsWrittenIn(userId: string): Promise<string[]> {
+    const rows = await this.prisma.chatMessage.findMany({ where: { authorUserId: userId }, distinct: ["roomId"], select: { roomId: true } });
+    return rows.map((r) => r.roomId);
+  }
+  async authorsIn(roomId: string): Promise<string[]> {
+    const rows = await this.prisma.chatMessage.findMany({
+      where: { roomId, authorUserId: { not: null } },
+      distinct: ["authorUserId"],
+      select: { authorUserId: true },
+    });
+    return rows.flatMap((r) => (r.authorUserId ? [r.authorUserId] : []));
+  }
   async sharesOf(conversationId: string): Promise<ChatMessageRecord[]> {
     const rows = await this.prisma.chatMessage.findMany({
       where: { conversationId, deletedAt: null },

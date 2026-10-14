@@ -1314,6 +1314,9 @@ model ChatMessage {
   @@index([roomId, createdAt])
   @@index([conversationId])
   @@index([replyToId])
+  /// The chats someone has written in, for an admin or manager who stepped
+  /// into one they aren't a member of.
+  @@index([authorUserId, roomId])
 }
 
 /// An admin opened a chat they aren't in.

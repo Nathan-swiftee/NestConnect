@@ -254,6 +254,14 @@ async function main() {
     const stillTwo = await svc.room(JAMES, dm.id);
     ok("without joining it: still the two of them", stillTwo.memberCount === 2 && stillTwo.name === "Amara" && !(await svc.room(NATHAN, dm.id)).isMember, `${stillTwo.memberCount} ${stillTwo.name}`);
     ok("and can react", (await svc.react(NATHAN, reply.id, "👍")).reactions.some((r) => r.emoji === "👍"));
+    const myList = await svc.rooms(NATHAN);
+    const listed = myList.find((x) => x.id === dm.id);
+    ok("having written in it, it's in their own list, marked as not theirs", !!listed && !listed.isMember && listed.name === "James & Amara", listed?.name);
+    ok("…and not in James's any differently", (await svc.rooms(JAMES)).filter((x) => x.id === dm.id).length === 1);
+    emitted.length = 0;
+    await svc.send(JAMES, dm.id, say("Thanks Nathan"));
+    await until(async () => emitted.some((e) => e.event === "chat.message"));
+    ok("and the reply reaches them live", emitted.some((e) => e.event === "chat.message" && e.users.includes(NATHAN)), JSON.stringify(emitted.filter((e) => e.event === "chat.message").map((e) => e.users)));
     ok("but can't file a customer thread there", await refuses(svc.share(NATHAN, { roomId: dm.id, conversationId: "conv_1", body: "" }), 403));
     const { user: mgr } = await store.createUser({ orgId: ORG_ID, name: "Mo Manager", email: "mo@example.com", role: "manager", teamIds: [] });
     ok("a manager has the eye too", (await svc.status(mgr.id)).canOversee && (await svc.rooms(mgr.id, true)).some((x) => x.id === dm.id));
