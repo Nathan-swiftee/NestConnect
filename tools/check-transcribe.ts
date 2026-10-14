@@ -150,7 +150,7 @@ async function main(): Promise<void> {
     ok("and never repeats the key", !/sk-test-123/.test(badKey?.message ?? ""));
 
     console.log("\nF — Team Chat\n");
-    const realtime = { registerChat() {}, emitToUsers() {}, emitChatPresence() {}, onlineAmong: async () => new Set<string>(), isViewingChat: async () => false };
+    const realtime = { registerChat() {}, emitToUsers() {}, emitChatPresence() {}, emitChatCue() {}, onlineAmong: async () => new Set<string>(), isViewingChat: async () => false };
     const chat = new ChatService(
       new MemoryChatStore(),
       store,

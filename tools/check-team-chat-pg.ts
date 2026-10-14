@@ -83,6 +83,7 @@ async function main(): Promise<void> {
     registerChat() {},
     emitToUsers() {},
     emitChatPresence() {},
+    emitChatCue() {},
     onlineAmong: async () => new Set<string>(),
     isViewingChat: async () => false,
   } as unknown as RealtimeGateway;
