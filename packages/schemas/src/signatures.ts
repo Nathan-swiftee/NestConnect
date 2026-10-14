@@ -161,10 +161,38 @@ export function fillSignatureHtml(html: string, ctx: SignatureContext): string {
  */
 export function renderEmailSignature(signature: InboxSignature | null | undefined, ctx: SignatureContext): string {
   const layout = signature?.layoutHtml ?? DEFAULT_SIGNATURE_LAYOUT;
-  const top = layout.trim() ? fillSignatureHtml(layout, ctx) : "";
-  const footer = signature?.footerHtml?.trim() ? fillSignatureHtml(signature.footerHtml, ctx) : "";
+  const top = layout.trim() ? stackBlockImages(fillSignatureHtml(layout, ctx)) : "";
+  const footer = signature?.footerHtml?.trim() ? stackBlockImages(fillSignatureHtml(signature.footerHtml, ctx)) : "";
   const hasText = (h: string) => !!textOf(h).trim() || /<img\b/i.test(h);
   return [top, footer].filter(hasText).join("<br>");
+}
+
+/** Elements that hold no content, so never open a level of nesting. */
+const VOID_TAGS = new Set(["img", "br", "hr", "wbr", "input", "meta", "link", "source", "col", "area", "base", "embed", "track"]);
+
+/**
+ * Give each image that stands on its own line a line of its own in the mail.
+ *
+ * The signature editor keeps a picture as a block of its own (a logo, then a
+ * banner under it), and writes it out as a bare `<img>` between paragraphs.
+ * In the editor that reads as a block. In a mail client an `<img>` is inline,
+ * so two in a row sit side by side, and one next to a line of text sits beside
+ * it. Wrapping each top-level image in a `<div>` keeps the layout the editor
+ * showed.
+ *
+ * Only images at the top level are touched. One inside a paragraph, a link
+ * or a table cell was put there on purpose (an icon in a line of text) and
+ * stays inline.
+ */
+export function stackBlockImages(html: string): string {
+  let depth = 0;
+  return html.replace(/<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/?)>/g, (tag, closing: string, name: string, selfClosing: string) => {
+    const lower = name.toLowerCase();
+    if (lower === "img") return depth === 0 ? `<div>${tag}</div>` : tag;
+    if (VOID_TAGS.has(lower) || selfClosing) return tag;
+    depth = closing ? Math.max(0, depth - 1) : depth + 1;
+    return tag;
+  });
 }
 
 /** "Nathan A · Operations Manager" — the composer's one-line "signed as". */

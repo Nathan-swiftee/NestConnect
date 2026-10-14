@@ -4,6 +4,7 @@ import {
   type OnApplicationBootstrap,
   type OnModuleDestroy,
 } from "@nestjs/common";
+import { firstParty } from "../email/reply-to";
 import type { Inbox } from "@ding/schemas";
 import { env } from "../../config/env";
 import { Store, type AttachmentInput } from "../../data/store";
@@ -421,6 +422,7 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
       toAddress: selfAddress,
       from,
       fromName,
+      replyTo: firstParty(headerValue(msg, "Reply-To")),
       subject: headerValue(msg, "Subject"),
       text: extractPlainText(msg),
       html: extractHtml(msg),

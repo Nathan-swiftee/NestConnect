@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { firstParty } from "./reply-to";
 import { IngestService } from "../ingest.service";
 import { htmlToText } from "./html-sanitize";
 
@@ -17,6 +18,8 @@ export interface EmailWebhookBody {
   HtmlBody?: string;
   StrippedTextReply?: string;
   MessageID?: string;
+  /** Postmark's copy of the Reply-To header ("" when there was none). */
+  ReplyTo?: string;
   Headers?: Array<{ Name?: string; Value?: string }>;
   // lowercase generic fallbacks
   from?: string;
@@ -73,6 +76,7 @@ export class EmailService {
       toAddress,
       from,
       fromName,
+      replyTo: firstParty(body.ReplyTo || header("Reply-To")),
       subject,
       text,
       html,

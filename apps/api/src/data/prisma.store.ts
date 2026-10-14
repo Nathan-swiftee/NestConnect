@@ -1546,6 +1546,11 @@ export class PrismaStore extends Store {
     return mapAttachment(row);
   }
 
+  async getMessagePlace(messageId: string): Promise<{ conversationId: string; internal: boolean } | undefined> {
+    const m = await this.prisma.message.findUnique({ where: { id: messageId }, select: { conversationId: true, internal: true } });
+    return m ?? undefined;
+  }
+
   async stageAttachmentCopies(messageId: string): Promise<string[]> {
     const source = await this.prisma.attachment.findMany({ where: { messageId } });
     if (!source.length) return [];
@@ -2508,6 +2513,7 @@ export class PrismaStore extends Store {
           messageType: input.messageType ?? "text",
           quotedMsgId: input.quotedMsgId ?? null,
           forwarded: input.forwarded ?? false,
+          ...(input.emailVia ? { deliveryMeta: { via: input.emailVia } } : {}),
           ...(input.attachments?.length
             ? { attachments: { create: input.attachments.map(toAttachmentCreate) } }
             : {}),

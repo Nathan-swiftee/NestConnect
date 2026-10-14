@@ -419,7 +419,7 @@ export function parseReactions(raw: unknown): Message["reactions"] {
 
 export function mapMessage(m: MessageRow): Message {
   const dm = m.deliveryMeta as
-    | { subject?: string; cc?: string[]; bcc?: string[]; forwardTo?: string[] }
+    | { subject?: string; cc?: string[]; bcc?: string[]; forwardTo?: string[]; via?: string }
     | null;
   // Per-recipient open-tracking rows, To before Cc (the natural reading order).
   const recipients = (m.emailRecipients ?? []).length
@@ -431,10 +431,10 @@ export function mapMessage(m: MessageRow): Message {
           openedAt: r.openedAt ? r.openedAt.toISOString() : null,
         }))
     : undefined;
-  const hasMeta = dm && (dm.subject || dm.cc?.length || dm.bcc?.length || dm.forwardTo?.length);
+  const hasMeta = dm && (dm.subject || dm.cc?.length || dm.bcc?.length || dm.forwardTo?.length || dm.via);
   const email =
     hasMeta || recipients
-      ? { subject: dm?.subject, cc: dm?.cc, bcc: dm?.bcc, forwardedTo: dm?.forwardTo, recipients }
+      ? { subject: dm?.subject, cc: dm?.cc, bcc: dm?.bcc, forwardedTo: dm?.forwardTo, ...(dm?.via ? { via: dm.via } : {}), recipients }
       : undefined;
   return {
     id: m.id,

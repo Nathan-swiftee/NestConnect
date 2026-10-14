@@ -153,6 +153,9 @@ export interface AppendInboundInput {
   /** The customer forwarded this to us rather than writing it (WhatsApp tells us).
    *  Worth showing: it changes how an agent should read the message. */
   forwarded?: boolean;
+  /** An email sent from one address with Reply-To another (a website form):
+   *  the address it actually came from. Shown as "via …" on the message. */
+  emailVia?: string;
 }
 
 /** One email thread brought in from a mailbox (see `importEmailThread`). */
@@ -704,6 +707,10 @@ export abstract class Store {
    * media is never deleted on a per-message basis.
    */
   abstract stageAttachmentCopies(messageId: string): Promise<string[]>;
+
+  /** Where one message lives and whether it's a note — for acting on a message
+   *  that may be older than the conversation's loaded page (e.g. forwarding it). */
+  abstract getMessagePlace(messageId: string): Promise<{ conversationId: string; internal: boolean } | undefined>;
 
   /** Resolve a provider message id (WhatsApp wamid) to our stored message. */
   abstract getMessageRefByChannelId(

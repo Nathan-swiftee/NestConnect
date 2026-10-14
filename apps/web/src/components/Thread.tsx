@@ -1036,7 +1036,7 @@ function MessageBubble({
           }
         >
           {m.email &&
-            (m.email.subject || m.email.cc?.length || m.email.bcc?.length || m.email.forwardedTo?.length) && (
+            (m.email.subject || m.email.cc?.length || m.email.bcc?.length || m.email.forwardedTo?.length || m.email.via) && (
               <div className="emailmeta">
                 {m.email.forwardedTo?.length ? (
                   <div className="emailmeta__row emailmeta__fwd">
@@ -1048,6 +1048,13 @@ function MessageBubble({
                   </div>
                 ) : null}
                 {m.email.subject && <div className="emailmeta__subj">{m.email.subject}</div>}
+                {/* Sent from one address, Reply-To the customer (a website form, say). */}
+                {m.email.via ? (
+                  <div className="emailmeta__row" title="This email asked for replies to go to the customer, not to the address it came from">
+                    <span className="emailmeta__lbl">Via</span>
+                    {m.email.via}
+                  </div>
+                ) : null}
                 {m.email.cc?.length ? (
                   <div className="emailmeta__row">
                     <span className="emailmeta__lbl">Cc</span>
@@ -2181,7 +2188,8 @@ export function Thread({ conversationId, showPanel, onTogglePanel, onToast, onBa
       (subject ? `Subject: ${escapeHtml(subject)}<br>` : "") +
       `Date: ${escapeHtml(when)}</p><blockquote>${origHtml}</blockquote>`;
     send.mutate(
-      { id: conv.id, body: note.trim(), bodyHtml: forwardHtml, forwardTo: toList },
+      // `forwardOfId`: the original's attachments go along with it.
+      { id: conv.id, body: note.trim(), bodyHtml: forwardHtml, forwardTo: toList, forwardOfId: m.id },
       { onError: () => onToast("Couldn’t forward the email. Please try again.") },
     );
     setForwardMsg(null);

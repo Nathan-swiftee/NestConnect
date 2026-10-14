@@ -95,7 +95,7 @@ export function EmailBody({
   // say who else got *this* copy. Only the subject is deduped, because only the
   // subject is the same on every message in a thread.
   const subject = showSubject ? meta?.subject : undefined;
-  const hasMeta = !!meta && !!(subject || meta.cc?.length || meta.bcc?.length || meta.forwardedTo?.length);
+  const hasMeta = !!meta && !!(subject || meta.cc?.length || meta.bcc?.length || meta.forwardedTo?.length || meta.via);
 
   return (
     <Animated.View
@@ -111,6 +111,8 @@ export function EmailBody({
               {subject}
             </Text>
           ) : null}
+          {/* Sent from one address, Reply-To the customer (a website form, say). */}
+          {meta!.via ? <MetaRow label="Via" value={meta!.via} /> : null}
           {meta!.cc?.length ? <MetaRow label="Cc" value={meta!.cc.join(", ")} /> : null}
           {meta!.bcc?.length ? <MetaRow label="Bcc" value={meta!.bcc.join(", ")} /> : null}
         </View>
