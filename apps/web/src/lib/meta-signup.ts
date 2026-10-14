@@ -36,6 +36,9 @@ export interface CoexistenceResult {
   code: string;
   wabaId: string;
   phoneNumberId: string;
+  /** How Meta said the sign-up finished — the server needs it to tell a Business
+   *  app number from an ordinary API one. */
+  finishEvent: string;
 }
 
 let sdk: Promise<FacebookSdk> | null = null;
@@ -79,7 +82,7 @@ export function loadedSdk(): FacebookSdk | undefined {
  */
 export function runCoexistenceSignup(fb: FacebookSdk, setup: CoexistenceSetup): Promise<CoexistenceResult> {
   return new Promise<CoexistenceResult>((resolve, reject) => {
-    let session: { wabaId: string; phoneNumberId: string } | null = null;
+    let session: { wabaId: string; phoneNumberId: string; finishEvent: string } | null = null;
     let code: string | null = null;
     let settled = false;
     const finish = (err?: Error) => {
@@ -110,7 +113,7 @@ export function runCoexistenceSignup(fb: FacebookSdk, setup: CoexistenceSetup): 
         const wabaId = data.data?.waba_id;
         const phoneNumberId = data.data?.phone_number_id;
         if (wabaId && phoneNumberId) {
-          session = { wabaId, phoneNumberId };
+          session = { wabaId, phoneNumberId, finishEvent: ev };
           finish();
         } else {
           finish(new Error("Meta finished without saying which number was connected — try again"));

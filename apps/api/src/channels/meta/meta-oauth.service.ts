@@ -219,6 +219,30 @@ export class MetaOAuthService {
   }
 
   /**
+   * Whether Meta says this number is still on the WhatsApp Business app.
+   * `undefined` when Meta won't say (an older API, or the field refused), so
+   * the caller falls back to how the sign-up finished.
+   *
+   * Asked rather than assumed: Meta's sign-up can hand back an ordinary API
+   * number even when it was opened for a Business app number, and the two need
+   * opposite treatment — an API number has to be registered, a Business app
+   * number must never be.
+   */
+  async onBusinessApp(phoneNumberId: string, accessToken: string): Promise<boolean | undefined> {
+    if (this.isMock) return undefined;
+    try {
+      const res = await this.fetchJson<{ is_on_biz_app?: boolean }>(
+        `${GRAPH}/${phoneNumberId}?fields=is_on_biz_app,platform_type&access_token=${encodeURIComponent(accessToken)}`,
+        "read number type",
+      );
+      return typeof res.is_on_biz_app === "boolean" ? res.is_on_biz_app : undefined;
+    } catch (err) {
+      this.logger.warn(`Couldn't ask Meta whether ${phoneNumberId} is on the Business app: ${String(err)}`);
+      return undefined;
+    }
+  }
+
+  /**
    * Ask Meta for a coexistence number's existing data: the phone's contacts
    * (`smb_app_state_sync`) or its chat history (`history`). Both arrive later
    * on the webhook. Meta allows this once, and only in the first 24 hours
@@ -244,6 +268,15 @@ export class MetaOAuthService {
       // Non-fatal: the number still connects; webhooks can be subscribed later.
       this.logger.warn(`Meta subscribe_apps failed for WABA ${wabaId}: ${String(err)}`);
     }
+  }
+
+  /** Meta refusing a Business app request because the number is an ordinary API number. */
+  static notBusinessAppNumber(err: unknown): boolean {
+    const text = err instanceof Error ? err.message : String(err);
+    return (
+      /only available to WhatsApp Business App phone numbers/i.test(text) ||
+      (/"code":\s*131000/.test(text) && /"error_subcode":\s*10\b/.test(text))
+    );
   }
 
   private async fetchJson<T>(url: string, what: string, init?: RequestInit): Promise<T> {

@@ -109,7 +109,7 @@ import {
 import { initials, avatarBg } from "../lib/format";
 import { api } from "../lib/api";
 import { loadedSdk, prepareCoexistenceSignup, runCoexistenceSignup } from "../lib/meta-signup";
-import type { CoexistenceSetup } from "@ding/schemas";
+import { BUSINESS_APP_FINISH_EVENT, type CoexistenceSetup } from "@ding/schemas";
 import { TEMPLATE_CATEGORIES, approvalMeta, countVariables } from "./TemplatePicker";
 import {
   BellIcon,
@@ -943,11 +943,17 @@ function ConnectChannel({
       live = false;
     };
   }, []);
-  const finishCoexistence = async (result: { code: string; wabaId: string; phoneNumberId: string }) => {
+  const finishCoexistence = async (result: { code: string; wabaId: string; phoneNumberId: string; finishEvent: string }) => {
     const res = await api.connectCoexistence(result);
     qc.invalidateQueries({ queryKey: ["inboxes"] });
     qc.invalidateQueries({ queryKey: ["views"] });
-    if (res.sync.startsWith("failed")) {
+    if (!res.coexistence) {
+      // Meta added it as an ordinary API number, not one that stays on the
+      // phone. The editor shows it as such, with the Register step it needs.
+      onToast(
+        `Meta added ${res.displayNumber} as a regular WhatsApp API number — it isn’t linked to the WhatsApp Business app. Registering it moves it off the phone app.`,
+      );
+    } else if (res.sync.startsWith("failed")) {
       onToast(`${res.displayNumber} connected — but asking Meta for its history failed. See the channel.`);
     }
     onConnected(res.handle);
@@ -959,7 +965,12 @@ function ConnectChannel({
     }
     setCoexBusy(true);
     const run = coexSetup.mock
-      ? Promise.resolve({ code: "mock-code", wabaId: "100000000000001", phoneNumberId: "100000000000002" })
+      ? Promise.resolve({
+          code: "mock-code",
+          wabaId: "100000000000001",
+          phoneNumberId: "100000000000002",
+          finishEvent: BUSINESS_APP_FINISH_EVENT,
+        })
       : (() => {
           const fb = loadedSdk();
           if (!fb) {

@@ -543,7 +543,7 @@ export const api = {
   coexistenceSetup: () => get<CoexistenceSetup>("/channels/meta/coexistence/setup"),
   /** Finish connecting a WhatsApp Business app number (coexistence). */
   connectCoexistence: (input: ConnectCoexistenceInput) =>
-    post<{ inboxId: string; handle: string; displayNumber: string; sync: string }>("/channels/meta/coexistence", input),
+    post<{ inboxId: string; handle: string; displayNumber: string; sync: string; coexistence: boolean }>("/channels/meta/coexistence", input),
   whatsappOba: (inboxId: string) => get<WhatsAppObaStatus>(`/whatsapp/business-profile/${inboxId}/oba`),
   requestWhatsappOba: (inboxId: string, input: RequestWhatsAppObaInput) =>
     post<WhatsAppObaStatus>(`/whatsapp/business-profile/${inboxId}/oba`, input),
