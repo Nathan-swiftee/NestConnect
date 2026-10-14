@@ -1509,6 +1509,40 @@ export type UpdateWhatsAppBusinessProfileInput = z.infer<
   typeof updateWhatsAppBusinessProfileInputSchema
 >;
 
+/**
+ * Where a number stands on WhatsApp's Official Business Account — the
+ * verified badge next to the business name. Read from Meta's
+ * `official_business_account` field on the phone number.
+ *
+ * `status` is Meta's `oba_status` as given (NOT_STARTED, PENDING, APPROVED,
+ * REJECTED, CANCELLED…): kept as a string so a value Meta adds later still
+ * shows rather than failing the whole read.
+ */
+export const whatsAppObaStatusSchema = z.object({
+  status: z.string(),
+  /** Meta's own explanation, when it gives one (e.g. why it was rejected). */
+  message: z.string().optional(),
+  checkedAt: z.string(),
+});
+export type WhatsAppObaStatus = z.infer<typeof whatsAppObaStatusSchema>;
+
+/** Apply for the badge: what Meta asks for, `POST /{phone-number-id}/official_business_account`. */
+export const requestWhatsAppObaInputSchema = z.object({
+  /** The business's own website (https). */
+  businessWebsiteUrl: z.string().trim().url("Enter the full website address, starting https://").max(500),
+  /** Where the business mainly operates, e.g. "United Kingdom". */
+  primaryCountryOfOperation: z.string().trim().min(2, "Say which country you mainly operate in").max(80),
+  /** The language customers are mostly served in, e.g. "English". */
+  primaryLanguage: z.string().trim().min(2, "Say which language you mainly use").max(60),
+  /** If this business belongs to a larger brand or group. */
+  parentBusinessOrBrand: z.string().trim().max(120).optional(),
+  /** Press or other independent coverage of the business — Meta weighs these most. */
+  supportingLinks: z.array(z.string().trim().url("Each supporting link must be a full web address")).max(5, "At most five supporting links").default([]),
+  /** Anything else that shows the business is notable. */
+  additionalSupportingInformation: z.string().trim().max(1000).optional(),
+});
+export type RequestWhatsAppObaInput = z.infer<typeof requestWhatsAppObaInputSchema>;
+
 /** A single recipient of a broadcast — a phone number, optionally named. */
 export const broadcastRecipientSchema = z.object({
   phone: z.string().min(1),

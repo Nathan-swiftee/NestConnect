@@ -45,6 +45,7 @@ import {
   type UpdateTemplateInput,
   type UpdateUserInput,
   type UpdateWhatsAppBusinessProfileInput,
+  type RequestWhatsAppObaInput,
   type SendBroadcastInput,
   type AnalyticsRange,
   templatesForWaba,
@@ -1143,6 +1144,25 @@ export function useUpdateWhatsappProfile() {
     mutationFn: (v: { inboxId: string; input: UpdateWhatsAppBusinessProfileInput }) =>
       api.updateWhatsappProfile(v.inboxId, v.input),
     onSuccess: (data, v) => qc.setQueryData(["wa-profile", v.inboxId], data),
+  });
+}
+
+/** A number's Official Business Account (verified badge) status, read live from Meta. */
+export const useWhatsappOba = (inboxId: string | null) =>
+  useQuery({
+    queryKey: ["wa-oba", inboxId],
+    queryFn: () => api.whatsappOba(inboxId as string),
+    enabled: !!inboxId,
+    retry: false,
+    staleTime: 60_000,
+  });
+
+/** Apply for the badge on a number; the status it returns replaces the cached one. */
+export function useRequestWhatsappOba() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { inboxId: string; input: RequestWhatsAppObaInput }) => api.requestWhatsappOba(v.inboxId, v.input),
+    onSuccess: (data, v) => qc.setQueryData(["wa-oba", v.inboxId], data),
   });
 }
 

@@ -42,6 +42,32 @@ The official Groups API lets an approved business **create, manage, and message 
 - **Click-to-WhatsApp / Page CTA entry** opens a **72-hour** free window (including templates).
 - **Quality rating & messaging tiers** govern how many unique users you can message per day; low quality → throttling. We monitor quality signals and surface them to admins.
 
+### The verified badge (Official Business Account)
+
+Settings › Business profile shows each number's Official Business Account
+status, read live from Meta:
+- `GET /{phone-number-id}?fields=official_business_account` returns
+  `oba_status`, and sometimes `status_message`.
+- No field at all means nobody has applied, and reads as NOT_STARTED.
+
+Admins and managers can apply from the same page with
+`POST /{phone-number-id}/official_business_account`. It sends:
+- `business_website_url`
+- `primary_country_of_operation`
+- `primary_language`
+- optionally `parent_business_or_brand`
+- up to five `supporting_links`
+- optionally `additional_supporting_information`
+
+Meta decides on the request. Independent press coverage counts most. The
+number needs two-step verification, an approved display name and a
+verified business. When Meta refuses, its own words are shown.
+
+The form is offered only when nothing is live: not while a request is
+PENDING, and not once it's APPROVED. Code is in
+`whatsapp-management/business-profile.service.ts`; check:
+`pnpm check:oba`.
+
 ### Forwarding a message to other chats
 
 WhatsApp has no forward primitive — a forward is a fresh send of the same content

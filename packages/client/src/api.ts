@@ -61,6 +61,8 @@ import type {
   UpdateUserInput,
   User,
   WhatsAppBusinessProfile,
+  WhatsAppObaStatus,
+  RequestWhatsAppObaInput,
   UpdateWhatsAppBusinessProfileInput,
   WhatsAppNumberState,
   WhatsAppRegisterResult,
@@ -535,6 +537,9 @@ export const api = {
   // WhatsApp business profile — the public "about" card on a number
   whatsappProfile: (inboxId: string) =>
     get<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}`),
+  whatsappOba: (inboxId: string) => get<WhatsAppObaStatus>(`/whatsapp/business-profile/${inboxId}/oba`),
+  requestWhatsappOba: (inboxId: string, input: RequestWhatsAppObaInput) =>
+    post<WhatsAppObaStatus>(`/whatsapp/business-profile/${inboxId}/oba`, input),
   updateWhatsappProfile: (inboxId: string, input: UpdateWhatsAppBusinessProfileInput) =>
     patch<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}`, input),
   setWhatsappProfilePhoto: (inboxId: string, file: File | Blob) => {
