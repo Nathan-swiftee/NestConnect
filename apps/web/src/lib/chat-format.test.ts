@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chatTicks, chatSystemText, canEditChatMessage, type ChatMember, type ChatMessage } from "@ding/schemas";
-import { chatDayLabel, chatItems, chatLastSeen, chatListTime, chatPreview, isJumboEmoji } from "@ding/client";
+import { chatDayLabel, chatDayOf, chatDays, chatItems, chatLastSeen, chatListTime, chatPreview, isJumboEmoji } from "@ding/client";
 
 const NOW = new Date(2026, 9, 13, 15, 0); // Tue 13 Oct 2026, 15:00 local
 
@@ -83,6 +83,21 @@ describe("Team Chat: the thread as rows", () => {
     const idx = items.findIndex((i) => i.kind === "unread");
     expect(items[idx]).toMatchObject({ kind: "unread", count: 2 });
     expect(items[idx + 1]).toMatchObject({ kind: "message", message: { id: "3" } });
+  });
+  it("grouped by day, so each day's date sticks only while you read that day", () => {
+    const items = chatItems(
+      [msg("1", "amara", at(12, 10)), msg("2", "me", at(13, 9)), msg("3", "amara", at(13, 11))],
+      { meId: "me", unreadAfter: at(13, 10).toISOString(), now: NOW },
+    );
+    const days = chatDays(items);
+    expect(days.map((d) => d.label)).toEqual(["Yesterday", "Today"]);
+    expect(days.map((d) => d.items.map((i) => i.kind))).toEqual([["message"], ["message", "unread", "message"]]);
+  });
+  it("the day each row is in, oldest-first or newest-first (the app's inverted list)", () => {
+    const items = chatItems([msg("1", "amara", at(12, 10)), msg("2", "me", at(13, 9)), msg("3", "me", at(13, 10))], { meId: "me", now: NOW });
+    expect(chatDayOf(items)).toEqual(["Yesterday", "Yesterday", "Today", "Today", "Today"]);
+    const reversed = [...items].reverse();
+    expect(chatDayOf(reversed, true)).toEqual(["Today", "Today", "Today", "Yesterday", "Yesterday"]);
   });
   it("system messages never join a run", () => {
     const sys = msg("s", null, at(13, 9, 1), { kind: "system", system: { event: "added", actorName: "Nathan A", targetNames: ["Amara"] } });

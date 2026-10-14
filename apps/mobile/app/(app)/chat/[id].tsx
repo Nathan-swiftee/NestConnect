@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Text, TextInput, View, type ViewToken } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { router, useLocalSearchParams } from "expo-router";
 import {
   api,
+  chatDayOf,
   chatItems,
   chatLastSeen,
   useChatMessages,
@@ -93,6 +94,27 @@ export default function ChatScreen() {
     () => chatItems<ChatBubble>(msgs.messages, { meId: me?.id, unreadAfter: unreadAfter ?? null }).reverse(),
     [msgs.messages, me?.id, unreadAfter],
   );
+
+  /*
+   * The date of the day at the top of the screen, floating there as you scroll
+   * — the inbox thread's sticky date, which an inverted list can't do itself
+   * (React Native only sticks headers in a list read top-down). It changes as
+   * the next day's line reaches the top, so a day's date stays until the next
+   * one takes over. Hidden while a day's own line is the top row: that line
+   * is already saying it.
+   */
+  const dayOf = useMemo(() => chatDayOf(items, true), [items]);
+  const dayRef = useRef({ items, dayOf });
+  dayRef.current = { items, dayOf };
+  const [topDay, setTopDay] = useState("");
+  const onViewable = useRef(({ viewableItems }: { viewableItems: ViewToken<ChatItem<ChatBubble>>[] }) => {
+    // Inverted: the oldest row on screen — the highest index — is the top one.
+    let top = -1;
+    for (const v of viewableItems) if (v.index != null && v.index > top) top = v.index;
+    const { items: rows, dayOf: days } = dayRef.current;
+    setTopDay(top < 0 || rows[top]?.kind === "day" ? "" : (days[top] ?? ""));
+  }).current;
+  const viewability = useRef({ itemVisiblePercentThreshold: 1 }).current;
 
   const react = useChatMutation(({ mid, emoji }: { mid: string; emoji: string }) => api.reactChatMessage(mid, emoji));
   const remove = useChatMutation((mid: string) => api.deleteChatMessage(mid));
@@ -197,11 +219,14 @@ export default function ChatScreen() {
         </View>
       ) : null}
 
+      <View style={{ flex: 1 }}>
       <FlatList
         ref={list}
         inverted
         style={{ flex: 1 }}
         data={items}
+        onViewableItemsChanged={onViewable}
+        viewabilityConfig={viewability}
         keyExtractor={(it) => it.key}
         contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 10 }}
         keyboardDismissMode="interactive"
@@ -283,6 +308,14 @@ export default function ChatScreen() {
           ) : null
         }
       />
+      {topDay ? (
+        <View pointerEvents="none" style={{ position: "absolute", top: 8, left: 0, right: 0 }} className="items-center">
+          <Text style={{ backgroundColor: c.surface, color: c.textMuted }} className="overflow-hidden rounded-8 px-3 py-1 text-2xs font-semibold">
+            {topDay}
+          </Text>
+        </View>
+      ) : null}
+      </View>
 
       <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={0}>
         {r.canPost ? (

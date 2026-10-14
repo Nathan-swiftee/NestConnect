@@ -12,6 +12,7 @@ import {
 } from "@ding/schemas";
 import {
   api,
+  chatDays,
   chatItems,
   chatLastSeen,
   chatNameColour,
@@ -114,6 +115,7 @@ export function ChatConversation({
     () => chatItems<ChatBubble>(msgs.messages, { meId: me?.id, unreadAfter: unreadAfter ?? null }),
     [msgs.messages, me?.id, unreadAfter],
   );
+  const days = useMemo(() => chatDays(items), [items]);
 
   /* ---- scrolling ---- */
   const scroller = useRef<HTMLDivElement>(null);
@@ -315,61 +317,69 @@ export function ChatConversation({
                     : `Messages in ${r.name} are visible to its members.`}
               </div>
             )}
-            {items.map((it) =>
-              it.kind === "day" ? (
-                <div key={it.key} className="tc-day">
-                  <span>{it.label}</span>
-                </div>
-              ) : it.kind === "unread" ? (
-                <div key={it.key} className="tc-unreadline">
-                  <span>
-                    {it.count} unread message{it.count === 1 ? "" : "s"}
-                  </span>
-                </div>
-              ) : it.message.kind === "system" ? (
-                <div key={it.key} className="tc-sys" data-mid={it.message.id}>
-                  <span>{it.message.system ? chatSystemText(it.message.system) : ""}</span>
-                </div>
-              ) : (
-                <Bubble
-                  key={it.key}
-                  m={it.message}
-                  first={it.first}
-                  last={it.last}
-                  mine={it.message.author?.id === me?.id}
-                  meId={me?.id}
-                  // Reading someone else's direct chat, there are two other people: say who's who.
-                  group={r.kind !== "direct" || r.oversight}
-                  room={r}
-                  people={mentionables}
-                  flash={flash === it.message.id}
-                  canAct={r.canPost}
-                  moderator={moderator}
-                  onReply={() => {
-                    setEditing(null);
-                    setReplyTo(it.message);
-                  }}
-                  onEdit={() => {
-                    setReplyTo(null);
-                    setEditing(it.message);
-                  }}
-                  onDelete={() => {
-                    if (window.confirm("Delete this message for everyone?")) remove.mutate(it.message.id, { onError: (e) => onToast((e as Error).message) });
-                  }}
-                  onReact={(emoji) => react.mutate({ id: it.message.id, emoji }, { onError: (e) => onToast((e as Error).message) })}
-                  onInfo={() => setInfoFor(it.message)}
-                  onCopy={() => {
-                    void navigator.clipboard?.writeText(it.message.body).then(() => onToast("Copied"));
-                  }}
-                  onQuote={goTo}
-                  onRetry={() => void retry(it.message)}
-                  onImage={setLightbox}
-                  onOpenConversation={onOpenConversation}
-                  starred={stars.ids.has(it.message.id)}
-                  onStar={(on) => void stars.toggle(it.message, on).catch(() => onToast("Couldn't star that message"))}
-                />
-              ),
-            )}
+            {/* One section per day, as in the inbox: a day's date sticks at
+                the top while you read that day, and the next day's pushes it
+                off — a sticky element only sticks within its parent. */}
+            {days.map((day) => (
+              <section key={day.key} className="tc-dayg">
+                {day.label && (
+                  <div className="tc-day">
+                    <span>{day.label}</span>
+                  </div>
+                )}
+                {day.items.map((it) =>
+                  it.kind === "unread" ? (
+                    <div key={it.key} className="tc-unreadline">
+                      <span>
+                        {it.count} unread message{it.count === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  ) : it.message.kind === "system" ? (
+                    <div key={it.key} className="tc-sys" data-mid={it.message.id}>
+                      <span>{it.message.system ? chatSystemText(it.message.system) : ""}</span>
+                    </div>
+                  ) : (
+                    <Bubble
+                      key={it.key}
+                      m={it.message}
+                      first={it.first}
+                      last={it.last}
+                      mine={it.message.author?.id === me?.id}
+                      meId={me?.id}
+                      // Reading someone else's direct chat, there are two other people: say who's who.
+                      group={r.kind !== "direct" || r.oversight}
+                      room={r}
+                      people={mentionables}
+                      flash={flash === it.message.id}
+                      canAct={r.canPost}
+                      moderator={moderator}
+                      onReply={() => {
+                        setEditing(null);
+                        setReplyTo(it.message);
+                      }}
+                      onEdit={() => {
+                        setReplyTo(null);
+                        setEditing(it.message);
+                      }}
+                      onDelete={() => {
+                        if (window.confirm("Delete this message for everyone?")) remove.mutate(it.message.id, { onError: (e) => onToast((e as Error).message) });
+                      }}
+                      onReact={(emoji) => react.mutate({ id: it.message.id, emoji }, { onError: (e) => onToast((e as Error).message) })}
+                      onInfo={() => setInfoFor(it.message)}
+                      onCopy={() => {
+                        void navigator.clipboard?.writeText(it.message.body).then(() => onToast("Copied"));
+                      }}
+                      onQuote={goTo}
+                      onRetry={() => void retry(it.message)}
+                      onImage={setLightbox}
+                      onOpenConversation={onOpenConversation}
+                      starred={stars.ids.has(it.message.id)}
+                      onStar={(on) => void stars.toggle(it.message, on).catch(() => onToast("Couldn't star that message"))}
+                    />
+                  ),
+                )}
+              </section>
+            ))}
             {typing.length > 0 && (
               <div className="tc-typing" aria-hidden="true">
                 <span />

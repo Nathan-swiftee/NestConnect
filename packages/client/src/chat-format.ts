@@ -112,6 +112,50 @@ export function chatItems<M extends ChatMessage>(
   return out;
 }
 
+/**
+ * The rows grouped by day, each day with its date — so the date can stick at
+ * the top while you read that day and be pushed off by the next one, as the
+ * inbox's does. (A sticky element sticks within its parent: one parent per day
+ * is what makes the next day's date take over, rather than every date piling
+ * up at the top.)
+ */
+export function chatDays<M extends ChatMessage>(
+  items: ChatItem<M>[],
+): { key: string; label: string; items: Exclude<ChatItem<M>, { kind: "day" }>[] }[] {
+  const days: { key: string; label: string; items: Exclude<ChatItem<M>, { kind: "day" }>[] }[] = [];
+  for (const it of items) {
+    if (it.kind === "day") days.push({ key: it.key, label: it.label, items: [] });
+    else if (days.length) days[days.length - 1]!.items.push(it);
+    else days.push({ key: `day-${it.key}`, label: "", items: [it] });
+  }
+  return days;
+}
+
+/**
+ * For each row, the date of the day it's in. For a list that can't stick its
+ * own headers — the app's chat is inverted, newest first, and React Native
+ * only sticks headers at the top of a list read top-down — so a floating date
+ * can say which day is at the top of the screen. Works in either order.
+ */
+export function chatDayOf<M extends ChatMessage>(items: ChatItem<M>[], newestFirst = false): string[] {
+  const out = new Array<string>(items.length).fill("");
+  let label = "";
+  if (newestFirst) {
+    // The day's line comes after its messages: walk from the oldest end.
+    for (let i = items.length - 1; i >= 0; i--) {
+      const it = items[i]!;
+      if (it.kind === "day") label = it.label;
+      out[i] = label;
+    }
+  } else {
+    items.forEach((it, i) => {
+      if (it.kind === "day") label = it.label;
+      out[i] = label;
+    });
+  }
+  return out;
+}
+
 /** The colour a person's name takes in a group, the same every time. */
 const NAME_COLOURS = ["#1F7AEC", "#D9480F", "#0B8A5A", "#9C36B5", "#C2255C", "#5F3DC4", "#087F8C", "#E67700", "#2B8A3E", "#C92A2A"];
 export function chatNameColour(userId: string | null | undefined): string {
