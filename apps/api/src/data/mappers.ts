@@ -287,6 +287,7 @@ export function mapAttachment(a: AttachmentRow): Attachment {
     width: a.width ?? undefined,
     height: a.height ?? undefined,
     waveform,
+    transcript: a.transcript ?? undefined,
   };
 }
 type ParticipantRow = Prisma.ParticipantGetPayload<{

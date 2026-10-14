@@ -48,6 +48,7 @@ import type {
   UpdateNestchatInput,
   PolishDraftInput,
   PolishDraftResult,
+  MediaTranscript,
   UpdateTeamInput,
   Notification,
   UpdateMyPreferencesInput,
@@ -376,6 +377,8 @@ export const api = {
     patch<IntegrationSettings>("/settings/integrations", input),
   // Send a test email to yourself to verify the SMTP/Postmark connection.
   testSmtp: () => post<{ sent: boolean; via?: string; error?: string }>("/settings/integrations/smtp/test", {}),
+  // Transcribe: a voice note in words (made once, then remembered).
+  transcribeMedia: (id: string) => post<MediaTranscript>(`/media/${encodeURIComponent(id)}/transcript`, {}),
   // AI assist — polish a draft reply (Settings › Integrations › AI)
   polishDraft: (input: PolishDraftInput) => post<PolishDraftResult>("/ai/polish", input),
   // One real polish against a sample, so Settings can prove the key + model work.

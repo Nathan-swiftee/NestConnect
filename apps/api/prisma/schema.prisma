@@ -648,6 +648,10 @@ model Attachment {
   width      Int?
   height     Int?
   waveform   String?
+  // A voice note or audio file in words, once someone asked for it (Transcribe).
+  // Kept so the next person to ask, or the same one on another device, gets it
+  // straight away and it's only paid for once.
+  transcript String?
   createdAt  DateTime @default(now())
 
   message Message? @relation(fields: [messageId], references: [id])

@@ -254,6 +254,9 @@ export function useSendChatMessage(roomId: string, me: ChatPerson | null) {
         const sent = await api.sendChatMessage(roomId, { body, replyToId: replyTo?.id ?? null, clientId, attachments });
         upsertMessage(qc, roomId, { ...sent, clientId });
         refreshLists(qc);
+        // The same tick a WhatsApp reply makes: once the server has it, never
+        // on a failure.
+        clientConfig().cues.sent?.("whatsapp");
       } catch {
         upsertMessage(qc, roomId, { ...draft, pending: false, failed: true });
       }
@@ -458,12 +461,10 @@ export function useChatRealtime(enabled: boolean): void {
         });
       }
     };
-    // The server already left out everyone muted or not asking; this only skips
-    // the chat that's open in front of me.
-    const onCue = (p: { roomId: string; mention: boolean }) => {
-      if (openRoom === p.roomId && looking()) return;
-      clientConfig().cues.received?.();
-    };
+    // The server already left out everyone muted or not asking. The chat
+    // that's open in front of me rings too, as a WhatsApp conversation in the
+    // inbox does: it's how you know the reply landed without looking up.
+    const onCue = () => clientConfig().cues.received?.();
     socket.on(ChatServerEvent.Message, onMessage);
     socket.on(ChatServerEvent.MessageUpdated, onUpdated);
     socket.on(ChatServerEvent.Receipt, onReceipt);

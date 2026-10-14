@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import type { Attachment } from "@ding/schemas";
-import { formatDuration } from "@ding/client";
+import { nextVoiceRate, voiceRateLabel } from "@ding/schemas";
+import { formatDuration, useTranscript } from "@ding/client";
+import { haptics } from "../haptics";
 import { mediaSource } from "../api-config";
 import { playableUrl } from "../audio-url";
 import { AlertIcon, PauseIcon, PlayIcon } from "../icons";
@@ -10,6 +12,9 @@ import { useTheme } from "../theme";
 import { Touchable } from "./Touchable";
 
 const BARS = 34;
+
+/** The speed last picked, for every voice note after it — as WhatsApp keeps it. */
+let lastRate = 1;
 
 /** How long a clip may take to load before it's called a failure, not slow. */
 const LOAD_GIVE_UP_MS = 15_000;
@@ -51,6 +56,21 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
   const modeSet = useRef(false);
   /** The first tap arms the player; this starts it as soon as it has loaded. */
   const autoplay = useRef(false);
+  const [rate, setRate] = useState(lastRate);
+  const transcript = useTranscript(att.id, att.transcript);
+
+  // The speed goes on once the clip has loaded (a player loading a new source
+  // starts at 1×), and again on every press of the pill. Pitch-corrected, so
+  // 2× is someone talking quickly rather than a chipmunk.
+  useEffect(() => {
+    if (!status.isLoaded) return;
+    try {
+      player.shouldCorrectPitch = true;
+      player.setPlaybackRate(rate, "high");
+    } catch {
+      // A player that can't change speed still plays at 1×.
+    }
+  }, [status.isLoaded, rate, player]);
 
   useEffect(() => {
     if (autoplay.current && status.isLoaded) {
@@ -118,8 +138,19 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
     ? Array.from({ length: BARS }, (_, i) => wave[Math.floor((i / BARS) * wave.length)] ?? 0)
     : null;
 
+  // WhatsApp's pill: there once the note has started; each press steps
+  // 1× → 1.25× → 1.5× → 2× → 1×.
+  const engaged = armed && status.isLoaded && (status.playing || status.currentTime > 0);
+  function stepRate() {
+    haptics.select();
+    const next = nextVoiceRate(rate);
+    lastRate = next;
+    setRate(next);
+  }
+
   return (
-    <View className="flex-row items-center gap-2.5 pt-1" style={{ minWidth: 200 }}>
+    <View style={{ minWidth: 200 }}>
+    <View className="flex-row items-center gap-2.5 pt-1">
       <Touchable feel="chip"
         onPress={() => void toggle()}
         accessibilityRole="button"
@@ -185,6 +216,88 @@ export function AudioPlayer({ att, mine }: { att: Attachment; mine?: boolean }) 
       <Text style={{ color: c.textMuted }} className="text-2xs font-medium tabular-nums">
         {formatDuration((status.playing || status.currentTime > 0 ? status.currentTime : total) * 1000)}
       </Text>
+
+      {engaged ? (
+        <Touchable
+          feel="chip"
+          onPress={stepRate}
+          accessibilityRole="button"
+          accessibilityLabel={`Playback speed ${voiceRateLabel(rate)}`}
+          hitSlop={8}
+          style={{ backgroundColor: c.textMuted, minWidth: 38 }}
+          className="h-6 items-center justify-center rounded-full px-2"
+        >
+          <Text className="text-xs font-bold tabular-nums text-white">{voiceRateLabel(rate)}</Text>
+        </Touchable>
+      ) : null}
+    </View>
+    <Transcript {...transcript} tint={tint} />
+    </View>
+  );
+}
+
+/**
+ * Under a voice note: "Transcribe", then the words — as WhatsApp does it.
+ * Once anyone has asked, the note carries them and they show for everyone.
+ */
+function Transcript({
+  text,
+  loading,
+  error,
+  run,
+  tint,
+}: {
+  text: string | undefined;
+  loading: boolean;
+  error: string | null;
+  run: () => void;
+  tint: string;
+}) {
+  const { c } = useTheme();
+  if (text !== undefined && !loading) {
+    return (
+      <View style={{ backgroundColor: c.surface2 }} className="mt-1.5 rounded-lg px-2.5 py-1.5">
+        {text ? (
+          <Text selectable style={{ color: c.text }} className="text-sm leading-5">
+            {text}
+          </Text>
+        ) : (
+          <Text style={{ color: c.textMuted }} className="text-sm italic">
+            No speech heard in this one
+          </Text>
+        )}
+      </View>
+    );
+  }
+  if (loading) {
+    return (
+      <View className="mt-1 flex-row items-center gap-1.5 pl-[46px]">
+        <ActivityIndicator size="small" color={c.textMuted} />
+        <Text style={{ color: c.textMuted }} className="text-xs italic">
+          Transcribing…
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View className="mt-0.5 flex-row flex-wrap items-center gap-x-2 pl-[46px]">
+      {error ? (
+        <Text style={{ color: c.danger }} className="text-xs">
+          {error}
+        </Text>
+      ) : null}
+      <Pressable
+        onPress={() => {
+          haptics.select();
+          run();
+        }}
+        accessibilityRole="button"
+        hitSlop={8}
+      >
+        <Text style={{ color: tint }} className="py-1 text-xs font-semibold">
+          {error ? "Try again" : "Transcribe"}
+        </Text>
+      </Pressable>
     </View>
   );
 }

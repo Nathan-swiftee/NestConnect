@@ -360,7 +360,11 @@ export class ChatService implements OnModuleInit {
     const from = this.visibleFrom(a);
     if (from && card.createdAt < from) throw new NotFoundException("Discussion not found");
     if (a.oversight) await this.audit(a.room.id, userId);
-    const [replies, people, live] = await Promise.all([this.chat.repliesTo([card.id]), this.people(), this.liveCards([card])]);
+    const [replies, people, live] = await Promise.all([
+      this.chat.repliesTo([card.id]).then((r) => this.withTranscripts(r)),
+      this.people(),
+      this.liveCards([card]),
+    ]);
     const quotes = await this.quotesFor(replies, people);
     return {
       roomId: a.room.id,
@@ -435,7 +439,7 @@ export class ChatService implements OnModuleInit {
       limit: CHAT_PAGE_SIZE + 1,
     });
     const hasMore = rows.length > CHAT_PAGE_SIZE;
-    const page = rows.slice(0, CHAT_PAGE_SIZE).reverse();
+    const page = await this.withTranscripts(rows.slice(0, CHAT_PAGE_SIZE).reverse());
     const people = await this.people();
     const [quotes, live] = await Promise.all([this.quotesFor(page, people), this.liveCards(page)]);
     return { messages: page.map((m) => this.message(m, people, quotes, live)), hasMore };
@@ -484,9 +488,27 @@ export class ChatService implements OnModuleInit {
       if (out.some((x) => x.id === att.id)) continue;
       const ref = await this.store.getAttachment(att.id);
       if (!ref) throw new BadRequestException("One of those files didn't upload — try attaching it again");
-      out.push({ ...att, mime: ref.mime, filename: ref.filename, url: mediaUrl(att.id) });
+      // The words are the server's to fill in (Transcribe), never the sender's.
+      out.push({ ...att, mime: ref.mime, filename: ref.filename, url: mediaUrl(att.id), transcript: undefined });
     }
     return out;
+  }
+
+  /**
+   * A chat keeps a copy of each attachment as it was sent, so a voice note
+   * transcribed since then is read from the upload itself — or it would say
+   * "Transcribe" again on every open.
+   */
+  private async withTranscripts(rows: ChatMessageRecord[]): Promise<ChatMessageRecord[]> {
+    const ids = rows.flatMap((m) => m.attachments.filter((x) => x.kind === "voice" || x.kind === "audio").map((x) => x.id));
+    if (!ids.length) return rows;
+    const words = await this.store.getAttachmentTranscripts(ids);
+    if (!words.size) return rows;
+    return rows.map((m) =>
+      m.attachments.some((x) => words.has(x.id))
+        ? { ...m, attachments: m.attachments.map((x) => (words.has(x.id) ? { ...x, transcript: words.get(x.id) } : x)) }
+        : m,
+    );
   }
 
   /** The card for the first link in a message, fetched after it's sent; nobody waits for it. */

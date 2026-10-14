@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { NestChatAttachment } from "@ding/schemas";
+import { nextVoiceRate, voiceRateLabel } from "@ding/schemas";
 import { clockDuration } from "./voice";
 
 /**
@@ -15,6 +16,9 @@ import { clockDuration } from "./voice";
  * would otherwise pull ten files on open, most of which nobody listens to,
  * onto a connection that is very often a phone's.
  */
+/** The speed last picked, for the notes after it in this chat. */
+let lastRate = 1;
+
 export function VoiceNote({
   attachment,
   src,
@@ -29,6 +33,7 @@ export function VoiceNote({
   const [playing, setPlaying] = useState(false);
   const [at, setAt] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [rate, setRate] = useState(lastRate);
 
   const bars = attachment.waveform?.length ? attachment.waveform : FALLBACK_BARS;
   const total = attachment.durationMs ?? 0;
@@ -73,10 +78,19 @@ export function VoiceNote({
     document.querySelectorAll("audio").forEach((other) => {
       if (other !== el) other.pause();
     });
+    el.playbackRate = rate;
     void el.play().then(
       () => setPlaying(true),
       () => setFailed(true),
     );
+  };
+
+  /** WhatsApp's pill: 1× → 1.25× → 1.5× → 2× → 1×, once the note has started. */
+  const stepRate = () => {
+    const next = nextVoiceRate(rate);
+    lastRate = next;
+    setRate(next);
+    if (audio.current) audio.current.playbackRate = next;
   };
 
   /** Scrub by clicking the bars — the whole strip is the timeline. */
@@ -123,6 +137,17 @@ export function VoiceNote({
       <span className="nc__voice-time">
         {failed ? "Unavailable" : clockDuration(elapsed)}
       </span>
+
+      {(playing || at > 0) && !failed ? (
+        <button
+          type="button"
+          className="nc__voice-rate"
+          onClick={stepRate}
+          aria-label={`Playback speed ${voiceRateLabel(rate)}`}
+        >
+          {voiceRateLabel(rate)}
+        </button>
+      ) : null}
 
       {/* `preload="none"`: see above — a thread of notes should not fetch
           every one of them on open. */}

@@ -2642,6 +2642,24 @@ export class PrismaStore extends Store {
     return a ? { storageKey: a.r2Key, mime: a.mime, filename: a.filename } : undefined;
   }
 
+  async getAttachmentTranscript(id: string): Promise<string | undefined> {
+    const a = await this.prisma.attachment.findUnique({ where: { id }, select: { transcript: true } });
+    return a?.transcript ?? undefined;
+  }
+
+  async getAttachmentTranscripts(ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map();
+    const rows = await this.prisma.attachment.findMany({
+      where: { id: { in: [...new Set(ids)] }, transcript: { not: null } },
+      select: { id: true, transcript: true },
+    });
+    return new Map(rows.map((r) => [r.id, r.transcript ?? ""]));
+  }
+
+  async setAttachmentTranscript(id: string, transcript: string): Promise<void> {
+    await this.prisma.attachment.updateMany({ where: { id }, data: { transcript } });
+  }
+
   async getAttachmentAccess(
     id: string,
   ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined> {

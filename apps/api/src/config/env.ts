@@ -107,6 +107,12 @@ export const env = {
     apiKey: process.env.ANTHROPIC_API_KEY ?? "",
     model: process.env.ANTHROPIC_MODEL ?? "",
   },
+  // OpenAI speech to text, for Transcribe on voice notes. As with Claude, a
+  // key saved in Settings › Integrations overrides these.
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY ?? "",
+    transcribeModel: process.env.OPENAI_TRANSCRIBE_MODEL ?? "",
+  },
   push: {
     // Expo access token. Optional — Expo accepts unauthenticated sends — but with
     // "enhanced security" enabled it's what stops anyone who learns a device

@@ -2078,6 +2078,26 @@ export class MemoryStore extends Store {
     return this.mediaRefs.get(id);
   }
 
+  private transcripts = new Map<string, string>();
+
+  async getAttachmentTranscript(id: string): Promise<string | undefined> {
+    return this.transcripts.get(id);
+  }
+
+  async getAttachmentTranscripts(ids: string[]): Promise<Map<string, string>> {
+    return new Map(ids.flatMap((id) => (this.transcripts.has(id) ? [[id, this.transcripts.get(id) as string] as const] : [])));
+  }
+
+  async setAttachmentTranscript(id: string, transcript: string): Promise<void> {
+    this.transcripts.set(id, transcript);
+    // A thread read afterwards carries it, as Postgres's does.
+    for (const rec of this.conversations) {
+      for (const m of rec.messages) {
+        for (const a of m.attachments ?? []) if (a.id === id) a.transcript = transcript;
+      }
+    }
+  }
+
   async getAttachmentAccess(
     id: string,
   ): Promise<{ storageKey: string; mime: string; filename: string; orgId?: string } | undefined> {

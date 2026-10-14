@@ -41,6 +41,7 @@ const SECRET_APP_KEYS = new Set([
   "smtp_password",
   "resend_api_key",
   "anthropic_api_key",
+  "openai_api_key",
   "expo_access_token",
 ]);
 
