@@ -32,6 +32,11 @@ export interface WhatsAppInbound {
   forwarded?: boolean;
 }
 
+/** "+44 20 8800 9090" → "442088009090". */
+function digitsOnly(s: string): string {
+  return s.replace(/\D/g, "");
+}
+
 export interface EmailInbound {
   toAddress: string;
   from: string;
@@ -182,6 +187,134 @@ export class IngestService {
       return;
     }
     this.push.notify({ userIds: team, kind: "team_message", title, body, conversationId });
+  }
+
+  /* ---- WhatsApp Business app numbers (coexistence) ---- */
+
+  /**
+   * A message the business sent from the WhatsApp Business app on its phone
+   * (Meta's `smb_message_echoes`). It goes into the customer's open
+   * conversation as an outbound message labelled as sent from the app, so the
+   * thread here is the whole conversation. It counts as answering: the reply
+   * timer stops and the chat is no longer waiting.
+   */
+  async ingestWhatsAppEcho(input: {
+    phoneNumberId: string;
+    to: string;
+    channelMsgId: string;
+    text: string;
+    messageType: MessageType;
+    attachments?: AttachmentInput[];
+  }): Promise<{ conversationId: string; created: boolean } | undefined> {
+    const inbox = await this.store.getInboxByWhatsAppPhoneId(input.phoneNumberId);
+    if (!inbox) return undefined;
+    this.tenant.bind(inbox.orgId);
+    // Our own sends can come back this way too; and Meta retries.
+    const seen = await this.store.getMessageRefByChannelId(input.channelMsgId);
+    if (seen) return { conversationId: seen.conversationId, created: false };
+    const contact = await this.store.upsertContactByIdentity({
+      orgId: inbox.orgId,
+      kind: "wa_id",
+      value: input.to,
+      displayName: input.to,
+    });
+    // Started from the phone, so not routed: it shows on the channel (and to
+    // the teams it serves) unassigned, and the customer's answer comes back here.
+    const { conversation, created } = await this.store.findOrCreateOpenConversation({
+      orgId: inbox.orgId,
+      inboxId: inbox.id,
+      contact,
+      channel: "whatsapp",
+      autoSubject: true,
+    });
+    if (created) await this.log.record(conversation.id, "created", SYSTEM, { channel: "whatsapp" });
+    const message = await this.store.appendSyncedOutbound(conversation.id, {
+      body: input.text,
+      channelMsgId: input.channelMsgId,
+      authorName: "WhatsApp Business app",
+      channel: "whatsapp",
+      messageType: input.messageType,
+      attachments: input.attachments,
+      markRead: true,
+    });
+    if (!message) return undefined;
+    const cleared = await this.store.setSla(conversation.id, null);
+    this.realtime.emitMessageCreated(conversation.id, message, inbox.orgId);
+    if (cleared) this.realtime.emitConversationUpdated(cleared);
+    return { conversationId: conversation.id, created };
+  }
+
+  /**
+   * One customer's batch of chat history from a WhatsApp Business app number
+   * (Meta's `history`). Filed in that customer's history conversation — closed
+   * and read, so nobody is notified and no timer starts.
+   */
+  async importWhatsAppHistory(input: {
+    phoneNumberId: string;
+    /** The business's own number, digits only: what tells its messages apart. */
+    businessNumber: string;
+    waId: string;
+    messages: Array<{ from: string; id: string; sentAt: Date; text: string; messageType: MessageType; attachments?: AttachmentInput[] }>;
+  }): Promise<{ conversationId: string; added: number } | undefined> {
+    const inbox = await this.store.getInboxByWhatsAppPhoneId(input.phoneNumberId);
+    if (!inbox || !input.messages.length) return undefined;
+    this.tenant.bind(inbox.orgId);
+    const contact = await this.store.upsertContactByIdentity({
+      orgId: inbox.orgId,
+      kind: "wa_id",
+      value: input.waId,
+      displayName: input.waId,
+    });
+    const ours = digitsOnly(input.businessNumber);
+    return this.store.importWhatsAppHistory({
+      orgId: inbox.orgId,
+      inboxId: inbox.id,
+      contactId: contact.id,
+      messages: input.messages.map((m) => {
+        const out = !!ours && digitsOnly(m.from) === ours;
+        return {
+          direction: out ? ("out" as const) : ("in" as const),
+          authorName: out ? "WhatsApp Business app" : contact.displayName,
+          body: m.text,
+          channelMsgId: m.id,
+          sentAt: m.sentAt,
+          messageType: m.messageType,
+          attachments: m.attachments,
+        };
+      }),
+    });
+  }
+
+  /**
+   * The phone's address book (Meta's `smb_app_state_sync`). A customer we only
+   * know by number takes the name the phone has for them; a name somebody here
+   * has already given them is left alone.
+   */
+  async syncWhatsAppContacts(input: {
+    phoneNumberId: string;
+    contacts: Array<{ phone: string; name?: string }>;
+  }): Promise<number> {
+    const inbox = await this.store.getInboxByWhatsAppPhoneId(input.phoneNumberId);
+    if (!inbox) return 0;
+    this.tenant.bind(inbox.orgId);
+    let n = 0;
+    for (const c of input.contacts) {
+      const phone = digitsOnly(c.phone);
+      if (!phone) continue;
+      const name = c.name?.trim();
+      const contact = await this.store.upsertContactByIdentity({
+        orgId: inbox.orgId,
+        kind: "wa_id",
+        value: phone,
+        displayName: name || phone,
+      });
+      const bare = digitsOnly(contact.displayName);
+      if (name && contact.displayName !== name && (bare === phone || contact.displayName === `+${phone}`)) {
+        await this.store.updateContact(contact.id, { displayName: name });
+      }
+      n++;
+    }
+    return n;
   }
 
   async ingestWhatsApp(input: WhatsAppInbound): Promise<{ conversationId: string; created: boolean } | undefined> {
@@ -623,7 +756,7 @@ export class IngestService {
     if (!conversationId) return undefined;
 
     const { html: bodyHtml } = sanitizeEmailHtml(input.html);
-    const message = await this.store.appendSyncedOutboundEmail(conversationId, {
+    const message = await this.store.appendSyncedOutbound(conversationId, {
       body: input.text,
       bodyHtml: bodyHtml || undefined,
       channelMsgId: input.messageId,

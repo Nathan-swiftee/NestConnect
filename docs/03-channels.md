@@ -123,6 +123,46 @@ Plus your **BSP markup** (~$0.003–$0.010/msg for large BSPs). **Action:** mode
 
 Meta's **Embedded Signup** flow lets a Swiftee client (or Swiftee itself) connect a WhatsApp Business Account and phone number from inside Nest Connect, provision the number, and register webhooks — this powers **"+ Create inbox → WhatsApp"**. Requires Meta Business verification and an OBA for group features.
 
+### Keeping the WhatsApp Business app (coexistence)
+
+A number that already runs on the **WhatsApp Business app** can join Nest Connect without leaving the phone. Meta calls this coexistence. Adding the number the normal way fails with "This phone number is already registered to a WhatsApp account": the API wants to take the number over. Coexistence links the API to the app instead.
+
+**Connecting.** Settings › Channels › Connect › **WhatsApp Business app**. Meta's sign-up opens in a popup and the person picks "Connect your existing WhatsApp Business app". The phone then shows a QR code; scan it in the app (Settings › Linked devices / Business platform). The browser gets a code plus the account (WABA) and number Meta onboarded, and posts them to `POST /api/channels/meta/coexistence`. The server then:
+
+1. Swaps the code for a token. The SDK flow has no redirect URI.
+2. Checks the number is in that account. It uses the number Meta named, never "the first number".
+3. Refuses a number already connected to another workspace.
+4. Subscribes the app to the account.
+5. Creates the channel unrouted, like every one-click connect, so the admin picks the team in the editor that opens.
+
+**It is never registered.** The usual API `register` step would take the number off the phone. The registration panel is replaced by a coexistence box, and `register()` refuses a coexistence channel.
+
+**History and contacts.** Straight after connecting, the server asks Meta for the phone's contacts (`smb_app_state_sync`), then its chat history (`history`). Meta allows each **once, within 24 hours** of onboarding. Then:
+
+- Contacts arrive on the `smb_app_state_sync` webhook. Only contacts we know by number alone are renamed; a name someone typed in Nest Connect is kept.
+- History (up to 6 months) arrives on the `history` webhook in batches. Each customer gets one **closed, read** conversation holding the old messages in time order. It is never routed, assigned or put on an SLA. Re-sent batches are skipped by message id.
+- If the person declined to share history on the phone, the channel says so.
+
+**Replies from the phone.** Anything sent from the app arrives on the `smb_message_echoes` webhook. It is filed as an outbound message in the customer's open conversation, labelled **"Sent by WhatsApp Business app"**. It counts as an answer, so the SLA clock stops. It doesn't create routing or assignment on its own.
+
+**Disconnects.** If the number is unlinked from the phone or the account is offboarded, Meta sends `account_update`. The channel shows **Reconnect needed**; connecting again from the same card repairs it in place.
+
+**Meta-side setup (once per Meta app):**
+
+- An Embedded Signup **configuration** that includes "WhatsApp Business app onboarding". Put its Configuration ID with the App ID and secret in Settings › Setup.
+- Webhook fields on the app: `messages`, `smb_message_echoes`, `history`, `smb_app_state_sync`, `account_update`.
+- Business Verification on the Meta business portfolio. Coexistence may also need Tech Provider status for the app.
+- The page that runs the sign-up must allow the Facebook popup to post back. The API sends `Cross-Origin-Opener-Policy: same-origin-allow-popups`.
+
+**Limits to know.**
+
+- The app keeps working, but throughput on a coexistence number is lower than a pure API number (about 20 messages a second).
+- Groups and disappearing messages aren't mirrored.
+- The phone must open the WhatsApp Business app at least every ~14 days, or Meta unlinks it.
+- Try it on a spare number before the main one.
+
+`pnpm check:coexistence` (memory) and `pnpm check:coexistence-pg` (Postgres) cover connect, the register guard, echoes, history, contacts and disconnects.
+
 ---
 
 ## Email — shared inboxes

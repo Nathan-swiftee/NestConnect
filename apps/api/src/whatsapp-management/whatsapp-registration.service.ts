@@ -83,6 +83,14 @@ export class WhatsAppRegistrationService {
     if (!/^[0-9]{6}$/.test(pin)) {
       throw new BadRequestException("The two-step verification PIN is exactly 6 digits.");
     }
+    // A number on the WhatsApp Business app (coexistence) was linked by Meta's
+    // own sign-up. The API's register step is for numbers that live only on
+    // the API: run against this one, it would take the number off the phone.
+    if ((await this.store.getInboxConfig(inboxId))?.coexistence === "true") {
+      throw new BadRequestException(
+        "This number is on the WhatsApp Business app and was linked by Meta's sign-up — it must not be registered here. Nothing needs doing.",
+      );
+    }
     const creds = await this.credsFor(inboxId);
     if (this.isState(creds)) {
       return { ok: false, alreadyRegistered: false, state: creds };

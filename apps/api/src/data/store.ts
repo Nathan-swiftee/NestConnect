@@ -1027,6 +1027,9 @@ export abstract class Store {
   /* ---- channel ingestion (inbound) ---- */
 
   abstract getInboxByWhatsAppPhoneId(phoneNumberId: string): Promise<Inbox | undefined>;
+  /** The WhatsApp inboxes on one WhatsApp Business Account, in any workspace —
+   *  for Meta's account-level events, which name the account, not a number. */
+  abstract getInboxesByWabaId(wabaId: string): Promise<Inbox[]>;
   abstract getInboxByEmailAddress(address: string): Promise<Inbox | undefined>;
   /** Whether a workspace other than the bound one already receives on this
    *  phone number id or email address. Checked before a channel is connected,
@@ -1154,7 +1157,7 @@ export abstract class Store {
   /** Record an outbound email that was sent straight from Gmail (not through
    *  Nest) into its conversation, so the thread stays complete. Stored as an
    *  already-sent outgoing message — no delivery is triggered. */
-  abstract appendSyncedOutboundEmail(
+  abstract appendSyncedOutbound(
     conversationId: string,
     input: {
       body: string;
@@ -1162,8 +1165,38 @@ export abstract class Store {
       channelMsgId?: string;
       authorName?: string;
       attachments?: AttachmentInput[];
+      /** Defaults to email (a reply sent straight from Gmail). WhatsApp is a
+       *  message sent from the WhatsApp Business app on a coexistence number. */
+      channel?: "email" | "whatsapp";
+      messageType?: MessageType;
+      /** Answered from elsewhere: nothing in it is waiting for anyone. */
+      markRead?: boolean;
     },
   ): Promise<Message | undefined>;
+
+  /**
+   * Bring in a WhatsApp Business app number's chat history (coexistence),
+   * one customer's batch at a time. It lands in that customer's one history
+   * conversation on the inbox — closed and read, so nobody's queue fills up —
+   * whatever order Meta sends the batches in (newest first, as it does): the
+   * conversation is put back in date order after each. A message already
+   * stored anywhere (by its WhatsApp id) is skipped.
+   */
+  abstract importWhatsAppHistory(input: {
+    orgId: string;
+    inboxId: string;
+    contactId: string;
+    /** Oldest or newest first — either; they're sorted by `sentAt`. */
+    messages: Array<{
+      direction: "in" | "out";
+      authorName: string;
+      body: string;
+      channelMsgId: string;
+      sentAt: Date;
+      messageType?: MessageType;
+      attachments?: AttachmentInput[];
+    }>;
+  }): Promise<{ conversationId: string; added: number }>;
 
   /** How many email conversations the current workspace holds. */
   abstract countEmailConversations(): Promise<number>;

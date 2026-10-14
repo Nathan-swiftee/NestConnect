@@ -108,6 +108,8 @@ import {
 } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
 import { api } from "../lib/api";
+import { loadedSdk, prepareCoexistenceSignup, runCoexistenceSignup } from "../lib/meta-signup";
+import type { CoexistenceSetup } from "@ding/schemas";
 import { TEMPLATE_CATEGORIES, approvalMeta, countVariables } from "./TemplatePicker";
 import {
   BellIcon,
@@ -491,7 +493,11 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
                 </span>
                 <span className="chcard__name">
                   <b>{i.name}</b>
-                  <small>{i.handle}</small>
+                  <small>
+                    {i.channelConfigPublic?.coexistence === "true"
+                      ? `${i.channelConfigPublic.displayNumber ?? i.handle} · Business app`
+                      : i.handle}
+                  </small>
                 </span>
               </div>
               <div className="chcard__foot">
@@ -500,6 +506,11 @@ function ChannelsPane({ onToast }: { onToast: (msg: string) => void }) {
                 </span>
                 {i.signedOut ? (
                   <span className="connpill bad" title={`${i.signedOut.reason}. Open it to reconnect.`}>
+                    <span className="connpill__dot" />
+                    Reconnect needed
+                  </span>
+                ) : i.channelConfigPublic?.coexistenceState === "disconnected" ? (
+                  <span className="connpill bad" title="Meta says this number is no longer linked to the WhatsApp Business app. Connect it again.">
                     <span className="connpill__dot" />
                     Reconnect needed
                   </span>
@@ -756,7 +767,11 @@ function ChannelEditor({
       {/* What Meta actually says about the number, and the one action that fixes
           the state everybody gets stuck in. Only for WhatsApp: no other channel
           has a registration step. */}
-      {inbox.type === "whatsapp" && <WhatsAppRegistration channelId={inbox.id} onToast={onToast} />}
+      {inbox.type === "whatsapp" && inbox.channelConfigPublic?.coexistence === "true" ? (
+        <CoexistenceBox inbox={inbox} />
+      ) : (
+        inbox.type === "whatsapp" && <WhatsAppRegistration channelId={inbox.id} onToast={onToast} />
+      )}
       {/* A Gmail mailbox is signed in with Google, not set up with a token —
           so it gets its sign-in state and a way to sign in again, and not the
           Postmark token field, which would have overwritten its access token. */}
@@ -830,6 +845,42 @@ function ChannelEditor({
   );
 }
 
+/**
+ * A WhatsApp number that's on the WhatsApp Business app as well (Meta's
+ * coexistence): what it is, where its history import stands, and whether Meta
+ * still has it linked. In place of the registration box — this number must
+ * never be put through the API's register step.
+ */
+function CoexistenceBox({ inbox }: { inbox: Inbox }) {
+  const pub = inbox.channelConfigPublic ?? {};
+  const disconnected = pub.coexistenceState === "disconnected";
+  const sync = pub.coexistenceSync ?? "";
+  const when = (iso: string) => {
+    const d = new Date(iso.trim());
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+  };
+  const syncLine = sync.startsWith("history imported")
+    ? `Chat history imported ${when(sync.replace("history imported", ""))}.`
+    : sync.startsWith("requested")
+      ? `History and contacts requested from Meta ${when(sync.replace("requested", ""))} — they arrive over the next minutes to hours, as closed past conversations.`
+      : sync.startsWith("history not shared")
+        ? "The chat history wasn’t shared when the number was connected, so only new messages appear here."
+        : sync.startsWith("failed")
+          ? `Asking Meta for the history failed (${sync.replace(/^failed:\s*/, "")}). Meta only allows it in the first 24 hours after connecting.`
+          : "";
+  return (
+    <div className={"reauth-box" + (disconnected ? " bad" : "")}>
+      <b>{disconnected ? "No longer linked to the WhatsApp Business app" : "On the WhatsApp Business app as well"}</b>
+      <p className="fieldhint">
+        {disconnected
+          ? "Meta says this number was disconnected from the app (or from us). New messages won’t arrive until it’s connected again from Settings › Channels › Connect a channel › WhatsApp Business app."
+          : "Replies sent from the phone show here labelled “WhatsApp Business app”, and messages sent here arrive on the phone. Open the app on the phone at least every couple of weeks, or Meta unlinks it."}
+      </p>
+      {syncLine && <p className="fieldhint">{syncLine}</p>}
+    </div>
+  );
+}
+
 function ConnectChannel({
   onDone,
   onConnected,
@@ -872,6 +923,56 @@ function ConnectChannel({
   };
   const connectGmail = () => connectOAuth("/api/channels/google/oauth/start", "Gmail");
   const connectWhatsApp = () => connectOAuth("/api/channels/meta/oauth/start", "WhatsApp");
+
+  // A WhatsApp Business app number (coexistence). Meta's sign-up must open
+  // straight from the click or the browser blocks it, so its setup and SDK are
+  // loaded the moment this dialog opens, ahead of any click.
+  const [coexSetup, setCoexSetup] = useState<CoexistenceSetup | null>(null);
+  const [coexBusy, setCoexBusy] = useState(false);
+  useEffect(() => {
+    let live = true;
+    api
+      .coexistenceSetup()
+      .then((setup) => {
+        if (!live) return;
+        setCoexSetup(setup);
+        if (setup.ready && !setup.mock) void prepareCoexistenceSignup(setup).catch(() => undefined);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+  const finishCoexistence = async (result: { code: string; wabaId: string; phoneNumberId: string }) => {
+    const res = await api.connectCoexistence(result);
+    qc.invalidateQueries({ queryKey: ["inboxes"] });
+    qc.invalidateQueries({ queryKey: ["views"] });
+    if (res.sync.startsWith("failed")) {
+      onToast(`${res.displayNumber} connected — but asking Meta for its history failed. See the channel.`);
+    }
+    onConnected(res.handle);
+  };
+  const connectBusinessApp = () => {
+    if (!coexSetup) return onToast("Still loading — try again in a moment");
+    if (!coexSetup.ready) {
+      return onToast("Add the Meta app ID, secret and Embedded Signup configuration ID in Settings › Setup first");
+    }
+    setCoexBusy(true);
+    const run = coexSetup.mock
+      ? Promise.resolve({ code: "mock-code", wabaId: "100000000000001", phoneNumberId: "100000000000002" })
+      : (() => {
+          const fb = loadedSdk();
+          if (!fb) {
+            void prepareCoexistenceSignup(coexSetup).catch(() => undefined);
+            return Promise.reject(new Error("Meta’s sign-up is still loading — try again in a moment"));
+          }
+          return runCoexistenceSignup(fb, coexSetup);
+        })();
+    run
+      .then(finishCoexistence)
+      .catch((err) => onToast((err as Error)?.message || "Couldn’t connect the WhatsApp Business app number"))
+      .finally(() => setCoexBusy(false));
+  };
 
   // The popup posts its result back to this window when it finishes.
   useEffect(() => {
@@ -989,6 +1090,23 @@ function ConnectChannel({
             <b>Gmail</b>
             <small>Connect with Google — one click, no tokens to copy.</small>
           </button>
+          {(() => {
+            const wa = channelMeta("whatsapp");
+            const WaGlyph = wa.Glyph;
+            return (
+              <button className="kindcard" onClick={connectBusinessApp} disabled={coexBusy}>
+                <span className="kindcard__ic" style={{ color: wa.color }}>
+                  <WaGlyph />
+                </span>
+                <b>WhatsApp Business app</b>
+                <small>
+                  {coexBusy
+                    ? "Finishing with Meta…"
+                    : "Your number on the WhatsApp Business app — it keeps working on the phone too. Scan a QR code, nothing to copy."}
+                </small>
+              </button>
+            );
+          })()}
         </div>
           </div>
         </div>

@@ -16,6 +16,12 @@ export const META_CONFIG = {
   accessToken: "accessToken",
   wabaId: "wabaId",
   displayNumber: "displayNumber",
+  /** "true" on a number that stays on the WhatsApp Business app (coexistence). */
+  coexistence: "coexistence",
+  /** The history/contacts import: "requested <iso>" or "failed: <why>". */
+  coexistenceSync: "coexistenceSync",
+  /** "connected" | "disconnected" — whether Meta still links it to the app. */
+  coexistenceState: "coexistenceState",
 } as const;
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -170,6 +176,61 @@ export class MetaOAuthService {
       }
     }
     throw new Error("No WhatsApp Business number found on this account");
+  }
+
+  /**
+   * Exchange the code from Meta's JavaScript SDK sign-up (Embedded Signup).
+   * Unlike the redirect flow there's no redirect_uri to repeat: the SDK popup
+   * never redirected anywhere of ours.
+   */
+  async exchangeSdkCode(orgId: string, code: string): Promise<string> {
+    if (this.isMock) return "mock-meta-token";
+    const { appId, appSecret } = await this.credentials(orgId);
+    const params = new URLSearchParams({ client_id: appId, client_secret: appSecret, code });
+    const res = await this.fetchJson<{ access_token?: string }>(
+      `${GRAPH}/oauth/access_token?${params.toString()}`,
+      "token exchange",
+    );
+    if (!res.access_token) throw new Error("Meta token response missing access_token");
+    return res.access_token;
+  }
+
+  /**
+   * The number the sign-up just onboarded, read with the token it granted —
+   * which also proves the token can reach it, and that it belongs to the
+   * account Meta named. Never "the first number on the account": an account
+   * holding several would hand us the wrong one.
+   */
+  async onboardedNumber(wabaId: string, phoneNumberId: string, accessToken: string): Promise<DiscoveredNumber> {
+    if (this.isMock) {
+      return { wabaId, phoneNumberId, displayNumber: "+44 20 8800 0000", verifiedName: "Swiftee" };
+    }
+    const phones = await this.fetchJson<{
+      data?: Array<{ id: string; display_phone_number?: string; verified_name?: string }>;
+    }>(`${GRAPH}/${wabaId}/phone_numbers?access_token=${encodeURIComponent(accessToken)}`, "list phone numbers");
+    const phone = phones.data?.find((p) => p.id === phoneNumberId);
+    if (!phone) throw new Error("Meta didn't give access to the number that was just connected — try connecting again");
+    return {
+      wabaId,
+      phoneNumberId,
+      displayNumber: phone.display_phone_number ?? phoneNumberId,
+      verifiedName: phone.verified_name,
+    };
+  }
+
+  /**
+   * Ask Meta for a coexistence number's existing data: the phone's contacts
+   * (`smb_app_state_sync`) or its chat history (`history`). Both arrive later
+   * on the webhook. Meta allows this once, and only in the first 24 hours
+   * after connecting — so it's asked straight away.
+   */
+  async requestAppData(phoneNumberId: string, accessToken: string, syncType: "smb_app_state_sync" | "history"): Promise<void> {
+    if (this.isMock) return;
+    await this.fetchJson(`${GRAPH}/${phoneNumberId}/smb_app_data`, `request ${syncType}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", sync_type: syncType }),
+    });
   }
 
   /** Subscribe our app to the WABA so inbound messages hit our webhook. */

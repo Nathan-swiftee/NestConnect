@@ -531,6 +531,14 @@ export const PUBLIC_CHANNEL_KEYS = [
   // on the customer's own website carries. It identifies an inbox; it authorises
   // nothing beyond "open a chat with this business", which is the point.
   "widgetKey",
+  // A WhatsApp number that stays on the WhatsApp Business app alongside us
+  // (Meta's "coexistence"): "true". It changes what the editor offers — never
+  // the API "register" step, which would take the number off the phone.
+  "coexistence",
+  // Where its one-time history/contacts import stands, and whether Meta still
+  // has it linked to the app — read-only status lines for the editor.
+  "coexistenceSync",
+  "coexistenceState",
 ] as const;
 
 /** Pick only the non-secret channelConfig keys, for display in the channel editor. */
@@ -1542,6 +1550,30 @@ export const requestWhatsAppObaInputSchema = z.object({
   additionalSupportingInformation: z.string().trim().max(1000).optional(),
 });
 export type RequestWhatsAppObaInput = z.infer<typeof requestWhatsAppObaInputSchema>;
+
+/**
+ * Finishing Meta's sign-up for a number that stays on the WhatsApp Business
+ * app (coexistence): the code the SDK gave the browser, and the account and
+ * number Meta said were onboarded.
+ */
+export const connectCoexistenceInputSchema = z.object({
+  code: z.string().min(1).max(2000),
+  wabaId: z.string().regex(/^\d{5,30}$/, "That isn't a WhatsApp Business Account id"),
+  phoneNumberId: z.string().regex(/^\d{5,30}$/, "That isn't a phone number id"),
+});
+export type ConnectCoexistenceInput = z.infer<typeof connectCoexistenceInputSchema>;
+
+/** What the web needs to open Meta's sign-up (all public). */
+export interface CoexistenceSetup {
+  /** The Meta app's id and its Embedded Signup configuration — both set in Settings › Setup. */
+  appId: string;
+  configId: string;
+  graphVersion: string;
+  /** Both are set, so the button can work. */
+  ready: boolean;
+  /** Local/test mode: the SDK is skipped and a fake number connects. */
+  mock: boolean;
+}
 
 /** A single recipient of a broadcast — a phone number, optionally named. */
 export const broadcastRecipientSchema = z.object({
