@@ -10,7 +10,8 @@
  *      everyone, one reaction each;
  *   F  ticks and unread counts come from each person's read marker;
  *   G  who's told: everyone else, not a muted chat — but a mention always;
- *   H  admins and managers open any chat and can write in it without joining; each look is recorded;
+ *   H  admins and managers open any chat and can write in it without joining;
+ *      one they wrote in they follow (list, unread, pushes, mute, take off list); each look is recorded;
  *   I  pinned chats first; a deleted team's chat stays, read-only;
  *   J  photos, voice notes and files (only this workspace's uploads, described
  *      by the server's own record); link cards, fetched safely; search only
@@ -273,7 +274,30 @@ async function main() {
     const looks = await svc.audits(NATHAN, dm.id);
     ok("the look is recorded, once for a quick re-open", looks.filter((l) => l.person.id === NATHAN).length === 1);
     ok("only admins and managers see that record", await refuses(svc.audits(JAMES, dm.id), 403));
-    ok("an admin reading along gets no unread counts or delivered ticks", (await svc.room(NATHAN, dm.id)).unread === 0);
+    const peekOnly = await svc.room(NATHAN, private_.id);
+    ok("reading along without writing: no unread, not followed", peekOnly.unread === 0 && !peekOnly.watching && !(await svc.rooms(NATHAN)).some((x) => x.id === private_.id));
+
+    // Having written in it, they follow it like a chat of their own.
+    const followed = (await svc.rooms(NATHAN)).find((x) => x.id === dm.id);
+    ok("a chat they wrote in counts the replies as unread", !!followed?.watching && followed.unread > 0, `${followed?.watching} ${followed?.unread}`);
+    pushes.length = 0;
+    await svc.send(JAMES, dm.id, say("And one more"));
+    await until(async () => pushes.length > 0);
+    ok("and pushes them about it", !!pushes[0]?.userIds.includes(NATHAN), JSON.stringify(pushes[0]?.userIds));
+    await svc.setPrefs(NATHAN, dm.id, { muted: true });
+    pushes.length = 0;
+    await svc.send(JAMES, dm.id, say("Muted?"));
+    await until(async () => pushes.length > 0);
+    ok("muted, it doesn't", !pushes[0]?.userIds.includes(NATHAN) && pushes[0]?.userIds.includes(AMARA), JSON.stringify(pushes[0]?.userIds));
+    const badge = (await svc.status(NATHAN)).unread;
+    ok("nor counts towards the badge", (await svc.rooms(NATHAN)).find((x) => x.id === dm.id)!.muted && badge === (await svc.rooms(NATHAN)).filter((x) => !x.muted).reduce((n, x) => n + x.unread, 0));
+    await svc.setPrefs(NATHAN, dm.id, { muted: false });
+    await svc.read(NATHAN, dm.id);
+    ok("opening it marks it read", (await svc.rooms(NATHAN)).find((x) => x.id === dm.id)!.unread === 0);
+    ok("following doesn't make them a member", (await svc.room(JAMES, dm.id)).members.map((m) => m.id).sort().join() === [JAMES, AMARA].sort().join());
+    await svc.leave(NATHAN, dm.id);
+    ok("and they can take it off their list", !(await svc.rooms(NATHAN)).some((x) => x.id === dm.id) && (await svc.rooms(NATHAN, true)).some((x) => x.id === dm.id));
+    ok("which leaves the chat as it was", (await svc.room(JAMES, dm.id)).memberCount === 2 && (await svc.messages(JAMES, dm.id)).messages.every((m) => m.kind === "text"));
 
     console.log("\nI — the list, and deleted teams\n");
     await svc.setPrefs(JAMES, ops.id, { pinned: true });

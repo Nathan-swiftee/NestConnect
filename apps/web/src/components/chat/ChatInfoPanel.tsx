@@ -108,7 +108,7 @@ export function ChatInfoPanel({
           )}
         </div>
 
-        {room.isMember && (
+        {(room.isMember || room.watching) && (
           <section className="tc-infopanel__sec">
             <Toggle label="Mute notifications" hint="No sound or push — an @mention still gets through." on={room.muted} onChange={(v) => prefs.mutate({ muted: v }, { onError: fail })} />
             <Toggle label="Pin chat" hint="Keep it at the top of your list." on={room.pinned} onChange={(v) => prefs.mutate({ pinned: v }, { onError: fail })} />
@@ -223,17 +223,25 @@ export function ChatInfoPanel({
               type="button"
               className="tc-danger"
               onClick={() => {
-                if (!window.confirm(`Leave “${room.name}”? You can be added back by one of its admins.`)) return;
+                // Following a chat you aren't in: this only takes it off your list.
+                if (
+                  !window.confirm(
+                    room.watching
+                      ? `Take “${room.name}” off your list? It's still under All chats, and writing in it again brings it back.`
+                      : `Leave “${room.name}”? You can be added back by one of its admins.`,
+                  )
+                )
+                  return;
                 leave.mutate(undefined, {
                   onSuccess: () => {
-                    onToast(`You left “${room.name}”`);
+                    onToast(room.watching ? `“${room.name}” is off your list` : `You left “${room.name}”`);
                     onLeft();
                   },
                   onError: fail,
                 });
               }}
             >
-              <LogoutIcon /> Leave group
+              <LogoutIcon /> {room.watching ? "Remove from my list" : "Leave group"}
             </button>
           </section>
         )}

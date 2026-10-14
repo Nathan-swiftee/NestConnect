@@ -77,9 +77,17 @@ to the members list, and a direct chat stays between its two people. Its
 members are notified as usual. In a direct chat, their messages carry their
 name, so nobody mistakes them for the other person.
 
-A chat they have written in stays in their own list too, tagged "Not in it",
-so they can follow up without opening the eye again. New messages there
-reach them live. It isn't counted as unread, because they aren't a member.
+Writing in a chat they aren't in starts **following** it. Following keeps
+the chat in their own list, tagged "Not in it", with unread counts and push
+notifications like any chat of their own. They can mute or pin it, and
+"Remove from my list" stops following it. Writing in it again starts
+following it again.
+
+Following is a `ChatMember` row with role `observer`. The row holds their
+read marker and mute. `memberIds` leaves observer rows out, so following
+never makes them a member: the member list, mentions, read receipts and a
+direct chat's two people stay as they were. Adding them to a group turns
+the row into a real membership.
 
 They can't Discuss a customer conversation into a chat they only oversee.
 Discuss… is for the chats you're in.

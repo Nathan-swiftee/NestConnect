@@ -78,7 +78,7 @@ export default function ChatScreen() {
   const r = room.data;
   const mentionables: Mentionable[] = useMemo(() => (people.data ?? []).map((m) => m.user), [people.data]);
   const newest = msgs.messages.at(-1);
-  useMarkChatRead(id, newest?.id, !!r?.isMember);
+  useMarkChatRead(id, newest?.id, !!r?.isMember || !!r?.watching);
 
   // Where "unread messages" goes: fixed when the chat opens.
   const [unreadAfter, setUnreadAfter] = useState<string | null | undefined>(undefined);

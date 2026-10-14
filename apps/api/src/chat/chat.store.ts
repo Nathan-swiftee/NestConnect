@@ -14,10 +14,18 @@ export interface ChatRoomRecord {
 
 export type ChatRoomFields = Pick<ChatRoomRecord, "kind" | "name" | "emoji" | "teamId" | "directKey" | "createdById">;
 
+/**
+ * A member's role in a group — or "observer": an admin or manager who wrote in
+ * a chat they aren't in. Their row carries their read marker and mute so the
+ * chat can sit in their list with unread and notifications, but it doesn't
+ * make them a member (see ChatService.memberIds).
+ */
+export type ChatRowRole = ChatMemberRole | "observer";
+
 export interface ChatMemberRecord {
   roomId: string;
   userId: string;
-  role: ChatMemberRole;
+  role: ChatRowRole;
   joinedAt: string;
   lastReadAt: string | null;
   lastDeliveredAt: string | null;
@@ -94,10 +102,6 @@ export abstract class ChatStore {
   /** Text messages in these chats whose words contain `q`, newest first. */
   abstract searchMessages(roomIds: string[], q: string, limit: number): Promise<ChatMessageRecord[]>;
 
-  /** The chats this person has written in (oversight: ones they stepped into). */
-  abstract roomsWrittenIn(userId: string): Promise<string[]>;
-  /** Everyone who has written in this chat. */
-  abstract authorsIn(roomId: string): Promise<string[]>;
   /** The cards a customer conversation has made, in any chat — not deleted, newest first. */
   abstract sharesOf(conversationId: string): Promise<ChatMessageRecord[]>;
   /** Text messages replying to any of these, oldest first. */

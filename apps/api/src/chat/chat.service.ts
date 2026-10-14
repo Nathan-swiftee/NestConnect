@@ -82,6 +82,11 @@ interface Access {
   isMember: boolean;
   /** An admin or manager reading a chat they aren't in. */
   oversight: boolean;
+  /** …who has written in it, so follows it: unread, notifications, mute (`me` is their row). */
+  watching: boolean;
+  /** The admins and managers following it — told about it alongside its members.
+   *  Filled in for one chat opened by id; lists don't need it. */
+  followerIds?: string[];
   team: Team | undefined;
   archived: boolean;
 }
@@ -159,7 +164,7 @@ export class ChatService implements OnModuleInit {
     const lasts = await this.chat.lastMessages(visible.map((a) => ({ roomId: a.room.id, from: this.visibleFrom(a) })));
     const counts = await this.chat.unreadCounts(
       userId,
-      visible.filter((a) => a.isMember).map((a) => ({ roomId: a.room.id, since: a.me?.lastReadAt ?? null, from: this.visibleFrom(a) })),
+      visible.filter(follows).map((a) => ({ roomId: a.room.id, since: a.me?.lastReadAt ?? null, from: this.visibleFrom(a) })),
     );
     // A direct chat nobody has written in yet only shows for whoever opened it.
     const shown = visible.filter((a) => a.room.kind !== "direct" || lasts.has(a.room.id) || a.room.createdById === userId);
@@ -167,7 +172,7 @@ export class ChatService implements OnModuleInit {
     const [online, seen] = await Promise.all([this.realtime.onlineAmong(others), this.chat.lastSeen(others)]);
     const quotes = await this.quotesFor([...lasts.values()], people);
 
-    if (!all) await this.markDelivered(userId, shown.filter((a) => a.isMember), lasts);
+    if (!all) await this.markDelivered(userId, shown.filter(follows), lasts);
 
     return shown
       .map((a) => this.summary(a, userId, people, lasts.get(a.room.id), counts.get(a.room.id), online, seen, quotes))
@@ -184,23 +189,25 @@ export class ChatService implements OnModuleInit {
     const teamById = new Map(teams.map((t) => [t.id, t]));
     const myTeams = new Set(members.find((m) => m.user.id === user.id)?.teamIds ?? []);
     const mine = new Map(memberships.map((m) => [m.roomId, m]));
-    // An admin or manager who has written in a chat they aren't in keeps it in
-    // their own list, marked as one they aren't in, so they can follow it up.
-    const steppedIn = !all && oversees(user) ? new Set(await this.chat.roomsWrittenIn(user.id)) : new Set<string>();
     const visible: Access[] = [];
     for (const room of await this.chat.listRooms()) {
       const team = room.teamId ? teamById.get(room.teamId) : undefined;
       const inTeam = room.kind === "team" && !!team && myTeams.has(team.id);
       // A team chat's members are its team, whatever rows of markers it holds — so
       // once the team is gone, nobody is in it (admins can still read it).
-      const isMember = room.kind === "team" ? inTeam : mine.has(room.id);
-      if (!isMember && !(all && oversees(user)) && !(steppedIn.has(room.id) && !(room.kind === "team" && !team))) continue;
+      const row = mine.get(room.id);
+      const isMember = room.kind === "team" ? inTeam : !!row && row.role !== OBSERVER;
+      // An admin or manager who has written in a chat they aren't in follows
+      // it: it stays in their own list, marked as one they aren't in.
+      const watching = !isMember && row?.role === OBSERVER && oversees(user);
+      if (!isMember && !watching && !(all && oversees(user))) continue;
       visible.push({
         room,
         memberIds: await this.memberIds(room, team),
-        me: mine.get(room.id),
+        me: row,
         isMember,
         oversight: !isMember,
+        watching,
         team,
         archived: room.kind === "team" && !team,
       });
@@ -306,7 +313,7 @@ export class ChatService implements OnModuleInit {
       conversationId: conv.id,
       shared,
     });
-    if (a.isMember) await this.chat.upsertMember(a.room.id, userId, { lastReadAt: chatClock() });
+    await this.follow(a, userId);
     const message = this.message(rec, people, new Map());
     this.emit(a, ChatServerEvent.Message, { roomId: a.room.id, message });
     this.emitReceipt(a, userId, await this.chat.getMember(a.room.id, userId));
@@ -474,9 +481,9 @@ export class ChatService implements OnModuleInit {
       mentions,
       attachments,
     });
-    // Writing in a chat is reading it. Not for someone overseeing it: a row
-    // here would make them a member of a group or direct chat.
-    if (a.isMember) await this.chat.upsertMember(roomId, userId, { lastReadAt: chatClock() });
+    // Writing in a chat is reading it — and, for an admin or manager who
+    // isn't in it, starts following it (see `follow`).
+    await this.follow(a, userId);
     const quotes = await this.quotesFor([rec], people);
     const message = { ...this.message(rec, people, quotes), clientId: input.clientId ?? null };
     this.emit(a, ChatServerEvent.Message, { roomId, message });
@@ -619,7 +626,7 @@ export class ChatService implements OnModuleInit {
   async read(userId: string, roomId: string): Promise<void> {
     const user = await this.open(userId);
     const a = await this.access(user, roomId);
-    if (!a.isMember) return;
+    if (!follows(a)) return;
     const [last] = await this.chat.listMessages(roomId, { from: this.visibleFrom(a), limit: 1 });
     if (a.me?.lastReadAt && (!last || last.createdAt <= a.me.lastReadAt)) return;
     const now = chatClock();
@@ -631,7 +638,7 @@ export class ChatService implements OnModuleInit {
   async delivered(userId: string, roomId: string): Promise<void> {
     const user = await this.open(userId);
     const a = await this.access(user, roomId);
-    if (!a.isMember) return;
+    if (!follows(a)) return;
     const [last] = await this.chat.listMessages(roomId, { from: this.visibleFrom(a), limit: 1 });
     await this.markDelivered(userId, [a], new Map(last ? [[roomId, last]] : []));
   }
@@ -639,7 +646,7 @@ export class ChatService implements OnModuleInit {
   async setPrefs(userId: string, roomId: string, input: ChatRoomPrefsInput): Promise<ChatRoomSummary> {
     const user = await this.open(userId);
     const a = await this.access(user, roomId);
-    if (!a.isMember) throw new ForbiddenException("You aren't in this chat");
+    if (!follows(a)) throw new ForbiddenException("You aren't in this chat");
     await this.chat.upsertMember(roomId, userId, {
       ...(input.muted !== undefined ? { mutedUntil: input.muted ? MUTED_FOREVER : null } : {}),
       ...(input.pinned !== undefined ? { pinnedAt: input.pinned ? new Date().toISOString() : null } : {}),
@@ -714,7 +721,7 @@ export class ChatService implements OnModuleInit {
     const a = await this.manageable(user, roomId);
     const people = await this.people();
     const fresh = [...new Set(input.userIds)].filter((id) => people.has(id) && !a.memberIds.includes(id));
-    for (const id of fresh) await this.chat.upsertMember(roomId, id, { joinedAt: chatClock() });
+    for (const id of fresh) await this.chat.upsertMember(roomId, id, { joinedAt: chatClock(), role: "member" });
     if (fresh.length) {
       await this.system(roomId, { event: "added", actorName: user.name, targetNames: fresh.map((id) => people.get(id)!.name) });
       this.realtime.emitToUsers([...a.memberIds, ...fresh], ChatServerEvent.Room, { roomId });
@@ -756,6 +763,12 @@ export class ChatService implements OnModuleInit {
   async leave(userId: string, roomId: string): Promise<void> {
     const user = await this.open(userId);
     const a = await this.access(user, roomId);
+    // Following a chat you aren't in: take it off your list, quietly.
+    if (a.watching) {
+      await this.chat.removeMember(roomId, userId);
+      this.realtime.emitToUsers([userId], ChatServerEvent.Room, { roomId, removed: true });
+      return;
+    }
     if (a.room.kind !== "group") throw new BadRequestException(a.room.kind === "team" ? "Team chats follow the team" : "A direct chat can't be left");
     if (!a.isMember) throw new NotFoundException("You aren't in this chat");
     await this.chat.removeMember(roomId, userId);
@@ -824,12 +837,15 @@ export class ChatService implements OnModuleInit {
     const isMember = memberIds.includes(user.id);
     // Somebody who can't see a chat is told it doesn't exist, not that it's private.
     if (!isMember && !oversees(user)) throw new NotFoundException("Chat not found");
+    const me = await this.chat.getMember(roomId, user.id);
     return {
       room,
       memberIds,
-      me: isMember ? await this.chat.getMember(roomId, user.id) : undefined,
+      followerIds: await this.followersOf(roomId, memberIds),
+      me: isMember || me?.role === OBSERVER ? me : undefined,
       isMember,
       oversight: !isMember,
+      watching: !isMember && me?.role === OBSERVER,
       team,
       archived: room.kind === "team" && !team,
     };
@@ -870,7 +886,8 @@ export class ChatService implements OnModuleInit {
    */
   private async memberIds(room: ChatRoomRecord, team: Team | undefined): Promise<string[]> {
     if (room.kind === "team") return team ? (await this.store.getMembers(team.id)).map((u) => u.id) : [];
-    const rows = await this.chat.listMembers(room.id);
+    // An observer row is an admin or manager following the chat, not a member.
+    const rows = (await this.chat.listMembers(room.id)).filter((r) => r.role !== OBSERVER);
     if (room.kind === "direct") {
       // Someone who has left the workspace drops out of the chat with them.
       const users = await Promise.all(rows.map((r) => this.store.getUser(r.userId)));
@@ -953,7 +970,8 @@ export class ChatService implements OnModuleInit {
     const body = a.room.kind === "direct" ? text : `${author.name}: ${text}`;
 
     const mentioned = new Set(m.mentions);
-    const others = a.memberIds.filter((id) => id !== author.id);
+    // Members, and the admins and managers following it — muted or not, below.
+    const others = audience(a).filter((id) => id !== author.id);
     const quiet = others.filter((id) => !mentioned.has(id) && (rows.get(id)?.mutedUntil ?? "") > now);
     const told = others.filter((id) => !mentioned.has(id) && !quiet.includes(id));
 
@@ -977,19 +995,33 @@ export class ChatService implements OnModuleInit {
     payload: { roomId: string; message?: ChatMessage },
   ): void {
     // Members wherever they are in the app, and an admin reading along with it
-    // open — plus any admin or manager who has written in it without joining,
-    // whose list carries it too.
-    void this.audience(a)
-      .then((ids) => this.realtime.emitToUsers(ids, event, payload as never, a.room.id))
-      .catch((err) => this.logger.warn(`Chat emit failed: ${String(err)}`));
+    // open — plus any admin or manager following it, whose list carries it too.
+    this.realtime.emitToUsers(audience(a), event, payload as never, a.room.id);
   }
 
-  /** Members, and the admins and managers who stepped into the chat. */
-  private async audience(a: Access): Promise<string[]> {
-    const outside = (await this.chat.authorsIn(a.room.id)).filter((id) => !a.memberIds.includes(id));
-    if (!outside.length) return a.memberIds;
-    const users = await Promise.all(outside.map((id) => this.store.getUser(id)));
-    return [...a.memberIds, ...users.flatMap((u) => (u && oversees(u) ? [u.id] : []))];
+  /** The admins and managers following a chat they aren't in. */
+  private async followersOf(roomId: string, memberIds: string[]): Promise<string[]> {
+    const rows = (await this.chat.listMembers(roomId)).filter((r) => r.role === OBSERVER && !memberIds.includes(r.userId));
+    if (!rows.length) return [];
+    const users = await Promise.all(rows.map((r) => this.store.getUser(r.userId)));
+    return users.flatMap((u) => (u && oversees(u) ? [u.id] : []));
+  }
+
+  /**
+   * Writing in a chat marks it read. For an admin or manager who isn't in it,
+   * the first message also starts following it: a row that holds their read
+   * marker and mute, so it sits in their list with unread and notifications
+   * like any other — without making them a member.
+   */
+  private async follow(a: Access, userId: string): Promise<void> {
+    a.me = await this.chat.upsertMember(a.room.id, userId, {
+      lastReadAt: chatClock(),
+      ...(a.isMember || a.me ? {} : { role: OBSERVER }),
+    });
+    if (!a.isMember && !a.watching) {
+      a.watching = true;
+      a.followerIds = [...(a.followerIds ?? []), userId];
+    }
   }
 
   private emitReceipt(a: Access, userId: string, me: ChatMemberRecord | undefined): void {
@@ -1050,6 +1082,7 @@ export class ChatService implements OnModuleInit {
       pinned: !!a.me?.pinnedAt,
       muted: (a.me?.mutedUntil ?? "") > now,
       isMember: a.isMember,
+      watching: a.watching,
       archived: a.archived,
     };
   }
@@ -1061,7 +1094,7 @@ export class ChatService implements OnModuleInit {
     const [last] = await this.chat.listMessages(a.room.id, { from: this.visibleFrom(a), limit: 1 });
     const lasts = new Map(last ? [[a.room.id, last]] : []);
     const quotes = await this.quotesFor(last ? [last] : [], people);
-    const count = a.isMember
+    const count = follows(a)
       ? (await this.chat.unreadCounts(user.id, [{ roomId: a.room.id, since: a.me?.lastReadAt ?? null, from: this.visibleFrom(a) }])).get(a.room.id)
       : undefined;
     const members: ChatMember[] = a.memberIds
@@ -1070,7 +1103,7 @@ export class ChatService implements OnModuleInit {
         const r = rows.get(id);
         return {
           ...person(people.get(id)!),
-          role: a.room.kind === "group" ? (r?.role ?? "member") : "member",
+          role: a.room.kind === "group" && r?.role === "admin" ? ("admin" as const) : ("member" as const),
           lastReadAt: r?.lastReadAt ?? null,
           lastDeliveredAt: r?.lastDeliveredAt ?? null,
           online: online.has(id),
@@ -1082,10 +1115,10 @@ export class ChatService implements OnModuleInit {
     return {
       ...this.summary(a, user.id, people, lasts.get(a.room.id), count, online, seen, quotes),
       members,
-      myRole: a.isMember ? (a.room.kind === "group" ? (a.me?.role ?? "member") : "member") : null,
+      myRole: a.isMember ? (a.room.kind === "group" && a.me?.role === "admin" ? "admin" : "member") : null,
       canManage,
       canPost: this.canPost(a),
-      canLeave: a.isMember && a.room.kind === "group",
+      canLeave: (a.isMember && a.room.kind === "group") || a.watching,
       oversight: a.oversight,
       createdAt: a.room.createdAt,
     };
@@ -1132,6 +1165,19 @@ export class ChatService implements OnModuleInit {
       createdAt: m.createdAt,
     };
   }
+}
+
+/** "observer": the row of an admin or manager following a chat they aren't in. */
+const OBSERVER = "observer" as const;
+
+/** Who hears about what happens in a chat: its members and its followers. */
+function audience(a: Pick<Access, "memberIds" | "followerIds">): string[] {
+  return a.followerIds?.length ? [...a.memberIds, ...a.followerIds] : a.memberIds;
+}
+
+/** In it, or following it: has a read marker, unread and a mute. */
+function follows(a: Pick<Access, "isMember" | "watching">): boolean {
+  return a.isMember || a.watching;
 }
 
 /** Admins and managers: they can open any chat (the eye) and write in it. */

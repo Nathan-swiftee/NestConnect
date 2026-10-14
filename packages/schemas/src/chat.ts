@@ -131,8 +131,12 @@ export interface ChatRoomSummary {
   mentioned: boolean;
   pinned: boolean;
   muted: boolean;
-  /** I'm in it. False only for an admin reading someone else's chat. */
+  /** I'm in it. False only for an admin or manager reading someone else's chat. */
   isMember: boolean;
+  /** Not in it, but following it: an admin or manager who has written there.
+   *  It sits in their list with unread and notifications, and can be muted
+   *  or taken off the list (leave). */
+  watching: boolean;
   /** The team behind a team chat has been deleted; it's kept, read-only. */
   archived: boolean;
 }

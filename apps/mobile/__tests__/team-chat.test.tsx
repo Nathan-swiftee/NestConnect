@@ -100,6 +100,7 @@ const room = (over: Partial<ChatRoomSummary>): ChatRoomSummary => ({
   pinned: false,
   muted: false,
   isMember: true,
+  watching: false,
   archived: false,
   ...over,
 });

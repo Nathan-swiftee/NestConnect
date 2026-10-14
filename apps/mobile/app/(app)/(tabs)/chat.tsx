@@ -121,6 +121,18 @@ export default function Chat() {
         ...(acting.unread
           ? [{ key: "read", label: "Mark as read", onPress: () => void api.readChatRoom(acting.id).then(() => rooms.refetch()) }]
           : []),
+        // A chat they follow without being in it can come off their list.
+        ...(acting.watching
+          ? [
+              {
+                key: "unfollow",
+                label: "Remove from my list",
+                detail: "It's still under All chats",
+                destructive: true,
+                onPress: () => void api.leaveChatRoom(acting.id).then(() => rooms.refetch(), (e) => toast({ text: (e as Error).message })),
+              },
+            ]
+          : []),
       ]
     : [];
 
@@ -234,7 +246,7 @@ export default function Chat() {
               onPress={() => openAt(item.roomId, item.message.id)}
             />
           ) : (
-            <Row r={item.room} meId={me?.id} people={mentionables} onPress={() => open(item.room)} onLongPress={() => item.room.isMember && setActing(item.room)} />
+            <Row r={item.room} meId={me?.id} people={mentionables} onPress={() => open(item.room)} onLongPress={() => (item.room.isMember || item.room.watching) && setActing(item.room)} />
           )
         }
         ListEmptyComponent={
