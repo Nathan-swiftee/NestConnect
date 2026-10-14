@@ -2508,6 +2508,7 @@ export class PrismaStore extends Store {
           messageType: input.messageType ?? "text",
           quotedMsgId: input.quotedMsgId ?? null,
           forwarded: input.forwarded ?? false,
+          ...(input.emailVia ? { deliveryMeta: { via: input.emailVia } } : {}),
           ...(input.attachments?.length
             ? { attachments: { create: input.attachments.map(toAttachmentCreate) } }
             : {}),

@@ -129,6 +129,11 @@ jobs:
       - name: Agents open only their own teams and channels
         run: pnpm check:channel-access
 
+      # An email with Reply-To someone else (a website form) is the Reply-To's:
+      # the contact, the thread and the reply all go to them.
+      - name: Email Reply-To decides who the customer is
+        run: pnpm check:reply-to
+
       # Registering a WhatsApp number on the Cloud API. Fails silently in the
       # worst way available: a number Meta has left at PENDING has perfectly
       # good credentials saved, so it reads as "Connected" everywhere in the app

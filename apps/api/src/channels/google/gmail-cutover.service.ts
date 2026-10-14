@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { correspondent, firstParty } from "../email/reply-to";
 import {
   EMAIL_CUTOVER_DAYS,
   type EmailCutoverJob,
@@ -232,11 +233,14 @@ export function planThread(
   const messages = mails.map((mail) => {
     const from = parseAddress(headerValue(mail, "From") ?? "");
     const ours = !!mail.labelIds?.includes("SENT") || from.email === self;
-    if (!ours && from.email) customer = from;
+    // The customer is who a reply goes to: the Reply-To when it names
+    // someone else (a website form's visitor), the sender otherwise.
+    const who = !ours && from.email ? correspondent(from, firstParty(headerValue(mail, "Reply-To")), [self]) : undefined;
+    if (who) customer = { email: who.email, name: who.name };
     return {
       mail,
       direction: ours ? ("out" as const) : ("in" as const),
-      authorName: from.name || from.email || (ours ? "Us" : "Customer"),
+      authorName: who?.name || from.name || from.email || (ours ? "Us" : "Customer"),
     };
   });
   return customer && messages.length ? { customer, messages } : null;

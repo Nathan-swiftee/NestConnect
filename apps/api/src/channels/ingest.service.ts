@@ -13,6 +13,7 @@ import { TenantContext } from "../tenancy/tenant-context";
 import { PushService } from "../push/push.service";
 import { RoutingService, type RoutingDecision } from "./routing.service";
 import { fileArrival } from "./arrival-tags";
+import { correspondent, type EmailParty } from "./email/reply-to";
 import { ConversationLog, customer, SYSTEM } from "../conversations/conversation-log";
 import { sanitizeEmailHtml } from "./email/html-sanitize";
 import { ConversationSubjectService } from "../ai/conversation-subject.service";
@@ -35,6 +36,10 @@ export interface EmailInbound {
   toAddress: string;
   from: string;
   fromName?: string;
+  /** The Reply-To header's (first) address, if the mail had one. When it names
+   *  someone else, they are the customer and the reply goes to them — see
+   *  `correspondent` in email/reply-to.ts. */
+  replyTo?: EmailParty;
   subject?: string;
   text: string;
   /** Raw HTML body, if the email had one — sanitized here before storage. */
@@ -480,14 +485,17 @@ export class IngestService {
       if (seen) return { conversationId: seen.conversationId, created: false };
     }
 
+    // The customer is whoever replies should go to: the Reply-To when it
+    // names someone else (a website form's visitor), the sender otherwise.
+    const who = correspondent({ email: input.from, name: input.fromName }, input.replyTo, [input.toAddress, inbox.handle]);
     const contact = await this.store.upsertContactByIdentity({
       orgId: inbox.orgId,
       kind: "email",
-      value: input.from.toLowerCase(),
-      displayName: input.fromName || input.from,
+      value: who.email,
+      displayName: who.name,
     });
     if (contact.blocked) {
-      this.logger.log(`Dropped inbound email from blocked contact ${input.from}`);
+      this.logger.log(`Dropped inbound email from blocked contact ${who.email}`);
       return undefined;
     }
 
@@ -522,7 +530,7 @@ export class IngestService {
         await this.logArrival(conversationId, contact.displayName, "email", decision);
         await fileArrival(this.store, inbox, contact.id, conversationId);
         this.logger.log(
-          `New email conversation ${conversationId} from ${input.from} → ` +
+          `New email conversation ${conversationId} from ${who.email}${who.via ? ` (via ${who.via})` : ""} → ` +
             `${decision.assigneeUserId ? `agent ${decision.assigneeUserId}` : `team ${decision.assignedTeamId} (queue)`}`,
         );
       }
@@ -557,6 +565,7 @@ export class IngestService {
       channel: "email",
       messageType: input.messageType,
       attachments: input.attachments,
+      ...(who.via ? { emailVia: who.via } : {}),
     });
     if (message) {
       this.realtime.emitMessageCreated(conversationId, message, inbox.orgId);

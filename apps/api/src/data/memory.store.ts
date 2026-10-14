@@ -2040,6 +2040,7 @@ export class MemoryStore extends Store {
       reactions: [],
       quotedMsgId: input.quotedMsgId,
       ...(input.forwarded ? { forwarded: true } : {}),
+      ...(input.emailVia ? { email: { via: input.emailVia } } : {}),
       createdAt: new Date().toISOString(),
     };
     rec.messages.push(message);

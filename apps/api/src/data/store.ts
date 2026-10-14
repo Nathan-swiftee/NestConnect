@@ -153,6 +153,9 @@ export interface AppendInboundInput {
   /** The customer forwarded this to us rather than writing it (WhatsApp tells us).
    *  Worth showing: it changes how an agent should read the message. */
   forwarded?: boolean;
+  /** An email sent from one address with Reply-To another (a website form):
+   *  the address it actually came from. Shown as "via …" on the message. */
+  emailVia?: string;
 }
 
 /** One email thread brought in from a mailbox (see `importEmailThread`). */

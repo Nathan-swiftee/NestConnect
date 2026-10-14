@@ -213,6 +213,36 @@ For addresses we want Nest Connect to fully own, or non-Google/MS domains:
 
 ---
 
+### Reply-To
+
+An email can ask for replies to go somewhere other than its sender, using a
+`Reply-To` header. A website form does this all the time: it sends From
+`noreply@site` with Reply-To set to the visitor who filled the form in.
+NestConnect treats the Reply-To address as the customer:
+
+- **The contact** is the Reply-To address. It takes the Reply-To's display
+  name. Failing that it takes the sender's name, unless the sender is an
+  automated mailbox (`noreply@`, `forms@`, `wordpress@`, …), in which case
+  it uses the address itself.
+- **The thread** is that customer's. Each form visitor gets their own
+  conversation instead of everyone landing on one "noreply" thread. When the
+  visitor later writes from their own address, it joins the same thread.
+- **The reply** goes to the Reply-To address, because it is the
+  conversation's address.
+- **The message** shows **Via** the address it actually came from, on web
+  and in the app.
+
+The header is ignored when:
+- it is the sender's own address;
+- it points back at our own inbox (a relay misconfiguration);
+- it isn't an address at all.
+
+When it lists several addresses, the first is the customer.
+
+Postmark (its `ReplyTo` field, or the raw header), Gmail sync and the Gmail
+import all read it (`apps/api/src/channels/email/reply-to.ts`; check:
+`pnpm check:reply-to`).
+
 ## The channel abstraction (why the core stays clean)
 
 Every channel implements the same two interfaces, so the domain core never special-cases a provider:
