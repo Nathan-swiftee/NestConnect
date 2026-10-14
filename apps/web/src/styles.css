@@ -584,6 +584,26 @@ input,textarea{font:inherit}
   background:color-mix(in srgb,var(--text) 18%,transparent)}
 .voice__fill{position:absolute;left:0;top:0;bottom:0;background:var(--wa);border-radius:var(--r-full)}
 .voice__time{font-size:var(--fs-2xs);line-height:1;color:var(--text-muted)}
+/* The speed pill: in once the note has started, like WhatsApp's. */
+.voice__rate{flex:0 0 auto;min-width:40px;height:24px;padding:0 8px;border-radius:var(--r-full);
+  font-size:var(--fs-xs);font-weight:700;color:#fff;background:color-mix(in srgb,var(--text) 45%,transparent);
+  transition:background var(--t-base),transform var(--t-fast) var(--ease)}
+.voice__rate:hover{background:color-mix(in srgb,var(--text) 58%,transparent)}
+.voice__rate:active{transform:scale(.92)}
+.voice__rate:focus-visible{outline:2px solid var(--brand-ring);outline-offset:2px}
+/* Transcribe, under the player. */
+.voice-wrap{display:flex;flex-direction:column;min-width:0;max-width:100%}
+.voice-ts__row{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:0 6px 2px 46px}
+.voice-ts__go{font-size:var(--fs-xs);font-weight:600;color:var(--brand-strong);padding:2px 0;background:none}
+.voice-ts__go:hover{text-decoration:underline;text-underline-offset:2px}
+.voice-ts__err{font-size:var(--fs-xs);color:var(--danger)}
+.voice-ts{margin:2px 0 2px;padding:6px 8px;border-radius:var(--r-8);font-size:var(--fs-sm);line-height:1.4;
+  white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text);background:color-mix(in srgb,var(--text) 6%,transparent);max-width:320px}
+.voice-ts--none,.voice-ts--busy{color:var(--text-muted);font-style:italic}
+.voice-ts--busy{display:flex;align-items:center;gap:6px;background:none;padding:2px 6px 2px 46px}
+.voice-ts__dots{width:12px;height:12px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:voice-spin .8s linear infinite}
+@keyframes voice-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.voice-ts__dots{animation:none}}
 
 /* timestamp: floating chip over a lone photo/video … */
 .msg .bubble .stamp.stamp--over{right:9px;bottom:9px;padding:2px var(--sp-2);border-radius:var(--r-full);pointer-events:none;

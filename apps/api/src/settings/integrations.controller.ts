@@ -61,6 +61,7 @@ import {
   ANTHROPIC_SUBJECTS_KEY,
   ANTHROPIC_SUBJECT_PROMPT_KEY,
 } from "../ai/anthropic-config";
+import { OPENAI_API_KEY_KEY, OPENAI_TRANSCRIBE_MODEL_KEY, transcribePublicSettings } from "../ai/openai-config";
 import {
   pushPublicSettings,
   EXPO_ACCESS_TOKEN_KEY,
@@ -166,6 +167,12 @@ export class IntegrationsController {
     }
     const anthropicApiKey = body.anthropicApiKey?.trim();
     if (anthropicApiKey) await this.store.setPlatformSetting(ANTHROPIC_API_KEY_KEY, anthropicApiKey);
+    // Speech to text (Transcribe). Same rule: the key only when supplied.
+    if (body.transcribeModel !== undefined) {
+      await this.store.setPlatformSetting(OPENAI_TRANSCRIBE_MODEL_KEY, body.transcribeModel.trim());
+    }
+    const openaiApiKey = body.openaiApiKey?.trim();
+    if (openaiApiKey) await this.store.setPlatformSetting(OPENAI_API_KEY_KEY, openaiApiKey);
     // Push. The Firebase values are the project's public identifiers, so they
     // write on any change (empty clears, dropping back to the environment); the
     // Expo access token is the only secret here and writes only when supplied.
@@ -205,6 +212,7 @@ export class IntegrationsController {
       resend,
       anthropic,
       push,
+      transcription,
     ] = await Promise.all([
         this.google.clientId(orgId),
         this.google.configured(orgId),
@@ -217,6 +225,7 @@ export class IntegrationsController {
         resendPublicSettings(this.store),
         anthropicPublicSettings(this.store),
         pushPublicSettings(this.store),
+        transcribePublicSettings(this.store),
       ]);
     return {
       google: {
@@ -237,6 +246,7 @@ export class IntegrationsController {
       resend,
       anthropic,
       push,
+      transcription,
     };
   }
 

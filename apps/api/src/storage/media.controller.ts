@@ -15,7 +15,7 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import type { Request, Response } from "express";
-import type { Attachment, AttachmentKind } from "@ding/schemas";
+import type { Attachment, AttachmentKind, MediaTranscript } from "@ding/schemas";
 import { attachmentKindSchema } from "@ding/schemas";
 import { env } from "../config/env";
 import { currentOrgId } from "../tenancy/tenant-scope";
@@ -24,6 +24,7 @@ import { CurrentUserId } from "../auth/current-user.decorator";
 import { MediaService } from "./media.service";
 import { StorageService } from "./storage.service";
 import { needsPhoneAudio } from "./audio-convert";
+import { TranscriptionService } from "./transcription.service";
 
 /** The subset of a multer file we rely on (avoids an Express.Multer.File dep). */
 interface UploadedFileLike {
@@ -43,6 +44,9 @@ interface UploadedFileLike {
  * for the iPhone app, whose player can't open either; anything else is served
  * as it is.
  *
+ * `POST /media/:id/transcript` is Transcribe: the voice note in words, made on
+ * the first ask and kept (see TranscriptionService).
+ *
  * `POST /media` stages an uploaded file (multipart) as an attachment not yet
  * tied to a message; the returned id is referenced on send.
  */
@@ -52,6 +56,7 @@ export class MediaController {
     private readonly store: Store,
     private readonly storage: StorageService,
     private readonly media: MediaService,
+    private readonly transcription: TranscriptionService,
   ) {}
 
   @Post()
@@ -85,6 +90,12 @@ export class MediaController {
     return this.store.createUploadAttachment(currentOrgId(), input);
   }
 
+  @Post(":id/transcript")
+  async transcript(@CurrentUserId() userId: string, @Param("id") id: string): Promise<MediaTranscript> {
+    const access = await this.readable(userId, id);
+    return { transcript: await this.transcription.transcribe(id, access) };
+  }
+
   @Get(":id")
   async serve(
     @CurrentUserId() userId: string,
@@ -94,19 +105,7 @@ export class MediaController {
     @Query("dl") dl?: string,
     @Query("as") as?: string,
   ): Promise<void> {
-    const access = await this.store.getAttachmentAccess(id);
-    if (!access) throw new NotFoundException("Attachment not found");
-
-    // IDOR guard: media attached to a conversation is only readable within its
-    // owning org. (Staged uploads have no conversation yet — any authenticated
-    // user may fetch their own upload for the composer preview.)
-    if (access.orgId) {
-      const me = await this.store.getUser(userId);
-      if (!me || me.orgId !== access.orgId) {
-        throw new ForbiddenException("Not authorized for this media");
-      }
-    }
-
+    const access = await this.readable(userId, id);
     const downloadName = dl ? access.filename : undefined;
 
     // The phone-playable copy, when one was asked for and is needed.
@@ -161,6 +160,23 @@ export class MediaController {
       res.set("Content-Length", String(stat.size));
       this.storage.diskReadStream(key).pipe(res);
     }
+  }
+
+  /** The attachment, if this person may have it. */
+  private async readable(userId: string, id: string) {
+    const access = await this.store.getAttachmentAccess(id);
+    if (!access) throw new NotFoundException("Attachment not found");
+
+    // IDOR guard: media attached to a conversation is only readable within its
+    // owning org. (Staged uploads have no conversation yet — any authenticated
+    // user may fetch their own upload for the composer preview.)
+    if (access.orgId) {
+      const me = await this.store.getUser(userId);
+      if (!me || me.orgId !== access.orgId) {
+        throw new ForbiddenException("Not authorized for this media");
+      }
+    }
+    return access;
   }
 }
 

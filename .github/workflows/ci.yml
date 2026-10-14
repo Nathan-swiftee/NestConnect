@@ -249,6 +249,11 @@ jobs:
           sudo apt-get install -y -qq --no-install-recommends ffmpeg > /dev/null
           pnpm check:phone-audio
 
+      # Voice notes like WhatsApp's: the speed pill's steps, and Transcribe —
+      # made once on the first ask and kept, never from the sender's say-so.
+      - name: Voice note speed and Transcribe
+        run: pnpm check:transcribe
+
       # Email signatures: each email channel's design, filled in per sender —
       # a missing position drops its line, and an email signs as the mailbox it
       # really leaves from.

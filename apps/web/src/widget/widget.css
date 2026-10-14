@@ -1923,6 +1923,28 @@ body {
   flex: 0 0 auto;
 }
 
+/* The speed pill, once the note has started — WhatsApp's. */
+.nc__voice-rate {
+  flex: 0 0 auto;
+  min-width: 36px;
+  height: 22px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  color: inherit;
+  transition: transform 0.18s var(--nc-spring);
+}
+
+.nc__voice-rate:active {
+  transform: scale(0.9);
+}
+
 /* --- recording --- */
 
 .nc__mic {

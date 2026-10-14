@@ -1738,3 +1738,32 @@ export function useTypingSignal(
 
   return { signal, stop };
 }
+
+/**
+ * Transcribe, for one voice note. `saved` is the transcript the message came
+ * with, if someone already asked; otherwise nothing is fetched until `run()`.
+ * Kept per attachment, so the same note in the inbox and in a chat it was
+ * shared to shows the same words, and a re-render doesn't lose them.
+ */
+export function useTranscript(id: string | undefined, saved?: string) {
+  const q = useQuery({
+    queryKey: ["transcript", id],
+    queryFn: () => api.transcribeMedia(id as string).then((r) => r.transcript),
+    enabled: false,
+    initialData: saved,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    retry: false,
+  });
+  const { refetch } = q;
+  const run = useCallback(() => {
+    if (id) void refetch();
+  }, [id, refetch]);
+  return {
+    /** The words; "" when there were none to hear. Undefined until asked. */
+    text: q.data,
+    loading: q.isFetching,
+    error: q.isError ? (q.error instanceof Error ? q.error.message : "Couldn't transcribe this one") : null,
+    run,
+  };
+}

@@ -123,6 +123,7 @@ import {
   SearchIcon,
   SnoozeIcon,
   SparkleIcon,
+  MicIcon,
   StarIcon,
   StorageIcon,
   TeamGlyph,
@@ -155,7 +156,7 @@ type Leaf =
   | "push";
 type SetupSub = "connections" | "storage" | "email" | "ai" | "push";
 /** The integrations that open a credential sheet from their card. */
-type SetupKey = "google" | "meta" | "storage" | "resend" | "smtp" | "anthropic" | "push";
+type SetupKey = "google" | "meta" | "storage" | "resend" | "smtp" | "anthropic" | "transcription" | "push";
 
 interface Props {
   onClose: () => void;
@@ -5163,6 +5164,8 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const resendConfigured = Boolean(resend?.configured);
   const anthropic = integrations.data?.anthropic;
   const anthropicConfigured = Boolean(anthropic?.configured);
+  const transcription = integrations.data?.transcription;
+  const transcriptionConfigured = Boolean(transcription?.configured);
   const push = integrations.data?.push;
   const pushConfigured = Boolean(push?.configured);
   // A test send goes via whichever transport is configured (Mailer tries Resend
@@ -5188,6 +5191,8 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
   const [resendFrom, setResendFrom] = useState("");
   const [anthropicApiKey, setAnthropicApiKey] = useState("");
   const [anthropicModel, setAnthropicModel] = useState("");
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [transcribeModel, setTranscribeModel] = useState("");
   const [expoAccessToken, setExpoAccessToken] = useState("");
   const [firebaseProjectId, setFirebaseProjectId] = useState("");
   const [firebaseProjectNumber, setFirebaseProjectNumber] = useState("");
@@ -5484,6 +5489,29 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
     });
   };
 
+  useEffect(() => {
+    if (transcription?.model !== undefined) setTranscribeModel(transcription.model);
+  }, [transcription?.model]);
+
+  const saveTranscription = () => {
+    const input: { openaiApiKey?: string; transcribeModel?: string } = {};
+    if (transcribeModel.trim() !== (transcription?.model ?? "")) input.transcribeModel = transcribeModel.trim();
+    const key = openaiApiKey.trim();
+    if (key) input.openaiApiKey = key;
+    if (Object.keys(input).length === 0) {
+      onToast("Enter your OpenAI API key to save");
+      return;
+    }
+    update.mutate(input, {
+      onSuccess: () => {
+        setOpenaiApiKey("");
+        onToast("Transcription settings saved");
+        setEditing(null);
+      },
+      onError: () => onToast("Only admins & managers can change setup"),
+    });
+  };
+
   const testAi = async () => {
     setAiTesting(true);
     try {
@@ -5587,6 +5615,19 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
             on={anthropicConfigured}
             label={anthropicConfigured ? "Connected" : "Not connected"}
             onClick={() => setEditing("anthropic")}
+          />
+        )}
+
+        {sub === "ai" && (
+          <IntegrationCard
+            color="#10A37F"
+            glyph={<MicIcon />}
+            name="Transcription"
+            blurb="Turns voice notes into words when someone taps Transcribe"
+            summary={transcriptionConfigured ? (transcription?.model ?? "") : "No OpenAI key yet"}
+            on={transcriptionConfigured}
+            label={transcriptionConfigured ? "Connected" : "Not connected"}
+            onClick={() => setEditing("transcription")}
           />
         )}
 
@@ -5982,6 +6023,51 @@ function SetupPane({ sub, onToast }: { sub: SetupSub; onToast: (msg: string) => 
                 onChange={(e) => setResendFrom(e.target.value)}
                 placeholder="Nest Connect <noreply@yourdomain.com>"
               />
+            </label>
+          </div>
+        </SetupModal>
+      )}
+
+      {editing === "transcription" && (
+        <SetupModal
+          title="Transcription (OpenAI)"
+          onClose={close}
+          foot={
+            <button className="btn-primary" type="button" onClick={saveTranscription} disabled={update.isPending || integrations.isLoading}>
+              Save
+            </button>
+          }
+        >
+          <p className="fieldhint">
+            Every voice note — WhatsApp, website chat and Team Chat, on the web and in the app — has a{" "}
+            <b>Transcribe</b> button under it. The first tap sends that one recording to OpenAI and keeps the words on
+            the note, so everyone sees them from then on and it's only paid for once. Nothing is transcribed unless
+            someone asks.
+          </p>
+          <p className="fieldhint">
+            Create a key at <b>platform.openai.com</b> → API keys. Claude can't listen to audio, which is why this one
+            is separate.
+          </p>
+          <div className="setform__grid two">
+            <label className="field">
+              <span>API key</span>
+              <input
+                type="password"
+                autoComplete="off"
+                value={openaiApiKey}
+                onChange={(e) => setOpenaiApiKey(e.target.value)}
+                placeholder={transcriptionConfigured ? "••••• (hidden)" : "sk-…"}
+              />
+            </label>
+            <label className="field">
+              <span>Model</span>
+              <input
+                value={transcribeModel}
+                autoComplete="off"
+                onChange={(e) => setTranscribeModel(e.target.value)}
+                placeholder="gpt-4o-mini-transcribe"
+              />
+              <em>Clear it and save to go back to the default.</em>
             </label>
           </div>
         </SetupModal>

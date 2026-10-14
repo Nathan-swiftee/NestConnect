@@ -792,8 +792,30 @@ export const attachmentSchema = z.object({
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   waveform: z.array(z.number()).optional(),
+  /** Voice and audio: what was said, once someone asked (Transcribe). */
+  transcript: z.string().optional(),
 });
 export type Attachment = z.infer<typeof attachmentSchema>;
+
+/** What `POST /media/:id/transcript` answers: the words, made or remembered. */
+export const mediaTranscriptSchema = z.object({ transcript: z.string() });
+export type MediaTranscript = z.infer<typeof mediaTranscriptSchema>;
+
+/** The speeds a voice note plays at, in the order the pill steps through them
+ *  — WhatsApp's, with 1.25× between. */
+export const VOICE_RATES = [1, 1.25, 1.5, 2] as const;
+export type VoiceRate = (typeof VOICE_RATES)[number];
+
+/** The next speed after this one, back to 1× after the last. */
+export function nextVoiceRate(rate: number): VoiceRate {
+  const i = VOICE_RATES.findIndex((r) => r === rate);
+  return VOICE_RATES[(i + 1) % VOICE_RATES.length] ?? 1;
+}
+
+/** "1×", "1.25×", "1.5×", "2×". */
+export function voiceRateLabel(rate: number): string {
+  return `${rate}×`;
+}
 
 /** An emoji reaction on a message, by the customer ("contact") or an agent ("user"). */
 export const reactionSchema = z.object({
@@ -3362,6 +3384,13 @@ export const integrationSettingsSchema = z.object({
      *  not by the prompt, so they can't be lost by an edit to it. */
     subjectPrompt: z.string(),
   }),
+  /** Speech to text (OpenAI) — Transcribe on voice notes. */
+  transcription: z.object({
+    /** True when an OpenAI API key is set. */
+    configured: z.boolean(),
+    /** The transcription model id. */
+    model: z.string(),
+  }),
 });
 export type IntegrationSettings = z.infer<typeof integrationSettingsSchema>;
 
@@ -3461,6 +3490,10 @@ export const updateIntegrationSettingsInputSchema = z.object({
    *  and the prompt (empty resets it to the default). */
   anthropicSubjects: z.boolean().optional(),
   anthropicSubjectPrompt: z.string().optional(),
+  /** Speech to text for Transcribe. The key is written only when non-empty;
+   *  the model on any change (empty resets it to the default). */
+  openaiApiKey: z.string().optional(),
+  transcribeModel: z.string().optional(),
 });
 export type UpdateIntegrationSettingsInput = z.infer<typeof updateIntegrationSettingsInputSchema>;
 

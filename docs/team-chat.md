@@ -108,7 +108,8 @@ chats."
   it hands-free. The same recorder and pickers as the inbox, so nothing new
   had to be installed (the app updates over the air).
 - Photos open full screen; a photo on its own fills its bubble with the time
-  over it. Voice notes play in the bubble with their waveform. The chat list
+  over it. Voice notes play in the bubble with their waveform, with WhatsApp's
+  speed pill and **Transcribe** (see [voice-notes.md](voice-notes.md)). The chat list
   and pushes say "📷 Photo", "🎤 Voice message (0:12)", "📄 rota.pdf".
 - Files are the same uploads the inbox uses (`Attachment`, kept in the
   workspace's storage). The server takes what a file is — its type, name and
@@ -202,8 +203,9 @@ keep the two tied together.
   the phone.
 - An **@mention** always gets through, muted or not, and also lands in the bell
   (opening the chat). Quiet hours don't hold back a mention.
-- No push for the chat you have open; desktop plays a sound unless you're
-  looking at that chat.
+- No push for the chat you have open. Sounds are the inbox's WhatsApp ones:
+  the received sound for a new message (the open chat included), and the
+  WhatsApp "sent" tick once the server has yours.
 - Personal settings › Notifications › **Team Chat messages** turns the
   everyday pushes off (mentions follow **Mentions**).
 - **Mute** and **Pin** are per person, in the chat's info panel. A muted chat's

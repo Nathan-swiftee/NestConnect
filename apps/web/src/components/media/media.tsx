@@ -1,5 +1,7 @@
-import { useRef, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import type { Attachment } from "@ding/schemas";
+import { nextVoiceRate, voiceRateLabel } from "@ding/schemas";
+import { useTranscript } from "@ding/client";
 import { formatBytes, formatDuration } from "../../lib/format";
 import { DocIcon, DownloadIcon, MicIcon, PauseIcon, PlayIcon, RefreshIcon, XIcon } from "../../lib/icons";
 
@@ -13,9 +15,37 @@ import { DocIcon, DownloadIcon, MicIcon, PauseIcon, PlayIcon, RefreshIcon, XIcon
 /** The bars for a voice note that came without its own: a gentle, even ripple. */
 const FLAT_WAVE = Array.from({ length: 32 }, (_, i) => 0.3 + 0.12 * Math.sin(i * 1.7) + 0.08 * Math.sin(i * 0.6));
 
+/*
+ * The speed you last picked, for every voice note after it — as WhatsApp
+ * remembers it. Kept in this browser; a private window just starts at 1×.
+ */
+const RATE_KEY = "nc.voiceRate";
+let lastRate = (() => {
+  try {
+    const n = Number(localStorage.getItem(RATE_KEY));
+    return n > 0 ? n : 1;
+  } catch {
+    return 1;
+  }
+})();
+function rememberRate(rate: number): void {
+  lastRate = rate;
+  try {
+    localStorage.setItem(RATE_KEY, String(rate));
+  } catch {
+    /* the speed just isn't remembered */
+  }
+}
+
 export function AudioPlayer({ att }: { att: Attachment }) {
   const ref = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
+  const [rate, setRate] = useState(lastRate);
+  // Set on the element, and again whenever it loads a source (which resets it).
+  useEffect(() => {
+    if (ref.current) ref.current.playbackRate = rate;
+  }, [rate]);
+  const transcript = useTranscript(att.id.startsWith("local") ? undefined : att.id, att.transcript);
   const [cur, setCur] = useState(0);
   const fallback = (att.durationMs ?? 0) / 1000;
   const [dur, setDur] = useState(fallback);
@@ -38,8 +68,17 @@ export function AudioPlayer({ att }: { att: Attachment }) {
   };
   // elapsed once engaged; total duration while idle at the start
   const shown = playing || cur > 0 ? cur : total;
+  // WhatsApp's pill: there once the note has started, and each press steps
+  // 1× → 1.25× → 1.5× → 2× → 1×.
+  const engaged = playing || cur > 0;
+  const stepRate = () => {
+    const next = nextVoiceRate(rate);
+    rememberRate(next);
+    setRate(next);
+  };
 
   return (
+    <div className="voice-wrap">
     <div className={"att voice" + (att.kind === "voice" ? " voice--note" : "")}>
       <button type="button" className="voice__btn" onClick={toggle} aria-label={playing ? "Pause" : "Play"}>
         {playing ? <PauseIcon /> : <PlayIcon />}
@@ -86,11 +125,23 @@ export function AudioPlayer({ att }: { att: Attachment }) {
         </div>
         <div className="voice__time tnum">{formatDuration(shown * 1000)}</div>
       </div>
+      {engaged && (
+        <button
+          type="button"
+          className="voice__rate tnum"
+          onClick={stepRate}
+          aria-label={`Playback speed ${voiceRateLabel(rate)}`}
+          title="Playback speed"
+        >
+          {voiceRateLabel(rate)}
+        </button>
+      )}
       <audio
         ref={ref}
         src={att.url}
         preload="metadata"
-        onPlay={() => setPlaying(true)}
+        onLoadStart={(e) => { e.currentTarget.playbackRate = rate; }}
+        onPlay={(e) => { e.currentTarget.playbackRate = rate; setPlaying(true); }}
         onPause={() => setPlaying(false)}
         onEnded={() => { setPlaying(false); setCur(0); }}
         onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
@@ -99,6 +150,48 @@ export function AudioPlayer({ att }: { att: Attachment }) {
           if (Number.isFinite(d) && d > 0) setDur(d);
         }}
       />
+    </div>
+      <Transcript {...transcript} />
+    </div>
+  );
+}
+
+/**
+ * Under a voice note: "Transcribe", then the words — as WhatsApp does it.
+ * Once anyone has asked, the note carries them and they show for everyone.
+ */
+function Transcript({
+  text,
+  loading,
+  error,
+  run,
+}: {
+  text: string | undefined;
+  loading: boolean;
+  error: string | null;
+  run: () => void;
+}) {
+  if (text !== undefined && !loading) {
+    return text ? (
+      <p className="voice-ts">{text}</p>
+    ) : (
+      <p className="voice-ts voice-ts--none">No speech heard in this one</p>
+    );
+  }
+  if (loading) {
+    return (
+      <p className="voice-ts voice-ts--busy" aria-live="polite">
+        <span className="voice-ts__dots" aria-hidden="true" />
+        Transcribing…
+      </p>
+    );
+  }
+  return (
+    <div className="voice-ts__row">
+      {error && <span className="voice-ts__err">{error}</span>}
+      <button type="button" className="voice-ts__go" onClick={run}>
+        {error ? "Try again" : "Transcribe"}
+      </button>
     </div>
   );
 }

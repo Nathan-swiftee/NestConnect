@@ -1161,6 +1161,15 @@ export abstract class Store {
   /** Backend-only: the storage key + mime of an attachment, for serving media. */
   abstract getAttachment(id: string): Promise<StoredAttachmentRef | undefined>;
 
+  /** A voice note's words, if anyone has asked for them yet. */
+  abstract getAttachmentTranscript(id: string): Promise<string | undefined>;
+
+  /** The words for whichever of these have been transcribed. */
+  abstract getAttachmentTranscripts(ids: string[]): Promise<Map<string, string>>;
+
+  /** Keep a voice note's words, so they're only ever made once. */
+  abstract setAttachmentTranscript(id: string, transcript: string): Promise<void>;
+
   /** Media access info for the serving endpoint: the storage ref plus the org
    *  that owns it (via its message's conversation), for the authorization check.
    *  `orgId` is undefined for a staged upload not yet attached to a conversation. */
