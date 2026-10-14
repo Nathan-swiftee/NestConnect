@@ -17,6 +17,23 @@ interface PushData {
   chatRoomId?: string;
 }
 
+/**
+ * One tap, told apart from every other.
+ *
+ * Not the request identifier alone. Our pushes carry a collapse id (one per
+ * conversation, one per chat) so that five messages are one banner, and iOS
+ * uses the collapse id *as* the request identifier. Every push about the same
+ * chat therefore has the same identifier, and keying on it meant the first tap
+ * opened the chat and every later one, for as long as the app stayed alive, was
+ * taken for a duplicate and dropped: the app came to the front wherever it was.
+ * The delivery time differs per push, and is the same for the two copies of
+ * one tap that a cold start can produce, which is the duplicate this is for.
+ */
+export function tapKey(response: Notifications.NotificationResponse): string {
+  const n = response.notification;
+  return `${n.request.identifier}:${n.date}:${response.actionIdentifier}`;
+}
+
 function conversationIdOf(response: Notifications.NotificationResponse): string | null {
   const data = response.notification.request.content.data as PushData | undefined;
   const id = data?.conversationId;
@@ -38,8 +55,9 @@ function conversationIdOf(response: Notifications.NotificationResponse): string 
  *    listener fires.
  *
  * The cold-start response is also delivered to the listener on some platforms,
- * so responses are de-duplicated by identifier — otherwise a cold start pushes
- * the thread twice and the back button lands on the same screen again.
+ * so responses are de-duplicated — otherwise a cold start pushes the thread
+ * twice and the back button lands on the same screen again. See `tapKey` for
+ * why the identifier alone is not enough to tell two taps apart.
  *
  * The three actions are mutually exclusive, which matters more than it looks:
  * only the *default* action (an actual tap on the banner) navigates. Replying
@@ -94,7 +112,7 @@ export function useNotificationRouting(enabled: boolean) {
     };
 
     const handle = (response: Notifications.NotificationResponse) => {
-      const key = response.notification.request.identifier + ":" + response.actionIdentifier;
+      const key = tapKey(response);
       if (handled.current.has(key)) return;
       handled.current.add(key);
 
