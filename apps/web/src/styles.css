@@ -4111,6 +4111,8 @@ button.tpl-row:active{transform:scale(.97)}
   background-color:var(--surface-2);
   background-image:radial-gradient(color-mix(in srgb,var(--text) 6%,transparent) 1px,transparent 1.2px);background-size:22px 22px}
 .tc-loading-older,.tc-start{align-self:center;margin:4px 0 12px;padding:6px 12px;border-radius:var(--r-8);background:color-mix(in srgb,var(--amber-tint) 80%,var(--surface));color:var(--text-muted);font-size:var(--fs-2xs);text-align:center;max-width:440px;line-height:1.45}
+/* A day: its date sticks while you read it, and the next day's pushes it off. */
+.tc-dayg{display:flex;flex-direction:column}
 .tc-day{align-self:center;position:sticky;top:4px;z-index:3;margin:10px 0 8px}
 .tc-day span{display:inline-block;padding:5px 12px;border-radius:var(--r-8);background:var(--surface);color:var(--text-muted);font-size:var(--fs-2xs);font-weight:600;box-shadow:0 1px 1.5px rgba(13,21,18,.09)}
 .tc-unreadline{align-self:stretch;margin:10px -7%;padding:5px 0;text-align:center;background:color-mix(in srgb,var(--surface) 70%,transparent)}
