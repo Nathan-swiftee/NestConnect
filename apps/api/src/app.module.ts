@@ -68,7 +68,8 @@ const imports: ModuleMetadata["imports"] = [
 if (env.serveWeb) {
   imports.push(
     // Options live in web-static.ts (checked by tools/check-privacy-route.ts):
-    // same exclusions as before, plus `/privacy` → privacy.html.
+    // same exclusions as before, plus `/privacy` → privacy.html (and /terms,
+    // /data-deletion likewise).
     ServeStaticModule.forRoot(webStaticOptions(join(__dirname, "..", "..", "web", "dist"))),
   );
 }

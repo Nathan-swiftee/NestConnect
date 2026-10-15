@@ -1,5 +1,6 @@
 /**
- * The public privacy policy is reachable at /privacy, signed in or not.
+ * The public privacy policy is reachable at /privacy, signed in or not — and
+ * so are the terms of service (/terms) and data deletion page (/data-deletion).
  *
  * In production the API serves the built web app, and every path it doesn't
  * know falls back to index.html — the inbox, whose first move is a session
@@ -22,6 +23,7 @@ import { join, resolve } from "node:path";
 import { ExpressLoader } from "@nestjs/serve-static/dist/loaders/express.loader";
 import { webStaticOptions } from "../apps/api/src/web-static";
 import { isPrivacyPath } from "../apps/web/src/privacy/route";
+import { isDataDeletionPath, isTermsPath } from "../apps/web/src/legal/route";
 
 let failed = 0;
 function ok(label: string, cond: boolean, detail = ""): void {
@@ -34,6 +36,8 @@ async function main(): Promise<void> {
   writeFileSync(join(dist, "index.html"), "<!doctype html><title>inbox</title>INBOX-DOCUMENT");
   writeFileSync(join(dist, "privacy.html"), "<!doctype html><title>privacy</title>PRIVACY-DOCUMENT");
   writeFileSync(join(dist, "widget.html"), "<!doctype html><title>chat</title>WIDGET-DOCUMENT");
+  writeFileSync(join(dist, "terms.html"), "<!doctype html><title>terms</title>TERMS-DOCUMENT");
+  writeFileSync(join(dist, "data-deletion.html"), "<!doctype html><title>data deletion</title>DATA-DELETION-DOCUMENT");
 
   const app = express();
   new ExpressLoader().register({ getInstance: () => app } as never, [webStaticOptions(dist)]);
@@ -60,6 +64,21 @@ async function main(): Promise<void> {
     const direct = await get("/privacy.html");
     ok("GET /privacy.html serves the same document", direct.body.includes("PRIVACY-DOCUMENT"));
 
+    for (const [path, marker, isPath] of [
+      ["/terms", "TERMS-DOCUMENT", isTermsPath],
+      ["/data-deletion", "DATA-DELETION-DOCUMENT", isDataDeletionPath],
+    ] as const) {
+      const page = await get(path);
+      ok(`GET ${path} → 200`, page.status === 200, String(page.status));
+      ok(`GET ${path} serves its own document, not the inbox`, page.body.includes(marker));
+      ok(`GET ${path} is HTML`, page.type.startsWith("text/html"), page.type);
+      const slashed = await get(`${path}/`);
+      ok(
+        `GET ${path}/ reaches a document the inbox entry routes to the page`,
+        slashed.status === 200 && (slashed.body.includes(marker) || isPath(`${path}/`)),
+      );
+    }
+
     const deep = await get("/inbox/some/conversation");
     ok("an unknown SPA path still falls back to the inbox", deep.body.includes("INBOX-DOCUMENT"));
 
@@ -82,12 +101,15 @@ async function main(): Promise<void> {
     );
 
     // If a real build is present, make sure it actually has the entry.
-    const built = resolve(__dirname, "..", "apps", "web", "dist", "privacy.html");
-    if (existsSync(built)) {
-      const html = readFileSync(built, "utf8");
-      ok("apps/web/dist/privacy.html exists and loads its own script", /<script[^>]+src="\/assets\/privacy-[^"]+\.js"/.test(html));
-    } else {
-      console.log("  skip  apps/web/dist/privacy.html (no web build present)");
+    for (const entry of ["privacy", "terms", "data-deletion"]) {
+      const built = resolve(__dirname, "..", "apps", "web", "dist", `${entry}.html`);
+      if (existsSync(built)) {
+        const html = readFileSync(built, "utf8");
+        const script = new RegExp(`<script[^>]+src="/assets/${entry}-[^"]+\\.js"`);
+        ok(`apps/web/dist/${entry}.html exists and loads its own script`, script.test(html));
+      } else {
+        console.log(`  skip  apps/web/dist/${entry}.html (no web build present)`);
+      }
     }
   } finally {
     server.close();
@@ -98,7 +120,7 @@ async function main(): Promise<void> {
     console.log(`\n${failed} check(s) failed`);
     process.exit(1);
   }
-  console.log("\nAll privacy route checks passed");
+  console.log("\nAll public page route checks passed");
 }
 
 void main();
