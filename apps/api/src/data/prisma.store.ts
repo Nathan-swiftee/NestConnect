@@ -2138,7 +2138,18 @@ export class PrismaStore extends Store {
     const byConfig = rows.filter(
       (i) => (i.channelConfig as { phoneNumberId?: string } | null)?.phoneNumberId === phoneNumberId,
     );
-    if (byConfig.length) return unambiguous(byConfig);
+    if (byConfig.length === 1) return mapInbox(byConfig[0]);
+    if (byConfig.length > 1) {
+      // Two workspaces holding one number is refused at connect time, and stays
+      // a non-match here: a customer's message must not reach the wrong business.
+      if (new Set(byConfig.map((i) => i.orgId)).size > 1) return undefined;
+      // Two channels in the *same* workspace on one number (connected twice) is
+      // still that workspace's message. Dropping it, as this once did, lost every
+      // inbound message to the number without a trace in the inbox. The first
+      // channel connected keeps receiving; adding a duplicate is now refused.
+      const first = [...byConfig].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0]!;
+      return mapInbox(first);
+    }
     // Single-number env fallback: the deployment-wide number maps to the one
     // WhatsApp inbox that has no per-inbox number of its own — and only in the
     // platform's own workspace, whose number the environment describes. Another

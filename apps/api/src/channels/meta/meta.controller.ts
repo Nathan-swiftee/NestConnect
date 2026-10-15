@@ -112,9 +112,7 @@ export class MetaController {
       };
 
       // Reconnecting the same number refreshes its token instead of duplicating.
-      const existing = (await this.store.listInboxes()).find(
-        (i) => i.type === "whatsapp" && i.handle === number.phoneNumberId,
-      );
+      const existing = await this.channelFor(number.phoneNumberId);
       if (existing) {
         await this.store.updateInbox(existing.id, { name, channelConfig });
       } else {
@@ -228,7 +226,7 @@ export class MetaController {
       [META_CONFIG.displayNumber]: number.displayNumber,
       ...appFlags(coexistence),
     };
-    const existing = (await this.store.listInboxes()).find((i) => i.type === "whatsapp" && i.handle === number.phoneNumberId);
+    const existing = await this.channelFor(number.phoneNumberId);
     const inbox = existing
       ? (await this.store.updateInbox(existing.id, { channelConfig }))!
       : // Unrouted until the admin chooses, as with every one-click connect.
@@ -269,6 +267,20 @@ export class MetaController {
         : `Connected ${number.displayNumber} to inbox ${inbox.id} as an ordinary API number: Meta didn't link it to the WhatsApp Business app (${onApp === false ? "is_on_biz_app false" : body.finishEvent ? `sign-up finished ${body.finishEvent}` : "app data refused"})`,
     );
     return { inboxId: inbox.id, handle: number.phoneNumberId, displayNumber: number.displayNumber, sync, coexistence };
+  }
+
+  /**
+   * This workspace's channel for a WhatsApp number, to reconnect rather than
+   * duplicate. By its configured number as well as its handle: a channel added
+   * by hand keeps the display number as its handle, and connecting the same
+   * number again used to create a second channel beside it.
+   */
+  private async channelFor(phoneNumberId: string) {
+    for (const i of await this.store.listInboxes()) {
+      if (i.type !== "whatsapp") continue;
+      if (i.handle === phoneNumberId || (await this.store.getInboxConfig(i.id))?.phoneNumberId === phoneNumberId) return i;
+    }
+    return undefined;
   }
 
   /** Render the tiny HTML page that posts the result to the opener and closes. */
