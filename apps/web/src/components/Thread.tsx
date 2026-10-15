@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type JSX, type ReactNode } from "react";
+import { Linkify } from "./Linkify";
 import type { ChangeEvent as RChangeEvent, ClipboardEvent as RClipboardEvent, DragEvent as RDragEvent, PointerEvent as RPointerEvent } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -112,7 +113,9 @@ function renderMention(body: string, people: Mentionable[]): JSX.Element[] {
         {part.text}
       </span>
     ) : (
-      <span key={i}>{part.text}</span>
+      <span key={i}>
+        <Linkify text={part.text} />
+      </span>
     ),
   );
 }
@@ -1103,7 +1106,7 @@ function MessageBubble({
           ) : (
             showText && (
               <span className="txt">
-                {bodyText}
+                <Linkify text={bodyText} />
                 {inlineStamp && <span className="stampspace" aria-hidden="true" />}
               </span>
             )

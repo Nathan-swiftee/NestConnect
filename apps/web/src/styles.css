@@ -521,6 +521,14 @@ input,textarea{font:inherit}
 .note__tag{font-size:var(--fs-2xs);font-weight:500;text-transform:uppercase;letter-spacing:var(--ls-caps);color:var(--amber);border:0;border-radius:0;padding:0;flex:0 0 auto}
 .note__t{margin-left:auto;font-size:var(--fs-2xs);color:var(--text-faint);font-weight:500;padding-left:6px;flex:0 0 auto}
 .note__atts{display:flex;flex-direction:column;gap:var(--sp-2);margin:var(--sp-1) 0 var(--sp-1);max-width:320px}
+/* Links typed into a message — WhatsApp's blue, darker on the green bubble, lighter on dark. */
+.msglink{color:#027EB5;text-decoration:underline;text-underline-offset:2px;word-break:break-word;overflow-wrap:anywhere}
+.msglink:hover{text-decoration-thickness:2px}
+.msg.out .msglink{color:#0B63A5}
+:root[data-theme="dark"] .msglink,:root[data-theme="dark"] .msg.out .msglink{color:#53BDEB}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .msglink,:root:not([data-theme="light"]) .msg.out .msglink{color:#53BDEB}
+}
 .note__body{font-size:var(--fs-lg);line-height:1.42;white-space:pre-wrap;word-break:break-word;color:var(--text)}
 .note__body .men{color:var(--brand-strong);font-weight:600}
 
