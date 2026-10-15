@@ -67,7 +67,7 @@ export function PrivacyPage({ fields = OWNER_FIELDS }: { fields?: PrivacyOwnerFi
   );
 }
 
-function renderRuns(runs: Run[]) {
+export function renderRuns(runs: Run[]) {
   return runs.map((r, i) =>
     typeof r === "string" ? (
       <span key={i}>{r}</span>

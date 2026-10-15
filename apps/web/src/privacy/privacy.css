@@ -97,3 +97,14 @@ body {
   .pp__bar, .pp__toc { display: none; }
   .pp--contained { position: static; overflow: visible; }
 }
+
+/* Shown above a document that is still a draft (the terms, pending legal review). */
+.pp__notice {
+  margin: 0 0 var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--r-12);
+  font-size: var(--fs-md);
+}

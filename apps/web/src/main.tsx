@@ -8,6 +8,7 @@ import { syncThemeColor } from "./lib/theme";
 import { initViewport } from "./lib/viewport";
 import { initLayout } from "./lib/layout";
 import { isPrivacyPath } from "./privacy/route";
+import { isDataDeletionPath, isTermsPath } from "./legal/route";
 // Design tokens first (shared with the native app), then the app's own CSS,
 // which consumes those custom properties. Order matters: variables before use.
 import "@ding/design/tokens.css";
@@ -57,6 +58,12 @@ if (isPrivacyPath(window.location.pathname)) {
   // than letting the login screen swallow it. Loaded on demand, so the inbox
   // bundle carries none of it.
   void import("./privacy/mount").then(({ mountPrivacyPage }) => mountPrivacyPage(rootEl, { contained: true }));
+} else if (isTermsPath(window.location.pathname)) {
+  // Same for the terms of service and the data deletion page (/terms,
+  // /data-deletion): public, and served from their own documents in production.
+  void import("./legal/mount").then(({ mountTermsPage }) => mountTermsPage(rootEl, { contained: true }));
+} else if (isDataDeletionPath(window.location.pathname)) {
+  void import("./legal/mount").then(({ mountDataDeletionPage }) => mountDataDeletionPage(rootEl, { contained: true }));
 } else {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>

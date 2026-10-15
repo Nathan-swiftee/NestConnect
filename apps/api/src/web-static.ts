@@ -9,8 +9,9 @@ import type { ServeStaticModuleOptions } from "@nestjs/serve-static";
  * does its own thing.
  *
  * `extensions: ["html"]` is what makes `/privacy` serve `privacy.html` (the
- * public privacy policy, its own Vite entry) instead of falling through to the
- * SPA's index.html, where the inbox would put it behind the login screen. It
+ * public privacy policy, its own Vite entry), and likewise `/terms` and
+ * `/data-deletion`, instead of falling through to the SPA's index.html, where
+ * the inbox would put them behind the login screen. It
  * runs inside express.static, so it only ever matches a file that exists in
  * the build; every other path still falls back to index.html as before.
  */
