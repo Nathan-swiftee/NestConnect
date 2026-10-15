@@ -75,6 +75,7 @@ import { useInsets } from "../../../src/insets";
 import { useNow } from "../../../src/now";
 import { threadClocks } from "../../../src/clocks";
 import { Touchable } from "../../../src/components/Touchable";
+import { LinkedText } from "../../../src/components/LinkedText";
 
 /** One day of the thread. `isLastDay` rides along because `renderItem` is told
  *  which section it is in, but not which number — and the final day is the one
@@ -121,7 +122,7 @@ function NoteBody({ body, color }: { body: string; color: string }) {
             {part.text}
           </Text>
         ) : (
-          part.text
+          <LinkedText key={i} text={part.text} />
         ),
       )}
     </Text>
@@ -1487,7 +1488,9 @@ const Bubble = memo(function Bubble({
         {isEmail ? (
           <EmailBody message={message} showSubject={showSubject} />
         ) : message.body ? (
-          <Text className="text-lg leading-snug text-fg">{message.body}</Text>
+          <Text className="text-lg leading-snug text-fg">
+            <LinkedText text={message.body} />
+          </Text>
         ) : null}
         <Attachments items={message.attachments ?? []} mine={mine} />
 

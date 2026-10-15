@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { Linkify } from "../Linkify";
 import {
   canEditChatMessage,
   chatSystemText,
@@ -449,28 +450,6 @@ function membersLine(members: ChatMember[], meId: string | undefined): string {
   return `${names}${more}${online ? ` · ${online} online` : ""}`;
 }
 
-/** Words, with any web links in them clickable. */
-function Linked({ text }: { text: string }) {
-  const parts = text.split(/(\bhttps?:\/\/[^\s<>"']+)/gi);
-  return (
-    <span>
-      {parts.map((part, i) => {
-        if (i % 2 === 0) return part;
-        // "see https://x.com/a." — the full stop ends the sentence, not the link.
-        const url = part.replace(/[.,;:!?)\]]+$/, "");
-        return (
-          <span key={i}>
-            <a className="tc-link" href={url} target="_blank" rel="noopener noreferrer">
-              {url}
-            </a>
-            {part.slice(url.length)}
-          </span>
-        );
-      })}
-    </span>
-  );
-}
-
 function Bubble({
   m,
   first,
@@ -650,7 +629,7 @@ function Bubble({
                   {p.text}
                 </span>
               ) : (
-                <Linked key={i} text={p.text} />
+                <Linkify key={i} text={p.text} className="tc-link" />
               ),
             )}
           </span>

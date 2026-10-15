@@ -8,6 +8,7 @@ import { haptics } from "../../haptics";
 import { useTheme } from "../../theme";
 import { StarIcon } from "../../icons";
 import { Attachments } from "../Attachments";
+import { LinkedText } from "../LinkedText";
 import { SharedCard } from "./Discuss";
 import { Avatar } from "../Avatar";
 import { SwipeToReply } from "../SwipeToReply";
@@ -128,7 +129,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
                   {p.text}
                 </Text>
               ) : (
-                <Linked key={i} text={p.text} />
+                <LinkedText key={i} text={p.text} />
               ),
             )}
       </Text>
@@ -219,25 +220,3 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   );
 });
 
-/** Words, with any web links in them tappable. */
-function Linked({ text }: { text: string }) {
-  const parts = text.split(/(\bhttps?:\/\/[^\s<>"']+)/gi);
-  if (parts.length === 1) return <Text>{text}</Text>;
-  return (
-    <Text>
-      {parts.map((part, i) => {
-        if (i % 2 === 0) return part;
-        // "see https://x.com/a." — the full stop ends the sentence, not the link.
-        const url = part.replace(/[.,;:!?)\]]+$/, "");
-        return (
-          <Text key={i}>
-            <Text onPress={() => void Linking.openURL(url)} accessibilityRole="link" style={{ color: "#1F7AEC", textDecorationLine: "underline" }}>
-              {url}
-            </Text>
-            {part.slice(url.length)}
-          </Text>
-        );
-      })}
-    </Text>
-  );
-}
