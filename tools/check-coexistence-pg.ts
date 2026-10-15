@@ -85,6 +85,22 @@ async function main(): Promise<void> {
       ok("B can't find A's channel by its account", (await store.getInboxesByWabaId("coexchk_a_waba")).every((i) => i.orgId === A));
       ok("nor A's messages by their ids", (await store.getMessageRefByChannelId("coexchk.h1")) === undefined);
     });
+
+    console.log("\nOne number on two channels\n");
+    // Production: the same number connected twice in one workspace, and every
+    // message to it dropped as ambiguous.
+    const first = await root.inbox.findUniqueOrThrow({ where: { id: a.inbox.id } });
+    const dupe = await runInTenant(A, () =>
+      store.createInbox({ orgId: A, type: "whatsapp", name: "A again", handle: "+44 20 0000 0000", teamIds: [], routingStrategy: "manual", channelConfig: { phoneNumberId: "coexchk_a_pn", accessToken: "bad" } }),
+    );
+    await root.inbox.update({ where: { id: dupe.id }, data: { createdAt: new Date(first.createdAt.getTime() + 60_000) } });
+    ok("a message still finds a home: the first channel connected", (await store.getInboxByWhatsAppPhoneId("coexchk_a_pn"))?.id === a.inbox.id);
+    const other = await runInTenant(B, () =>
+      store.createInbox({ orgId: B, type: "whatsapp", name: "B", handle: "coexchk_b_pn", teamIds: [], routingStrategy: "manual", channelConfig: { phoneNumberId: "coexchk_a_pn", accessToken: "t" } }),
+    );
+    ok("but a number held by two workspaces still matches neither", (await store.getInboxByWhatsAppPhoneId("coexchk_a_pn")) === undefined);
+    await root.inboxTeam.deleteMany({ where: { inboxId: { in: [dupe.id, other.id] } } });
+    await root.inbox.deleteMany({ where: { id: { in: [dupe.id, other.id] } } });
   } finally {
     await cleanup(root);
     await root.$disconnect();

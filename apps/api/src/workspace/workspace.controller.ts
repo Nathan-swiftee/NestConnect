@@ -173,6 +173,18 @@ export class WorkspaceController {
     if (await this.store.channelKeyTaken({ phoneNumberId, emailAddress }, exceptInboxId)) {
       throw new ConflictException("That number or address is already connected to another workspace.");
     }
+    // Nor twice in this one: two channels on one WhatsApp number leave every
+    // incoming message with two possible homes.
+    if (phoneNumberId) {
+      for (const other of await this.store.listInboxes()) {
+        if (other.id === exceptInboxId || (other.type !== "whatsapp" && other.type !== "whatsapp_group")) continue;
+        if ((await this.store.getInboxConfig(other.id))?.phoneNumberId === phoneNumberId) {
+          throw new ConflictException(
+            `That WhatsApp number is already connected here as “${other.name}”. Edit or reconnect that channel instead of adding it again.`,
+          );
+        }
+      }
+    }
   }
 
   /** Create + route a new channel (inbox). Admins and managers only. */
