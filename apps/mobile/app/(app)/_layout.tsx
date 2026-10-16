@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 import { useChatRealtime, useChatStatus, useRealtime } from "@ding/client";
 import { useNotificationRouting } from "../../src/notification-routing";
+import { useAppBadge } from "../../src/push";
 import { useTheme } from "../../src/theme";
 
 /**
@@ -21,6 +22,8 @@ export default function AppLayout() {
   // Mounted here rather than per-screen so a tap resolves the same way whether
   // the app was cold, backgrounded or already open.
   useNotificationRouting(true);
+  // The app icon's number follows what's unread, wherever you are in the app.
+  useAppBadge(true);
 
   return (
     <Stack

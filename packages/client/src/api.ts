@@ -293,6 +293,8 @@ export const api = {
   // sign-in and on every start, because push tokens rotate.
   registerDevice: (input: RegisterDeviceInput) => post<DeviceInfo>("/devices", input),
   devices: () => get<DeviceInfo[]>("/devices"),
+  /** The number for the app icon: unread My Inbound conversations plus unread team chats. */
+  appBadge: () => get<{ count: number }>("/devices/badge"),
   deleteDevice: (id: string) => del<{ ok: boolean }>(`/devices/${id}`),
   pushPreferences: () => get<PushPreferences>("/devices/preferences"),
   updatePushPreferences: (input: UpdatePushPreferencesInput) =>

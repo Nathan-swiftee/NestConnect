@@ -86,6 +86,22 @@ export class RealtimeGateway
     this.chat = hooks;
   }
 
+  /** Told whenever a workspace's conversations change — a message, a read, an
+   *  assignment. The app-icon badge listens, so it follows what's unread. */
+  private changeListeners: Array<(orgId: string) => void> = [];
+  onWorkspaceChange(fn: (orgId: string) => void): void {
+    this.changeListeners.push(fn);
+  }
+  private changed(orgId: string): void {
+    for (const fn of this.changeListeners) {
+      try {
+        fn(orgId);
+      } catch {
+        // A listener's failure is its own; the broadcast has already gone.
+      }
+    }
+  }
+
   afterInit(server: DingServer) {
     if (!env.usingRedis) return;
     try {
@@ -356,6 +372,7 @@ export class RealtimeGateway
 
   emitMessageCreated(conversationId: string, message: Message, orgId: string = this.tenant.orgId) {
     this.server.to(orgRoom(orgId)).emit(ServerEvent.MessageCreated, { conversationId, message });
+    this.changed(orgId);
   }
 
   /**
@@ -382,10 +399,12 @@ export class RealtimeGateway
 
   emitConversationAssigned(conversation: Conversation, by?: string, reason?: string) {
     this.server.to(orgRoom(conversation.orgId)).emit(ServerEvent.ConversationAssigned, { conversation, by, reason });
+    this.changed(conversation.orgId);
   }
 
   emitConversationUpdated(conversation: Conversation) {
     this.server.to(orgRoom(conversation.orgId)).emit(ServerEvent.ConversationUpdated, { conversation });
+    this.changed(conversation.orgId);
   }
 
   /** A bell notification for one user — delivered only to their own room. */

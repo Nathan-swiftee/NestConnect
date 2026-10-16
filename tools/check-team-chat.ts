@@ -435,6 +435,17 @@ async function main() {
     ok("deleting a card takes it out of the discussions", (await svc.discussions(NATHAN, conv.id)).every((d) => d.card.id !== bare.id));
     ok("and leaves no card behind", (await svc.messages(NATHAN, support.id)).messages.find((m) => m.id === bare.id)?.shared === null);
     ok("a chat list says what was shared", (await svc.rooms(AMARA)).find((r) => r.id === dm.id)?.lastMessage?.shared?.contactName === "Northside Logistics");
+
+    console.log("\nThe app-icon badge\n");
+    const badgeRoom = await svc.createGroup(NATHAN, { name: "Badge", memberIds: [JAMES] });
+    const badgeBefore = await svc.unreadChatCount(JAMES);
+    for (const word of ["one", "two", "three"]) await svc.send(NATHAN, badgeRoom.id, say(word));
+    ok("three unread messages in a chat count once on the badge", (await svc.unreadChatCount(JAMES)) === badgeBefore + 1);
+    await svc.setPrefs(JAMES, badgeRoom.id, { muted: true });
+    ok("a muted chat isn't counted", (await svc.unreadChatCount(JAMES)) === badgeBefore);
+    await svc.setPrefs(JAMES, badgeRoom.id, { muted: false });
+    await svc.read(JAMES, badgeRoom.id);
+    ok("reading it takes it off", (await svc.unreadChatCount(JAMES)) === badgeBefore);
   });
   server.close();
 

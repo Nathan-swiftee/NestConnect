@@ -4,7 +4,8 @@ import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { api } from "@ding/client";
+import { useQuery } from "@tanstack/react-query";
+import { api, useChatStatus } from "@ding/client";
 
 /** Set once, before anything can arrive. Foreground behaviour is decided here
  *  rather than per-notification so there's one answer, not several.
@@ -231,7 +232,45 @@ export function usePushRegistration(signedIn: boolean) {
   };
 }
 
-/** Clear the app-icon badge — called when the inbox is read. */
+/** Take the number off the app icon — on sign-out, when nothing is anyone's. */
 export async function clearBadge(): Promise<void> {
   await Notifications.setBadgeCountAsync(0).catch(() => {});
+}
+
+/**
+ * Keep the app-icon number equal to what's actually unread: conversations in
+ * My Inbound plus team chats, as the server counts them.
+ *
+ * It used to be set only by the number riding on each push and wiped to zero
+ * whenever the inbox list showed — so it said 0 with unread conversations still
+ * there, then jumped on the next notification. Now the app asks for the real
+ * number when it comes to the front and whenever the lists or chats change,
+ * and opening a conversation or chat takes it down by one.
+ *
+ * Keyed under "views" so the realtime updates that refresh the sidebar counts
+ * refresh this with them.
+ */
+export function useAppBadge(enabled: boolean) {
+  const on = enabled && Platform.OS !== "web";
+  const badge = useQuery({ queryKey: ["views", "badge"], queryFn: () => api.appBadge(), enabled: on, staleTime: 0 });
+  const chatUnread = useChatStatus(on).data?.unread;
+  const { refetch } = badge;
+
+  // Team Chat's own updates don't touch the conversation lists; its count moving is the cue.
+  useEffect(() => {
+    if (on) void refetch();
+  }, [on, chatUnread, refetch]);
+
+  useEffect(() => {
+    if (!on) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refetch();
+    });
+    return () => sub.remove();
+  }, [on, refetch]);
+
+  const count = badge.data?.count;
+  useEffect(() => {
+    if (on && typeof count === "number") void Notifications.setBadgeCountAsync(count).catch(() => {});
+  }, [on, count]);
 }
