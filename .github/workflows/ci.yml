@@ -369,6 +369,11 @@ jobs:
       - name: Reactions
         run: pnpm check:reactions
 
+      # The Accounts team's SOPs, added once to Swiftee's workspace: published
+      # for the Accounts team, no passwords in them, never added twice.
+      - name: Accounts SOPs
+        run: pnpm check:accounts-sops
+
       # Filtering an inbox by a custom field — the working set rather than the
       # lookup. Mostly guards one specific way of getting it wrong: an empty set
       # of ids ORed into a query matches everything, so a filter that found
