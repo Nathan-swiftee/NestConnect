@@ -189,6 +189,47 @@ export class IngestService {
     this.push.notify({ userIds: team, kind: "team_message", title, body, conversationId });
   }
 
+  /**
+   * A customer reacted to one of our messages — "Marta reacted ❤️ to: “Your
+   * order is on its way”", the way WhatsApp tells you. Whatever the channel
+   * (WhatsApp, website chat, an email reaction from Gmail), it goes to the
+   * same people a message from them would: the assignee, or else the team
+   * under its every-message setting. Taking a reaction off says nothing, and
+   * neither does a reaction to their own message.
+   */
+  async customerReacted(conversationId: string, messageId: string, emoji: string): Promise<void> {
+    if (!emoji.trim()) return;
+    const conv = await this.store.getConversation(conversationId);
+    const target = conv?.messages.find((m) => m.id === messageId);
+    if (!conv || !target || target.direction !== "out" || target.internal) return;
+    const words = (target.body ?? "").replace(/\s+/g, " ").trim();
+    const what = words ? (words.length > 100 ? `${words.slice(0, 99)}…` : words) : target.attachments?.length ? "an attachment" : "your message";
+    const title = conv.contact.displayName || "Customer";
+    const body = `Reacted ${emoji.trim()} to: “${what}”`;
+    const { assignee, team } = inboundAudience(await this.store.listMembers(), conv);
+    if (assignee) this.push.notify({ userIds: [assignee], kind: "message", title, body, conversationId });
+    if (team.length) this.push.notify({ userIds: team, kind: "team_message", title, body, conversationId });
+  }
+
+  /**
+   * An email that is a reaction (Gmail's format), not a message: put the emoji
+   * on the email it answers rather than filing a new message that just says
+   * "reacted via Gmail". `by` is the customer, or one of us when it was sent
+   * straight from our own Gmail. False when the email it answers isn't ours to
+   * find — then it's filed as an ordinary email, so nothing is lost.
+   */
+  async ingestEmailReaction(input: { inReplyTo?: string; emoji: string; by: "contact" | "user" }): Promise<boolean> {
+    const parent = input.inReplyTo?.trim();
+    if (!parent || !input.emoji) return false;
+    const ref = await this.store.getMessageRefByChannelId(parent);
+    if (!ref) return false;
+    const updated = await this.store.reactToMessage(ref.id, input.emoji, input.by);
+    if (!updated) return false;
+    this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+    if (input.by === "contact") await this.customerReacted(updated.conversationId, updated.message.id, input.emoji);
+    return true;
+  }
+
   /* ---- WhatsApp Business app numbers (coexistence) ---- */
 
   /**

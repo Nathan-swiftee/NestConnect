@@ -224,6 +224,9 @@ export class WhatsAppService {
                     const updated = await this.store.reactToMessage(ref.id, msg.reaction?.emoji ?? "", "contact");
                     if (updated) {
                       this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
+                      void this.ingest
+                        .customerReacted(updated.conversationId, updated.message.id, msg.reaction?.emoji ?? "")
+                        .catch((err) => this.logger.warn(`Reaction notification failed: ${String(err)}`));
                       reactions += 1;
                     }
                   }

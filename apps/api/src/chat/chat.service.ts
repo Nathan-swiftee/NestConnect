@@ -616,7 +616,31 @@ export class ChatService implements OnModuleInit {
     const clean = emoji.trim();
     if (clean && !had) next[clean] = [...(next[clean] ?? []), userId];
     const updated = await this.chat.updateMessage(messageId, { reactions: next });
-    return this.emitUpdated(a, updated!, await this.people());
+    const people = await this.people();
+    if (clean && !had) await this.tellReaction(a, user, m, clean, people);
+    return this.emitUpdated(a, updated!, people);
+  }
+
+  /**
+   * "Amara reacted 👍 to: “Lunch at 1?”" — to whoever wrote the message, the
+   * way WhatsApp does it. Not for your own reactions, not when they've muted
+   * the chat, and not for taking a reaction off.
+   */
+  private async tellReaction(a: Access, reactor: User, m: ChatMessageRecord, emoji: string, people: People): Promise<void> {
+    const authorId = m.authorUserId;
+    if (!authorId || authorId === reactor.id || !people.has(authorId)) return;
+    const row = (await this.chat.listMembers(a.room.id)).find((r) => r.userId === authorId);
+    if ((row?.mutedUntil ?? "") > new Date().toISOString()) return;
+    const what =
+      trim(mentionsToNames(m.body, [...people.values()]).replace(/\s+/g, " ").trim(), PREVIEW_MAX) || chatAttachmentLabel(m.attachments) || "your message";
+    this.push.notify({
+      userIds: [authorId],
+      kind: "chat_message",
+      title: a.room.kind === "direct" ? reactor.name : this.roomName(a, authorId, people),
+      body: `${reactor.name} reacted ${emoji} to: “${what}”`,
+      chatRoomId: a.room.id,
+      actorUserId: reactor.id,
+    });
   }
 
   /** Who has read one of my messages, who only has it, and who's still waiting. */

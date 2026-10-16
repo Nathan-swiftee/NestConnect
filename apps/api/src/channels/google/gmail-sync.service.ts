@@ -20,6 +20,7 @@ import {
   collectAttachmentParts,
   extractPlainText,
   extractHtml,
+  extractReaction,
   gmail,
   GmailApiError,
   GmailAuthError,
@@ -386,6 +387,18 @@ export class GmailSyncService implements OnApplicationBootstrap, OnModuleDestroy
     // marker above; also dedups a genuine Gmail-direct send seen twice).
     if (messageId && (await this.store.findConversationByMessageChannelIds([messageId]))) {
       return false;
+    }
+
+    // A reaction (Gmail's 👍 on an email) lands on the email it answers, not
+    // as a new message — the customer's, or ours when reacted from this Gmail.
+    const reaction = extractReaction(msg);
+    if (reaction) {
+      const onIt = await this.ingest.ingestEmailReaction({
+        inReplyTo: headerValue(msg, "In-Reply-To"),
+        emoji: reaction,
+        by: isSent ? "user" : "contact",
+      });
+      if (onIt) return true;
     }
 
     // A reply sent straight from Gmail (SENT, not a received message) → record it

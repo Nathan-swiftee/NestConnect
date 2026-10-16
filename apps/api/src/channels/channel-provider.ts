@@ -155,5 +155,11 @@ export abstract class ChannelProvider {
     /** Our own id for it. The only handle a channel we host ourselves has. */
     messageId?: string;
     emoji: string;
+    /** Email only: who to send it to, from which inbox, threaded onto which
+     *  email, and the name of the person reacting (for the fallback text). */
+    to?: string;
+    inboxId?: string;
+    context?: SendContext;
+    reactorName?: string;
   }): Promise<void>;
 }

@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { firstParty } from "./reply-to";
 import { IngestService } from "../ingest.service";
 import { htmlToText } from "./html-sanitize";
+import { GMAIL_REACTION_MIME, parseReactionJson } from "../google/gmail-api";
 
 /**
  * Inbound email webhook body. Tolerant of Postmark's shape (From/FromFull/
@@ -21,6 +22,9 @@ export interface EmailWebhookBody {
   /** Postmark's copy of the Reply-To header ("" when there was none). */
   ReplyTo?: string;
   Headers?: Array<{ Name?: string; Value?: string }>;
+  /** Postmark lists the parts it doesn't show as text or HTML here — which is
+   *  where a Gmail reaction's emoji part turns up. */
+  Attachments?: Array<{ Name?: string; Content?: string; ContentType?: string }>;
   // lowercase generic fallbacks
   from?: string;
   fromName?: string;
@@ -71,6 +75,13 @@ export class EmailService {
     ];
 
     if (!from || !toAddress) return { handled: 0 };
+
+    // A reaction from Gmail: the emoji goes on the email it answers.
+    const reactionPart = body.Attachments?.find((a) => a.ContentType?.toLowerCase().startsWith(GMAIL_REACTION_MIME));
+    const emoji = reactionPart?.Content ? parseReactionJson(Buffer.from(reactionPart.Content, "base64").toString("utf8")) : undefined;
+    if (emoji && (await this.ingest.ingestEmailReaction({ inReplyTo: header("In-Reply-To"), emoji, by: "contact" }))) {
+      return { handled: 1 };
+    }
 
     const res = await this.ingest.ingestEmail({
       toAddress,

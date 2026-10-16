@@ -446,6 +446,23 @@ async function main() {
     await svc.setPrefs(JAMES, badgeRoom.id, { muted: false });
     await svc.read(JAMES, badgeRoom.id);
     ok("reading it takes it off", (await svc.unreadChatCount(JAMES)) === badgeBefore);
+
+    console.log("\nReactions\n");
+    const hello = await svc.send(NATHAN, badgeRoom.id, say("Hello team"));
+    pushes.length = 0;
+    await svc.react(JAMES, hello.id, "👍");
+    const told = pushes.find((p) => p.userIds.includes(NATHAN));
+    ok("the author is told someone reacted", !!told && told.kind === "chat_message" && told.chatRoomId === badgeRoom.id);
+    ok("…with who, which emoji, and to what", /reacted 👍 to: “Hello team”$/.test(told?.body ?? "") && told!.body.startsWith("James"), told?.body);
+    ok("…and nobody else", pushes.every((p) => p.userIds.join() === NATHAN));
+    pushes.length = 0;
+    await svc.react(JAMES, hello.id, "👍");
+    ok("taking it off says nothing", pushes.length === 0);
+    await svc.react(NATHAN, hello.id, "❤️");
+    ok("nor does reacting to your own message", pushes.length === 0);
+    await svc.setPrefs(NATHAN, badgeRoom.id, { muted: true });
+    await svc.react(JAMES, hello.id, "😂");
+    ok("nor a reaction in a chat the author muted", pushes.length === 0);
   });
   server.close();
 

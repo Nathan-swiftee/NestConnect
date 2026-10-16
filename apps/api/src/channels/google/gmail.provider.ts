@@ -4,6 +4,7 @@ import { env } from "../../config/env";
 import { Store } from "../../data/store";
 import {
   ChannelProvider,
+  type SendContext,
   type SendParams,
   type SendResult,
   type SupportsContext,
@@ -12,7 +13,7 @@ import { MediaService } from "../../storage/media.service";
 import { GMAIL_CONFIG, GoogleOAuthService } from "./google-oauth.service";
 import { buildMime, gmail, GmailApiError, GmailAuthError, isSignedOutError } from "./gmail-api";
 import { textToHtml } from "../email/html-sanitize";
-import { appendSignature, appendTrackingPixel, inlineInternalImages, subjectLine } from "../email/email.provider";
+import { appendSignature, appendTrackingPixel, inlineInternalImages, reactionFallback, subjectLine } from "../email/email.provider";
 
 /**
  * Sends outbound email through a Gmail-connected inbox using the Gmail API and
@@ -112,4 +113,53 @@ export class GmailProvider extends ChannelProvider {
     }
   }
 
+
+  /**
+   * A reaction, the way Gmail sends one: a reply to the email reacted to, with
+   * the emoji in Gmail's reaction part and a short note as the text and HTML
+   * fallback. Gmail shows a reaction; other mail apps show the note.
+   */
+  async sendReaction(params: {
+    conversation: { id: string; inboxId: string };
+    emoji: string;
+    to?: string;
+    inboxId?: string;
+    context?: SendContext;
+    reactorName?: string;
+  }): Promise<void> {
+    if (!params.to || !params.emoji) return;
+    const inboxId = params.inboxId ?? params.conversation.inboxId;
+    const config = await this.store.getInboxConfig(inboxId);
+    if (!config || config[GMAIL_CONFIG.provider] !== "gmail") return;
+    const fromAddress = config[GMAIL_CONFIG.email] || env.email.from;
+    const domain = fromAddress.split("@")[1] || env.email.domain;
+    const subject = subjectLine(params.context);
+    if (this.google.isMock) {
+      this.logger.log(`[mock] Gmail reaction ${params.emoji} → ${params.to} · "${subject}"`);
+      return;
+    }
+    const inbox = await this.store.getInbox(inboxId);
+    if (!inbox) return;
+    const { text, html } = reactionFallback(params.emoji, params.reactorName ?? "");
+    const raw = buildMime({
+      from: fromAddress,
+      fromName: inbox.name,
+      to: params.to,
+      toName: params.context?.toName,
+      subject,
+      body: text,
+      html,
+      messageId: `<ding.${params.conversation.id}.r${Date.now()}@${domain}>`,
+      inReplyTo: params.context?.inReplyTo,
+      references: params.context?.references ?? params.context?.inReplyTo,
+      reaction: { emoji: params.emoji },
+    });
+    try {
+      const accessToken = await this.google.accessTokenForInbox(inbox, config);
+      await gmail.send(accessToken, raw, params.context?.threadId);
+    } catch (err) {
+      if (err instanceof GmailAuthError || isSignedOutError(err)) await this.google.noteFailure(inbox, err);
+      this.logger.warn(`Gmail reaction to ${params.to} failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 }
