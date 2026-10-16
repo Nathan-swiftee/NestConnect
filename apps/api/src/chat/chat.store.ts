@@ -121,6 +121,9 @@ export abstract class ChatStore {
     rooms: Array<{ roomId: string; since: string | null; from: string | null }>,
   ): Promise<Map<string, { unread: number; mentioned: boolean }>>;
 
+  abstract addAudit(roomId: string, userId: string): Promise<void>;
+  abstract listAudits(roomId: string): Promise<Array<{ userId: string; at: string }>>;
+
   abstract setLastSeen(userId: string, at: string): Promise<void>;
   abstract lastSeen(userIds: string[]): Promise<Map<string, string>>;
 }

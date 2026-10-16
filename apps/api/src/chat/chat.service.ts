@@ -61,6 +61,8 @@ import { ChatStore, type ChatMemberRecord, type ChatMessageRecord, type ChatRoom
 export const CHAT_MODULE_KEY = "module.team_chat";
 /** "Muted" with no end: far enough off to never come round. */
 const MUTED_FOREVER = "2100-01-01T00:00:00.000Z";
+/** An admin reading the same chat again within this is one look, not several. */
+const AUDIT_DEDUPE_MS = 10 * 60_000;
 /** Per conversation: how it is now, or null once it's gone. */
 type LiveCards = Map<string, { status: ConversationStatus; assigneeName: string | null } | null>;
 
@@ -371,6 +373,7 @@ export class ChatService implements OnModuleInit {
     const a = await this.access(user, card.roomId);
     const from = this.visibleFrom(a);
     if (from && card.createdAt < from) throw new NotFoundException("Discussion not found");
+    if (a.oversight) await this.audit(a.room.id, userId);
     const [replies, people, live] = await Promise.all([
       this.chat.repliesTo([card.id]).then((r) => this.withTranscripts(r)),
       this.people(),
@@ -434,6 +437,7 @@ export class ChatService implements OnModuleInit {
   async room(userId: string, roomId: string): Promise<ChatRoom> {
     const user = await this.open(userId);
     const a = await this.access(user, roomId);
+    if (a.oversight) await this.audit(roomId, userId);
     // A team chat's rows are made as people first open it, so their markers have somewhere to live.
     if (a.isMember && !a.me) a.me = await this.chat.upsertMember(roomId, userId);
     return this.detail(a, user);
@@ -778,6 +782,15 @@ export class ChatService implements OnModuleInit {
     this.realtime.emitToUsers(a.memberIds, ChatServerEvent.Room, { roomId });
   }
 
+  /** When admins and managers have read a chat they aren't in. Theirs to see. */
+  async audits(userId: string, roomId: string): Promise<Array<{ person: ChatPerson; at: string }>> {
+    const user = await this.open(userId);
+    if (!oversees(user)) throw new ForbiddenException("Admins and managers only");
+    await this.access(user, roomId);
+    const [rows, people] = await Promise.all([this.chat.listAudits(roomId), this.people()]);
+    return rows.flatMap((r) => (people.has(r.userId) ? [{ person: person(people.get(r.userId)!), at: r.at }] : []));
+  }
+
   /* ---- sockets ---- */
 
   /** Who the gateway may let into a chat's room: members, and admins reading along. */
@@ -904,6 +917,12 @@ export class ChatService implements OnModuleInit {
 
   private async people(): Promise<People> {
     return new Map((await this.store.listMembers()).map((m) => [m.user.id, m.user]));
+  }
+
+  private async audit(roomId: string, userId: string): Promise<void> {
+    const recent = (await this.chat.listAudits(roomId)).find((x) => x.userId === userId);
+    if (recent && Date.now() - new Date(recent.at).getTime() < AUDIT_DEDUPE_MS) return;
+    await this.chat.addAudit(roomId, userId);
   }
 
   /** "@nathan" → Nathan's id, for the people in this chat. Never the author. */

@@ -50,7 +50,7 @@ const B = "chatchk_b";
 async function cleanup(root: PrismaClient): Promise<void> {
   const orgs = [A, B];
   await root.notification.deleteMany({ where: { user: { orgId: { in: orgs } } } });
-  await root.chatRoom.deleteMany({ where: { orgId: { in: orgs } } }); // members, messages and stars cascade
+  await root.chatRoom.deleteMany({ where: { orgId: { in: orgs } } }); // members, messages, stars, audits cascade
   // The customer side, for the conversations each workspace shares.
   const convs = (await root.conversation.findMany({ where: { orgId: { in: orgs } }, select: { id: true } })).map((c) => c.id);
   const msgs = (await root.message.findMany({ where: { conversationId: { in: convs } }, select: { id: true } })).map((m) => m.id);
@@ -149,6 +149,7 @@ async function main(): Promise<void> {
       ok("A's chat isn't there to get", (await chat.getRoom(a.dm.id)) === undefined && (await chat.getMessage(a.secret.id)) === undefined);
       ok("or its members to list", (await chat.listMembers(a.dm.id)).length === 0);
       ok("or its messages", (await chat.listMessages(a.dm.id, { limit: 10 })).length === 0);
+      ok("or its read-along record", await violation(chat.addAudit(a.dm.id, b.admin.id)));
       ok("A's message can't be starred", await refuses(() => svc.star(b.admin.id, a.secret.id, true)));
       ok("or starred through the store", await violation(chat.setStar(b.admin.id, a.secret.id, true)));
       ok("search doesn't reach A", (await svc.search(b.admin.id, "secret")).every((h) => h.roomId !== a.dm.id));
@@ -184,6 +185,8 @@ async function main(): Promise<void> {
       ok("and lands in the bell, opening the chat", bell[0]?.type === "chat_mention" && bell[0]?.chatRoomId === a.group.id);
       await svc.read(a.agent.id, a.group.id);
       ok("reading clears both", (await svc.rooms(a.agent.id)).find((r) => r.id === a.group.id)?.unread === 0);
+      await svc.room(a.admin.id, a.dm.id);
+      ok("a member opening their own chat isn't a read-along", (await chat.listAudits(a.dm.id)).length === 0);
 
       const photo = await svc.send(a.agent.id, a.dm.id, sendChatMessageInputSchema.parse({ body: "the van", attachments: [a.upload] }));
       const kept = (await svc.messages(a.admin.id, a.dm.id)).messages.find((m) => m.id === photo.id);

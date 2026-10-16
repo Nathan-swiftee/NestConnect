@@ -81,6 +81,7 @@ const VIA: Record<string, (orgId: string) => Filter> = {
   OpsChecklist: (orgId) => ({ opsSop: { orgId } }),
   ChatMember: (orgId) => ({ room: { orgId } }),
   ChatMessage: (orgId) => ({ room: { orgId } }),
+  ChatAudit: (orgId) => ({ room: { orgId } }),
   ChatPresence: (orgId) => ({ user: { orgId } }),
   ChatStar: (orgId) => ({ chatMessage: { room: { orgId } } }),
 };

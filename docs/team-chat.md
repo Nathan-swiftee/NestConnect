@@ -92,8 +92,10 @@ the row into a real membership.
 They can't Discuss a customer conversation into a chat they only oversee.
 Discuss… is for the chats you're in.
 
-A banner says they aren't in the chat. Their visits aren't logged anywhere
-(an earlier "Read by admins" record was removed, and its table dropped).
+A banner says they aren't in the chat. Each visit is still recorded
+(`ChatAudit`; a re-open within ten minutes counts once), but the record isn't
+shown anywhere in the product: there is no "Read by admins" list, and no
+notice in the chat list or info panel.
 
 ## Messages
 
@@ -235,7 +237,7 @@ keep the two tied together.
   pinned), `ChatMessage` (text or system, reply-to, reactions, mentions, edited,
   deleted, attachments, link card, a shared conversation and its card),
   `ChatStar` (person × message),
-  `ChatPresence`; and `Notification.chatRoomId`.
+  `ChatAudit`, `ChatPresence`; and `Notification.chatRoomId`.
   Tenant-scoped (`ChatRoom` directly, the rest through it).
 - A team chat's members come from the team at the moment of asking; its
   `ChatMember` rows only hold each person's markers and settings. Team chats are

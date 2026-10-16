@@ -16,6 +16,7 @@ import {
   type ChatMessage,
   type ChatMessageInfo,
   type ChatMessagePage,
+  type ChatPerson,
   type ChatRoom,
   type ChatRoomPrefsInput,
   type ChatRoomSummary,
@@ -168,6 +169,11 @@ export class ChatController {
   async delivered(@CurrentUserId() userId: string, @Param("id") id: string): Promise<{ ok: true }> {
     await this.chat.delivered(userId, id);
     return { ok: true };
+  }
+
+  @Get("rooms/:id/audits")
+  audits(@CurrentUserId() userId: string, @Param("id") id: string): Promise<Array<{ person: ChatPerson; at: string }>> {
+    return this.chat.audits(userId, id);
   }
 
   @Get("rooms/:id/messages")
