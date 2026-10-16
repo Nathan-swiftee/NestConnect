@@ -184,6 +184,12 @@ jobs:
       - name: Templates and Meta
         run: pnpm check:template-meta
 
+      # Internal notes: an answer to your note reaches you even without an @ —
+      # everyone already in the conversation's notes is told, never the author,
+      # never twice.
+      - name: Note replies
+        run: pnpm check:note-replies
+
       # Who hears about a new message. The web used to chime for every arrival
       # anywhere in the workspace, because the sound hung off a broadcast meant
       # for keeping lists current. Both ways of getting the fix wrong are silent:

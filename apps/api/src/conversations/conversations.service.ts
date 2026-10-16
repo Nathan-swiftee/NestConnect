@@ -343,10 +343,11 @@ export class ConversationsService {
     // Broadcast immediately so every open client updates the thread + previews.
     this.realtime.emitMessageCreated(id, message, conv.orgId);
 
-    // An internal note can @-mention teammates → raise a bell notification for
-    // each (fire-and-forget; a failed notification never fails the note).
+    // An internal note tells the teammates it @-mentions, and everyone already
+    // in this conversation's notes (fire-and-forget; a failed notification
+    // never fails the note).
     if (input.internal) {
-      void this.notifications.notifyMentions(conv, body, author.name, author.id);
+      void this.notifications.notifyMentions(conv, body, author.name, author.id, message.id).catch(() => {});
     }
 
     // Real (non-internal) replies are enqueued for durable delivery. The message

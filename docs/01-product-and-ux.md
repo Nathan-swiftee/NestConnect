@@ -23,7 +23,7 @@ We deliberately keep the **familiar WhatsApp feel** (left conversation list, rig
 
 1. **Two-section sidebar** — a personal **My Inbound** space above **Shared Inboxes**. You always know what's yours vs. what's the team's. _(Full spec below — this is the core of the request.)_
 2. **Multiplayer presence & collision control** — Figma-style "Sarah is viewing", "James is typing to this client", soft-locks so two agents don't reply at once. Critical for shared inboxes.
-3. **The internal lane** — beside every client thread is a private **team thread** ("chat about the chat") with @mentions. Discuss, tag a colleague, decide — the client never sees it.
+3. **The internal lane** — beside every client thread is a private **team thread** ("chat about the chat") with @mentions. Discuss, tag a colleague, decide — the client never sees it. A note tells the people it @-mentions ("Nathan A mentioned you") and everyone already in that conversation's notes — whoever wrote one or was @-mentioned in one ("James replied in the notes on Northside Logistics"), so an answer that doesn't @ you back still reaches you. Never the author, never twice for one note (`pnpm check:note-replies`).
 4. **Unified client timeline** — WhatsApp, group, and email with the same contact merge into one **Client Space**. Switch channels inline; history is one story, not three apps.
 5. **Command-bar routing (⌘K)** — assign, route to a team, snooze, insert a template, jump to any conversation/contact — without touching the mouse.
 6. **Pull-to-take queues** — unassigned inbound for your team sits in a "up for grabs" lane; grab it and it's yours, live for everyone.
