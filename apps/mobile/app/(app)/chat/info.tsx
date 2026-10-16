@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { Alert, ScrollView, Switch, Text, TextInput, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
-import { api, chatLastSeen, seenAt, useChatMutation, useChatRoom, useMe, usePeople } from "@ding/client";
+import { api, chatLastSeen, useChatMutation, useChatRoom, useMe, usePeople } from "@ding/client";
 import { CHAT_GROUP_NAME_MAX, type ChatMember } from "@ding/schemas";
 import { ActionSheet, type SheetAction } from "../../../src/components/ActionSheet";
 import { Avatar } from "../../../src/components/Avatar";
@@ -44,11 +43,6 @@ export default function ChatInfo() {
   const role = useChatMutation(({ userId, r }: { userId: string; r: "admin" | "member" }) => api.setChatMemberRole(id, userId, r));
   const leave = useChatMutation(() => api.leaveChatRoom(id));
   const direct = useChatMutation((userId: string) => api.openDirectChat(userId));
-  const audits = useQuery({
-    queryKey: ["chat", "audits", id],
-    queryFn: () => api.chatAudits(id),
-    enabled: (me?.role === "admin" || me?.role === "manager") && room.data?.kind !== "team" && !!room.data,
-  });
 
   const r = room.data;
   const notIn = useMemo(() => {
@@ -215,19 +209,6 @@ export default function ChatInfo() {
           </View>
         ) : null}
 
-        {(me?.role === "admin" || me?.role === "manager") && audits.data && audits.data.length ? (
-          <View style={{ backgroundColor: c.surface }} className="mt-2 px-4 py-3">
-            <Text className="pb-1 text-sm font-semibold text-muted">Read by admins</Text>
-            {audits.data.slice(0, 10).map((a, i) => (
-              <View key={i} className="flex-row items-center gap-3 py-1.5">
-                <Avatar name={a.person.name} color={a.person.avatarColor} size={28} />
-                <Text className="flex-1 text-md text-fg">{a.person.name}</Text>
-                <Text className="text-2xs text-faint">{seenAt(a.at)}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
         {r.canLeave ? (
           <View style={{ backgroundColor: c.surface }} className="mt-2">
             <Touchable
@@ -264,10 +245,6 @@ export default function ChatInfo() {
             </Touchable>
           </View>
         ) : null}
-
-        <Text style={{ color: c.textFaint }} className="px-6 pt-5 text-center text-2xs">
-          Admins and managers in your workspace can read and write in any team chat.
-        </Text>
       </ScrollView>
 
       <ActionSheet visible={!!acting} title={acting?.name ?? ""} actions={memberActions} onClose={() => setActing(null)} />

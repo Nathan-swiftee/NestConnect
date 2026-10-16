@@ -133,7 +133,7 @@ export function TeamChat({
           </header>
           {oversee && (
             <div className="tc-oversee" role="note">
-              Every chat in the workspace. You can read and write in ones you aren't in — and each time you open one, it's recorded.
+              Every chat in the workspace. You can read and write in ones you aren't in.
             </div>
           )}
           <div className="tc-search">
@@ -206,7 +206,6 @@ export function TeamChat({
               </>
             )}
           </div>
-          <footer className="tc-list__foot">Admins and managers in your workspace can read and write in any team chat.</footer>
           </>
           )}
         </aside>

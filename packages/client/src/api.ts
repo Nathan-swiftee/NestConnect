@@ -94,7 +94,6 @@ import type {
   ChatMessage,
   ChatMessageInfo,
   ChatMessagePage,
-  ChatPerson,
   ChatRoom,
   ChatRoomPrefsInput,
   ChatRoomSummary,
@@ -609,7 +608,6 @@ export const api = {
   setChatMemberRole: (id: string, userId: string, role: ChatMemberRole) =>
     put<ChatRoom>(`/chat/rooms/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}/role`, { role }),
   leaveChatRoom: (id: string) => post<{ ok: true }>(`/chat/rooms/${encodeURIComponent(id)}/leave`, {}),
-  chatAudits: (id: string) => get<Array<{ person: ChatPerson; at: string }>>(`/chat/rooms/${encodeURIComponent(id)}/audits`),
 
   // Business Ops: the workspace's own SOPs, by team.
   opsStatus: () => get<OpsStatusInfo>("/ops/status"),
