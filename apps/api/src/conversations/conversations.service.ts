@@ -214,10 +214,13 @@ export class ConversationsService {
       // backstop for an API caller, a stale tab, or a number that moved
       // accounts between the list loading and Send being pressed.
       const sendingWabaId = (await this.store.getInboxConfig(conv.inboxId))?.wabaId;
-      if (tpl.wabaId && sendingWabaId && tpl.wabaId !== sendingWabaId) {
+      if (sendingWabaId && tpl.wabaId !== sendingWabaId) {
         throw new BadRequestException(
-          `The template “${tpl.name}” belongs to a different WhatsApp account and can't be sent from this number. ` +
-            "Pick one of this number's own templates.",
+          tpl.wabaId
+            ? `The template “${tpl.name}” belongs to a different WhatsApp account and can't be sent from this number. ` +
+                "Pick one of this number's own templates."
+            : `The template “${tpl.name}” isn't on this number's WhatsApp account, so Meta would refuse it. ` +
+                "Submit it to the account in Settings › Templates, or pick one of this number's own templates.",
         );
       }
       // Meta refuses a template whose variables don't all arrive filled

@@ -177,6 +177,13 @@ jobs:
       - name: Template account scope
         run: pnpm check:template-scope
 
+      # Templates kept in step with Meta, per account: a new one is submitted
+      # for approval on its account, a delete reaches Meta, the wording of an
+      # approved one isn't edited here, accounts sync by themselves, and a
+      # template linked to no account isn't sent from a number that has one.
+      - name: Templates and Meta
+        run: pnpm check:template-meta
+
       # Who hears about a new message. The web used to chime for every arrival
       # anywhere in the workspace, because the sound hung off a broadcast meant
       # for keeping lists current. Both ways of getting the fix wrong are silent:

@@ -39,6 +39,13 @@ The official Groups API lets an approved business **create, manage, and message 
 
 - **The 24-hour customer service window.** When a customer messages you, a 24-hour window opens in which you can reply with **free-form** messages. Outside it, you may only send **pre-approved message templates**.
 - **Templates (HSM)** must be submitted to and approved by Meta, and are categorized **Marketing / Utility / Authentication**. The composer in Nest Connect is window-aware: inside the window it's free text; outside it, it offers only approved templates and explains why (see [`docs/01-product-and-ux.md`](01-product-and-ux.md)).
+- **Templates are per WhatsApp account (WABA), not per number.** Every number on an account shares its templates, and no number can send another account's. Settings › Templates has a tab per account, naming its numbers:
+  - **New template** submits it to Meta for approval on that account (`POST /{waba}/message_templates`, with an example for each variable). It is kept only if Meta accepts the submission, and shows *Pending review* until Meta decides.
+  - **Delete** deletes it at Meta too (by `hsm_id`, so only that language goes); otherwise the next sync would bring it back.
+  - **Edit** changes only what the variables pre-fill with. The name and wording are what Meta approved; to change them, create a new template.
+  - **Not linked to an account** lists templates made here but never submitted. They are hidden from the composer and broadcasts of any number that has an account, refused if sent from one anyway, and can be submitted to an account or deleted. (A number with no account configured still sees everything.)
+  - **Sync** runs by itself: soon after an account is first seen, then hourly, and every 10 minutes while one of its templates is waiting on review (`TemplatesService.sweep`; the last sync per account is the workspace setting `wa_templates_synced_at:{waba}`). Demo workspaces are skipped. *Sync from Meta* still runs it on demand.
+  - Checks: `pnpm check:template-scope`, `pnpm check:template-meta`.
 - **Click-to-WhatsApp / Page CTA entry** opens a **72-hour** free window (including templates).
 - **Quality rating & messaging tiers** govern how many unique users you can message per day; low quality → throttling. We monitor quality signals and surface them to admins.
 

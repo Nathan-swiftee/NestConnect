@@ -1118,6 +1118,14 @@ export function useSetDefaultTemplate() {
   });
 }
 
+export function useSubmitTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { id: string; wabaId: string }) => api.submitTemplate(v.id, v.wabaId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
+  });
+}
+
 export function useSyncTemplates() {
   const qc = useQueryClient();
   return useMutation({

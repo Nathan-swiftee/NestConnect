@@ -17,8 +17,9 @@
  * The rules pinned down here:
  *
  *   1. A template is offered only for the account that holds it.
- *   2. An unclaimed template is offered everywhere, because we don't know whose
- *      it is and hiding it everywhere is worse than showing it once too often.
+ *   2. An unclaimed template is offered to no number that has an account: Meta
+ *      has never heard of it there, so every send would fail. Settings lists
+ *      it as "Not linked to an account", to submit to one or delete.
  *   3. A sync claims an unclaimed row rather than duplicating it — that is the
  *      backfill for everything stored before accounts were tracked.
  *   4. Two accounts may each hold their own "order_update" in English, and they
@@ -106,8 +107,8 @@ async function main(): Promise<void> {
   ok("each is offered its own", forA.some((t) => t.wabaId === WABA_A) && forB.some((t) => t.wabaId === WABA_B));
   const unclaimed = all.filter((t) => !t.wabaId);
   ok(
-    "an unclaimed template is offered to both",
-    unclaimed.every((u) => forA.includes(u) && forB.includes(u)),
+    "an unclaimed template is offered to neither",
+    unclaimed.length > 0 && unclaimed.every((u) => !forA.includes(u) && !forB.includes(u)),
     `${unclaimed.length} unclaimed`,
   );
   // A channel with no account yet must not get an empty picker.
