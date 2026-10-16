@@ -6,9 +6,11 @@ import {
   chatNameColour,
   clockTime,
   useChatDiscussions,
+  useChatRoom,
   useChatRooms,
   useChatStatus,
   useChatThread,
+  useMe,
   usePeople,
   useShareConversation,
 } from "@ding/client";
@@ -21,6 +23,7 @@ import { Avatar } from "../Avatar";
 import { Button } from "../Button";
 import { Sheet } from "../Sheet";
 import { Touchable } from "../Touchable";
+import { mediaSource } from "../../api-config";
 import { ChatAvatar } from "./ChatAvatar";
 
 /*
@@ -276,6 +279,29 @@ export function DiscussionSheet({
   const d = shownId !== cardId ? shown.data : t.data;
   const others = (all.data ?? []).filter((x) => x.card.id !== shownId);
 
+  // @-mentions, as in the chat itself: only people in that chat, never yourself.
+  const room = useChatRoom(d?.roomId);
+  const me = useMe();
+  const [caret, setCaret] = useState(0);
+  const inRoom = useMemo(() => {
+    const members = room.data?.members;
+    const ids = members ? new Set(members.map((m) => m.id)) : null;
+    return mentionables.filter((p) => {
+      const id = (p as Mentionable & { id?: string }).id ?? "";
+      return id !== me.data?.user.id && (!ids || ids.has(id));
+    });
+  }, [mentionables, room.data?.members, me.data?.user.id]);
+  const at = /(^|\s)@([^\s@]{0,24})$/.exec(text.slice(0, caret));
+  const matches = at
+    ? inRoom.filter((p) => p.name.toLowerCase().startsWith(at[2]!.toLowerCase()) || p.name.toLowerCase().includes(` ${at[2]!.toLowerCase()}`)).slice(0, 5)
+    : [];
+  const pick = (p: Mentionable) => {
+    if (!at) return;
+    const start = caret - at[2]!.length - 1;
+    setText(`${text.slice(0, start)}@${p.name} ${text.slice(caret)}`);
+    setCaret(start + p.name.length + 2);
+  };
+
   const send = async () => {
     const body = namesToHandles(text.trim(), mentionables);
     if (!d || !body || busy) return;
@@ -362,11 +388,22 @@ export function DiscussionSheet({
             </View>
           )}
         </ScrollView>
+        {d?.canPost && matches.length ? (
+          <View style={{ backgroundColor: c.elevated, borderColor: c.border }} className="mt-2 rounded-12 border py-1">
+            {matches.map((p) => (
+              <Touchable key={p.email} feel="row" onPress={() => pick(p)} accessibilityRole="button" accessibilityLabel={`Mention ${p.name}`} className="flex-row items-center gap-2.5 px-3 py-2">
+                <Avatar name={p.name} size={26} photo={p.avatarUrl ? mediaSource(p.avatarUrl) : null} />
+                <Text className="text-md font-medium text-fg">{p.name}</Text>
+              </Touchable>
+            ))}
+          </View>
+        ) : null}
         {d?.canPost ? (
           <View className="flex-row items-end gap-2 pt-2">
             <TextInput
               value={text}
               onChangeText={(v) => setText(v.slice(0, CHAT_MESSAGE_MAX))}
+              onSelectionChange={(e) => setCaret(e.nativeEvent.selection.end)}
               placeholder={`Reply in ${d.roomName}`}
               placeholderTextColor={c.textFaint}
               multiline

@@ -4306,7 +4306,7 @@ button.tc-card:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
 .tc-discpanel__who time{font-weight:500;color:var(--text-faint);font-size:var(--fs-2xs)}
 .tc-discpanel__text{font-size:var(--fs-sm);white-space:pre-wrap;word-break:break-word}
 .tc-discpanel__none{margin:0;font-size:var(--fs-xs);color:var(--text-faint);text-align:center}
-.tc-discpanel__compose{display:flex;align-items:flex-end;gap:8px;padding:10px 12px;border-top:1px solid var(--border)}
+.tc-discpanel__compose{position:relative;display:flex;align-items:flex-end;gap:8px;padding:10px 12px;border-top:1px solid var(--border)}
 .tc-discpanel__compose textarea{flex:1;min-width:0;resize:none;border:0;border-radius:20px;background:var(--surface-2);color:var(--text);font:inherit;font-size:var(--fs-sm);padding:10px 14px;outline:none;max-height:120px}
 
 /* On a note: "Also send to [chat]" */

@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { CHAT_MESSAGE_MAX, mentionsToNames, namesToHandles, type ChatSharedConversation, type Mentionable } from "@ding/schemas";
 import {
@@ -8,7 +8,9 @@ import {
   useChatDiscussions,
   useChatRooms,
   useChatStatus,
+  useChatRoom,
   useChatThread,
+  useMe,
   usePeople,
   useShareConversation,
 } from "../../hooks";
@@ -247,6 +249,43 @@ export function DiscussionPanel({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const d = t.data;
+  const box = useRef<HTMLTextAreaElement>(null);
+  const room = useChatRoom(d?.roomId);
+  const me = useMe();
+  const [mention, setMention] = useState<{ query: string; start: number } | null>(null);
+  const [mentionIdx, setMentionIdx] = useState(0);
+  // As in the chat itself: only people in that chat, and never yourself.
+  const inRoom = useMemo(() => {
+    const members = room.data?.members;
+    const ids = members ? new Set(members.map((m) => m.id)) : null;
+    return mentionables.filter((p) => {
+      const id = (p as Mentionable & { id?: string }).id ?? "";
+      return id !== me.data?.user.id && (!ids || ids.has(id));
+    });
+  }, [mentionables, room.data?.members, me.data?.user.id]);
+  const matches = mention
+    ? inRoom.filter((p) => p.name.toLowerCase().startsWith(mention.query.toLowerCase()) || p.name.toLowerCase().includes(` ${mention.query.toLowerCase()}`)).slice(0, 6)
+    : [];
+
+  const onChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    const v = e.target.value.slice(0, CHAT_MESSAGE_MAX);
+    setText(v);
+    const caret = e.target.selectionStart ?? v.length;
+    const at = /(^|\s)@([^\s@]{0,24})$/.exec(v.slice(0, caret));
+    setMention(at ? { query: at[2]!, start: caret - at[2]!.length - 1 } : null);
+    setMentionIdx(0);
+  };
+  const pickMention = (p: Mentionable) => {
+    if (!mention) return;
+    const caret = box.current?.selectionStart ?? text.length;
+    setText(`${text.slice(0, mention.start)}@${p.name} ${text.slice(caret)}`);
+    setMention(null);
+    requestAnimationFrame(() => {
+      const pos = mention.start + p.name.length + 2;
+      box.current?.focus();
+      box.current?.setSelectionRange(pos, pos);
+    });
+  };
 
   const send = async () => {
     const body = namesToHandles(text.trim(), mentionables);
@@ -264,6 +303,12 @@ export function DiscussionPanel({
     }
   };
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mention && matches.length) {
+      if (e.key === "ArrowDown") return e.preventDefault(), setMentionIdx((i) => (i + 1) % matches.length);
+      if (e.key === "ArrowUp") return e.preventDefault(), setMentionIdx((i) => (i - 1 + matches.length) % matches.length);
+      if (e.key === "Enter" || e.key === "Tab") return e.preventDefault(), pickMention(matches[mentionIdx]!);
+      if (e.key === "Escape") return e.preventDefault(), setMention(null);
+    }
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       void send();
@@ -318,14 +363,36 @@ export function DiscussionPanel({
       </div>
       {d?.canPost && (
         <div className="tc-discpanel__compose">
+          {mention && matches.length > 0 && (
+            <div className="mentionpop tc-mentionpop" role="listbox" aria-label="Mention someone">
+              {matches.map((p, i) => (
+                <button
+                  key={p.email}
+                  type="button"
+                  role="option"
+                  aria-selected={i === mentionIdx}
+                  className={i === mentionIdx ? "on" : ""}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pickMention(p);
+                  }}
+                >
+                  <Avatar name={p.name} email={p.email} color={p.avatarColor} src={p.avatarUrl} size={22} fontSize={9} />
+                  <span>{p.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <textarea
+            ref={box}
             rows={1}
             value={text}
             maxLength={CHAT_MESSAGE_MAX}
             placeholder={`Reply in ${d.roomName}`}
             aria-label="Reply in the discussion"
-            onChange={(e) => setText(e.target.value)}
+            onChange={onChange}
             onKeyDown={onKey}
+            onBlur={() => window.setTimeout(() => setMention(null), 120)}
           />
           <button type="button" className="tc-send" aria-label="Send" disabled={!text.trim() || busy} onClick={() => void send()}>
             <SendIcon />
