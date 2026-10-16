@@ -324,6 +324,59 @@ export class ChannelDispatcher {
     }
   }
 
+  /**
+   * React to a customer's email the way Gmail does: a reply to that exact email
+   * (In-Reply-To its Message-ID) carrying the emoji. Gmail shows it as a
+   * reaction; other mail apps show a one-line "reacted 👍" note. Taking a
+   * reaction off can't be unsent, so that sends nothing.
+   */
+  async sendEmailReaction(
+    conversation: ConversationWithMessages,
+    target: Message,
+    emoji: string,
+    reactorName: string,
+  ): Promise<void> {
+    if (!emoji.trim() || !target.channelMsgId) return;
+    if (await this.sandbox.isSandbox(conversation.orgId)) return;
+    const to = conversation.contact.email;
+    if (!to) return;
+    const sendingInboxId =
+      sendingInbox(await this.store.listInboxes(), conversation, { channel: "email" })?.id ?? conversation.inboxId;
+    const ctx = { provider: (await this.store.getInboxConfig(sendingInboxId))?.provider };
+    const provider = this.providers.find((p) => p.supports("email", ctx) && p.sendReaction);
+    if (!provider?.sendReaction) return;
+    // References: the thread's email Message-IDs up to and including the one reacted to.
+    const upTo = conversation.messages.findIndex((m) => m.id === target.id);
+    const chain = conversation.messages
+      .slice(0, upTo + 1)
+      .filter((m) => m.channelMsgId && (m.channel ?? conversation.channel) === "email")
+      .map((m) => m.channelMsgId as string);
+    const context: SendContext = {
+      subject: conversation.subject ?? undefined,
+      toName: conversation.contact.displayName,
+      inReplyTo: target.channelMsgId,
+      references: chain.join(" ") || target.channelMsgId,
+      threadId:
+        conversation.channel === "email" && sendingInboxId === conversation.inboxId
+          ? conversation.channelRef ?? undefined
+          : undefined,
+    };
+    try {
+      await provider.sendReaction({
+        conversation,
+        channelMsgId: target.channelMsgId,
+        messageId: target.id,
+        emoji: emoji.trim(),
+        to,
+        inboxId: sendingInboxId,
+        context,
+        reactorName,
+      });
+    } catch (err) {
+      this.logger.warn(`Email reaction failed: ${String(err)}`);
+    }
+  }
+
   /** Turn a message's attachments into ready-to-send media (bytes loaded from storage). */
   private async resolveMedia(message: Message): Promise<OutboundMedia[] | undefined> {
     if (!message.attachments?.length) return undefined;

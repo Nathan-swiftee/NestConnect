@@ -33,7 +33,7 @@ import { ChannelDot } from "../../../src/components/ChannelDot";
 import { ViewSwitcher } from "../../../src/components/ViewSwitcher";
 import { PushGate, useDelayedPrompt } from "../../../src/components/PushGate";
 import { EmptyState, QueryState } from "../../../src/components/States";
-import { clearBadge, usePushRegistration } from "../../../src/push";
+import { usePushRegistration } from "../../../src/push";
 import { haptics } from "../../../src/haptics";
 import { NotificationBell } from "../../../src/components/NotificationBell";
 import { rowClocks } from "../../../src/clocks";
@@ -330,12 +330,6 @@ export default function Inbox() {
       if (!asked) setShowGate(true);
     });
   }, [promptDue, askedThisRun, push]);
-
-  // The badge counts what's waiting in this list. Looking at the list is
-  // reading it, so the icon shouldn't keep claiming otherwise.
-  useEffect(() => {
-    if (!list.isLoading) void clearBadge();
-  }, [list.isLoading, view]);
 
   // The chosen view's own name and count, for the header. Looked up across every
   // section because the switcher can select a team, a channel or a label — not

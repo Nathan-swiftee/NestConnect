@@ -651,6 +651,7 @@ export class NestChatController {
     // that waits for a round trip feels broken however fast the round trip is.
     if (claims.conversationId) {
       this.realtime.emitMessageUpdated(claims.conversationId, result.stored);
+      void this.ingest.customerReacted(claims.conversationId, result.stored.id, body.emoji).catch(() => undefined);
     }
     return { ok: true, message: result.visible };
   }

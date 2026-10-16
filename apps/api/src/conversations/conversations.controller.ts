@@ -180,11 +180,12 @@ export class ConversationsController {
   /** React to a message with an emoji (empty removes the agent's reaction). */
   @Post(":id/messages/:messageId/react")
   react(
+    @CurrentUserId() userId: string,
     @Param("id") id: string,
     @Param("messageId") messageId: string,
     @Body(new ZodValidationPipe(reactionInputSchema)) body: ReactionInput,
   ) {
-    return this.conversations.react(id, messageId, body.emoji);
+    return this.conversations.react(id, messageId, body.emoji, userId);
   }
 
   /** Pass this message on to other customers' WhatsApp chats. Reports one result

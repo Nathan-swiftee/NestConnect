@@ -10,7 +10,7 @@ import { Store } from "../data/store";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { PushProvider, type PushMessage } from "./push.provider";
 import { SandboxPolicy } from "../tenancy/sandbox";
-import { currentOrgId } from "../tenancy/tenant-scope";
+import { currentOrgId, runInTenant } from "../tenancy/tenant-scope";
 
 /** What a push is *about*. Each maps to a preference, an Android notification
  *  channel, and whether quiet hours may hold it back. */
@@ -143,6 +143,9 @@ interface PendingReceipt {
  * Sending is deliberately fire-and-forget: {@link notify} returns as soon as the
  * work is scheduled, because a push failing must never fail a message send.
  */
+/** How long a burst of changes settles before icons are brought up to date. */
+const BADGE_SYNC_DELAY_MS = 1500;
+
 @Injectable()
 export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(PushService.name);
@@ -157,7 +160,10 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly provider: PushProvider,
     private readonly realtime: RealtimeGateway,
     private readonly sandbox: SandboxPolicy,
-  ) {}
+  ) {
+    // Optional: the checks stand a bare object in for the gateway.
+    this.realtime.onWorkspaceChange?.((orgId) => this.scheduleBadgeSync(orgId));
+  }
 
   onApplicationBootstrap(): void {
     this.timer = setInterval(() => void this.sweepReceipts(), RECEIPT_SWEEP_MS);
@@ -166,6 +172,84 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
 
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
+    for (const t of this.badgeTimers.values()) clearTimeout(t);
+  }
+
+  /* ---- the app-icon badge ---- */
+
+  /**
+   * The number on the app icon: the conversations in this person's My Inbound
+   * with something unread, plus the team chats with unread messages (muted ones
+   * left out). Chats, not messages — five messages from one customer are one.
+   *
+   * One answer everywhere: it rides on every push, it's what the app asks for
+   * when it opens, and a silent push sends it when it changes because something
+   * was read — so opening a conversation on the web takes it off the phone too.
+   */
+  async badgeFor(userId: string): Promise<number> {
+    let n = await this.store.unreadConversationCount(userId);
+    for (const source of this.badgeSources) {
+      try {
+        n += await source(userId);
+      } catch (err) {
+        this.logger.debug(`Badge source failed for ${userId}: ${String(err)}`);
+      }
+    }
+    return n;
+  }
+
+  /** Something else that counts as unread — Team Chat registers its chats. */
+  registerBadgeSource(source: (userId: string) => Promise<number>): void {
+    this.badgeSources.push(source);
+  }
+
+  /** The app has just set its own icon to this, so a silent push is only
+   *  needed once the number moves on from it. */
+  noteBadgeShown(userId: string, count: number): void {
+    this.shownBadge.set(userId, count);
+  }
+
+  private readonly badgeSources: Array<(userId: string) => Promise<number>> = [];
+  /** userId → the number last put on their icon, so a push goes only on change. */
+  private readonly shownBadge = new Map<string, number>();
+  private readonly badgeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** A workspace's unread changed: bring its people's icons up to date shortly.
+   *  Debounced, because one action is often several changes in a row. */
+  scheduleBadgeSync(orgId: string): void {
+    if (!orgId || this.badgeTimers.has(orgId)) return;
+    const t = setTimeout(() => {
+      this.badgeTimers.delete(orgId);
+      void runInTenant(orgId, () => this.syncBadges()).catch((err) =>
+        this.logger.debug(`Badge sync failed for ${orgId}: ${String(err)}`),
+      );
+    }, BADGE_SYNC_DELAY_MS);
+    t.unref?.();
+    this.badgeTimers.set(orgId, t);
+  }
+
+  /**
+   * Send a silent badge-only push to anyone whose number changed. iPhones only:
+   * an Android launcher's badge follows its notifications rather than a number,
+   * and a push with nothing to show is not something to send it.
+   */
+  async syncBadges(): Promise<number> {
+    if (await this.sandbox.isSandbox(currentOrgId())) return 0;
+    const members = await this.store.listMembers();
+    const devices = (await this.store.devicesForUsers(members.map((m) => m.user.id))).filter(
+      (d) => !d.disabledAt && d.platform.toLowerCase() === "ios",
+    );
+    const messages: PushMessage[] = [];
+    for (const userId of new Set(devices.map((d) => d.userId))) {
+      const count = await this.badgeFor(userId);
+      if (this.shownBadge.get(userId) === count) continue;
+      this.shownBadge.set(userId, count);
+      for (const d of devices) {
+        if (d.userId === userId) messages.push({ to: d.pushToken, title: "", body: "", badge: count, silent: true, priority: "normal" });
+      }
+    }
+    if (messages.length) await this.provider.send(messages);
+    return messages.length;
   }
 
   /* ---- preferences ---- */
@@ -300,7 +384,9 @@ export class PushService implements OnApplicationBootstrap, OnModuleDestroy {
     await Promise.all(
       [...new Set(devices.map((d) => d.userId))].map(async (userId) => {
         try {
-          badges.set(userId, await this.store.unreadConversationCount(userId));
+          const count = await this.badgeFor(userId);
+          badges.set(userId, count);
+          this.shownBadge.set(userId, count);
         } catch (err) {
           this.logger.debug(`Badge count failed for ${userId}: ${String(err)}`);
         }

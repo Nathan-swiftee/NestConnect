@@ -114,6 +114,8 @@ export class ChatService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
+    // Unread team chats count towards the app-icon badge.
+    this.push.registerBadgeSource?.((userId) => this.unreadChatCount(userId));
     this.realtime.registerChat({
       members: (orgId, userId, roomId) => runInTenant(orgId, () => this.socketMembers(userId, roomId)),
       presence: (orgId, userId, online) => {
@@ -128,6 +130,23 @@ export class ChatService implements OnModuleInit {
 
   async enabled(): Promise<boolean> {
     return (await this.store.getAppSetting(currentOrgId(), CHAT_MODULE_KEY)) === "on";
+  }
+
+  /** How many chats this person has unread messages in, leaving muted ones
+   *  out — for the app-icon badge. Read-only: unlike opening the chat list, it
+   *  doesn't mark anything delivered. */
+  async unreadChatCount(userId: string): Promise<number> {
+    if (!(await this.enabled())) return 0;
+    const user = await this.store.getUser(userId);
+    if (!user) return 0;
+    const followed = (await this.visibleRooms(user, false)).filter(follows);
+    if (!followed.length) return 0;
+    const counts = await this.chat.unreadCounts(
+      userId,
+      followed.map((a) => ({ roomId: a.room.id, since: a.me?.lastReadAt ?? null, from: this.visibleFrom(a) })),
+    );
+    const now = new Date().toISOString();
+    return followed.filter((a) => (counts.get(a.room.id)?.unread ?? 0) > 0 && !((a.me?.mutedUntil ?? "") > now)).length;
   }
 
   async status(userId: string): Promise<ChatStatusInfo> {
@@ -597,7 +616,31 @@ export class ChatService implements OnModuleInit {
     const clean = emoji.trim();
     if (clean && !had) next[clean] = [...(next[clean] ?? []), userId];
     const updated = await this.chat.updateMessage(messageId, { reactions: next });
-    return this.emitUpdated(a, updated!, await this.people());
+    const people = await this.people();
+    if (clean && !had) await this.tellReaction(a, user, m, clean, people);
+    return this.emitUpdated(a, updated!, people);
+  }
+
+  /**
+   * "Amara reacted 👍 to: “Lunch at 1?”" — to whoever wrote the message, the
+   * way WhatsApp does it. Not for your own reactions, not when they've muted
+   * the chat, and not for taking a reaction off.
+   */
+  private async tellReaction(a: Access, reactor: User, m: ChatMessageRecord, emoji: string, people: People): Promise<void> {
+    const authorId = m.authorUserId;
+    if (!authorId || authorId === reactor.id || !people.has(authorId)) return;
+    const row = (await this.chat.listMembers(a.room.id)).find((r) => r.userId === authorId);
+    if ((row?.mutedUntil ?? "") > new Date().toISOString()) return;
+    const what =
+      trim(mentionsToNames(m.body, [...people.values()]).replace(/\s+/g, " ").trim(), PREVIEW_MAX) || chatAttachmentLabel(m.attachments) || "your message";
+    this.push.notify({
+      userIds: [authorId],
+      kind: "chat_message",
+      title: a.room.kind === "direct" ? reactor.name : this.roomName(a, authorId, people),
+      body: `${reactor.name} reacted ${emoji} to: “${what}”`,
+      chatRoomId: a.room.id,
+      actorUserId: reactor.id,
+    });
   }
 
   /** Who has read one of my messages, who only has it, and who's still waiting. */
@@ -632,6 +675,7 @@ export class ChatService implements OnModuleInit {
     const now = chatClock();
     const me = await this.chat.upsertMember(roomId, userId, { lastReadAt: now, lastDeliveredAt: now });
     this.emitReceipt(a, userId, me);
+    this.push.scheduleBadgeSync?.(currentOrgId());
   }
 
   /** My app has the latest of this chat (it arrived while I was elsewhere). */
@@ -978,6 +1022,8 @@ export class ChatService implements OnModuleInit {
     if (told.length) {
       this.push.notify({ userIds: told, kind: "chat_message", title, body, chatRoomId: a.room.id, actorUserId: author.id });
     }
+    // Everyone else it's unread for (muted, or not pushed) still gets the right number on their icon.
+    this.push.scheduleBadgeSync?.(currentOrgId());
     // A mention reaches them muted or not, as a bell entry (which makes the
     // sound); the screen pops it up as well.
     if (mentioned.size) {

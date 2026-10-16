@@ -435,6 +435,34 @@ async function main() {
     ok("deleting a card takes it out of the discussions", (await svc.discussions(NATHAN, conv.id)).every((d) => d.card.id !== bare.id));
     ok("and leaves no card behind", (await svc.messages(NATHAN, support.id)).messages.find((m) => m.id === bare.id)?.shared === null);
     ok("a chat list says what was shared", (await svc.rooms(AMARA)).find((r) => r.id === dm.id)?.lastMessage?.shared?.contactName === "Northside Logistics");
+
+    console.log("\nThe app-icon badge\n");
+    const badgeRoom = await svc.createGroup(NATHAN, { name: "Badge", memberIds: [JAMES] });
+    const badgeBefore = await svc.unreadChatCount(JAMES);
+    for (const word of ["one", "two", "three"]) await svc.send(NATHAN, badgeRoom.id, say(word));
+    ok("three unread messages in a chat count once on the badge", (await svc.unreadChatCount(JAMES)) === badgeBefore + 1);
+    await svc.setPrefs(JAMES, badgeRoom.id, { muted: true });
+    ok("a muted chat isn't counted", (await svc.unreadChatCount(JAMES)) === badgeBefore);
+    await svc.setPrefs(JAMES, badgeRoom.id, { muted: false });
+    await svc.read(JAMES, badgeRoom.id);
+    ok("reading it takes it off", (await svc.unreadChatCount(JAMES)) === badgeBefore);
+
+    console.log("\nReactions\n");
+    const hello = await svc.send(NATHAN, badgeRoom.id, say("Hello team"));
+    pushes.length = 0;
+    await svc.react(JAMES, hello.id, "👍");
+    const told = pushes.find((p) => p.userIds.includes(NATHAN));
+    ok("the author is told someone reacted", !!told && told.kind === "chat_message" && told.chatRoomId === badgeRoom.id);
+    ok("…with who, which emoji, and to what", /reacted 👍 to: “Hello team”$/.test(told?.body ?? "") && told!.body.startsWith("James"), told?.body);
+    ok("…and nobody else", pushes.every((p) => p.userIds.join() === NATHAN));
+    pushes.length = 0;
+    await svc.react(JAMES, hello.id, "👍");
+    ok("taking it off says nothing", pushes.length === 0);
+    await svc.react(NATHAN, hello.id, "❤️");
+    ok("nor does reacting to your own message", pushes.length === 0);
+    await svc.setPrefs(NATHAN, badgeRoom.id, { muted: true });
+    await svc.react(JAMES, hello.id, "😂");
+    ok("nor a reaction in a chat the author muted", pushes.length === 0);
   });
   server.close();
 

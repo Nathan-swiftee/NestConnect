@@ -600,13 +600,17 @@ export class ConversationsService {
   }
 
   /** An agent reacts to a message with an emoji (empty removes theirs). Stores
-   *  it, broadcasts the update, and delivers it to the customer on WhatsApp. */
-  async react(conversationId: string, messageId: string, emoji: string): Promise<Message> {
+   *  it, broadcasts the update, and delivers it to the customer: on WhatsApp,
+   *  on the website chat, and on email the way Gmail does. */
+  async react(conversationId: string, messageId: string, emoji: string, reactorUserId?: string): Promise<Message> {
     const updated = await this.store.reactToMessage(messageId, emoji, "user");
     if (!updated) throw new NotFoundException("Message not found");
     this.realtime.emitMessageUpdated(updated.conversationId, updated.message);
     const conv = await this.store.getConversation(conversationId);
-    if (conv?.channel === "nestchat") {
+    if (conv && (updated.message.channel ?? conv.channel) === "email" && !updated.message.internal) {
+      const reactor = reactorUserId ? await this.store.getUser(reactorUserId) : undefined;
+      void this.dispatcher.sendEmailReaction(conv, updated.message, emoji, reactor?.name ?? "");
+    } else if (conv?.channel === "nestchat") {
       // Our own live chat: no provider id to key on, because there is no
       // provider. The visitor's widget is told with our own message id.
       void this.dispatcher.sendReaction(conv, "", emoji, updated.message.id);

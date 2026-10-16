@@ -16,8 +16,12 @@ export interface PushMessage {
   body: string;
   /** Deep-link payload the app reads on tap — `{ conversationId, type }`. */
   data?: Record<string, string>;
-  /** iOS app-icon badge: unread conversations, computed server-side. */
+  /** iOS app-icon badge: unread inbox conversations plus unread team chats,
+   *  computed server-side. */
   badge?: number;
+  /** Only the badge: no banner, no sound. Sent when the number changes because
+   *  something was read, so the icon follows without anyone being disturbed. */
+  silent?: boolean;
   /** Android channel id — `messages`, `mentions`, `assignments`, `reminders`.
    *  Channels are what let someone silence one class without silencing all. */
   channelId?: string;

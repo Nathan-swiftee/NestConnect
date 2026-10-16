@@ -43,6 +43,18 @@ export class DevicesController {
   }
 
   /**
+   * The number for this person's app icon — unread My Inbound conversations
+   * plus unread team chats. The app sets its icon to this whenever it opens or
+   * something changes, so the icon always matches what's actually waiting.
+   */
+  @Get("badge")
+  async badge(@CurrentUserId() userId: string): Promise<{ count: number }> {
+    const count = await this.push.badgeFor(userId);
+    this.push.noteBadgeShown(userId, count);
+    return { count };
+  }
+
+  /**
    * Register this install for push, or refresh an existing registration.
    *
    * The app calls this after sign-in *and* on every start, because push tokens

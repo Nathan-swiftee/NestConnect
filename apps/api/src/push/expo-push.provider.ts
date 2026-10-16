@@ -53,8 +53,7 @@ export class ExpoPushProvider extends PushProvider {
   private async sendBatch(batch: PushMessage[]): Promise<PushSendResult[]> {
     const body = batch.map((m) => ({
       to: m.to,
-      title: m.title,
-      body: m.body,
+      ...(m.silent ? {} : { title: m.title, body: m.body }),
       ...(m.data ? { data: m.data } : {}),
       ...(m.badge === undefined ? {} : { badge: m.badge }),
       ...(m.channelId ? { channelId: m.channelId } : {}),
@@ -65,7 +64,7 @@ export class ExpoPushProvider extends PushProvider {
       ...(m.interruptionLevel ? { interruptionLevel: m.interruptionLevel } : {}),
       priority: m.priority ?? "high",
       ...(m.ttlSeconds === undefined ? {} : { ttl: m.ttlSeconds }),
-      sound: "default" as const,
+      ...(m.silent ? {} : { sound: "default" as const }),
     }));
 
     let json: { data?: ExpoTicket[]; errors?: { message?: string }[] } | null = null;

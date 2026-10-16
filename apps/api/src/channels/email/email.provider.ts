@@ -4,6 +4,7 @@ import { env } from "../../config/env";
 import { MediaService } from "../../storage/media.service";
 import {
   ChannelProvider,
+  type SendContext,
   type SendParams,
   type SendResult,
   type SupportsContext,
@@ -231,6 +232,52 @@ export class EmailProvider extends ChannelProvider {
     }
   }
 
+  /**
+   * A reaction from a hosted address. Postmark sends only text and HTML — it
+   * can't carry the part Gmail reads a reaction from — so every recipient gets
+   * the fallback note, threaded as a reply to the email reacted to.
+   */
+  async sendReaction(params: {
+    conversation: { id: string };
+    emoji: string;
+    to?: string;
+    context?: SendContext;
+    reactorName?: string;
+  }): Promise<void> {
+    if (!params.to || !params.emoji) return;
+    const { text, html } = reactionFallback(params.emoji, params.reactorName ?? "");
+    const subject = subjectLine(params.context);
+    if (!this.isLive) {
+      if (env.mockMessaging) this.logger.log(`[mock] Email reaction ${params.emoji} → ${params.to} · "${subject}"`);
+      return;
+    }
+    const headers: Array<{ Name: string; Value: string }> = [
+      { Name: "Message-ID", Value: `<ding.${params.conversation.id}.r${Date.now()}@${env.email.domain}>` },
+      { Name: "X-Ding-Origin", Value: "nest" },
+    ];
+    if (params.context?.inReplyTo) {
+      headers.push({ Name: "In-Reply-To", Value: params.context.inReplyTo });
+      headers.push({ Name: "References", Value: params.context.references ?? params.context.inReplyTo });
+    }
+    const res = await fetch("https://api.postmarkapp.com/email", {
+      method: "POST",
+      headers: {
+        "X-Postmark-Server-Token": env.email.postmarkToken,
+        "content-type": "application/json",
+        accept: "application/json",
+      },
+      body: JSON.stringify({
+        From: env.email.from,
+        To: params.to,
+        Subject: subject,
+        TextBody: text,
+        HtmlBody: html,
+        MessageStream: "outbound",
+        Headers: headers,
+      }),
+    });
+    if (!res.ok) this.logger.warn(`Email reaction to ${params.to} failed: HTTP ${res.status}`);
+  }
 }
 
 /**
@@ -238,6 +285,21 @@ export class EmailProvider extends ChannelProvider {
  * thread keeps the agent's subject verbatim. Shared by the Postmark + Gmail
  * providers so both channels thread and label subjects identically.
  */
+/**
+ * What a reaction says to a mail app that doesn't understand reactions — the
+ * same idea as Gmail's "reacted via Gmail" note: the emoji, large, and who.
+ */
+export function reactionFallback(emoji: string, reactorName: string): { text: string; html: string } {
+  const who = reactorName.trim() || "Someone";
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return {
+    text: `${emoji} ${who} reacted to your email`,
+    html:
+      `<p style="font-size:32px;line-height:1.2;margin:0 0 8px">${esc(emoji)}</p>` +
+      `<p style="margin:0;color:#5f6368">${esc(who)} reacted to your email</p>`,
+  };
+}
+
 export function subjectLine(context?: { subject?: string; inReplyTo?: string }): string {
   const s = (context?.subject ?? "").trim();
   const isReply = Boolean(context?.inReplyTo);

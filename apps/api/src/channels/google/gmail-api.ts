@@ -321,6 +321,27 @@ export function extractHtml(msg: GmailMessage): string | undefined {
   return undefined;
 }
 
+/**
+ * The emoji, when this email is a Gmail reaction rather than a message: Gmail
+ * sends a reaction as a reply carrying a `text/vnd.google.email-reaction+json`
+ * part (`{"emoji":"👍","version":1}`) beside a text/HTML fallback.
+ */
+export function extractReaction(msg: GmailMessage): string | undefined {
+  const part = findPart(msg.payload, GMAIL_REACTION_MIME) ?? (msg.payload?.mimeType === GMAIL_REACTION_MIME ? msg.payload : undefined);
+  return part?.body?.data ? parseReactionJson(decodeB64Url(part.body.data)) : undefined;
+}
+
+/** `{"emoji":"👍","version":1}` → "👍"; anything else → undefined. */
+export function parseReactionJson(json: string): string | undefined {
+  try {
+    const data = JSON.parse(json) as { emoji?: unknown; version?: unknown };
+    const emoji = typeof data.emoji === "string" ? data.emoji.trim() : "";
+    return emoji && emoji.length <= 16 ? emoji : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function findPart(part: GmailPart | undefined, mimeType: string): GmailPart | undefined {
   if (!part) return undefined;
   if (part.mimeType === mimeType && part.body?.data) return part;
@@ -365,7 +386,14 @@ export interface BuildMimeInput {
   /** Images to embed inline, referenced from `html` as `cid:<contentId>`. They're
    *  bundled with the body in a multipart/related so clients resolve each cid. */
   inlineImages?: InlineImage[];
+  /** An emoji reaction, in Gmail's format: a `text/vnd.google.email-reaction+json`
+   *  part beside the text and HTML, which stay as the fallback other mail apps
+   *  show. Gmail only recognises it on a reply (`inReplyTo` set). */
+  reaction?: { emoji: string };
 }
+
+/** The MIME type Gmail reads a reaction from. */
+export const GMAIL_REACTION_MIME = "text/vnd.google.email-reaction+json";
 
 /** Base64 a buffer and hard-wrap at 76 chars per RFC 2045. */
 function b64Wrap(buf: Buffer): string {
@@ -421,6 +449,15 @@ export function buildMime(input: BuildMimeInput): string {
       "Content-Transfer-Encoding: base64",
       "",
       b64Wrap(Buffer.from(input.body, "utf8")),
+      ...(input.reaction
+        ? [
+            `--${altBoundary}`,
+            `Content-Type: ${GMAIL_REACTION_MIME}; charset="UTF-8"`,
+            "Content-Transfer-Encoding: base64",
+            "",
+            b64Wrap(Buffer.from(JSON.stringify({ emoji: input.reaction.emoji, version: 1 }), "utf8")),
+          ]
+        : []),
       `--${altBoundary}`,
       'Content-Type: text/html; charset="UTF-8"',
       "Content-Transfer-Encoding: base64",
