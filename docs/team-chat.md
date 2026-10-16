@@ -94,9 +94,6 @@ Discuss… is for the chats you're in.
 
 A banner says they aren't in the chat. Their visits aren't logged anywhere
 (an earlier "Read by admins" record was removed, and its table dropped).
-Everyone is told: the foot of
-the chat list and every info panel say "Admins and managers in your workspace
-can read and write in any team chat."
 
 ## Messages
 

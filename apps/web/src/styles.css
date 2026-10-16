@@ -4107,7 +4107,6 @@ button.tpl-row:active{transform:scale(.97)}
 .tc-row__badge{flex:none;min-width:20px;height:20px;padding:0 6px;border-radius:var(--r-full);background:var(--wa);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;font-variant-numeric:tabular-nums}
 .tc-row__badge.muted{background:var(--text-faint)}
 .tc-row__tag{flex:none;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint);border:1px solid var(--border);border-radius:var(--r-full);padding:1px 7px}
-.tc-list__foot{padding:10px 18px 14px;font-size:var(--fs-2xs);color:var(--text-faint);border-top:1px solid var(--border)}
 .tc-empty{display:flex;flex-direction:column;align-items:center;gap:8px;margin:28px 16px;text-align:center;color:var(--text-muted);font-size:var(--fs-sm)}
 .tc-empty svg{width:26px;height:26px;opacity:.55}
 .tc-empty p{margin:0}
@@ -4463,7 +4462,6 @@ button.tc-card:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
 .tc-infopanel__sec{padding:12px 14px;border-bottom:8px solid var(--surface-2);display:flex;flex-direction:column;gap:2px}
 .tc-infopanel__sec h4{margin:0 0 4px 4px;font-size:var(--fs-xs);font-weight:700;color:var(--text-muted)}
 .tc-infopanel__sec .fieldhint{margin:0 4px 6px}
-.tc-infopanel__note{margin:14px 18px 22px;font-size:var(--fs-2xs);color:var(--text-faint);text-align:center}
 .tc-toggle{display:flex;align-items:center;gap:12px;width:100%;padding:8px 6px;border-radius:var(--r-12);text-align:left}
 .tc-toggle:hover{background:var(--hover)}
 .tc-toggle__text{flex:1;min-width:0;display:flex;flex-direction:column}

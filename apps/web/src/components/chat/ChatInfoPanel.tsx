@@ -225,7 +225,6 @@ export function ChatInfoPanel({
             </button>
           </section>
         )}
-        <p className="tc-infopanel__note">Admins and managers in your workspace can read and write in any team chat.</p>
       </div>
     </aside>
   );

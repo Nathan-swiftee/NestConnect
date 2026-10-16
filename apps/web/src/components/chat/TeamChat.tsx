@@ -206,7 +206,6 @@ export function TeamChat({
               </>
             )}
           </div>
-          <footer className="tc-list__foot">Admins and managers in your workspace can read and write in any team chat.</footer>
           </>
           )}
         </aside>

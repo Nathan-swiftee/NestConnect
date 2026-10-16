@@ -270,13 +270,6 @@ export default function Chat() {
           />
           )
         }
-        ListFooterComponent={
-          all.length && !showStarred ? (
-            <Text style={{ color: c.textFaint }} className="px-6 pt-4 text-center text-2xs">
-              Admins and managers in your workspace can read and write in any team chat.
-            </Text>
-          ) : null
-        }
       />
 
       <NewChatSheet visible={newOpen} canCreateGroups={!!status.data?.canCreateGroups} onClose={() => setNewOpen(false)} onOpened={(id) => {

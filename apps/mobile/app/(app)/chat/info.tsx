@@ -245,10 +245,6 @@ export default function ChatInfo() {
             </Touchable>
           </View>
         ) : null}
-
-        <Text style={{ color: c.textFaint }} className="px-6 pt-5 text-center text-2xs">
-          Admins and managers in your workspace can read and write in any team chat.
-        </Text>
       </ScrollView>
 
       <ActionSheet visible={!!acting} title={acting?.name ?? ""} actions={memberActions} onClose={() => setActing(null)} />
