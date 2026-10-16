@@ -3,6 +3,7 @@ import { env } from "../config/env";
 import { NotificationsModule } from "../notifications/notifications.module";
 import { MemoryOpsStore } from "./memory-ops.store";
 import { OpsController } from "./ops.controller";
+import { OpsSeedService } from "./ops-seed.service";
 import { OpsService } from "./ops.service";
 import { OpsStore } from "./ops.store";
 import { PrismaOpsStore } from "./prisma-ops.store";
@@ -11,6 +12,6 @@ import { PrismaOpsStore } from "./prisma-ops.store";
 @Module({
   imports: [NotificationsModule],
   controllers: [OpsController],
-  providers: [{ provide: OpsStore, useClass: env.usingDatabase ? PrismaOpsStore : MemoryOpsStore }, OpsService],
+  providers: [{ provide: OpsStore, useClass: env.usingDatabase ? PrismaOpsStore : MemoryOpsStore }, OpsService, OpsSeedService],
 })
 export class OpsModule {}

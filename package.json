@@ -39,6 +39,7 @@
     "check:macros": "tsx --tsconfig apps/api/tsconfig.json tools/check-macros.ts",
     "check:macros-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-macros-pg.ts",
     "check:business-ops": "tsx --tsconfig apps/api/tsconfig.json tools/check-business-ops.ts",
+    "check:accounts-sops": "tsx --tsconfig apps/api/tsconfig.json tools/check-accounts-sops.ts",
     "check:business-ops-pg": "tsx --tsconfig apps/api/tsconfig.json tools/check-business-ops-pg.ts",
     "check:gmail-reauth": "tsx --tsconfig apps/api/tsconfig.json tools/check-gmail-reauth.ts",
     "check:customer-bulk": "tsx --tsconfig apps/api/tsconfig.json tools/check-customer-bulk.ts",

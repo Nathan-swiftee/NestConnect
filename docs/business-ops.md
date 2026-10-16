@@ -138,11 +138,25 @@ A write naming another workspace's team, collection, person or SOP is refused
 by the tenant-scoped client. The review sweep reads across workspaces and acts
 inside each one.
 
+## SOPs added by the platform
+
+`OpsSeedService` adds the Accounts team's first SOPs — Business credit accounts
+and Receivables (`apps/api/src/ops/seed/accounts-sops.ts`) — to the operator's
+own workspace, once, on start-up. They go in a Finance collection, owned by
+David Miles when he's a member, and are published for any team named Accounts,
+Accounting, Finance or Credit Control; with no such team they wait as drafts.
+A title already there is left alone. The workspace setting
+`seed.ops.accounts-sops-v1` records that it ran, so editing or deleting them
+afterwards sticks. They're written whether or not the module is on. Logins are
+never put in an SOP; it says where they're kept.
+
 ## Checks
 
 - `pnpm check:business-ops` — the switch, access, versions, must-reads,
   checklists, reviews, search and collections (in memory).
 - `pnpm check:business-ops-pg` — the same store on Postgres, and one
   workspace's SOPs staying its own.
+- `pnpm check:accounts-sops` — the Accounts SOPs: published for the right team,
+  no passwords, added once.
 - `apps/web/src/lib/ops.test.ts` — filters, paste-to-steps, change
   descriptions, recently viewed.
