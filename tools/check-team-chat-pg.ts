@@ -50,7 +50,7 @@ const B = "chatchk_b";
 async function cleanup(root: PrismaClient): Promise<void> {
   const orgs = [A, B];
   await root.notification.deleteMany({ where: { user: { orgId: { in: orgs } } } });
-  await root.chatRoom.deleteMany({ where: { orgId: { in: orgs } } }); // members, messages, stars, audits cascade
+  await root.chatRoom.deleteMany({ where: { orgId: { in: orgs } } }); // members, messages and stars cascade
   // The customer side, for the conversations each workspace shares.
   const convs = (await root.conversation.findMany({ where: { orgId: { in: orgs } }, select: { id: true } })).map((c) => c.id);
   const msgs = (await root.message.findMany({ where: { conversationId: { in: convs } }, select: { id: true } })).map((m) => m.id);

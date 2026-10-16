@@ -230,7 +230,6 @@ model User {
   recoveryCodes RecoveryCode[]
   chatMemberships ChatMember[]
   chatMessages    ChatMessage[] @relation("ChatAuthor")
-  chatAudits      ChatAudit[]
   chatPresence    ChatPresence?
   chatStars       ChatStar[]
 
@@ -1249,7 +1248,6 @@ model ChatRoom {
   team          Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
   members       ChatMember[]
   messages      ChatMessage[]
-  audits        ChatAudit[]
   notifications Notification[]
 
   @@unique([orgId, directKey])
@@ -1314,19 +1312,6 @@ model ChatMessage {
   @@index([roomId, createdAt])
   @@index([conversationId])
   @@index([replyToId])
-}
-
-/// An admin opened a chat they aren't in.
-model ChatAudit {
-  id     String   @id @default(cuid())
-  roomId String
-  userId String
-  at     DateTime @default(now())
-
-  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([roomId, at])
 }
 
 /// When someone was last connected, for "last seen".

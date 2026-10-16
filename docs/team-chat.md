@@ -93,8 +93,8 @@ They can't Discuss a customer conversation into a chat they only oversee.
 Discuss… is for the chats you're in.
 
 A banner says they aren't in the chat. Their visits aren't logged anywhere
-(an earlier "Read by admins" record was removed; the `ChatAudit` table is
-left unused). Everyone is told: the foot of
+(an earlier "Read by admins" record was removed, and its table dropped).
+Everyone is told: the foot of
 the chat list and every info panel say "Admins and managers in your workspace
 can read and write in any team chat."
 
@@ -238,7 +238,7 @@ keep the two tied together.
   pinned), `ChatMessage` (text or system, reply-to, reactions, mentions, edited,
   deleted, attachments, link card, a shared conversation and its card),
   `ChatStar` (person × message),
-  `ChatAudit`, `ChatPresence`; and `Notification.chatRoomId`.
+  `ChatPresence`; and `Notification.chatRoomId`.
   Tenant-scoped (`ChatRoom` directly, the rest through it).
 - A team chat's members come from the team at the moment of asking; its
   `ChatMember` rows only hold each person's markers and settings. Team chats are
