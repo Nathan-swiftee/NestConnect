@@ -1250,11 +1250,14 @@ export function fillTemplatePreview(body: string, params: string[]): string {
  * account share every template, so filtering by inbox would hide templates the
  * selected number is perfectly entitled to send.
  *
- * Unclaimed templates (no `wabaId`) are included for every account. We do not
- * know whose they are — locally authored, or stored before templates were
- * scoped — and showing one in a place it does not belong is a send that fails
- * with a clear message, while hiding one everywhere is a template nobody can
- * find. A sync claims them as soon as Meta says who owns them.
+ * Unclaimed templates (no `wabaId`) are not offered to a number with an
+ * account. Meta has never heard of them under that account, so every send would
+ * fail; Settings › Templates lists them as "Not linked to an account", to be
+ * submitted to one or deleted. A sync still claims one the moment Meta says an
+ * account holds a template by that name.
+ *
+ * A channel with no account configured gets everything, as before: there is no
+ * account to filter by, and narrowing to nothing helps nobody.
  */
 export function templatesForWaba<T extends { wabaId?: string }>(
   templates: T[],
@@ -1263,7 +1266,7 @@ export function templatesForWaba<T extends { wabaId?: string }>(
   // No account to filter by (an unconfigured channel, a non-WhatsApp one):
   // narrowing to "unclaimed only" would empty the list for no good reason.
   if (!wabaId) return templates;
-  return templates.filter((t) => !t.wabaId || t.wabaId === wabaId);
+  return templates.filter((t) => t.wabaId === wabaId);
 }
 
 /**
@@ -1300,10 +1303,17 @@ export const createTemplateInputSchema = z.object({
     .regex(/^[a-z0-9_]+$/, "Use lower-case letters, numbers and underscores only"),
   category: templateCategorySchema.default("utility"),
   language: z.string().min(2).default("en"),
-  body: z.string().min(1),
+  body: z.string().min(1).max(1024),
   variableDefaults: z.array(z.string().max(500)).max(20).default([]),
+  /** The WhatsApp account to submit it to Meta on, for approval. Without one it
+   *  is kept here only, linked to no account — and no number can send it. */
+  wabaId: z.string().min(1).optional(),
 });
 export type CreateTemplateInput = z.infer<typeof createTemplateInputSchema>;
+
+/** Submit a template that's linked to no account to Meta, on this account. */
+export const submitTemplateInputSchema = z.object({ wabaId: z.string().min(1) });
+export type SubmitTemplateInput = z.infer<typeof submitTemplateInputSchema>;
 
 export const updateTemplateInputSchema = z.object({
   name: z

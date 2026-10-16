@@ -52,6 +52,14 @@ export class BroadcastService {
         `Template “${template.name}” isn't approved by Meta yet — only approved templates can be broadcast.`,
       );
     }
+    // A template is only on its own WhatsApp account; sent from any other
+    // number, every recipient would fail at Meta.
+    const sendingWabaId = (await this.store.getInboxConfig(input.inboxId))?.wabaId;
+    if (sendingWabaId && template.wabaId !== sendingWabaId) {
+      throw new BadRequestException(
+        `Template “${template.name}” isn't on this number's WhatsApp account — pick one of this number's own templates.`,
+      );
+    }
 
     const url = `https://graph.facebook.com/${env.whatsapp.apiVersion}/${creds.phoneNumberId}/messages`;
     const recipients = input.recipients;

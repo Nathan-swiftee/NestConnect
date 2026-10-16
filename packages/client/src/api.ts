@@ -537,6 +537,8 @@ export const api = {
   setDefaultTemplate: (templateId: string, isDefault: boolean) =>
     post<Template[]>("/templates/default", { templateId, isDefault }),
   syncTemplates: () => post<{ synced: number; pruned: number }>("/templates/sync", {}),
+  /** Send a template that's linked to no account to Meta, on this account. */
+  submitTemplate: (id: string, wabaId: string) => post<Template>(`/templates/${id}/submit`, { wabaId }),
   // WhatsApp business profile — the public "about" card on a number
   whatsappProfile: (inboxId: string) =>
     get<WhatsAppBusinessProfile>(`/whatsapp/business-profile/${inboxId}`),

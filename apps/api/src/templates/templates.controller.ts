@@ -12,9 +12,11 @@ import {
 import {
   createTemplateInputSchema,
   setDefaultTemplateInputSchema,
+  submitTemplateInputSchema,
   updateTemplateInputSchema,
   type CreateTemplateInput,
   type SetDefaultTemplateInput,
+  type SubmitTemplateInput,
   type Template,
   type UpdateTemplateInput,
 } from "@ding/schemas";
@@ -75,6 +77,17 @@ export class TemplatesController {
   ): Promise<Template[]> {
     await this.requireManager(userId);
     return this.templates.setDefault(body.templateId, body.isDefault);
+  }
+
+  /** Submit a template that's linked to no account to Meta, on one account. */
+  @Post(":id/submit")
+  async submit(
+    @CurrentUserId() userId: string,
+    @Param("id") id: string,
+    @Body(new ZodValidationPipe(submitTemplateInputSchema)) body: SubmitTemplateInput,
+  ): Promise<Template> {
+    await this.requireManager(userId);
+    return this.templates.submit(id, body.wabaId);
   }
 
   @Post("sync")

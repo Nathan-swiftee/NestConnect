@@ -45,6 +45,7 @@ import type {
 } from "@ding/schemas";
 import {
   autoTemplateSlot,
+  inboxLabel,
   resolveTemplateDefault,
   TEMPLATE_TOKENS,
   templatesForWaba,
@@ -88,6 +89,7 @@ import {
   useSetDefaultInbox,
   useSetInboxSignature,
   useSetDefaultTemplate,
+  useSubmitTemplate,
   useSyncTemplates,
   useTeams,
   useTemplates,
@@ -3991,35 +3993,62 @@ function NestChatPreview({
 
 /* ── templates ───────────────────────────────────────────────────────────── */
 
+/** One WhatsApp account, as Settings › Templates shows it: the numbers on it. */
+interface TemplateAccount {
+  wabaId: string;
+  /** "Sales · +44 20 8800 9090" for each number on the account. */
+  numbers: string[];
+}
+
+/** The tab for templates linked to no account. */
+const UNLINKED = "unlinked";
+
 function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
   const templates = useTemplates();
   const inboxes = useInboxes();
-  /** The number(s) behind a template's account, for the list's account chip. */
-  const tplAccount = (wabaId?: string) => {
-    if (!wabaId) return "Any account";
-    const on = (inboxes.data ?? []).filter((i) => i.channelConfigPublic?.wabaId === wabaId);
-    return on.length ? on.map((i) => i.name).join(", ") : "Another account";
-  };
   /**
-   * The numbers a star on this template actually covers.
-   *
-   * The star is stored against the WhatsApp *account*, and several numbers
-   * routinely sit under one — so starring a template can change what two
-   * numbers send, and the row gave no sign of that. Somebody starring a second
-   * template for their other number, watching the first star go out, has been
-   * told nothing except that it "doesn't work".
-   *
-   * A template no sync has claimed has no account, so its star is the
-   * workspace-wide fallback and reaches every number without one of its own.
+   * The WhatsApp accounts, each with its numbers. Templates belong to an
+   * account at Meta, not to a number, so this is the unit the page is split
+   * by: two numbers on one account share one list, and say so.
    */
-  const numbersFor = (t: Template) =>
-    (inboxes.data ?? [])
-      .filter(
-        (i) =>
-          (i.type === "whatsapp" || i.type === "whatsapp_group") &&
-          (!t.wabaId || i.channelConfigPublic?.wabaId === t.wabaId),
-      )
-      .map((i) => i.name);
+  const accounts: TemplateAccount[] = (() => {
+    const byWaba = new Map<string, TemplateAccount>();
+    for (const i of inboxes.data ?? []) {
+      if (i.type !== "whatsapp" && i.type !== "whatsapp_group") continue;
+      const wabaId = i.channelConfigPublic?.wabaId;
+      if (!wabaId) continue;
+      const a = byWaba.get(wabaId) ?? { wabaId, numbers: [] };
+      a.numbers.push(inboxLabel(i));
+      byWaba.set(wabaId, a);
+    }
+    // An account whose numbers have all been removed still holds templates
+    // here until they're deleted; it gets a tab rather than vanishing.
+    for (const t of templates.data ?? []) {
+      if (t.wabaId && !byWaba.has(t.wabaId)) byWaba.set(t.wabaId, { wabaId: t.wabaId, numbers: [] });
+    }
+    return [...byWaba.values()];
+  })();
+  const unlinked = (templates.data ?? []).filter((t) => !t.wabaId);
+  const [picked, setPicked] = useState<string | null>(null);
+  // The tab picked, if it still exists; else the first account; else unlinked.
+  const tab =
+    (picked && (picked === UNLINKED ? unlinked.length > 0 : accounts.some((a) => a.wabaId === picked)) && picked) ||
+    accounts[0]?.wabaId ||
+    (unlinked.length ? UNLINKED : null);
+  const account = accounts.find((a) => a.wabaId === tab) ?? null;
+  const connected = accounts.filter((a) => a.numbers.length > 0);
+  // No accounts at all (nothing connected through Meta): there's nothing to
+  // split by, and a number without an account can use any of these — so one
+  // plain list, not a "Not linked" warning.
+  const split = accounts.length > 0;
+  const shown = !split
+    ? (templates.data ?? [])
+    : tab === UNLINKED
+      ? unlinked
+      : (templates.data ?? []).filter((t) => tab && t.wabaId === tab);
+  const accountName = (a: TemplateAccount) =>
+    a.numbers.length ? a.numbers.join(", ") : `Account …${a.wabaId.slice(-4)} (no number connected)`;
+
   /** "Sales", "Sales and Support", "Sales, Support and Billing". */
   const readableList = (names: string[]) =>
     names.length <= 1
@@ -4027,9 +4056,7 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
       : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
   /** Whichever template this one would displace — same account, already starred. */
   const displaced = (t: Template) =>
-    (templates.data ?? []).find(
-      (o) => o.id !== t.id && o.isDefault && (o.wabaId ?? "") === (t.wabaId ?? ""),
-    ) ?? null;
+    (templates.data ?? []).find((o) => o.id !== t.id && o.isDefault && o.wabaId === t.wabaId) ?? null;
 
   /**
    * Star or unstar, and say what happened.
@@ -4052,7 +4079,7 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
       );
       return;
     }
-    const numbers = readableList(numbersFor(t));
+    const numbers = readableList(account?.numbers ?? []);
     const losing = t.isDefault ? null : displaced(t);
     setDefault.mutate(
       { templateId: t.id, isDefault: !t.isDefault },
@@ -4062,32 +4089,48 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
             t.isDefault
               ? `${numbers || "These numbers"} will no longer send a template once a window closes`
               : losing
-                ? `${numbers || "These numbers"} now re-open with “${t.name}” — it replaces “${losing.name}”, which they share an account with`
+                ? `${numbers || "These numbers"} now re-open with “${t.name}” — it replaces “${losing.name}”`
                 : `${numbers || "These numbers"} will re-open closed chats with “${t.name}”`,
           ),
-        onError: (err) =>
-          onToast(err instanceof Error ? err.message : "Couldn’t change the default template"),
+        onError: (err) => onToast(errorText(err, "Couldn’t change the default template")),
       },
     );
   };
   const del = useDeleteTemplate();
   const sync = useSyncTemplates();
   const setDefault = useSetDefaultTemplate();
+  const submitTo = useSubmitTemplate();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const doSync = () => {
     sync.mutate(undefined, {
-      onSuccess: (r) => onToast(`Synced ${r.synced} template${r.synced === 1 ? "" : "s"}`),
-      onError: () => onToast("Only admins & managers can manage templates"),
+      onSuccess: (r) => onToast(`Synced ${r.synced} template${r.synced === 1 ? "" : "s"} from Meta`),
+      onError: (err) => onToast(errorText(err, "Couldn’t sync from Meta")),
     });
   };
   const remove = (t: Template) => {
-    if (!window.confirm(`Delete “${t.name}”? Agents will no longer be able to send it.`)) return;
+    const where = t.wabaId
+      ? ` It's deleted at Meta too, so no number on this account (${accountName(account ?? { wabaId: t.wabaId, numbers: [] })}) can send it.`
+      : " Agents will no longer be able to use it.";
+    if (!window.confirm(`Delete “${t.name}”?${where}`)) return;
     del.mutate(t.id, {
       onSuccess: () => { setEditingId(null); onToast(`Template “${t.name}” deleted`); },
-      onError: () => onToast("Only admins & managers can manage templates"),
+      onError: (err) => onToast(errorText(err, "Couldn’t delete the template")),
     });
+  };
+  const submit = (t: Template, wabaId: string) => {
+    const to = accounts.find((a) => a.wabaId === wabaId);
+    submitTo.mutate(
+      { id: t.id, wabaId },
+      {
+        onSuccess: () => {
+          setPicked(wabaId);
+          onToast(`“${t.name}” sent to Meta for approval on ${to ? accountName(to) : "that account"} — it usually takes a few minutes`);
+        },
+        onError: (err) => onToast(errorText(err, "Meta didn’t accept the template")),
+      },
+    );
   };
 
   const editingTpl = templates.data?.find((t) => t.id === editingId) ?? null;
@@ -4098,18 +4141,18 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
     <div className="setpane setpane--wide">
       <div className="setpane__head">
         <div>
-          <h2>Message templates <span className="setcount">{templates.data?.length ?? 0}</span></h2>
+          <h2>Message templates</h2>
           <p>
             Pre-approved WhatsApp messages used to re-open a chat once its 24-hour window has
-            closed. Variables like <code>{"{{1}}"}</code> are filled in when you send.
-            {" "}Star one to make it the <b>default</b>: agents then keep typing normally in a closed
-            chat and what they write becomes its <code>{"{{1}}"}</code>. Pick a template whose single
-            variable is the message itself, not a name.
+            closed. Templates belong to a <b>WhatsApp account</b> at Meta, so each account has its own
+            list, shared by every number on it. Variables like <code>{"{{1}}"}</code> are filled in when you send.
+            {" "}Star one to make it the account's <b>default</b>: agents then keep typing normally in a closed
+            chat and what they write becomes its <code>{"{{1}}"}</code>.
           </p>
         </div>
         <div className="setpane__headacts">
-          <button className="btn-ghost" type="button" onClick={doSync} disabled={sync.isPending}>
-            <RefreshIcon /> Sync from Meta
+          <button className="btn-ghost" type="button" onClick={doSync} disabled={sync.isPending || !connected.length}>
+            <RefreshIcon /> {sync.isPending ? "Syncing…" : "Sync from Meta"}
           </button>
           <button className="btn-primary" onClick={() => { setEditingId(null); setOpen(true); }}>
             <PlusIcon /> New template
@@ -4118,85 +4161,152 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
       </div>
 
       <p className="fieldhint tpl-synchint">
-        “Sync from Meta” pulls the approved templates from a connected WhatsApp number — it’s a
-        no-op until you connect one under Channels.
+        {connected.length
+          ? "New templates are sent to Meta for approval on their account. Approvals, changes made in Meta and new templates there come through by themselves every hour — every 10 minutes while one is waiting for review."
+          : "Connect a WhatsApp number under Channels to see its account's templates and submit new ones to Meta."}
       </p>
 
-      <div className="dwrap">
-        <div className="dtable dtable--tpl">
-          <div className="dtable__head">
-            <span>Name</span>
-            <span>Category</span>
-            <span>Language</span>
-            <span>Status</span>
-            <span>Message</span>
-            <span />
-          </div>
-          {templates.data?.map((t) => {
-            const ap = approvalMeta(t.approvalStatus);
+      {split && (
+        <div className="ncwtabs tpltabs" role="tablist" aria-label="WhatsApp accounts">
+          {accounts.map((a) => {
+            const count = (templates.data ?? []).filter((t) => t.wabaId === a.wabaId).length;
             return (
-              <div className="dtable__row dtable__row--static" key={t.id}>
-                <span className="dcell dcell__t">
-                  {t.name}
-                  {t.isDefault && (
-                    <span className="tpl-default">
-                      {/* Named, not just "Default". Two numbers under one
-                          account share this star, and a bare label let people
-                          believe each number had its own. */}
-                      Default{numbersFor(t).length ? ` · ${readableList(numbersFor(t))}` : ""}
-                    </span>
-                  )}
-                  {/* Which WhatsApp account holds it. Two accounts can each have
-                      their own "order_update" and they are different templates,
-                      so without this the list is two things wearing one name.
-                      Unclaimed templates say so rather than pretending. */}
-                  <span className="tpl-waba">{tplAccount(t.wabaId)}</span>
+              <button
+                key={a.wabaId}
+                type="button"
+                role="tab"
+                aria-selected={tab === a.wabaId}
+                className={"ncwtab" + (tab === a.wabaId ? " on" : "")}
+                onClick={() => setPicked(a.wabaId)}
+              >
+                <span className="ncwtab__name">
+                  {a.numbers.length ? a.numbers.join(" · ") : `Account …${a.wabaId.slice(-4)}`}
+                  <span className="setcount">{count}</span>
                 </span>
-                <span className="dcell"><span className={"tpl-cat tpl-cat--" + t.category}>{t.category}</span></span>
-                <span className="dcell dcell--muted">{t.language}</span>
-                <span className="dcell"><span className={"tpl-appr " + ap.cls}><span className="tpl-appr__dot" />{ap.label}</span></span>
-                <span className="dcell dcell--muted" title={t.body}>{t.body}</span>
-                <span className="dcell dacts">
-                  {/* The default is what the composer sends once a 24-hour
-                      window has closed, with the agent's typed text filling its
-                      variable — so only a one-variable template can carry it. */}
-                  {/* Not `disabled`. A star that cannot be set is the one a
-                      person most needs an explanation for, and a disabled
-                      button explains itself only on hover — which is nothing at
-                      all on a phone, and easy to miss anywhere. It stays
-                      clickable and says why. */}
-                  <button
-                    className={
-                      "iconbtn" +
-                      (t.isDefault ? " on" : "") +
-                      (!t.isDefault && autoTemplateSlot(t) === null ? " iconbtn--inert" : "")
-                    }
-                    title={
-                      t.isDefault
-                        ? "Default template — click to unset"
-                        : autoTemplateSlot(t) !== null
-                          ? "Use as the default for closed windows"
-                          : t.variableCount === 0
-                            ? "Needs a variable for the agent's message to be the default"
-                            : "Needs every variable but one to have a default (the one left is the agent's message)"
-                    }
-                    aria-pressed={t.isDefault}
-                    disabled={setDefault.isPending}
-                    onClick={() => toggleStar(t)}
-                  >
-                    <StarIcon filled={t.isDefault} />
-                  </button>
-                  <button className="iconbtn" title="Edit template" onClick={() => { setOpen(false); setEditingId(t.id); }}><EditIcon /></button>
-                  <button className="iconbtn danger" title="Delete template" onClick={() => remove(t)}><TrashIcon /></button>
-                </span>
-              </div>
+                <small>
+                  {a.numbers.length > 1
+                    ? `${a.numbers.length} numbers share this account's templates`
+                    : a.numbers.length
+                      ? `WhatsApp account …${a.wabaId.slice(-4)}`
+                      : "No number connected"}
+                </small>
+              </button>
             );
           })}
+          {unlinked.length > 0 && (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === UNLINKED}
+              className={"ncwtab tpltab--unlinked" + (tab === UNLINKED ? " on" : "")}
+              onClick={() => setPicked(UNLINKED)}
+            >
+              <span className="ncwtab__name">
+                Not linked to an account <span className="setcount">{unlinked.length}</span>
+              </span>
+              <small>No number can send these</small>
+            </button>
+          )}
         </div>
-      </div>
-      {templates.data && templates.data.length === 0 && (
+      )}
+
+      {split && tab === UNLINKED && (
+        <p className="fieldhint tpl-unlinkedhint">
+          These were made here but never submitted to Meta, so no number can send them and they don't show in
+          the composer. Submit one to an account for approval, or delete it.
+        </p>
+      )}
+
+      {shown.length > 0 && (
+        <div className="dwrap">
+          <div className={"dtable dtable--tpl" + (split && tab === UNLINKED ? " dtable--tplunlinked" : "")}>
+            <div className="dtable__head">
+              <span>Name</span>
+              <span>Category</span>
+              <span>Language</span>
+              <span>Status</span>
+              <span>Message</span>
+              <span />
+            </div>
+            {shown.map((t) => {
+              const ap = approvalMeta(t.approvalStatus);
+              return (
+                <div className="dtable__row dtable__row--static" key={t.id}>
+                  <span className="dcell dcell__t">
+                    {t.name}
+                    {t.isDefault && (t.wabaId || !split) && <span className="tpl-default">Default</span>}
+                  </span>
+                  <span className="dcell"><span className={"tpl-cat tpl-cat--" + t.category}>{t.category}</span></span>
+                  <span className="dcell dcell--muted">{t.language}</span>
+                  <span className="dcell"><span className={"tpl-appr " + ap.cls}><span className="tpl-appr__dot" />{ap.label}</span></span>
+                  <span className="dcell dcell--muted" title={t.body}>{t.body}</span>
+                  <span className="dcell dacts">
+                    {t.wabaId || !split ? (
+                      /* The default is what the composer sends once a 24-hour
+                         window has closed, with the agent's typed text filling
+                         its variable — so only a one-variable template can carry
+                         it. Not `disabled`: a star that cannot be set is the one
+                         a person most needs an explanation for, so it stays
+                         clickable and says why. */
+                      <button
+                        className={
+                          "iconbtn" +
+                          (t.isDefault ? " on" : "") +
+                          (!t.isDefault && autoTemplateSlot(t) === null ? " iconbtn--inert" : "")
+                        }
+                        title={
+                          t.isDefault
+                            ? "Default template — click to unset"
+                            : autoTemplateSlot(t) !== null
+                              ? "Use as this account's default for closed windows"
+                              : t.variableCount === 0
+                                ? "Needs a variable for the agent's message to be the default"
+                                : "Needs every variable but one to have a default (the one left is the agent's message)"
+                        }
+                        aria-pressed={t.isDefault}
+                        disabled={setDefault.isPending}
+                        onClick={() => toggleStar(t)}
+                      >
+                        <StarIcon filled={t.isDefault} />
+                      </button>
+                    ) : (
+                      connected.length > 0 && (
+                        <select
+                          className="tpl-submitto"
+                          value=""
+                          disabled={submitTo.isPending}
+                          aria-label={`Submit “${t.name}” to a WhatsApp account`}
+                          title="Send it to Meta for approval on one of your accounts"
+                          onChange={(e) => {
+                            if (e.target.value) submit(t, e.target.value);
+                            e.currentTarget.selectedIndex = 0;
+                          }}
+                        >
+                          <option value="">{submitTo.isPending ? "Submitting…" : "Submit to…"}</option>
+                          {connected.map((a) => (
+                            <option key={a.wabaId} value={a.wabaId}>{accountName(a)}</option>
+                          ))}
+                        </select>
+                      )
+                    )}
+                    <button className="iconbtn" title={t.wabaId ? "Edit what its variables pre-fill with" : "Edit template"} onClick={() => { setOpen(false); setEditingId(t.id); }}><EditIcon /></button>
+                    <button className="iconbtn danger" title={t.wabaId ? "Delete — at Meta too" : "Delete template"} onClick={() => remove(t)}><TrashIcon /></button>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {templates.data && shown.length === 0 && (
         <div className="setzero">
-          <p>No templates yet. Create one, or sync approved templates from a connected WhatsApp number.</p>
+          <p>
+            {account
+              ? `No templates on this account yet. Create one and it's sent to Meta for approval, or sync if you've made some in Meta.`
+              : connected.length
+                ? "No templates yet. Create one, or sync the ones you've made in Meta."
+                : "No templates yet. Connect a WhatsApp number under Channels to bring in its account's templates."}
+          </p>
         </div>
       )}
 
@@ -4208,13 +4318,27 @@ function TemplatesPane({ onToast }: { onToast: (msg: string) => void }) {
               <button type="button" className="modal__x" onClick={closeForm} aria-label="Close"><XIcon /></button>
             </div>
             <div className="modal__body">
-              <TemplateForm template={editingTpl ?? undefined} onDone={closeForm} onToast={onToast} />
+              <TemplateForm
+                template={editingTpl ?? undefined}
+                accounts={connected.map((a) => ({ wabaId: a.wabaId, label: accountName(a) }))}
+                initialWabaId={account && account.numbers.length ? account.wabaId : connected[0]?.wabaId}
+                onDone={(saved) => {
+                  closeForm();
+                  if (saved?.wabaId) setPicked(saved.wabaId);
+                }}
+                onToast={onToast}
+              />
             </div>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+/** The server's own words for a failed request, where it gave some. */
+function errorText(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback;
 }
 
 /**
@@ -4310,16 +4434,24 @@ function VariableDefaultRow({
 
 function TemplateForm({
   template,
+  accounts,
+  initialWabaId,
   onDone,
   onToast,
 }: {
   template?: Template;
-  onDone: () => void;
+  /** The connected WhatsApp accounts a new template can be submitted to. */
+  accounts: Array<{ wabaId: string; label: string }>;
+  initialWabaId?: string;
+  onDone: (saved?: Template) => void;
   onToast: (msg: string) => void;
 }) {
   const create = useCreateTemplate();
   const update = useUpdateTemplate();
   const editing = !!template;
+  /** On an account, the wording is what Meta approved: only the pre-fill is ours. */
+  const metaOwned = !!template?.wabaId;
+  const [wabaId, setWabaId] = useState(initialWabaId ?? accounts[0]?.wabaId ?? "");
   const [name, setName] = useState(template?.name ?? "");
   const [category, setCategory] = useState<TemplateCategory>(template?.category ?? "utility");
   const [language, setLanguage] = useState(template?.language ?? "en");
@@ -4354,29 +4486,57 @@ function TemplateForm({
     };
     if (editing) {
       update.mutate(
-        { id: template.id, input },
+        { id: template.id, input: metaOwned ? { variableDefaults: input.variableDefaults } : input },
         {
-          onSuccess: () => { onToast("Template updated"); onDone(); },
-          onError: () => onToast("Only admins & managers can manage templates"),
+          onSuccess: (saved) => { onToast("Template updated"); onDone(saved); },
+          onError: (err) => onToast(errorText(err, "Couldn’t save the template")),
         },
       );
     } else {
-      create.mutate(input, {
-        onSuccess: () => { onToast(`Template “${name}” created`); onDone(); },
-        onError: () => onToast("Only admins & managers can manage templates"),
+      const to = accounts.find((a) => a.wabaId === wabaId);
+      create.mutate(to ? { ...input, wabaId: to.wabaId } : input, {
+        onSuccess: (saved) => {
+          onToast(
+            to
+              ? `“${name}” sent to Meta for approval — it usually takes a few minutes`
+              : `Template “${name}” created`,
+          );
+          onDone(saved);
+        },
+        onError: (err) => onToast(errorText(err, "Couldn’t create the template")),
       });
     }
   };
 
   return (
-    <form className="setform setform--flush" onSubmit={submit}>
+    <form className={"setform setform--flush" + (metaOwned ? " tplform--locked" : "")} onSubmit={submit}>
+      {!editing && accounts.length > 0 && (
+        <label className="field">
+          <span>WhatsApp account</span>
+          <select value={wabaId} onChange={(e) => setWabaId(e.target.value)}>
+            {accounts.map((a) => (
+              <option key={a.wabaId} value={a.wabaId}>{a.label}</option>
+            ))}
+          </select>
+          <small className="fieldhint">
+            It's sent to Meta for approval on this account, and every number on it can use it once approved.
+          </small>
+        </label>
+      )}
+      {metaOwned && (
+        <p className="fieldhint tpl-metaowned">
+          Meta approved this template as written, so its name and wording can't be changed here. You can still
+          set what its variables pre-fill with. To change the wording, create a new template.
+        </p>
+      )}
       <div className="setform__grid two">
         <label className="field">
           <span>Name</span>
           <input
             value={name}
             autoComplete="off"
-            autoFocus
+            autoFocus={!metaOwned}
+            disabled={metaOwned}
             onChange={(e) => setName(e.target.value)}
             placeholder="order_confirmation"
           />
@@ -4387,7 +4547,7 @@ function TemplateForm({
         </label>
         <label className="field">
           <span>Category</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value as TemplateCategory)}>
+          <select value={category} disabled={metaOwned} onChange={(e) => setCategory(e.target.value as TemplateCategory)}>
             {TEMPLATE_CATEGORIES.map((c) => (
               <option key={c.value} value={c.value}>{c.label}</option>
             ))}
@@ -4396,7 +4556,7 @@ function TemplateForm({
       </div>
       <label className="field tpl-langfield">
         <span>Language</span>
-        <input value={language} autoComplete="off" onChange={(e) => setLanguage(e.target.value)} placeholder="en" />
+        <input value={language} autoComplete="off" disabled={metaOwned} onChange={(e) => setLanguage(e.target.value)} placeholder="en" />
       </label>
       <label className="field">
         <span>
@@ -4405,6 +4565,8 @@ function TemplateForm({
         <textarea
           value={body}
           rows={4}
+          disabled={metaOwned}
+          maxLength={1024}
           onChange={(e) => setBody(e.target.value)}
           placeholder="Hi {{1}}, your order {{2}} is on its way!"
         />
@@ -4435,9 +4597,9 @@ function TemplateForm({
       )}
 
       <div className="setform__foot">
-        <button className="btn-ghost" type="button" onClick={onDone}>Cancel</button>
+        <button className="btn-ghost" type="button" onClick={() => onDone()}>Cancel</button>
         <button className="btn-primary" type="submit" disabled={pending || !valid}>
-          {editing ? "Save changes" : "Create template"}
+          {editing ? "Save changes" : accounts.some((a) => a.wabaId === wabaId) ? "Submit to Meta" : "Create template"}
         </button>
       </div>
     </form>

@@ -93,27 +93,73 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
     });
   }
 
-  /** On an internal note, notify every teammate it @-mentions (except the author). */
-  async notifyMentions(conversation: Conversation, body: string, authorName: string, authorId: string): Promise<void> {
-    // "@nathan." at the end of a sentence still means @nathan.
-    const tokens = new Set((body.toLowerCase().match(/@[\w.+-]+/g) ?? []).map((t) => t.replace(/[.+-]+$/, "")));
-    if (!tokens.size) return;
+  /**
+   * On an internal note: tell every teammate it @-mentions, and everyone
+   * already in this conversation's notes — whoever wrote one, or was
+   * @-mentioned in one. That second group is how you hear that somebody
+   * answered your note: an answer rarely @-mentions back the person it answers,
+   * and without it "@Isaac can you check?" gets a reply nobody is told about.
+   * Never the author, and never twice.
+   */
+  async notifyMentions(
+    conversation: Conversation,
+    body: string,
+    authorName: string,
+    authorId: string,
+    noteId?: string,
+  ): Promise<void> {
     const members = await this.store.listMembers();
+    const byHandle = new Map(members.map((m) => [mentionHandle(m.user), m.user.id]));
+    const mentioned = new Set([...handlesIn(body)].map((h) => byHandle.get(h)).filter((id): id is string => !!id));
+    const inNotes = await this.noteParticipants(conversation.id, byHandle, noteId);
     // Shown by name ("@Nathan A"), the way the note itself reads in the app.
     const readable = mentionsToNames(body, members.map((m) => m.user));
     const snippet = readable.length > 120 ? `${readable.slice(0, 117)}…` : readable;
+    const customer = conversation.contact.displayName;
     for (const m of members) {
-      if (m.user.id === authorId) continue;
-      const token = mentionHandle(m.user);
-      if (!tokens.has(token)) continue;
-      await this.create(m.user.id, {
-        type: "mention",
-        title: `${authorName} mentioned you`,
-        body: snippet,
-        conversationId: conversation.id,
-        actorUserId: authorId,
-      });
+      const id = m.user.id;
+      if (id === authorId) continue;
+      if (mentioned.has(id)) {
+        await this.create(id, {
+          type: "mention",
+          title: `${authorName} mentioned you`,
+          body: snippet,
+          conversationId: conversation.id,
+          actorUserId: authorId,
+        });
+      } else if (inNotes.has(id)) {
+        await this.create(id, {
+          type: "mention",
+          title: `${authorName} replied in the notes on ${customer}`,
+          body: snippet,
+          conversationId: conversation.id,
+          actorUserId: authorId,
+        });
+      }
     }
+  }
+
+  /**
+   * Who is in a conversation's notes: everyone who wrote one, and everyone
+   * @-mentioned in one. Bounded, so a years-long thread can't stall a note.
+   */
+  private async noteParticipants(conversationId: string, byHandle: Map<string, string>, skipId?: string): Promise<Set<string>> {
+    const people = new Set<string>();
+    let before: string | undefined;
+    for (let page = 0; page < 10; page++) {
+      const { items, nextCursor } = await this.store.listMessages(conversationId, { before, limit: 100 });
+      for (const m of items) {
+        if (!m.internal || m.id === skipId) continue;
+        if (m.authorUserId) people.add(m.authorUserId);
+        for (const h of handlesIn(m.body)) {
+          const id = byHandle.get(h);
+          if (id) people.add(id);
+        }
+      }
+      if (!nextCursor) break;
+      before = nextCursor;
+    }
+    return people;
   }
 
   /**
@@ -171,4 +217,9 @@ export class NotificationsService implements OnApplicationBootstrap, OnModuleDes
       this.logger.warn(`Snooze sweep failed: ${String(err)}`);
     }
   }
+}
+
+/** The @handles in a note, lower-cased. "@nathan." at the end of a sentence still means @nathan. */
+function handlesIn(body: string): Set<string> {
+  return new Set((body.toLowerCase().match(/@[\w.+-]+/g) ?? []).map((t) => t.replace(/[.+-]+$/, "")));
 }

@@ -12,9 +12,10 @@
  * chat-format tests and on the server.
  */
 import { act, fireEvent, render } from "@testing-library/react-native";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ChatMember, ChatMessage, ChatRoomSummary } from "@ding/schemas";
 
-const mockState: { rooms: ChatRoomSummary[]; pushed: unknown[]; hits: unknown[]; discussions: unknown[] } = { rooms: [], pushed: [], hits: [], discussions: [] };
+const mockState: { rooms: ChatRoomSummary[]; pushed: unknown[]; hits: unknown[]; discussions: unknown[]; thread: unknown } = { rooms: [], pushed: [], hits: [], discussions: [], thread: null };
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -51,7 +52,13 @@ jest.mock("@ding/client", () => {
     ...chatFormat,
     api: {},
     useMe: () => ({ data: { user: { id: "me", name: "Nathan A", role: "agent" } } }),
-    usePeople: () => ({ data: [{ user: { id: "me", name: "Nathan A", email: "nathan@x.co" }, teamIds: [] }] }),
+    usePeople: () => ({
+      data: [
+        { user: { id: "me", name: "Nathan A", email: "nathan@x.co" }, teamIds: [] },
+        { user: { id: "isaac", name: "Isaac Benowitz", email: "isaac@x.co", role: "agent" }, teamIds: [] },
+        { user: { id: "ivy", name: "Ivy Stone", email: "ivy@x.co", role: "agent" }, teamIds: [] },
+      ],
+    }),
     useTeams: () => ({ data: [{ id: "team_ops", name: "Ops team", icon: "truck" }] }),
     useChatStatus: () => ({ data: { enabled: true, canCreateGroups: false, canOversee: false, unread: 3 } }),
     useChatRooms: () => ({ data: mockState.rooms, isLoading: false, isError: false }),
@@ -59,12 +66,15 @@ jest.mock("@ding/client", () => {
     useChatSearch: (q: string) => ({ data: q.length >= 2 ? mockState.hits : [] }),
     useChatStarred: () => ({ data: [], isLoading: false, isError: false }),
     useChatDiscussions: () => ({ data: mockState.discussions }),
+    useChatThread: (id: string | null) => ({ data: id ? mockState.thread : undefined }),
+    // Isaac is in the chat; Ivy isn't.
+    useChatRoom: (id: string | null) => ({ data: id ? { id, members: [{ id: "me" }, { id: "isaac" }] } : undefined }),
   };
 });
 
 import Chat from "../app/(app)/(tabs)/chat";
 import { ChatBubbleRow } from "../src/components/chat/ChatBubble";
-import { DiscussionBar } from "../src/components/chat/Discuss";
+import { DiscussionBar, DiscussionSheet } from "../src/components/chat/Discuss";
 
 const at = new Date().toISOString();
 const msg = (over: Partial<ChatMessage>): ChatMessage => ({
@@ -311,6 +321,24 @@ describe("a customer conversation, discussed", () => {
     expect(view.queryByText("Amara: Reissuing it now")).not.toBeNull();
     fireEvent.press(view.getByLabelText("Discussed in Support team, 2 replies"));
     expect(opened).toEqual(["card1"]);
+  });
+
+  it("the discussion's reply box suggests people in that chat for an @", () => {
+    mockState.thread = { roomId: "r1", roomName: "Swiftee // Dispatchers", canPost: true, card: msg({ id: "card1", shared }), replies: [] };
+    const view = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <DiscussionSheet conversationId="conv_north" cardId="card1" onClose={() => {}} onOpenChat={() => {}} />
+      </QueryClientProvider>,
+    );
+    const box = view.getByLabelText("Reply in the discussion");
+    fireEvent.changeText(box, "Thanks @I");
+    fireEvent(box, "selectionChange", { nativeEvent: { selection: { start: 9, end: 9 } } });
+    // Isaac is in the chat; Ivy isn't, and you can't mention yourself.
+    expect(view.queryByLabelText("Mention Isaac Benowitz")).not.toBeNull();
+    expect(view.queryByLabelText("Mention Ivy Stone")).toBeNull();
+    fireEvent.press(view.getByLabelText("Mention Isaac Benowitz"));
+    expect(view.getByLabelText("Reply in the discussion").props.value).toBe("Thanks @Isaac Benowitz ");
+    expect(view.queryByLabelText("Mention Isaac Benowitz")).toBeNull();
   });
 
   it("no discussions, no bar", () => {
