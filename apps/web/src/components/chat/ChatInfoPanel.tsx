@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { CHAT_GROUP_NAME_MAX, type ChatMember, type ChatRoom } from "@ding/schemas";
-import { api, chatLastSeen, seenAt, useChatMutation, useMe, usePeople } from "../../hooks";
+import { api, chatLastSeen, useChatMutation, useMe, usePeople } from "../../hooks";
 import { CheckIcon, EditIcon, LogoutIcon, MoreIcon, PlusIcon, XIcon } from "../../lib/icons";
 import { Avatar } from "../Avatar";
 import { RoomAvatar } from "./RoomAvatar";
@@ -38,11 +37,6 @@ export function ChatInfoPanel({
   const role = useChatMutation(({ userId, r }: { userId: string; r: "admin" | "member" }) => api.setChatMemberRole(room.id, userId, r));
   const leave = useChatMutation(() => api.leaveChatRoom(room.id));
   const direct = useChatMutation((userId: string) => api.openDirectChat(userId));
-  const audits = useQuery({
-    queryKey: ["chat", "audits", room.id],
-    queryFn: () => api.chatAudits(room.id),
-    enabled: (me?.role === "admin" || me?.role === "manager") && room.kind !== "team",
-  });
 
   const notIn = useMemo(() => {
     const ids = new Set(room.members.map((m) => m.id));
@@ -199,20 +193,6 @@ export function ChatInfoPanel({
                   if (window.confirm(`Remove ${m.name} from “${room.name}”?`)) remove.mutate(m.id, { onError: fail });
                 }}
               />
-            ))}
-          </section>
-        )}
-
-        {(me?.role === "admin" || me?.role === "manager") && audits.data && audits.data.length > 0 && (
-          <section className="tc-infopanel__sec">
-            <h4>Read by admins</h4>
-            <p className="fieldhint">When an admin who isn't in this chat opened it.</p>
-            {audits.data.slice(0, 10).map((a, i) => (
-              <div key={i} className="tc-info__row">
-                <Avatar name={a.person.name} color={a.person.avatarColor} src={a.person.avatarUrl} size={26} fontSize={10} />
-                <span className="tc-info__name">{a.person.name}</span>
-                <span className="tc-info__at">{seenAt(a.at)}</span>
-              </div>
             ))}
           </section>
         )}

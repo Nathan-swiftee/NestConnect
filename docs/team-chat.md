@@ -92,9 +92,9 @@ the row into a real membership.
 They can't Discuss a customer conversation into a chat they only oversee.
 Discuss… is for the chats you're in.
 
-A banner says they aren't in the chat, and each visit is recorded
-(`ChatAudit`; a re-open within ten minutes counts once). The record shows in
-the chat's info panel, to admins and managers. Everyone is told: the foot of
+A banner says they aren't in the chat. Their visits aren't logged anywhere
+(an earlier "Read by admins" record was removed; the `ChatAudit` table is
+left unused). Everyone is told: the foot of
 the chat list and every info panel say "Admins and managers in your workspace
 can read and write in any team chat."
 

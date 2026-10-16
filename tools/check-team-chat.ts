@@ -278,10 +278,6 @@ async function main() {
     const private_ = await svc.createGroup(mgr.id, { name: "Managers", memberIds: [AMARA] });
     ok("an agent can't open a chat they're not in", await refuses(svc.room(JAMES, private_.id), 404));
     ok("…or write in it", await refuses(svc.send(JAMES, private_.id, say("hi")), 404));
-    await svc.room(NATHAN, dm.id);
-    const looks = await svc.audits(NATHAN, dm.id);
-    ok("the look is recorded, once for a quick re-open", looks.filter((l) => l.person.id === NATHAN).length === 1);
-    ok("only admins and managers see that record", await refuses(svc.audits(JAMES, dm.id), 403));
     const peekOnly = await svc.room(NATHAN, private_.id);
     ok("reading along without writing: no unread, not followed", peekOnly.unread === 0 && !peekOnly.watching && !(await svc.rooms(NATHAN)).some((x) => x.id === private_.id));
 

@@ -174,7 +174,7 @@ export default function Chat() {
       {oversee ? (
         <View style={{ backgroundColor: c.amberTint }} className="mx-4 mb-2 rounded-12 px-3 py-2">
           <Text className="text-xs text-fg">
-            Every chat in the workspace. You can read and write in ones you aren't in — and each visit is recorded.
+            Every chat in the workspace. You can read and write in ones you aren't in.
           </Text>
         </View>
       ) : null}

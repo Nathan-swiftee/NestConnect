@@ -313,14 +313,6 @@ export class PrismaChatStore extends ChatStore {
     return rows.map((r) => ({ messageId: r.chatMessageId, at: r.createdAt.toISOString() }));
   }
 
-  async addAudit(roomId: string, userId: string): Promise<void> {
-    await this.prisma.chatAudit.create({ data: { roomId, userId, at: new Date(chatClock()) } });
-  }
-  async listAudits(roomId: string): Promise<Array<{ userId: string; at: string }>> {
-    const rows = await this.prisma.chatAudit.findMany({ where: { roomId }, orderBy: { at: "desc" } });
-    return rows.map((a) => ({ userId: a.userId, at: a.at.toISOString() }));
-  }
-
   async setLastSeen(userId: string, at: string): Promise<void> {
     await this.prisma.chatPresence.upsert({
       where: { userId },

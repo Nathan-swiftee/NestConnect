@@ -21,7 +21,6 @@ export class MemoryChatStore extends ChatStore {
   private rooms: Owned<ChatRoomRecord>[] = [];
   private members: ChatMemberRecord[] = [];
   private messages: ChatMessageRecord[] = [];
-  private audits: Array<{ roomId: string; userId: string; at: string }> = [];
   private seen = new Map<string, string>();
   private stars: Array<{ userId: string; messageId: string; at: string }> = [];
   private seq = 0;
@@ -214,13 +213,6 @@ export class MemoryChatStore extends ChatStore {
       .map(({ messageId, at }) => ({ messageId, at }));
   }
 
-  async addAudit(roomId: string, userId: string): Promise<void> {
-    if (this.roomIsMine(roomId)) this.audits.push({ roomId, userId, at: chatClock() });
-  }
-  async listAudits(roomId: string): Promise<Array<{ userId: string; at: string }>> {
-    if (!this.roomIsMine(roomId)) return [];
-    return this.audits.filter((a) => a.roomId === roomId).map(({ userId, at }) => ({ userId, at }));
-  }
 
   async setLastSeen(userId: string, at: string): Promise<void> {
     this.seen.set(userId, at);
