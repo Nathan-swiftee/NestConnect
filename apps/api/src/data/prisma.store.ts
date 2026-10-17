@@ -1,6 +1,5 @@
 import { Injectable } from "@nestjs/common";
 import bcrypt from "bcryptjs";
-import { randomBytes } from "node:crypto";
 import { hashInviteToken, newInviteToken } from "../auth/invite-token";
 import { IDENTITY_NORMALIZATION_VERSION, normalizeIdentity, type IdentityKind } from "../contacts/identity";
 import { groupDuplicateContacts } from "../contacts/duplicates";
@@ -110,6 +109,8 @@ import {
   type StoredDevice,
   type StoredSession,
   type TwoFactorState,
+  type WorkspaceMembership,
+  type WorkspaceSummary,
   type ViewItem,
   type WebhookDiagnostic,
   type ConversationState,
@@ -231,30 +232,179 @@ export class PrismaStore extends Store {
   }
 
   // Cross-tenant by necessity: an email address is what somebody signs in with,
-  // before anything says which workspace they belong to. An address must name
-  // exactly one account on the platform; if it ever named two, signing in as
-  // either would be a guess, so it signs in as neither.
+  // before anything says which workspace they're going into. It names one
+  // Login; of that Login's workspaces, the one they were last in.
   async findUserByEmail(email: string): Promise<User | undefined> {
-    const rows = await this.root.user.findMany({
-      where: { email: { equals: email.trim(), mode: "insensitive" } },
-      take: 2,
-    });
-    return rows.length === 1 ? mapUser(rows[0]) : undefined;
+    const login = await this.loginByEmail(email);
+    if (!login) return undefined;
+    const rows = await this.root.user.findMany({ where: { loginId: login.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const row = rows.find((u) => u.orgId === login.lastOrgId) ?? rows[0];
+    return row ? mapUser(row) : undefined;
   }
 
-  // Cross-tenant by necessity: an account is created only if the address is
-  // free on the whole platform, for the reason above.
+  // Cross-tenant by necessity: whether this address signs in as anyone, on the
+  // whole platform — an address belongs to one person wherever they are.
   async emailInUse(email: string): Promise<boolean> {
+    if (await this.root.login.findUnique({ where: { email: email.trim().toLowerCase() } })) return true;
     const n = await this.root.user.count({ where: { email: { equals: email.trim(), mode: "insensitive" } } });
     return n > 0;
   }
 
+  async emailInWorkspace(email: string): Promise<boolean> {
+    const n = await this.prisma.user.count({ where: { email: { equals: email.trim(), mode: "insensitive" } } });
+    return n > 0;
+  }
+
   async getPasswordHash(userId: string): Promise<string | undefined> {
-    const u = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { passwordHash: true },
+    return (await this.loginOf(userId))?.passwordHash ?? undefined;
+  }
+
+  /* ---- sign-in (Login) ----
+   *
+   * One Login per address, holding the password and the second factor; each
+   * workspace the person is in is a User pointing at it. Logins belong to no
+   * workspace, so all of this goes through the unscoped client — and only
+   * ever starting from a user, an address, or a token the person holds.
+   */
+
+  /** The Login with this address — linking any account with it that has none
+   *  yet (made by a script, or before Logins), so that account signs in too. */
+  private async loginByEmail(email: string) {
+    const address = email.trim().toLowerCase();
+    const loose = await this.root.user.findMany({
+      where: { loginId: null, email: { equals: address, mode: "insensitive" } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
-    return u?.passwordHash ?? undefined;
+    for (const u of loose) await this.ensureLogin(u.id);
+    return (await this.root.login.findUnique({ where: { email: address } })) ?? undefined;
+  }
+
+  /** A user's Login, made (from the user's own credentials) or joined (by
+   *  address) if the user predates Logins. The user must be in the workspace
+   *  this request acts for: a password or a second factor is only ever read
+   *  or changed through the person's place here. */
+  private async loginOf(userId: string) {
+    if (!(await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } }))) return undefined;
+    return this.ensureLogin(userId);
+  }
+
+  /** The same, for the workspaces-of-one-person calls below, which start from
+   *  a signed-in user and look across workspaces by design. */
+  private async loginOfAnywhere(userId: string) {
+    return this.ensureLogin(userId);
+  }
+
+  private async ensureLogin(userId: string) {
+    const u = await this.root.user.findUnique({ where: { id: userId } });
+    if (!u) return undefined;
+    if (u.loginId) return (await this.root.login.findUnique({ where: { id: u.loginId } })) ?? undefined;
+    const address = u.email.trim().toLowerCase();
+    const existing = await this.root.login.findUnique({ where: { email: address } });
+    // An address already signing in elsewhere: this account is that person's
+    // place in one more workspace — unless that workspace already has them.
+    if (existing) {
+      const taken = await this.root.user.findFirst({ where: { orgId: u.orgId, loginId: existing.id } });
+      if (taken) return undefined;
+      await this.root.user.update({
+        where: { id: u.id },
+        data: { loginId: existing.id, twoFactorEnabled: existing.twoFactorEnabled, twoFactorMethod: existing.twoFactorMethod },
+      });
+      return existing;
+    }
+    const created = await this.root.login.create({
+      data: {
+        email: address,
+        passwordHash: u.passwordHash,
+        twoFactorEnabled: u.twoFactorEnabled,
+        twoFactorMethod: u.twoFactorMethod,
+        totpSecret: u.totpSecret,
+        lastOrgId: u.orgId,
+      },
+    });
+    await this.root.user.update({ where: { id: u.id }, data: { loginId: created.id } });
+    await this.root.recoveryCode.updateMany({ where: { userId: u.id, loginId: null }, data: { loginId: created.id } });
+    return created;
+  }
+
+  // Cross-tenant by necessity: the workspaces one person is in.
+  async listMemberships(userId: string): Promise<WorkspaceMembership[]> {
+    const login = await this.loginOfAnywhere(userId);
+    if (!login) {
+      const me = await this.getUserForAuth(userId);
+      if (!me) return [];
+      const org = await this.root.organization.findUnique({ where: { id: me.orgId } });
+      return [{ user: me, orgName: org?.name ?? "", sandbox: org?.sandbox ?? false }];
+    }
+    const rows = await this.root.user.findMany({
+      where: { loginId: login.id },
+      include: { org: { select: { name: true, sandbox: true } } },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    return rows.map((r) => ({ user: mapUser(r), orgName: r.org.name, sandbox: r.org.sandbox }));
+  }
+
+  // Cross-tenant by necessity: the same person's place in another workspace.
+  async membershipIn(userId: string, orgId: string): Promise<User | undefined> {
+    const login = await this.loginOfAnywhere(userId);
+    if (!login) return undefined;
+    const row = await this.root.user.findFirst({ where: { loginId: login.id, orgId } });
+    return row ? mapUser(row) : undefined;
+  }
+
+  async rememberWorkspace(userId: string): Promise<void> {
+    const u = await this.root.user.findUnique({ where: { id: userId }, select: { orgId: true } });
+    const login = await this.loginOfAnywhere(userId);
+    if (u && login && login.lastOrgId !== u.orgId) {
+      await this.root.login.update({ where: { id: login.id }, data: { lastOrgId: u.orgId } });
+    }
+  }
+
+  // Cross-tenant by necessity: the same person, given a place in another
+  // workspace — copied from who they are here.
+  async joinWorkspace(userId: string, orgId: string, role: Role): Promise<User> {
+    const login = await this.loginOfAnywhere(userId);
+    const me = await this.root.user.findUnique({ where: { id: userId } });
+    if (!login || !me) throw new Error("No such person");
+    const already = await this.root.user.findFirst({ where: { loginId: login.id, orgId } });
+    if (already) return mapUser(already);
+    const row = await this.root.user.create({
+      data: {
+        orgId,
+        loginId: login.id,
+        name: me.name,
+        email: me.email,
+        role,
+        avatarColor: me.avatarColor,
+        avatarUrl: me.avatarUrl,
+        position: me.position,
+        twoFactorEnabled: login.twoFactorEnabled,
+        twoFactorMethod: login.twoFactorMethod,
+      },
+    });
+    return mapUser(row);
+  }
+
+  // Cross-tenant by necessity: every workspace on the platform, for its owners.
+  async listWorkspaces(): Promise<WorkspaceSummary[]> {
+    const orgs = await this.root.organization.findMany({
+      orderBy: { createdAt: "asc" },
+      include: { _count: { select: { users: true, inboxes: true, conversations: true } } },
+    });
+    return orgs.map((o) => ({
+      id: o.id,
+      name: o.name,
+      sandbox: o.sandbox,
+      createdAt: o.createdAt.toISOString(),
+      people: o._count.users,
+      channels: o._count.inboxes,
+      conversations: o._count.conversations,
+    }));
+  }
+
+  // Cross-tenant by necessity: a new workspace has no tenant to be made in.
+  async createWorkspace(name: string): Promise<{ id: string; name: string }> {
+    const org = await this.root.organization.create({ data: { name } });
+    return { id: org.id, name: org.name };
   }
 
   async createInbox(params: {
@@ -640,10 +790,22 @@ export class PrismaStore extends Store {
     teamIds: string[];
     position?: string | null;
     password?: string;
-  }): Promise<{ user: User; inviteToken?: string }> {
-    // With a password → loginable now (seeding). Without → mint an invite token
-    // and set a random unusable password until the invitee sets their own.
-    const invite = params.password ? null : newInviteToken();
+  }): Promise<{ user: User; inviteToken?: string; joinedExisting?: boolean }> {
+    // Somebody who already signs in (in another workspace) joins with the
+    // sign-in they have: no invite to set a password, just word that they've
+    // been added. Anyone new gets a Login with no password yet and an invite
+    // to set one — unless a password is given (seeding).
+    const address = params.email.trim().toLowerCase();
+    let login = await this.root.login.findUnique({ where: { email: address } });
+    const joinedExisting = !!login?.passwordHash;
+    if (!login) {
+      login = await this.root.login.create({
+        data: { email: address, passwordHash: params.password ? bcrypt.hashSync(params.password, 8) : null, lastOrgId: params.orgId },
+      });
+    } else if (params.password && !login.passwordHash) {
+      login = await this.root.login.update({ where: { id: login.id }, data: { passwordHash: bcrypt.hashSync(params.password, 8) } });
+    }
+    const invite = joinedExisting || params.password ? null : newInviteToken();
     const u = await this.prisma.user.create({
       data: {
         orgId: params.orgId,
@@ -651,41 +813,49 @@ export class PrismaStore extends Store {
         email: params.email,
         role: params.role,
         position: params.position ?? null,
-        passwordHash: bcrypt.hashSync(params.password ?? randomBytes(24).toString("hex"), 8),
+        loginId: login.id,
+        twoFactorEnabled: login.twoFactorEnabled,
+        twoFactorMethod: login.twoFactorMethod,
         inviteTokenHash: invite?.hash ?? null,
         inviteExpiresAt: invite?.expiresAt ?? null,
         memberships: { create: params.teamIds.map((teamId) => ({ teamId })) },
       },
     });
-    return { user: mapUser(u), inviteToken: invite?.token };
+    return { user: mapUser(u), inviteToken: invite?.token, joinedExisting };
   }
 
   // Cross-tenant by necessity: the single-use token is the only thing the
   // person holds, and it is what identifies their account.
+  // An invite is to one workspace (it's on the User); a reset is for the
+  // person (it's on the Login). Either sets the one password they sign in with.
   async setPasswordByInviteToken(token: string, password: string): Promise<User | undefined> {
-    const u = await this.root.user.findFirst({ where: { inviteTokenHash: hashInviteToken(token) } });
-    if (!u || !u.inviteExpiresAt || u.inviteExpiresAt.getTime() < Date.now()) return undefined;
-    const updated = await this.root.user.update({
-      where: { id: u.id },
-      data: { passwordHash: bcrypt.hashSync(password, 8), inviteTokenHash: null, inviteExpiresAt: null },
+    const hash = hashInviteToken(token);
+    const invited = await this.root.user.findFirst({ where: { inviteTokenHash: hash } });
+    if (invited) {
+      if (!invited.inviteExpiresAt || invited.inviteExpiresAt.getTime() < Date.now()) return undefined;
+      const login = await this.ensureLogin(invited.id);
+      if (!login) return undefined;
+      await this.root.login.update({ where: { id: login.id }, data: { passwordHash: bcrypt.hashSync(password, 8), lastOrgId: invited.orgId } });
+      const updated = await this.root.user.update({ where: { id: invited.id }, data: { inviteTokenHash: null, inviteExpiresAt: null } });
+      return mapUser(updated);
+    }
+    const login = await this.root.login.findFirst({ where: { resetTokenHash: hash } });
+    if (!login || !login.resetExpiresAt || login.resetExpiresAt.getTime() < Date.now()) return undefined;
+    await this.root.login.update({
+      where: { id: login.id },
+      data: { passwordHash: bcrypt.hashSync(password, 8), resetTokenHash: null, resetExpiresAt: null },
     });
-    return mapUser(updated);
+    return this.findUserByEmail(login.email);
   }
 
   // Cross-tenant by necessity: a reset is asked for by email address alone.
   async createPasswordResetToken(email: string): Promise<{ user: User; token: string } | null> {
-    const matches = await this.root.user.findMany({
-      where: { email: { equals: email.trim(), mode: "insensitive" } },
-      take: 2,
-    });
-    if (matches.length !== 1) return null;
-    const u = matches[0];
+    const login = await this.loginByEmail(email);
+    const user = login ? await this.findUserByEmail(login.email) : undefined;
+    if (!login || !user) return null;
     const inv = newInviteToken();
-    const updated = await this.root.user.update({
-      where: { id: u.id },
-      data: { inviteTokenHash: inv.hash, inviteExpiresAt: inv.expiresAt },
-    });
-    return { user: mapUser(updated), token: inv.token };
+    await this.root.login.update({ where: { id: login.id }, data: { resetTokenHash: inv.hash, resetExpiresAt: inv.expiresAt } });
+    return { user, token: inv.token };
   }
 
   async updateUser(
@@ -744,6 +914,15 @@ export class PrismaStore extends Store {
       if (params.email !== undefined) data.email = params.email;
       if (params.avatarUrl !== undefined) data.avatarUrl = params.avatarUrl;
       const u = await this.prisma.user.update({ where: { id: userId }, data });
+      // The address is who they sign in as, everywhere: the Login and their
+      // place in every other workspace follow it.
+      if (params.email !== undefined) {
+        const login = await this.loginOf(userId);
+        if (login) {
+          await this.root.login.update({ where: { id: login.id }, data: { email: params.email.trim().toLowerCase() } });
+          await this.root.user.updateMany({ where: { loginId: login.id, id: { not: userId } }, data: { email: params.email } });
+        }
+      }
       return mapUser(u);
     } catch {
       return undefined;
@@ -751,13 +930,12 @@ export class PrismaStore extends Store {
   }
 
   async setUserPassword(userId: string, password: string): Promise<void> {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash: bcrypt.hashSync(password, 8) },
-    });
+    const login = await this.loginOf(userId);
+    if (login) await this.root.login.update({ where: { id: login.id }, data: { passwordHash: bcrypt.hashSync(password, 8) } });
   }
 
   async deleteUser(id: string): Promise<void> {
+    const loginId = (await this.prisma.user.findUnique({ where: { id }, select: { loginId: true } }))?.loginId;
     await this.prisma.$transaction(async (tx) => {
       await tx.teamMember.deleteMany({ where: { userId: id } });
       await tx.note.deleteMany({ where: { authorUserId: id } });
@@ -765,6 +943,11 @@ export class PrismaStore extends Store {
       await tx.message.updateMany({ where: { authorUserId: id }, data: { authorUserId: null } });
       await tx.user.delete({ where: { id } });
     });
+    // Removed from their last workspace, they no longer sign in as anyone: the
+    // Login goes too, so the address starts afresh if it's ever added again.
+    if (loginId && !(await this.root.user.count({ where: { loginId } }))) {
+      await this.root.login.delete({ where: { id: loginId } }).catch(() => undefined);
+    }
   }
 
   async createSession(userId: string, meta: { ip?: string; userAgent?: string }): Promise<StoredSession> {
@@ -806,16 +989,17 @@ export class PrismaStore extends Store {
     return (await this.prisma.session.count({ where: { id, userId } })) > 0;
   }
 
+  // Cross-tenant by necessity: one person's sessions in every workspace they're
+  // in — what a password change or reset has to end, wherever it was opened.
   async revokeOtherSessions(userId: string, keepId: string): Promise<number> {
-    const doomed = await this.prisma.session.findMany({
-      where: { userId, id: { not: keepId }, revokedAt: null },
-      select: { id: true },
-    });
-    const res = await this.prisma.session.updateMany({
-      where: { userId, id: { not: keepId }, revokedAt: null },
-      data: { revokedAt: new Date() },
-    });
-    await this.deleteDevicesForSessions(doomed.map((s) => s.id));
+    // Only ever starting from the person's place in this workspace.
+    if (!(await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } }))) return 0;
+    const login = await this.loginOf(userId);
+    const userIds = login ? (await this.root.user.findMany({ where: { loginId: login.id }, select: { id: true } })).map((u) => u.id) : [userId];
+    const where = { userId: { in: userIds }, id: { not: keepId }, revokedAt: null };
+    const doomed = await this.root.session.findMany({ where, select: { id: true } });
+    const res = await this.root.session.updateMany({ where, data: { revokedAt: new Date() } });
+    if (doomed.length) await this.root.device.deleteMany({ where: { sessionId: { in: doomed.map((s) => s.id) } } });
     return res.count;
   }
 
@@ -959,16 +1143,7 @@ export class PrismaStore extends Store {
   }
 
   async getTwoFactor(userId: string): Promise<TwoFactorState | undefined> {
-    const u = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        twoFactorEnabled: true,
-        twoFactorMethod: true,
-        totpSecret: true,
-        twoFactorEmailCodeHash: true,
-        twoFactorEmailCodeExpires: true,
-      },
-    });
+    const u = await this.loginOf(userId);
     if (!u) return undefined;
     return {
       enabled: u.twoFactorEnabled,
@@ -980,32 +1155,51 @@ export class PrismaStore extends Store {
   }
 
   async updateTwoFactor(userId: string, patch: Partial<TwoFactorState>): Promise<void> {
-    const data: Prisma.UserUpdateInput = {};
+    const login = await this.loginOf(userId);
+    if (!login) return;
+    const data: Prisma.LoginUpdateInput = {};
     if (patch.enabled !== undefined) data.twoFactorEnabled = patch.enabled;
     if (patch.method !== undefined) data.twoFactorMethod = patch.method;
     if (patch.totpSecret !== undefined) data.totpSecret = patch.totpSecret;
     if (patch.emailCodeHash !== undefined) data.twoFactorEmailCodeHash = patch.emailCodeHash;
     if (patch.emailCodeExpires !== undefined)
       data.twoFactorEmailCodeExpires = patch.emailCodeExpires ? new Date(patch.emailCodeExpires) : null;
-    if (Object.keys(data).length) await this.prisma.user.update({ where: { id: userId }, data });
+    if (!Object.keys(data).length) return;
+    await this.root.login.update({ where: { id: login.id }, data });
+    // Every workspace's copy of "has a second factor" follows, which is what
+    // the guard and the people lists read.
+    if (patch.enabled !== undefined || patch.method !== undefined) {
+      await this.root.user.updateMany({
+        where: { loginId: login.id },
+        data: {
+          ...(patch.enabled !== undefined ? { twoFactorEnabled: patch.enabled } : {}),
+          ...(patch.method !== undefined ? { twoFactorMethod: patch.method } : {}),
+        },
+      });
+    }
   }
 
   async listRecoveryCodes(userId: string): Promise<{ id: string; codeHash: string; usedAt: string | null }[]> {
-    const rows = await this.prisma.recoveryCode.findMany({ where: { userId } });
+    const login = await this.loginOf(userId);
+    if (!login) return [];
+    const rows = await this.root.recoveryCode.findMany({ where: { loginId: login.id } });
     return rows.map((r) => ({ id: r.id, codeHash: r.codeHash, usedAt: r.usedAt ? r.usedAt.toISOString() : null }));
   }
 
   async replaceRecoveryCodes(userId: string, codeHashes: string[]): Promise<void> {
-    await this.prisma.$transaction([
-      this.prisma.recoveryCode.deleteMany({ where: { userId } }),
+    const login = await this.loginOf(userId);
+    if (!login) return;
+    await this.root.$transaction([
+      this.root.recoveryCode.deleteMany({ where: { loginId: login.id } }),
       ...(codeHashes.length
-        ? [this.prisma.recoveryCode.createMany({ data: codeHashes.map((h) => ({ userId, codeHash: h })) })]
+        ? [this.root.recoveryCode.createMany({ data: codeHashes.map((h) => ({ loginId: login.id, codeHash: h })) })]
         : []),
     ]);
   }
 
+  // Only ever called with an id read back by `listRecoveryCodes` for this person.
   async markRecoveryCodeUsed(id: string): Promise<void> {
-    await this.prisma.recoveryCode.updateMany({ where: { id, usedAt: null }, data: { usedAt: new Date() } });
+    await this.root.recoveryCode.updateMany({ where: { id, usedAt: null }, data: { usedAt: new Date() } });
   }
 
   async teamsForUser(userId: string): Promise<string[]> {

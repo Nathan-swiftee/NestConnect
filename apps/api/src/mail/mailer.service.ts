@@ -8,7 +8,7 @@ import { SandboxPolicy } from "../tenancy/sandbox";
 import { resolveResendConfig, resolveSmtpConfig, type ResendConfig, type SmtpConfig } from "./smtp-config";
 import { GMAIL_CONFIG, GoogleOAuthService } from "../channels/google/google-oauth.service";
 import { buildMime, gmail } from "../channels/google/gmail-api";
-import { inviteEmail, passwordResetEmail, testEmail } from "./templates";
+import { addedToWorkspaceEmail, inviteEmail, passwordResetEmail, testEmail } from "./templates";
 
 /** Reject with a clear message if `p` hasn't settled within `ms`, so a stalled
  *  network call can never leave an HTTP request hanging. */
@@ -231,8 +231,12 @@ export class Mailer {
   // The wording and the design live in templates.ts; this file stays about
   // getting bytes to a mail server.
 
-  async sendInvite(to: string, name: string, url: string): Promise<MailResult> {
-    return this.sendMail({ to, ...inviteEmail(name, url) });
+  async sendInvite(to: string, name: string, url: string, workspace?: string): Promise<MailResult> {
+    return this.sendMail({ to, ...inviteEmail(name, url, workspace) });
+  }
+
+  async sendAddedToWorkspace(to: string, name: string, workspace: string, url: string): Promise<MailResult> {
+    return this.sendMail({ to, ...addedToWorkspaceEmail(name, workspace, url) });
   }
 
   async sendPasswordReset(to: string, name: string, url: string): Promise<MailResult> {

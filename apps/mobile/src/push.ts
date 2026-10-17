@@ -125,7 +125,7 @@ async function getToken(): Promise<string | null> {
  *  - **Delete on sign-out.** A signed-out phone that keeps buzzing is a bug
  *    people describe as a security problem, and they're not wrong.
  */
-export function usePushRegistration(signedIn: boolean) {
+export function usePushRegistration(signedIn: boolean, account?: string) {
   const [status, setStatus] = useState<Notifications.PermissionStatus | null>(null);
   const registered = useRef(false);
 
@@ -191,7 +191,9 @@ export function usePushRegistration(signedIn: boolean) {
     return (await AsyncStorage.getItem(ASKED_KEY).catch(() => null)) === "1";
   }, []);
 
-  // Re-read the real permission whenever the app comes forward, and reconcile:
+  // Re-read the real permission whenever the app comes forward — and whenever
+  // the account changes (switching workspace is a new session as someone else,
+  // and the phone has to be registered for that one) — and reconcile:
   // granted → make sure we're registered (tokens rotate); anything else →
   // make sure we're not, because the OS has stopped delivering.
   useEffect(() => {
@@ -219,7 +221,7 @@ export function usePushRegistration(signedIn: boolean) {
       cancelled = true;
       sub.remove();
     };
-  }, [signedIn, supported, register, unregister]);
+  }, [signedIn, account, supported, register, unregister]);
 
   return {
     /** False on web and simulators — nothing here will work, so ask nothing. */

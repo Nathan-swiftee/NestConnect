@@ -1,6 +1,6 @@
 import { availableNow } from "@ding/schemas";
 import { useEffect, useState } from "react";
-import { useChatStatus, useLogout, useMe, useOpsStatus, useSound, useTheme, useUpdateMyPreferences } from "../hooks";
+import { api, useChatStatus, useLogout, useMe, useMyWorkspaces, useOpsStatus, useSound, useTheme, useUpdateMyPreferences } from "../hooks";
 import { initials, avatarBg } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
 import {
@@ -44,6 +44,19 @@ export function IconRail({
   const chat = useChatStatus();
   const chatUnread = chat.data?.unread ?? 0;
   const [menu, setMenu] = useState(false);
+  // The other workspaces this person is in. Switching ends this session and
+  // opens one there; a fresh page load is the clean way into it.
+  const places = useMyWorkspaces();
+  const workspaces = places.data?.workspaces ?? [];
+  const here_ = workspaces.find((w) => w.current);
+  const [switching, setSwitching] = useState<string | null>(null);
+  const switchTo = (orgId: string) => {
+    setSwitching(orgId);
+    api.switchWorkspace(orgId).then(
+      () => window.location.assign("/"),
+      () => setSwitching(null),
+    );
+  };
   // Availability, tracked locally for an instant toggle; synced from the server.
   const [available, setAvailable] = useState(true);
   useEffect(() => {
@@ -170,7 +183,25 @@ export function IconRail({
               <div className="rail-menu__id">
                 <b>{me?.name}</b>
                 <small>{me?.email}</small>
+                {here_ && workspaces.length > 1 && <small className="rail-menu__ws-now">{here_.name}</small>}
               </div>
+              {workspaces.length > 1 && (
+                <div className="rail-menu__ws" role="group" aria-label="Workspaces">
+                  {workspaces.map((w) => (
+                    <button
+                      key={w.orgId}
+                      type="button"
+                      className={"rail-menu__wsbtn" + (w.current ? " on" : "")}
+                      aria-current={w.current ? "true" : undefined}
+                      disabled={w.current || !!switching}
+                      onClick={() => switchTo(w.orgId)}
+                    >
+                      <span className="rail-menu__wsname">{w.name}</span>
+                      <span className="rail-menu__wsrole">{switching === w.orgId ? "Opening…" : w.current ? "✓" : w.role}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <button
                 type="button"
                 className="rail-menu__avail"

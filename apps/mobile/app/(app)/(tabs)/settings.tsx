@@ -11,7 +11,9 @@ import {
   useUpdateMyProfile,
   useUpdatePushPreferences,
   useChatStatus,
+  useMyWorkspaces,
 } from "@ding/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { availableNow, type PushPreferences } from "@ding/schemas";
 import { Avatar } from "../../../src/components/Avatar";
 import { ActionSheet, type SheetAction } from "../../../src/components/ActionSheet";
@@ -20,6 +22,7 @@ import { TabHeader } from "../../../src/components/TabHeader";
 import { TAB_BAR_H } from "../../../src/components/TabBar";
 import { BellIcon, ContrastIcon, LogoutIcon } from "../../../src/icons";
 import { usePushRegistration } from "../../../src/push";
+import { switchWorkspace } from "../../../src/workspaces";
 import { isSoundOn, playReceived, setSoundOn, subscribeSound } from "../../../src/sound";
 import { useTheme, type ThemeColors } from "../../../src/theme";
 import { EmptyState, QueryState } from "../../../src/components/States";
@@ -118,7 +121,24 @@ export default function Settings() {
   const appearance = useAppearance();
   // The account's preferences and this phone's OS permission are two different
   // things, and a toggle means nothing while the second is off — hence both.
-  const push = usePushRegistration(!!me);
+  const push = usePushRegistration(!!me, me?.id);
+
+  // The workspaces this person is in — shown only when there's somewhere else
+  // to go. Moving is a new session there, as their place in that workspace.
+  const qc = useQueryClient();
+  const places = useMyWorkspaces();
+  const workspaces = places.data?.workspaces ?? [];
+  const [switching, setSwitching] = useState<string | null>(null);
+  async function moveTo(orgId: string) {
+    setSwitching(orgId);
+    try {
+      await switchWorkspace(qc, orgId);
+    } catch (err) {
+      Alert.alert("Couldn't switch workspace", err instanceof Error ? err.message : "Try again in a moment.");
+    } finally {
+      setSwitching(null);
+    }
+  }
 
   // Sound is a preference of this phone, not of the account, so it's read from
   // and written to the local store rather than the API. Subscribed rather than
@@ -293,6 +313,52 @@ export default function Settings() {
           />
         </Pressable>
       </View>
+
+      {/* Where you're working */}
+      {workspaces.length > 1 ? (
+        <>
+          <View className="flex-row items-center gap-2 px-5 pb-1.5 pt-6">
+            <Text style={{ color: c.textFaint }} className="text-2xs font-semibold uppercase tracking-wider">
+              Workspaces
+            </Text>
+          </View>
+          <View style={{ backgroundColor: c.surface, borderColor: c.border }} className="mx-4 rounded-16 border">
+            {workspaces.map((w, i) => {
+              const last = i === workspaces.length - 1;
+              return (
+                <Pressable
+                  key={w.orgId}
+                  onPress={() => void moveTo(w.orgId)}
+                  disabled={w.current || !!switching}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: w.current, disabled: w.current || !!switching }}
+                  accessibilityLabel={w.current ? `${w.name}, the workspace you're in` : `Switch to ${w.name}`}
+                  style={{ borderBottomColor: last ? "transparent" : c.border }}
+                  className={`flex-row items-center gap-3 px-4 py-3 ${last ? "" : "border-b"}`}
+                >
+                  <View className="flex-1">
+                    <Text numberOfLines={1} className="text-md font-medium text-fg">
+                      {w.name}
+                    </Text>
+                    <Text className="text-2xs capitalize text-muted">{w.role}</Text>
+                  </View>
+                  {switching === w.orgId ? (
+                    <ActivityIndicator size="small" color={c.brand} />
+                  ) : w.current ? (
+                    <Text style={{ color: c.brandStrong }} className="text-2xs font-semibold">
+                      You're here
+                    </Text>
+                  ) : (
+                    <Text style={{ color: c.textMuted }} className="text-2xs font-semibold">
+                      Switch
+                    </Text>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
 
       {/* What may interrupt you */}
       <View className="flex-row items-center gap-2 px-5 pb-1.5 pt-6">

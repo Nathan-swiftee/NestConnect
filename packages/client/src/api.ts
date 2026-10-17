@@ -132,6 +132,10 @@ import type {
   PushPreferences,
   RegisterDeviceInput,
   SessionGrant,
+  MyWorkspaces,
+  PlatformWorkspace,
+  CreateWorkspaceInput,
+  CreatedWorkspace,
   UpdatePushPreferencesInput,
 } from "@ding/schemas";
 import { authHeaders, clientConfig, type UploadFile, type UploadMeta } from "./config";
@@ -166,6 +170,9 @@ export interface CreateUserResult {
   /** Present when the person was invited (not seeded): the set-password link and
    *  whether it was emailed. Surface the link when `emailed` is false. */
   invite?: { url: string; emailed: boolean };
+  /** The address already signs in (to another workspace): they were added
+   *  with the password they have, and told by email — no invite. */
+  addedExisting?: boolean;
 }
 
 export interface ApiError extends Error {
@@ -270,6 +277,15 @@ export const api = {
   enableEmail2fa: (code: string) => post<{ recoveryCodes: string[] }>("/auth/2fa/email/enable", { code }),
   regenerateRecovery: () => post<{ recoveryCodes: string[] }>("/auth/2fa/recovery/regenerate", {}),
   disable2fa: () => post<{ ok: boolean }>("/auth/2fa/disable", {}),
+  // The workspaces you're in, and moving between them. Switching ends this
+  // session and opens one in the other workspace: a browser gets a new cookie,
+  // a phone a new token in the body (which it has to store).
+  myWorkspaces: () => get<MyWorkspaces>("/auth/workspaces"),
+  switchWorkspace: (orgId: string) =>
+    post<MeResponse & Partial<SessionGrant>>("/auth/switch", { orgId, ...tokenAuth() }),
+  // Platform owners: every workspace, and making a new one with its first admin.
+  platformWorkspaces: () => get<PlatformWorkspace[]>("/platform/workspaces"),
+  createWorkspace: (input: CreateWorkspaceInput) => post<CreatedWorkspace>("/platform/workspaces", input),
   // workspace
   // Which of a channel's numbers/mailboxes replies go out from when a thread
   // is answered on a channel it didn't start on. `false` clears it.

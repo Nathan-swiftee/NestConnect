@@ -317,7 +317,7 @@ export default function Inbox() {
   const { refresh, refreshing } = useRefresh();
 
   // Push: register on every start, and ask once the inbox has something on it.
-  const push = usePushRegistration(!!session.data?.user);
+  const push = usePushRegistration(!!session.data?.user, session.data?.user?.id);
   const [askedThisRun, setAskedThisRun] = useState(false);
   const [showGate, setShowGate] = useState(false);
   const promptDue = useDelayedPrompt(!list.isLoading && !!session.data?.user);

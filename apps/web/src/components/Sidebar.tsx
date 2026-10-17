@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent } from "react";
-import { useChatStatus, useLogout, useMe, useOpsStatus, useSound, useTeams, useTheme, useViews } from "../hooks";
+import { useChatStatus, useLogout, useMe, useMyWorkspaces, useOpsStatus, useSound, useTeams, useTheme, useViews } from "../hooks";
 import { ChevronRight, ChevronsLeftIcon, ContactsIcon, OrganisationsIcon, OpsIcon, TeamChatIcon, InboxIcon, InsightsIcon, SnoozeIcon, TeamGlyph, ThemeIcon, SunIcon, SoundOnIcon, SoundOffIcon, SettingsIcon, LogoutIcon, XIcon, channelMeta, Wordmark } from "../lib/icons";
 import { initials, avatarBg } from "../lib/format";
 import { toggleTheme } from "../lib/theme";
@@ -38,6 +38,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
   const sound = useSound();
   const theme = useTheme();
   const me = meData?.user;
+  const workspaceName = useMyWorkspaces().data?.workspaces.find((w) => w.current)?.name;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const teamIconFor = (key: string) => teamList?.find((tm) => `team:${tm.id}` === key)?.icon ?? null;
   const toggle = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
@@ -125,7 +126,7 @@ export function Sidebar({ view, onSelectView, onSelectConversation, onClose, onO
     <aside className={"side" + (isCollapsed ? " is-collapsed" : "")} aria-label="Inboxes">
       <div className="side__head">
         <Wordmark />
-        <span className="side__sub">Swiftee</span>
+        {workspaceName && <span className="side__sub">{workspaceName}</span>}
         {onToggleCollapse && (
           <button
             className="side__collapse"

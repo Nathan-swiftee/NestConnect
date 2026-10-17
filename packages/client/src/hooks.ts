@@ -36,6 +36,7 @@ import {
   type UpdateInboxInput,
   type UpdateInboxSignatureInput,
   type UpdateIntegrationSettingsInput,
+  type CreateWorkspaceInput,
   type UpdateNestchatInput,
   type UpdateMyPreferencesInput,
   type UpdatePushPreferencesInput,
@@ -392,6 +393,20 @@ export function useUpdateNestchat() {
       // than refetching what we already have in hand.
       qc.setQueryData(["nestchat", data.inboxId], data);
     },
+  });
+}
+
+/* ---- workspaces ---- */
+export const useMyWorkspaces = () => useQuery({ queryKey: ["my-workspaces"], queryFn: api.myWorkspaces });
+
+export const usePlatformWorkspaces = (enabled = true) =>
+  useQuery({ queryKey: ["platform-workspaces"], queryFn: api.platformWorkspaces, enabled });
+
+export function useCreateWorkspace() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateWorkspaceInput) => api.createWorkspace(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-workspaces"] }),
   });
 }
 

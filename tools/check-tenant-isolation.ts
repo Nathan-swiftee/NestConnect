@@ -401,6 +401,7 @@ async function cleanup(root: PrismaClient): Promise<void> {
   await root.session.deleteMany({ where: { userId: { in: users } } });
   await root.teamMember.deleteMany({ where: { userId: { in: users } } });
   await root.user.deleteMany({ where: { id: { in: users } } });
+  await root.login.deleteMany({ where: { email: { startsWith: "iso-" } } });
   const inboxes = (await root.inbox.findMany({ where: { orgId: { in: orgs }, OR: [{ handle: { startsWith: "iso" } }, { handle: { endsWith: "-chat" } }, { name: "dup" }] }, select: { id: true } })).map((i) => i.id);
   await root.customerDevice.deleteMany({ where: { inboxId: { in: inboxes } } });
   await root.inboxTeam.deleteMany({ where: { inboxId: { in: inboxes } } });

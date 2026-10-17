@@ -109,6 +109,24 @@ export interface StoredCustomerDevice {
   disabledReason: string | null;
 }
 
+/** One of the workspaces a person is in: their place there, and the workspace. */
+export interface WorkspaceMembership {
+  user: User;
+  orgName: string;
+  sandbox: boolean;
+}
+
+/** A workspace, as the platform's owners see it in their list. */
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  sandbox: boolean;
+  createdAt: string;
+  people: number;
+  channels: number;
+  conversations: number;
+}
+
 /** A user's two-factor state (the TOTP secret is encrypted at rest). */
 export interface TwoFactorState {
   enabled: boolean;
@@ -348,11 +366,29 @@ export abstract class Store {
   /** The user a verified session token names, in whichever workspace they are —
    *  how a request learns its tenant. Cross-tenant; for authentication only. */
   abstract getUserForAuth(id: string): Promise<User | undefined>;
-  /** The one account an email address signs in as, on the whole platform.
-   *  Nothing when no account — or more than one — has it. Cross-tenant. */
+  /** Who an email address signs in as: one person (a Login), into the
+   *  workspace they were last in. Nothing when the address signs in as
+   *  nobody. Cross-tenant. */
   abstract findUserByEmail(email: string): Promise<User | undefined>;
-  /** Whether any workspace has an account with this address. Cross-tenant. */
+  /** Whether this address signs in as anyone, anywhere. Cross-tenant. */
   abstract emailInUse(email: string): Promise<boolean>;
+  /** Whether the bound workspace already has someone with this address. */
+  abstract emailInWorkspace(email: string): Promise<boolean>;
+
+  /* ---- one person, several workspaces ---- */
+
+  /** Every workspace this person is in (their place in each). Cross-tenant. */
+  abstract listMemberships(userId: string): Promise<WorkspaceMembership[]>;
+  /** This person's place in another workspace, if they have one. Cross-tenant. */
+  abstract membershipIn(userId: string, orgId: string): Promise<User | undefined>;
+  /** Signing in takes them to the workspace this user is in, from now on. */
+  abstract rememberWorkspace(userId: string): Promise<void>;
+  /** Give this person a place in another workspace, as who they are here. */
+  abstract joinWorkspace(userId: string, orgId: string, role: Role): Promise<User>;
+  /** Every workspace on the platform. Cross-tenant; for its owners. */
+  abstract listWorkspaces(): Promise<WorkspaceSummary[]>;
+  /** A new, empty workspace. */
+  abstract createWorkspace(name: string): Promise<{ id: string; name: string }>;
   abstract getPasswordHash(userId: string): Promise<string | undefined>;
   abstract teamsForUser(userId: string): Promise<string[]>;
   abstract me(userId: string): Promise<{ user?: User; teams: Team[] }>;
@@ -507,7 +543,7 @@ export abstract class Store {
     teamIds: string[];
     position?: string | null;
     password?: string;
-  }): Promise<{ user: User; inviteToken?: string }>;
+  }): Promise<{ user: User; inviteToken?: string; joinedExisting?: boolean }>;
   /** Consume an invite token, set the user's password, and return the user. */
   abstract setPasswordByInviteToken(token: string, password: string): Promise<User | undefined>;
   /**

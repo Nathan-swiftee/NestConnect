@@ -80,6 +80,10 @@ import {
   useUpdateNestchat,
   useUpdateLabel,
   useIntegrations,
+  useMyWorkspaces,
+  usePlatformWorkspaces,
+  useCreateWorkspace,
+  api as platformApi,
   useMe,
   usePeople,
   useReorderInboxes,
@@ -122,6 +126,7 @@ import {
   EditIcon,
   GmailGlyph,
   InboxIcon,
+  OrganisationsIcon,
   MailIcon,
   PlusIcon,
   RefreshIcon,
@@ -155,6 +160,7 @@ type Leaf =
   | "labels"
   | "fields"
   | "modules"
+  | "workspaces"
   | "connections"
   | "storage"
   | "email"
@@ -174,6 +180,8 @@ interface NavSection {
   label: string;
   Icon: ComponentType;
   leaves: { key: Leaf; label: string }[];
+  /** The platform's own settings: shown to its owners only. */
+  ownerOnly?: boolean;
 }
 
 /** Left-rail sections (primary nav) → their sub-nav leaves (secondary nav).
@@ -206,9 +214,17 @@ const NAV: NavSection[] = [
     ],
   },
   {
+    key: "workspaces",
+    label: "Workspaces",
+    Icon: OrganisationsIcon,
+    ownerOnly: true,
+    leaves: [{ key: "workspaces", label: "All workspaces" }],
+  },
+  {
     key: "integrations",
     label: "Integrations",
     Icon: BoltIcon,
+    ownerOnly: true,
     leaves: [
       { key: "connections", label: "Connections" },
       { key: "storage", label: "Storage" },
@@ -269,8 +285,11 @@ export function Settings({ onClose, onToast }: Props) {
   const me = useMe();
   const isAdmin = me.data?.user.role === "admin";
   const leafShown = (key: Leaf) => key !== "gmail" || isAdmin;
+  // Workspaces and the platform-wide integrations are the platform owners'.
+  const owner = useMyWorkspaces().data?.platformOwner === true;
+  const nav = NAV.filter((s) => owner || !s.ownerOnly);
   // The active primary section is whichever one owns the active leaf.
-  const section = NAV.find((s) => s.leaves.some((l) => l.key === active)) ?? NAV[0];
+  const section = nav.find((s) => s.leaves.some((l) => l.key === active)) ?? nav[0];
   // Keep one pane key per section so switching *sub*-tabs within Integrations
   // doesn't remount SetupPane (it holds unsaved form state); switching sections
   // still swaps the key and plays the pane-in transition.
@@ -286,7 +305,7 @@ export function Settings({ onClose, onToast }: Props) {
       </header>
       <div className="settings__body">
         <nav className="settings__nav" aria-label="Settings sections">
-          {NAV.map((s) => {
+          {nav.map((s) => {
             const on = s.key === section.key;
             return (
               <button
@@ -333,7 +352,8 @@ export function Settings({ onClose, onToast }: Props) {
             {active === "labels" && <LabelsPane onToast={onToast} />}
             {active === "fields" && <CustomFieldsPane onToast={onToast} />}
             {active === "modules" && <OpsModulesPane onToast={onToast} />}
-            {(active === "connections" ||
+            {active === "workspaces" && owner && <WorkspacesPane onToast={onToast} />}
+            {owner && (active === "connections" ||
               active === "storage" ||
               active === "email" ||
               active === "ai" ||
@@ -924,6 +944,9 @@ function ConnectChannel({
     if (!popup) onToast(`Allow pop-ups for this site to connect ${label}`);
   };
   const connectGmail = () => connectOAuth("/api/channels/google/oauth/start", "Gmail");
+  // An inbox on the platform's own mail service is the platform's alone; every
+  // other workspace connects its email through Gmail.
+  const hostedEmail = useMyWorkspaces().data?.workspaces.some((w) => w.current && w.platform) ?? false;
   const connectWhatsApp = () => connectOAuth("/api/channels/meta/oauth/start", "WhatsApp");
 
   // A WhatsApp Business app number (coexistence). Meta's sign-up must open
@@ -1083,7 +1106,7 @@ function ConnectChannel({
           </div>
           <div className="modal__body">
         <div className="kindgrid">
-          {CHANNEL_KINDS.map((k) => {
+          {CHANNEL_KINDS.filter((k) => k.type !== "email" || hostedEmail).map((k) => {
             const cm = channelMeta(k.type);
             const Glyph = cm.Glyph;
             return (
@@ -1959,6 +1982,182 @@ function TeamsPane({ onToast }: { onToast: (msg: string) => void }) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Workspaces — the platform owner's view of every workspace           */
+/* ------------------------------------------------------------------ */
+
+function WorkspacesPane({ onToast }: { onToast: (msg: string) => void }) {
+  const list = usePlatformWorkspaces();
+  const mine = useMyWorkspaces();
+  const create = useCreateWorkspace();
+  const here = mine.data?.workspaces.find((w) => w.current)?.orgId;
+  const rows = list.data ?? [];
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [adminName, setAdminName] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [invite, setInvite] = useState<{ workspace: string; name: string; url: string; emailed: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [opening, setOpening] = useState<string | null>(null);
+  const valid = Boolean(name.trim() && adminName.trim() && adminEmail.trim());
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (!valid) return;
+    create.mutate(
+      { name: name.trim(), adminName: adminName.trim(), adminEmail: adminEmail.trim() },
+      {
+        onSuccess: (made) => {
+          const ws = made.workspace.name;
+          if (made.admin.invited && made.admin.inviteUrl) {
+            setInvite({ workspace: ws, name: made.admin.name, url: made.admin.inviteUrl, emailed: made.admin.emailed });
+            setCopied(false);
+            onToast(made.admin.emailed ? `“${ws}” made — invite emailed to ${made.admin.email}` : `“${ws}” made — share ${made.admin.name}’s link below`);
+          } else {
+            setInvite(null);
+            onToast(`“${ws}” made — ${made.admin.name} already signs in, so it’s in their menu now`);
+          }
+          setName(""); setAdminName(""); setAdminEmail(""); setOpen(false);
+        },
+        onError: (err) => onToast(err instanceof Error && err.message ? err.message : "Couldn’t make the workspace"),
+      },
+    );
+  };
+
+  const copyInvite = async () => {
+    if (!invite) return;
+    try {
+      await navigator.clipboard.writeText(invite.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      onToast("Couldn't copy — select the link and copy manually");
+    }
+  };
+
+  // Opening one you aren't in adds you to its people, as an admin — visibly,
+  // so its own admins can see who has been in.
+  const openWorkspace = (id: string, wsName: string, joined: boolean) => {
+    if (!joined && !window.confirm(`Open “${wsName}”?\n\nYou’ll be added to its people as an admin, where its admins can see you.`)) return;
+    setOpening(id);
+    platformApi.switchWorkspace(id).then(
+      () => window.location.assign("/"),
+      (err) => {
+        setOpening(null);
+        onToast(err instanceof Error && err.message ? err.message : "Couldn’t open that workspace");
+      },
+    );
+  };
+
+  return (
+    <div className="setpane setpane--wide">
+      <div className="setpane__head">
+        <div>
+          <h2>Workspaces <span className="setcount">{rows.length}</span></h2>
+          <p>Every workspace on the platform. Each one’s people, channels and conversations are its own — open one to work in it.</p>
+        </div>
+        <button className="btn-primary" type="button" onClick={() => setOpen(true)}>
+          <PlusIcon /> New workspace
+        </button>
+      </div>
+
+      {invite && (
+        <div className="invitebox">
+          <div className="invitebox__head">
+            <b>{invite.emailed ? `Invite emailed to ${invite.name}` : `Invite ${invite.name} to ${invite.workspace}`}</b>
+            <button className="iconbtn" title="Dismiss" onClick={() => setInvite(null)}>
+              <XIcon />
+            </button>
+          </div>
+          <p>
+            {invite.emailed
+              ? "They’ll get an email with a link to set their password. You can also share this link directly:"
+              : "Email isn’t connected yet, so send this set-password link to them directly. It expires in 7 days."}
+          </p>
+          <div className="copyrow">
+            <input readOnly value={invite.url} onFocus={(e) => e.target.select()} />
+            <button className="btn-primary" type="button" onClick={copyInvite}>
+              {copied ? "Copied" : "Copy link"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="dwrap">
+        <div className="dtable dtable--ws">
+          <div className="dtable__head">
+            <span>Workspace</span>
+            <span>People</span>
+            <span>Channels</span>
+            <span>Conversations</span>
+            <span />
+          </div>
+          {list.isLoading && <div className="dtable__row dtable__row--static"><span className="dcell dcell--muted">Loading…</span></div>}
+          {rows.map((w) => (
+            <div className="dtable__row dtable__row--static" key={w.id}>
+              <span className="dcell dname">
+                <span className="dname__x">
+                  <span className="dcell__t">{w.name}</span>
+                  <span className="dcell__s">
+                    Since {new Date(w.createdAt).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                    {w.sandbox ? " · demo" : ""}
+                  </span>
+                </span>
+              </span>
+              <span className="dcell dcell--muted">{w.people}</span>
+              <span className="dcell dcell--muted">{w.channels}</span>
+              <span className="dcell dcell--muted">{w.conversations}</span>
+              <span className="dcell dacts">
+                {w.id === here ? (
+                  <span className="dcell--muted">You’re here</span>
+                ) : (
+                  <button className="btn-ghost" type="button" disabled={!!opening} onClick={() => openWorkspace(w.id, w.name, w.joined)}>
+                    {opening === w.id ? "Opening…" : "Open"}
+                  </button>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {open && (
+        <div className="modal" onClick={() => setOpen(false)}>
+          <form className="modal__box modal--form" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+            <div className="modal__head">
+              <h2>New workspace</h2>
+              <button type="button" className="modal__x" onClick={() => setOpen(false)} aria-label="Close"><XIcon /></button>
+            </div>
+            <div className="modal__body">
+              <label className="field">
+                <span>Workspace name</span>
+                <input value={name} autoFocus onChange={(e) => setName(e.target.value)} placeholder="The client’s business name" />
+              </label>
+              <label className="field">
+                <span>Their admin’s name</span>
+                <input value={adminName} onChange={(e) => setAdminName(e.target.value)} />
+              </label>
+              <label className="field">
+                <span>Their admin’s email</span>
+                <input type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} />
+                <small className="fieldhint">
+                  They’re invited to set a password. Someone who already signs in here keeps theirs and finds the new workspace in their menu.
+                </small>
+              </label>
+            </div>
+            <div className="modal__foot">
+              <button className="btn-ghost" type="button" onClick={() => setOpen(false)}>Cancel</button>
+              <button className="btn-primary" type="submit" disabled={create.isPending || !valid}>
+                {create.isPending ? "Making…" : "Make workspace"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* People                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -2004,12 +2203,14 @@ function PeoplePane({ onToast }: { onToast: (msg: string) => void }) {
             setInvite({ name: who, url: result.invite.url, emailed: result.invite.emailed });
             setCopied(false);
             onToast(result.invite.emailed ? `Invite emailed to ${email.trim()}` : `Invited ${who} — share their link below`);
+          } else if (result.addedExisting) {
+            onToast(`Added ${who} — they already sign in, so this workspace is in their menu now`);
           } else {
             onToast(`Invited ${who}`);
           }
           setName(""); setEmail(""); setRole("agent"); setPosition(""); setTeamIds([]); setOpen(false);
         },
-        onError: () => onToast("Only admins/managers can add people"),
+        onError: (err) => onToast(err instanceof Error && err.message ? err.message : "Only admins/managers can add people"),
       },
     );
   };

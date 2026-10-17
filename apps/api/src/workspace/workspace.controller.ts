@@ -47,6 +47,7 @@ import {
 } from "@ding/schemas";
 import { Store } from "../data/store";
 import { SandboxPolicy } from "../tenancy/sandbox";
+import { isPlatformOrg } from "../tenancy/platform";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
 import { Mailer } from "../mail/mailer.service";
@@ -119,8 +120,8 @@ export class WorkspaceController {
     if (body.position !== undefined) params.position = body.position || null;
     if (body.email !== undefined) {
       const email = body.email.trim().toLowerCase();
-      // Login is by email alone, before anything says which workspace — so an
-      // address names one account on the whole platform.
+      // The address is who they sign in as, in every workspace: it has to be
+      // nobody else's anywhere.
       const current = await this.store.getUser(userId);
       if (current?.email.toLowerCase() !== email && (await this.store.emailInUse(email))) {
         throw new ConflictException("That email address is already in use.");
@@ -195,6 +196,13 @@ export class WorkspaceController {
   ) {
     const me = await this.requireManager(userId);
     await this.sandbox.assertLive("Connecting a channel");
+    // A hosted address sends through the platform's own mail service, as the
+    // platform's sender — fine for the platform's workspace, wrong for a
+    // client's, whose customers would get replies from someone else's domain.
+    // Theirs connects through Gmail and sends as them.
+    if (body.type === "email" && !isPlatformOrg(me.orgId)) {
+      throw new BadRequestException("Email for this workspace connects through Gmail — use “Connect Gmail” instead.");
+    }
     await this.assertChannelKeyFree(body.type, body.handle, body.channelConfig);
     const inbox = await this.store.createInbox({ orgId: me.orgId, ...body });
     await this.subscribeWhatsAppWebhook(inbox.id, inbox.type);
@@ -372,18 +380,25 @@ export class WorkspaceController {
   ) {
     const me = await this.requireManager(userId);
     await this.sandbox.assertLive("Inviting people");
-    // Login is by email alone, before anything says which workspace — so an
-    // address names one account on the whole platform.
-    if (await this.store.emailInUse(body.email)) {
-      throw new ConflictException("That email address is already in use.");
+    // An address is one person wherever they are: somebody already in another
+    // workspace joins this one with the sign-in they have. Only twice in the
+    // same workspace is refused.
+    if (await this.store.emailInWorkspace(body.email)) {
+      throw new ConflictException("Someone in this workspace already has that email address.");
+    }
+    const workspace = (await this.store.listMemberships(userId)).find((m) => m.user.id === userId)?.orgName;
+    const { user, inviteToken, joinedExisting } = await this.store.createUser({ orgId: me.orgId, ...body, position: body.position || null });
+    // They already sign in: tell them they've been added — nothing to set up.
+    if (joinedExisting) {
+      await this.mailer.sendAddedToWorkspace(user.email, user.name, workspace ?? "a new workspace", env.appUrl).catch(() => undefined);
+      return { user, addedExisting: true };
     }
     // No password → the store mints an invite token; email the "set your
     // password" link, and return it so the admin can share it by hand when no
     // transactional email is connected yet.
-    const { user, inviteToken } = await this.store.createUser({ orgId: me.orgId, ...body, position: body.position || null });
     if (!inviteToken) return { user };
     const url = `${env.appUrl}/?invite=${inviteToken}`;
-    const { sent } = await this.mailer.sendInvite(user.email, user.name, url);
+    const { sent } = await this.mailer.sendInvite(user.email, user.name, url, workspace);
     return { user, invite: { url, emailed: sent } };
   }
 

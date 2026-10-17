@@ -212,7 +212,9 @@ async function main(): Promise<void> {
   });
   ok("connect A's WhatsApp number: refused as taken", steal.status === 409, `${steal.status} ${steal.json?.message ?? ""}`);
   const integ = await call(tokenB, "GET", "/settings/integrations");
-  ok("platform integrations are closed to B", integ.status === 403, String(integ.status));
+  ok("platform integrations show B what's on, none of the details", integ.status === 200 && integ.json?.google?.clientId === "" && integ.json?.google?.redirectUri === "", `${integ.status}`);
+  const integSet = await call(tokenB, "PATCH", "/settings/integrations", { anthropic: { model: "isoh" } });
+  ok("…and B can't change them", integSet.status === 403, String(integSet.status));
   const integA = await call(tokenA, "GET", "/settings/integrations");
   ok("…and open to the platform's own admin", integA.status === 200, String(integA.status));
 
@@ -329,6 +331,7 @@ async function cleanup(root: PrismaClient): Promise<void> {
   await root.session.deleteMany({ where: { userId: { in: users } } });
   await root.teamMember.deleteMany({ where: { OR: [{ userId: { in: users } }, { team: { name: { startsWith: "isoh " } } }] } });
   await root.user.deleteMany({ where: { id: { in: users } } });
+  await root.login.deleteMany({ where: { email: { startsWith: "isoh-" } } });
   await root.team.deleteMany({ where: { name: { startsWith: "isoh " } } });
   await root.webhookDiagnostic.deleteMany({ where: { reference: { startsWith: "isoh" } } });
   await root.organization.deleteMany({ where: { id: "isoh_org_b" } });

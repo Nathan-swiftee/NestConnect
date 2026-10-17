@@ -17,12 +17,15 @@ import {
   forgotPasswordInputSchema,
   loginInputSchema,
   setPasswordInputSchema,
+  switchWorkspaceInputSchema,
   twoFactorCodeInputSchema,
   type ChangePasswordInput,
   type ForgotPasswordInput,
   type LoginInput,
   type SetPasswordInput,
+  type MyWorkspaces,
   type SessionGrant,
+  type SwitchWorkspaceInput,
   type TwoFactorChallenge,
   type TwoFactorCodeInput,
   type User,
@@ -30,7 +33,9 @@ import {
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { Store } from "../data/store";
 import { env } from "../config/env";
-import { bindTenant } from "../tenancy/tenant-scope";
+import { bindTenant, runInTenant } from "../tenancy/tenant-scope";
+import { isPlatformOwner } from "../tenancy/platform-owner";
+import { isPlatformOrg } from "../tenancy/platform";
 import { SandboxPolicy } from "../tenancy/sandbox";
 import { AuthService, TRUSTED_DEVICE_TTL_S } from "./auth.service";
 import { SessionService } from "./session.service";
@@ -335,6 +340,54 @@ export class AuthController {
     // change having failed.
     const signedOutOthers = await this.sessions.revokeOthers(userId, sessionId ?? "").catch(() => 0);
     return { ok: true, signedOutOthers };
+  }
+
+  /* ---- one person, several workspaces ---- */
+
+  /** The workspaces I'm in, and whether I own the platform. */
+  @Get("workspaces")
+  async myWorkspaces(@CurrentUserId() userId: string): Promise<MyWorkspaces> {
+    const places = await this.store.listMemberships(userId);
+    return {
+      workspaces: places.map((m) => ({
+        orgId: m.user.orgId,
+        name: m.orgName,
+        role: m.user.role,
+        sandbox: m.sandbox,
+        current: m.user.id === userId,
+        platform: isPlatformOrg(m.user.orgId),
+      })),
+      platformOwner: await isPlatformOwner(this.store, userId),
+    };
+  }
+
+  /**
+   * Move into another of my workspaces: a new session as my place there, and
+   * this one ended — a session is in one workspace, as everything it reads and
+   * writes is. Signing in next time takes me back to wherever I last was.
+   *
+   * A platform owner can move into any workspace; one they aren't in yet gets
+   * them as an admin there, in its people list for its own admins to see.
+   */
+  @Post("switch")
+  async switchWorkspace(
+    @CurrentUserId() userId: string,
+    @Body(new ZodValidationPipe(switchWorkspaceInputSchema)) body: SwitchWorkspaceInput,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @CurrentSessionId() sessionId?: string,
+  ) {
+    let target = await this.store.membershipIn(userId, body.orgId);
+    if (!target && (await isPlatformOwner(this.store, userId))) {
+      const exists = (await this.store.listWorkspaces()).some((w) => w.id === body.orgId);
+      if (exists) target = await this.store.joinWorkspace(userId, body.orgId, "admin");
+    }
+    if (!target) throw new NotFoundException("Workspace not found");
+    await this.store.rememberWorkspace(target.id);
+    if (target.id === userId) return this.meResponse(userId);
+    if (sessionId) await this.sessions.revoke(userId, sessionId).catch(() => false);
+    const into = target;
+    return runInTenant(into.orgId, () => this.grantSession(into.id, req, res, body.tokenAuth));
   }
 
   /* ---- signed-in sessions ("where you're logged in") ---- */

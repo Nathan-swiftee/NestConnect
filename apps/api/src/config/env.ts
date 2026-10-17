@@ -19,6 +19,16 @@ export const env = {
   // Public origin of the web app, used to build links (e.g. invite emails).
   // Defaults to the CORS origin (same-origin in prod).
   appUrl: process.env.APP_URL ?? process.env.CORS_ORIGIN ?? "http://localhost:5173",
+  /**
+   * Who owns the platform: comma-separated sign-in addresses. They see every
+   * workspace, create new ones, can open any of them, and alone change the
+   * platform-wide integrations. Unset, it's the admins of the platform's own
+   * workspace (PLATFORM_ORG_ID) — never its managers.
+   */
+  platformOwners: (process.env.PLATFORM_OWNERS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
   databaseUrl: process.env.DATABASE_URL ?? "",
   redisUrl: process.env.REDIS_URL ?? "",
   whatsapp: {

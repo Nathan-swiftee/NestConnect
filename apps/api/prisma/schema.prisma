@@ -214,9 +214,16 @@ model User {
   // Null = the defaults: assigned-to-me, mentions, assignments and reminders on,
   // all-team-inbound off — the setting that otherwise makes people uninstall.
   pushPrefs                 String?
+  /// Who this person signs in as (see Login). A User is one person's place in
+  /// one workspace — role, teams, preferences — and the same person can have
+  /// one in several workspaces, all pointing at one Login. The password and
+  /// second-factor columns above are retired copies from before Login
+  /// existed: nothing reads or writes them any more.
+  loginId      String?
   createdAt    DateTime @default(now())
 
   org         Organization   @relation(fields: [orgId], references: [id])
+  login       Login?         @relation(fields: [loginId], references: [id], onDelete: SetNull)
   memberships TeamMember[]
   assigned    Conversation[] @relation("assignee")
   messages    Message[]
@@ -235,21 +242,56 @@ model User {
   chatStars       ChatStar[]
 
   @@unique([orgId, email])
+  /// One place per person per workspace.
+  @@unique([orgId, loginId])
   @@index([orgId])
+  @@index([loginId])
+}
+
+/// Who someone is when they sign in: one per email address, across every
+/// workspace they belong to. It holds what proves it's them — the password and
+/// the second factor — so changing either changes it everywhere at once. Each
+/// workspace they're in is a User row pointing here.
+///
+/// Belongs to no workspace, so the tenant-scoped client can't reach it: only
+/// the store's unscoped client reads or writes it, and only for signing in.
+model Login {
+  id                        String    @id @default(cuid())
+  /// Lower-cased; what they type to sign in.
+  email                     String    @unique
+  passwordHash              String?
+  twoFactorEnabled          Boolean   @default(false)
+  twoFactorMethod           String?
+  totpSecret                String?
+  twoFactorEmailCodeHash    String?
+  twoFactorEmailCodeExpires DateTime?
+  /// "Forgot password": SHA-256 of a single-use token and its expiry.
+  resetTokenHash            String?
+  resetExpiresAt            DateTime?
+  /// The workspace they were last in — where signing in takes them.
+  lastOrgId                 String?
+  createdAt                 DateTime  @default(now())
+
+  users         User[]
+  recoveryCodes RecoveryCode[]
 }
 
 // One-time backup codes for 2FA recovery (lost authenticator). Stored hashed;
 // `usedAt` marks a spent code so it can't be replayed.
 model RecoveryCode {
   id        String    @id @default(cuid())
-  userId    String
+  /// Retired: the codes belong to the Login now. Kept on rows made before.
+  userId    String?
+  loginId   String?
   codeHash  String
   usedAt    DateTime?
   createdAt DateTime  @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user  User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  login Login? @relation(fields: [loginId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([loginId])
 }
 
 // A signed-in device/browser. The session id rides in the JWT as its `jti`, so a

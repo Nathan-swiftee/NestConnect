@@ -418,6 +418,7 @@ async function cleanup(root: PrismaClient): Promise<void> {
   await root.notification.deleteMany({ where: { userId: { in: users } } });
   await root.teamMember.deleteMany({ where: { OR: [{ userId: { in: users } }, { team: { name: { startsWith: "rvchk" } } }] } });
   await root.user.deleteMany({ where: { id: { in: users } } });
+  await root.login.deleteMany({ where: { email: { startsWith: "rvchk-" } } });
   await root.team.deleteMany({ where: { name: { startsWith: "rvchk" } } });
 }
 
