@@ -42,6 +42,7 @@ import { useVoiceRecording } from "../../../src/voice";
 import { ChatAvatar } from "../../../src/components/chat/ChatAvatar";
 import { ChatBubbleRow } from "../../../src/components/chat/ChatBubble";
 import { ChatInfoSheet, ChatMessageSheet } from "../../../src/components/chat/ChatSheets";
+import { ReactionsSheet } from "../../../src/components/chat/ReactionsSheet";
 import { ErrorState, Loading } from "../../../src/components/States";
 import { useToast } from "../../../src/components/Toast";
 import { Touchable } from "../../../src/components/Touchable";
@@ -70,6 +71,8 @@ export default function ChatScreen() {
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [editing, setEditing] = useState<ChatMessage | null>(null);
   const [acting, setActing] = useState<ChatBubble | null>(null);
+  // Who reacted to a message: its id (read live, so a removal shows) and the emoji tapped.
+  const [whoFor, setWhoFor] = useState<{ id: string; emoji: string } | null>(null);
   const [infoFor, setInfoFor] = useState<ChatMessage | null>(null);
   const list = useRef<FlatList<ChatItem<ChatBubble>>>(null);
   const stars = useChatStars();
@@ -284,6 +287,7 @@ export default function ChatScreen() {
               }}
               onLongPress={setActing}
               onReact={(x, emoji) => react.mutate({ mid: x.id, emoji }, { onError: fail })}
+              onShowReactions={(x, emoji) => setWhoFor({ id: x.id, emoji })}
               onQuote={goTo}
               onRetry={(x) => void retry(x)}
               starred={stars.ids.has(m.id)}
@@ -341,6 +345,18 @@ export default function ChatScreen() {
         <BottomInset />
       </KeyboardAvoidingView>
 
+      <ReactionsSheet
+        reactions={whoFor ? (msgs.messages.find((x) => x.id === whoFor.id)?.reactions ?? null) : null}
+        initial={whoFor?.emoji ?? null}
+        people={[...r.members, ...mentionables.map((p) => ({ ...p, id: (p as Mentionable & { id?: string }).id ?? "" }))]}
+        meId={me?.id}
+        canRemove={r.canPost}
+        onRemove={(emoji) => {
+          if (whoFor) react.mutate({ mid: whoFor.id, emoji }, { onError: fail });
+          setWhoFor(null);
+        }}
+        onClose={() => setWhoFor(null)}
+      />
       <ChatMessageSheet
         message={acting}
         meId={me?.id}

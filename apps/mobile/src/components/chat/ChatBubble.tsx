@@ -35,6 +35,7 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onReply,
   onLongPress,
   onReact,
+  onShowReactions,
   onQuote,
   onRetry,
   starred = false,
@@ -51,6 +52,8 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
   onReply: (m: Bubble) => void;
   onLongPress: (m: Bubble) => void;
   onReact: (m: Bubble, emoji: string) => void;
+  /** A reaction tapped: who reacted, as WhatsApp opens it. Without this, a tap reacts. */
+  onShowReactions?: (m: Bubble, emoji: string) => void;
   onQuote: (id: string) => void;
   onRetry: (m: Bubble) => void;
   starred?: boolean;
@@ -202,10 +205,10 @@ export const ChatBubbleRow = memo(function ChatBubbleRow({
             return (
               <Pressable
                 key={r.emoji}
-                disabled={!canAct}
-                onPress={() => onReact(m, r.emoji)}
+                disabled={!onShowReactions && !canAct}
+                onPress={() => (onShowReactions ? onShowReactions(m, r.emoji) : onReact(m, r.emoji))}
                 accessibilityRole="button"
-                accessibilityLabel={`${r.emoji} ${r.userIds.length}`}
+                accessibilityLabel={`${r.emoji} ${r.userIds.length}${onShowReactions ? ", see who reacted" : ""}`}
                 style={{ backgroundColor: c.surface, borderColor: minePicked ? c.wa : c.border }}
                 className="h-6 flex-row items-center gap-0.5 rounded-full border px-1.5"
               >

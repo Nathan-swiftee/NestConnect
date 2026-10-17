@@ -4336,6 +4336,21 @@ button.tc-card:hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
 .tc-react span{font-size:10px;color:var(--text-muted);font-weight:600}
 .tc-react:not(:disabled):hover{background:color-mix(in srgb,var(--text) 9%,transparent)}
 .tc-react.mine{background:color-mix(in srgb,var(--wa) 20%,transparent)}
+/* Who reacted — opened by clicking a reaction, as on WhatsApp. */
+.tc-reactwho{position:absolute;top:100%;z-index:30;margin-top:6px;width:260px;max-width:calc(100vw - 32px);padding:6px;border-radius:var(--r-12);background:var(--elevated);box-shadow:0 12px 32px -8px rgba(0,0,0,.4),0 0 0 1px var(--border);animation:popIn .13s var(--ease)}
+.tc-reactwho.up{top:auto;bottom:100%;margin:0 0 6px}
+.tc-msg.in .tc-reactwho{left:9px}
+.tc-msg.out .tc-reactwho{right:9px}
+.tc-reactwho__tabs{display:flex;gap:2px;overflow-x:auto;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--border)}
+.tc-reactwho__tabs button{flex:none;padding:4px 9px;border-radius:var(--r-full);font-size:var(--fs-xs);font-weight:600;color:var(--text-muted);white-space:nowrap}
+.tc-reactwho__tabs button.on{background:color-mix(in srgb,var(--wa) 18%,transparent);color:var(--text)}
+.tc-reactwho__list{list-style:none;margin:0;padding:0;max-height:240px;overflow-y:auto}
+.tc-reactwho__row{display:flex;align-items:center;gap:10px;width:100%;padding:6px;border-radius:var(--r-8);text-align:left}
+button.tc-reactwho__row:hover{background:color-mix(in srgb,var(--text) 8%,transparent)}
+.tc-reactwho__who{flex:1;min-width:0;display:flex;flex-direction:column}
+.tc-reactwho__who b{font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-reactwho__who small{font-size:var(--fs-2xs);color:var(--text-muted)}
+.tc-reactwho__emoji{font-size:20px;line-height:1}
 /* The corner chevron, fading in over the end of the first line like WhatsApp's. */
 .tc-menubtn{position:absolute;top:2px;right:3px;z-index:4;width:30px;height:22px;display:grid;place-items:center end;padding-right:3px;border-radius:0 var(--r-8) 0 var(--r-12);color:var(--text-muted);background:radial-gradient(ellipse at top right,var(--bub) 55%,transparent 75%);opacity:0;pointer-events:none;transition:opacity var(--t-fast),color var(--t-fast)}
 .tc-menubtn svg{width:16px;height:16px}
