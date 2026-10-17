@@ -4088,7 +4088,6 @@ button.tpl-row:active{transform:scale(.97)}
 .tc-list__head--sub h1{font-size:var(--fs-lg)}
 .tc-list__acts{display:flex;gap:2px}
 .tc-list__acts .iconbtn.on{color:var(--brand-strong);background:var(--brand-tint);border-radius:var(--r-full)}
-.tc-oversee{margin:0 14px 8px;padding:9px 12px;border-radius:var(--r-12);background:var(--amber-tint);color:var(--text);font-size:var(--fs-xs);line-height:1.45}
 .tc-search{display:flex;align-items:center;gap:8px;margin:0 14px 8px;padding:0 12px;height:38px;border-radius:var(--r-12);background:var(--surface-2);color:var(--text-faint)}
 .tc-search svg{width:16px;height:16px;flex:none}
 .tc-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font-size:var(--fs-sm);outline:none}
@@ -4155,8 +4154,6 @@ button.tpl-row:active{transform:scale(.97)}
 .tc-chat__sub{font-size:var(--fs-xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tc-chat__sub.typing{color:var(--wa);font-weight:600}
 .tc-chat__head .iconbtn.on{color:var(--brand-strong)}
-.tc-banner{display:flex;align-items:center;gap:8px;padding:8px 16px;background:var(--amber-tint);font-size:var(--fs-xs);color:var(--text)}
-.tc-banner svg{width:15px;height:15px;flex:none;color:var(--amber)}
 
 .tc-msgs-wrap{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
 .tc-msgs{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:14px 7% 18px;display:flex;flex-direction:column;

@@ -131,11 +131,6 @@ export function TeamChat({
               )}
             </div>
           </header>
-          {oversee && (
-            <div className="tc-oversee" role="note">
-              Every chat in the workspace. You can read and write in ones you aren't in.
-            </div>
-          )}
           <div className="tc-search">
             <SearchIcon />
             <input

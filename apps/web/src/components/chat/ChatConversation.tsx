@@ -44,7 +44,6 @@ import {
   DetailsIcon,
   EditIcon,
   EmojiIcon,
-  EyeIcon,
   ReplyIcon,
   StarIcon,
   TrashIcon,
@@ -102,7 +101,7 @@ export function ChatConversation({
   const r = room.data;
   const mentionables: Mentionable[] = useMemo(() => (people.data ?? []).map((m) => m.user), [people.data]);
   const newest = msgs.messages.at(-1);
-  useMarkChatRead(roomId, newest?.id, (!!r?.isMember || !!r?.watching) && visible);
+  useMarkChatRead(roomId, newest?.id, !!r?.isMember && visible);
 
   // Where "unread messages" goes: fixed when the chat opens, so it doesn't
   // jump away the moment the chat is marked read.
@@ -264,7 +263,8 @@ export function ChatConversation({
     : r.kind === "direct"
       ? chatLastSeen(r.other)
       : membersLine(r.members, me?.id);
-  const moderator = me?.role === "admin" || r.canManage;
+  // Moderating is for chats you're in: an admin reading one they aren't in can't delete there.
+  const moderator = r.isMember && (me?.role === "admin" || r.canManage);
 
   return (
     <div className="tc-main">
@@ -299,12 +299,6 @@ export function ChatConversation({
             <DetailsIcon />
           </button>
         </header>
-        {r.oversight && (
-          <div className="tc-banner" role="note">
-            <EyeIcon />
-            <span>{r.archived ? "This team was deleted. Its chat is kept here, read-only." : "You aren’t in this chat. Anything you write is seen by everyone in it, and this visit is recorded."}</span>
-          </div>
-        )}
 
         <div className="tc-msgs-wrap">
           <div className="tc-msgs" ref={scroller} onScroll={onScroll} role="log" aria-live="polite">
@@ -411,14 +405,9 @@ export function ChatConversation({
             onCancelEdit={() => setEditing(null)}
             onToast={onToast}
           />
-        ) : (
-          <div className="tc-cantpost">
-            {r.archived
-              ? "This team was deleted, so its chat is read-only."
-              : r.kind === "direct"
-                ? "They're no longer in this workspace."
-                : "You can't send messages here."}
-          </div>
+        ) : r.oversight ? null : (
+          // An admin reading a chat they aren't in sees no box and no notice.
+          <div className="tc-cantpost">{r.kind === "direct" ? "They're no longer in this workspace." : "You can't send messages here."}</div>
         )}
       </section>
       {infoOpen && (
@@ -591,7 +580,6 @@ function Bubble({
               pinned: false,
               muted: false,
               isMember: true,
-              watching: false,
               archived: false,
             }}
             size={28}
