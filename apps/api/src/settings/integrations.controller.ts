@@ -16,7 +16,7 @@ import {
   type User,
 } from "@ding/schemas";
 import { Store } from "../data/store";
-import { isPlatformOrg } from "../tenancy/platform";
+import { isPlatformOwner } from "../tenancy/platform-owner";
 import { ZodValidationPipe } from "../common/zod-validation.pipe";
 import { CurrentUserId } from "../auth/current-user.decorator";
 import {
@@ -92,12 +92,13 @@ export class IntegrationsController {
 
   @Get()
   async get(@CurrentUserId() userId: string, @Req() req: Request): Promise<IntegrationSettings> {
-    const me = await this.requireUser(userId);
+    const me = await this.store.getUser(userId);
+    if (!me) throw new NotFoundException("Current user not found");
     const full = await this.snapshot(me.orgId, req);
-    // An agent's composer only needs to know what's switched on (is Polish
-    // there?). The ids, hosts, buckets and prompts are for the people who
-    // run the workspace — secrets are never returned to anyone.
-    return me.role === "admin" || me.role === "manager" ? full : onlySwitches(full);
+    // Everyone's composer needs to know what's switched on (is Polish there?),
+    // in every workspace. The ids, hosts, buckets and prompts are for the
+    // platform's owners, who run them — secrets are never returned to anyone.
+    return (await isPlatformOwner(this.store, userId)) ? full : onlySwitches(full);
   }
 
   @Patch()
@@ -254,19 +255,16 @@ export class IntegrationsController {
     };
   }
 
-  private async requireUser(userId: string): Promise<User> {
+  /**
+   * These settings are every workspace's — the Meta and Google apps, storage,
+   * email, AI, push — so only the platform's owners change them; not any
+   * workspace's admins, and not the platform workspace's managers.
+   */
+  private async requireManager(userId: string): Promise<User> {
     const me = await this.store.getUser(userId);
     if (!me) throw new NotFoundException("Current user not found");
-    if (!isPlatformOrg(me.orgId)) {
-      throw new ForbiddenException("Integrations are managed by the platform operator");
-    }
-    return me;
-  }
-
-  private async requireManager(userId: string): Promise<User> {
-    const me = await this.requireUser(userId);
-    if (me.role !== "admin" && me.role !== "manager") {
-      throw new ForbiddenException("Only admins and managers can change settings");
+    if (!(await isPlatformOwner(this.store, userId))) {
+      throw new ForbiddenException("Integrations are managed by the platform's owners");
     }
     return me;
   }

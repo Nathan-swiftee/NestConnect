@@ -53,7 +53,10 @@ import {
 import { env } from "../config/env";
 import { threadsTogether } from "./email-threading";
 import { canAdvanceStatus, canonicalLang, computeWaWindow, isWaChannel, messageTypeForKind, previewFromBody, previewForType, sameTemplateLang, templateVariableCount } from "./mappers";
-import { DEMO_USER_ID, makeSeed, type ConversationRecord } from "./fixtures";
+import { DEMO_USER_ID, ORG_ID, makeSeed, type ConversationRecord } from "./fixtures";
+
+/** The one workspace the in-memory demo holds. */
+const MEMORY_WORKSPACE_NAME = "Swiftee";
 import { PLATFORM_ORG_ID } from "../tenancy/platform";
 import { boundOrgId } from "../tenancy/tenant-scope";
 import {
@@ -81,6 +84,8 @@ import {
   type ConversationState,
   type ConversationEventInput,
   type ConversationEventRow,
+  type WorkspaceMembership,
+  type WorkspaceSummary,
 } from "./store";
 
 const AVATAR_PALETTE = [
@@ -243,6 +248,50 @@ export class MemoryStore extends Store {
   async emailInUse(email: string): Promise<boolean> {
     const e = email.trim().toLowerCase();
     return this.users.some((u) => u.email.toLowerCase() === e);
+  }
+
+  async emailInWorkspace(email: string): Promise<boolean> {
+    return this.emailInUse(email);
+  }
+
+  /* ---- one person, several workspaces ----
+   * The in-memory store is the single demo workspace, so everyone is in
+   * exactly one and there are no others to make or join. */
+
+  async listMemberships(userId: string): Promise<WorkspaceMembership[]> {
+    const user = this.users.find((u) => u.id === userId);
+    return user ? [{ user, orgName: MEMORY_WORKSPACE_NAME, sandbox: false }] : [];
+  }
+
+  async membershipIn(userId: string, orgId: string): Promise<User | undefined> {
+    const user = this.users.find((u) => u.id === userId);
+    return user && user.orgId === orgId ? user : undefined;
+  }
+
+  async rememberWorkspace(): Promise<void> {}
+
+  async joinWorkspace(userId: string, orgId: string): Promise<User> {
+    const user = await this.membershipIn(userId, orgId);
+    if (!user) throw new Error("The demo has one workspace; there are no others to join");
+    return user;
+  }
+
+  async listWorkspaces(): Promise<WorkspaceSummary[]> {
+    return [
+      {
+        id: ORG_ID,
+        name: MEMORY_WORKSPACE_NAME,
+        sandbox: false,
+        createdAt: new Date(0).toISOString(),
+        people: this.users.length,
+        channels: this.inboxes.length,
+        conversations: this.conversations.length,
+      },
+    ];
+  }
+
+  async createWorkspace(): Promise<{ id: string; name: string }> {
+    throw new Error("New workspaces need the database");
   }
 
   async getPasswordHash(userId: string): Promise<string | undefined> {

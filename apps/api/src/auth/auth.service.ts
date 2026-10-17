@@ -152,13 +152,16 @@ export class AuthService {
     });
   }
 
-  /** Whether this device was remembered by this account, since its password
+  /** Whether this device was remembered by this person, since their password
    *  and second factor last changed. */
   async isTrustedDevice(token: string | undefined, userId: string): Promise<boolean> {
     if (!token) return false;
     try {
       const p = jwt.verify(token, env.auth.jwtSecret) as { sub?: string; trust?: string };
-      return p.sub === userId && !!p.trust && p.trust === (await this.deviceStamp(userId));
+      if (!p.sub || !p.trust || p.trust !== (await this.deviceStamp(userId))) return false;
+      // Remembered by this person in any of their workspaces: the device
+      // passed the second factor they all share.
+      return p.sub === userId || (await this.store.listMemberships(userId)).some((m) => m.user.id === p.sub);
     } catch {
       return false;
     }

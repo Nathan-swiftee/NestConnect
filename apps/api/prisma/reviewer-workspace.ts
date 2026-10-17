@@ -77,6 +77,8 @@ async function provisionInTransaction(
     select: { id: true },
   });
   if (clash) throw new Error("That email address is already an account in another workspace");
+  const taken = await prisma.login.findUnique({ where: { email }, select: { users: { where: { NOT: { orgId: REVIEW_ORG_ID } }, select: { id: true } } } });
+  if (taken?.users.length) throw new Error("That email address is already an account in another workspace");
   const existingUser = await prisma.user.findUnique({ where: { id: REVIEW_USER_ID } });
   if (!existingUser && !opts.passwordHash) {
     throw new Error("A new reviewer account needs a password (--generate-to or --password-stdin)");
@@ -117,6 +119,25 @@ async function provisionInTransaction(
     create: { id: REVIEW_USER_ID, ...userData },
     update: userData,
   });
+  // What it signs in with (see Login): the password, and no second factor.
+  // An account that predates Logins brings its existing password along.
+  const signIn = {
+    twoFactorEnabled: false,
+    twoFactorMethod: null,
+    totpSecret: null,
+    twoFactorEmailCodeHash: null,
+    twoFactorEmailCodeExpires: null,
+    resetTokenHash: null,
+    resetExpiresAt: null,
+    lastOrgId: REVIEW_ORG_ID,
+  };
+  const login = await prisma.login.upsert({
+    where: { email },
+    create: { email, passwordHash: opts.passwordHash ?? existingUser?.passwordHash ?? null, ...signIn },
+    update: { ...signIn, ...(opts.passwordHash ? { passwordHash: opts.passwordHash } : {}) },
+  });
+  await prisma.user.update({ where: { id: REVIEW_USER_ID }, data: { loginId: login.id } });
+  await prisma.recoveryCode.deleteMany({ where: { loginId: login.id } });
   await prisma.teamMember.create({ data: { userId: REVIEW_USER_ID, teamId: team.id } });
   // A new password signs every earlier session out; a refresh keeps them.
   if (opts.passwordHash) {

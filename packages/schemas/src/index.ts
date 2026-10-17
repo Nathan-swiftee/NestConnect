@@ -3203,6 +3203,64 @@ export interface SessionGrant {
   trustedDeviceToken?: string;
 }
 
+/* ---- workspaces: one person in several, and the platform's owners ---- */
+
+/** One of the workspaces I'm in. */
+export interface MyWorkspace {
+  orgId: string;
+  name: string;
+  role: Role;
+  sandbox: boolean;
+  /** The one this session is in. */
+  current: boolean;
+  /** The platform's own workspace: the one that can also host an email inbox
+   *  on the platform's mail service. Everyone else's email is Gmail. */
+  platform: boolean;
+}
+
+export interface MyWorkspaces {
+  workspaces: MyWorkspace[];
+  /** Whether I own the platform: see every workspace, make new ones, open any. */
+  platformOwner: boolean;
+}
+
+/** Move this session into another of my workspaces (or, for a platform owner,
+ *  any workspace — which adds them to it as an admin). */
+export const switchWorkspaceInputSchema = z.object({
+  orgId: z.string().min(1),
+  /** Native clients: return the new session token in the body. */
+  tokenAuth: z.boolean().optional(),
+});
+export type SwitchWorkspaceInput = z.infer<typeof switchWorkspaceInputSchema>;
+
+/** A workspace, as the platform's owners see it. */
+export interface PlatformWorkspace {
+  id: string;
+  name: string;
+  sandbox: boolean;
+  createdAt: string;
+  people: number;
+  channels: number;
+  conversations: number;
+  /** Whether I'm in it already. */
+  joined: boolean;
+}
+
+/** A new workspace, and the person who'll run it. */
+export const createWorkspaceInputSchema = z.object({
+  name: z.string().trim().min(1, "Name the workspace").max(80),
+  adminName: z.string().trim().min(1, "Who'll run it?").max(120),
+  adminEmail: z.string().trim().email("That doesn't look like an email address").max(254),
+});
+export type CreateWorkspaceInput = z.infer<typeof createWorkspaceInputSchema>;
+
+export interface CreatedWorkspace {
+  workspace: PlatformWorkspace;
+  /** The first admin: invited to set a password, or — already signing in
+   *  somewhere — told they've been added. */
+  admin: { name: string; email: string; invited: boolean; emailed: boolean; inviteUrl?: string };
+}
+
 /**
  * How many conversations each list filter holds, across the whole view.
  *

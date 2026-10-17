@@ -69,7 +69,10 @@ export class AuthGuard implements CanActivate {
           req.userId = claims.userId;
         }
       });
-      if (req.userId) req.orgId = principal.orgId;
+      // A public route acts for whoever its own token, link or webhook names —
+      // never for the workspace a browser happens to be signed in to, or a
+      // Swiftee cookie would collide with a new workspace's invite link.
+      if (req.userId && !isPublic) req.orgId = principal.orgId;
     }
 
     if (isPublic) return true;

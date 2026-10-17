@@ -29,6 +29,7 @@ import { AiModule } from "./ai/ai.module";
 import { HealthController } from "./health/health.controller";
 import { AccountsModule } from "./accounts/accounts.module";
 import { MacrosModule } from "./macros/macros.module";
+import { PlatformModule } from "./platform/platform.module";
 import { OpsModule } from "./ops/ops.module";
 import { ChatModule } from "./chat/chat.module";
 import { webStaticOptions } from "./web-static";
@@ -61,6 +62,7 @@ const imports: ModuleMetadata["imports"] = [
   MacrosModule,
   OpsModule,
   ChatModule,
+  PlatformModule,
 ];
 
 // In production the API serves the built SPA (apps/api/dist/main.js → ../../web/dist),

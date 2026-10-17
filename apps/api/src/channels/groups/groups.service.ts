@@ -109,8 +109,9 @@ export class GroupsService {
     if (action === "add") {
       if ((await this.store.countParticipants(conversationId)) >= GROUP_MAX_MEMBERS) return;
       const conv = await this.store.getConversation(conversationId);
+      if (!conv) return;
       const contact = await this.store.upsertContactByIdentity({
-        orgId: conv?.orgId ?? "org_swiftee",
+        orgId: conv.orgId,
         // A group participant's wa_id (their WhatsApp user id) — see ingest.
         kind: "wa_id",
         value: phone,

@@ -244,14 +244,15 @@ export function visitorReplyEmail(opts: {
   };
 }
 
-export function inviteEmail(name: string, url: string): Composed {
+export function inviteEmail(name: string, url: string, workspace?: string): Composed {
   const who = name.trim() || "there";
+  const where = workspace?.trim();
   return {
-    subject: "You've been invited to NestConnect",
+    subject: where ? `You've been invited to ${where} on NestConnect` : "You've been invited to NestConnect",
     text: [
       `Hi ${who},`,
       ``,
-      `You've been invited to NestConnect — the shared inbox where your team answers WhatsApp, email and group chats in one place.`,
+      `You've been invited to ${where ? `${where} on ` : ""}NestConnect — the shared inbox where your team answers WhatsApp, email and group chats in one place.`,
       ``,
       `Set your password to get started:`,
       url,
@@ -266,12 +267,41 @@ export function inviteEmail(name: string, url: string): Composed {
         h1("You've been invited") +
         p(`Hi ${escapeHtml(who)},`) +
         p(
-          `You've been added to <b style="color:${C.text};">NestConnect</b> — the shared inbox where your team answers WhatsApp, email and group chats in one place.`,
+          `You've been added to ${where ? `<b style="color:${C.text};">${escapeHtml(where)}</b> on ` : ""}<b style="color:${C.text};">NestConnect</b> — the shared inbox where your team answers WhatsApp, email and group chats in one place.`,
         ) +
         p(`Pick a password and you're in.`) +
         button("Set your password", url) +
         fallbackLink(url) +
         note(`This link expires in <b>7 days</b>. If you weren't expecting it, you can ignore this email.`),
+    }),
+  };
+}
+
+/** Somebody who already signs in to NestConnect, added to one more workspace.
+ *  Nothing to set up: they sign in as they always do and switch to it. */
+export function addedToWorkspaceEmail(name: string, workspace: string, url: string): Composed {
+  const who = name.trim() || "there";
+  return {
+    subject: `You've been added to ${workspace} on NestConnect`,
+    text: [
+      `Hi ${who},`,
+      ``,
+      `You've been added to ${workspace} on NestConnect.`,
+      ``,
+      `Sign in as you normally do and pick ${workspace} from your workspaces:`,
+      url,
+      ``,
+      `— NestConnect`,
+    ].join("\n"),
+    html: layout({
+      preheader: `${workspace} is now one of your workspaces.`,
+      body:
+        h1(`You've been added to ${escapeHtml(workspace)}`) +
+        p(`Hi ${escapeHtml(who)},`) +
+        p(`You've been added to <b style="color:${C.text};">${escapeHtml(workspace)}</b> on NestConnect.`) +
+        p(`Sign in as you normally do — same email, same password — and pick it from your workspaces.`) +
+        button("Open NestConnect", url) +
+        fallbackLink(url),
     }),
   };
 }

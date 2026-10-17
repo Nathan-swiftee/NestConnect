@@ -59,7 +59,7 @@ export class MetaController {
       this.sendResult(res, {
         source: "ding-oauth",
         ok: false,
-        error: "Meta credentials not set — add them in Settings › Setup",
+        error: "Connecting WhatsApp isn't set up on this platform yet — ask the platform's owner",
       });
       return;
     }

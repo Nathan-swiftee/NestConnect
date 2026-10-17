@@ -1648,6 +1648,13 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 
 /* ─── Avatar-menu availability toggle ─── */
 .rail-menu__avail{display:flex;align-items:center;gap:9px}
+.rail-menu__ws-now{color:var(--text)!important;font-weight:600;margin-top:2px}
+.rail-menu__ws{display:flex;flex-direction:column;gap:2px;padding-bottom:4px;margin-bottom:4px;border-bottom:1px solid var(--glass-line)}
+.rail-menu__wsbtn{display:flex;align-items:center;gap:8px}
+.rail-menu__wsbtn.on{background:color-mix(in srgb,var(--text) 5%,transparent);cursor:default}
+.rail-menu__wsbtn:disabled:not(.on){opacity:.6}
+.rail-menu__wsname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rail-menu__wsrole{font-size:var(--fs-2xs);color:var(--text-muted);text-transform:capitalize}
 .rail-menu__availlbl{flex:1}
 .pres-dot{width:8px;height:8px;border-radius:50%;flex:0 0 8px}
 .pres-dot.on{background:var(--wa)}
@@ -1876,6 +1883,8 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .setform--flush{border:0;background:transparent;padding:0;gap:var(--sp-3)}
 .setform--flush .setform__foot{padding-bottom:0}
 .dtable--team{--dtable-min:560px}
+.dtable--ws{--dtable-min:600px}
+.dtable--ws .dtable__head,.dtable--ws .dtable__row{grid-template-columns:minmax(200px,2fr) 80px 90px 120px 120px}
 .dtable--team .dtable__head,.dtable--team .dtable__row{grid-template-columns:minmax(200px,2fr) 100px 110px 116px}
 .dtable--label{--dtable-min:380px}
 .dtable--label .dtable__head,.dtable--label .dtable__row{grid-template-columns:minmax(220px,1fr) 96px}
