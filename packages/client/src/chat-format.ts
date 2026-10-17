@@ -1,4 +1,4 @@
-import { chatAttachmentLabel, chatSharedLabel, chatSystemText, mentionsToNames, type ChatMessage, type Mentionable } from "@ding/schemas";
+import { chatAttachmentLabel, chatSharedLabel, chatSystemText, mentionsToNames, type ChatMessage, type ChatReaction, type Mentionable } from "@ding/schemas";
 import { clockTime } from "./format";
 
 /*
@@ -170,4 +170,44 @@ export function isJumboEmoji(body: string): boolean {
   const t = body.trim();
   if (!t || t.length > 16) return false;
   return /^(?:\p{Extended_Pictographic}|\p{Emoji_Component}|‍|️|\s)+$/u.test(t) && !/[0-9#*]/.test(t);
+}
+
+/** One person's reaction, for the list a tapped reaction opens. */
+export interface ChatReactor {
+  userId: string;
+  emoji: string;
+  name: string;
+  avatarColor: string | null;
+  avatarUrl: string | null;
+  mine: boolean;
+}
+
+/**
+ * Who reacted with what, as WhatsApp lists it when a reaction is tapped: you
+ * first (that's the one you can take back), then everyone else in the order
+ * they reacted. Names come from whoever we know — the chat's members first,
+ * then the workspace, for someone who has since left the chat.
+ */
+export function chatReactors(
+  reactions: ChatReaction[],
+  people: Array<{ id: string; name: string; avatarColor?: string | null; avatarUrl?: string | null }>,
+  meId?: string | null,
+): ChatReactor[] {
+  const byId = new Map<string, (typeof people)[number]>();
+  for (const p of people) if (!byId.has(p.id)) byId.set(p.id, p);
+  const rows: ChatReactor[] = [];
+  for (const r of reactions) {
+    for (const userId of r.userIds) {
+      const p = byId.get(userId);
+      rows.push({
+        userId,
+        emoji: r.emoji,
+        name: p?.name ?? "Former teammate",
+        avatarColor: p?.avatarColor ?? null,
+        avatarUrl: p?.avatarUrl ?? null,
+        mine: !!meId && userId === meId,
+      });
+    }
+  }
+  return [...rows.filter((r) => r.mine), ...rows.filter((r) => !r.mine)];
 }

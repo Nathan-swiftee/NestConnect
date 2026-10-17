@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chatTicks, chatSystemText, canEditChatMessage, type ChatMember, type ChatMessage } from "@ding/schemas";
-import { chatDayLabel, chatDayOf, chatDays, chatItems, chatLastSeen, chatListTime, chatPreview, isJumboEmoji } from "@ding/client";
+import { chatDayLabel, chatDayOf, chatDays, chatItems, chatLastSeen, chatListTime, chatPreview, chatReactors, isJumboEmoji } from "@ding/client";
 
 const NOW = new Date(2026, 9, 13, 15, 0); // Tue 13 Oct 2026, 15:00 local
 
@@ -153,5 +153,35 @@ describe("Team Chat: previews", () => {
     expect(isJumboEmoji("🎉🎉")).toBe(true);
     expect(isJumboEmoji("ok 👍")).toBe(false);
     expect(isJumboEmoji("123")).toBe(false);
+  });
+});
+
+describe("who reacted", () => {
+  const people = [
+    { id: "me", name: "Nathan A", avatarColor: null, avatarUrl: null },
+    { id: "amara", name: "Amara Jones", avatarColor: "#F43F5E", avatarUrl: null },
+    { id: "james", name: "James", avatarColor: null, avatarUrl: "/api/media/j" },
+  ];
+  const reactions = [
+    { emoji: "👍", userIds: ["amara", "me"] },
+    { emoji: "❤️", userIds: ["james", "gone"] },
+  ];
+
+  it("lists everyone, you first, then in the order they reacted", () => {
+    const rows = chatReactors(reactions, people, "me");
+    expect(rows.map((r) => `${r.name}:${r.emoji}`)).toEqual(["Nathan A:👍", "Amara Jones:👍", "James:❤️", "Former teammate:❤️"]);
+    expect(rows[0]!.mine).toBe(true);
+    expect(rows.slice(1).every((r) => !r.mine)).toBe(true);
+  });
+
+  it("carries each person's face", () => {
+    const rows = chatReactors(reactions, people, "me");
+    expect(rows.find((r) => r.userId === "james")?.avatarUrl).toBe("/api/media/j");
+    expect(rows.find((r) => r.userId === "amara")?.avatarColor).toBe("#F43F5E");
+  });
+
+  it("the first name we know wins (a chat member over the workspace list)", () => {
+    const rows = chatReactors([{ emoji: "👍", userIds: ["amara"] }], [{ id: "amara", name: "Amara (Ops)" }, ...people], null);
+    expect(rows[0]!.name).toBe("Amara (Ops)");
   });
 });

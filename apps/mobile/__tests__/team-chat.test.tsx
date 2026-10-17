@@ -75,6 +75,7 @@ jest.mock("@ding/client", () => {
 import Chat from "../app/(app)/(tabs)/chat";
 import { ChatBubbleRow } from "../src/components/chat/ChatBubble";
 import { DiscussionBar, DiscussionSheet } from "../src/components/chat/Discuss";
+import { ReactionsSheet } from "../src/components/chat/ReactionsSheet";
 
 const at = new Date().toISOString();
 const msg = (over: Partial<ChatMessage>): ChatMessage => ({
@@ -259,6 +260,57 @@ describe("a message", () => {
     expect(view.queryByLabelText("👍 2")).not.toBeNull();
     const gone = render(<ChatBubbleRow {...props} m={msg({ deletedAt: at, body: "" })} mine={false} group={false} members={[]} />);
     expect(gone.queryByText("This message was deleted")).not.toBeNull();
+  });
+
+  it("tapping a reaction shows who reacted, rather than reacting", () => {
+    const shown: string[] = [];
+    const reacted: string[] = [];
+    const view = render(
+      <ChatBubbleRow
+        {...props}
+        m={msg({ reactions: [{ emoji: "👍", userIds: ["me", "b"] }] })}
+        mine={false}
+        group={false}
+        members={[]}
+        onReact={(_, e) => reacted.push(e)}
+        onShowReactions={(_, e) => shown.push(e)}
+      />,
+    );
+    fireEvent.press(view.getByLabelText("👍 2, see who reacted"));
+    expect(shown).toEqual(["👍"]);
+    expect(reacted).toEqual([]);
+  });
+
+  it("the list says who reacted with what, you first, and yours can be taken back", () => {
+    const removed: string[] = [];
+    const people = [
+      { id: "me", name: "Nathan A" },
+      { id: "isaac", name: "Isaac Benowitz" },
+      { id: "amara", name: "Amara Jones" },
+    ];
+    const reactions = [
+      { emoji: "👍", userIds: ["isaac", "me"] },
+      { emoji: "❤️", userIds: ["amara"] },
+    ];
+    const view = render(<ReactionsSheet reactions={reactions} initial={null} people={people} meId="me" canRemove onRemove={(e) => removed.push(e)} onClose={() => {}} />);
+    expect(view.queryByText("All 3")).not.toBeNull();
+    expect(view.queryByText("👍 2")).not.toBeNull();
+    expect(view.queryByText("You")).not.toBeNull();
+    expect(view.queryByLabelText("Isaac Benowitz reacted 👍")).not.toBeNull();
+    expect(view.queryByLabelText("Amara Jones reacted ❤️")).not.toBeNull();
+    // Opened on one emoji: only that emoji's people.
+    fireEvent.press(view.getByText("❤️ 1"));
+    expect(view.queryByLabelText("Isaac Benowitz reacted 👍")).toBeNull();
+    expect(view.queryByLabelText("Amara Jones reacted ❤️")).not.toBeNull();
+    fireEvent.press(view.getByText("All 3"));
+    fireEvent.press(view.getByLabelText("Remove your 👍 reaction"));
+    expect(removed).toEqual(["👍"]);
+    // Opened from the 👍 chip: its tab, nobody else's.
+    const onThumb = render(<ReactionsSheet reactions={reactions} initial="👍" people={people} meId="me" canRemove onRemove={() => {}} onClose={() => {}} />);
+    expect(onThumb.queryByLabelText("Amara Jones reacted ❤️")).toBeNull();
+    // Someone who can't post sees the list but can't take anything back.
+    const readOnly = render(<ReactionsSheet reactions={reactions} initial={null} people={people} meId="me" canRemove={false} onRemove={() => {}} onClose={() => {}} />);
+    expect(readOnly.queryByLabelText("Remove your 👍 reaction")).toBeNull();
   });
 });
 

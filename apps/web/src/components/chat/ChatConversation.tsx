@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { Linkify } from "../Linkify";
 import {
   canEditChatMessage,
@@ -17,6 +17,7 @@ import {
   chatItems,
   chatLastSeen,
   chatNameColour,
+  chatReactors,
   clockTime,
   isJumboEmoji,
   useChatMessages,
@@ -55,6 +56,7 @@ import { SharedCard } from "./Discuss";
 import { ChatInfoPanel } from "./ChatInfoPanel";
 import { MessageInfoDialog } from "./ChatDialogs";
 import { RoomAvatar } from "./RoomAvatar";
+import { Avatar } from "../Avatar";
 
 export const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -499,7 +501,9 @@ function Bubble({
   onStar: (on: boolean) => void;
   onOpenConversation?: (id: string) => void;
 }) {
-  const [menu, setMenu] = useState<"react" | "more" | null>(null);
+  const [menu, setMenu] = useState<"react" | "more" | "who" | null>(null);
+  // Which reaction's people the list shows; null for everyone.
+  const [whoTab, setWhoTab] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const deleted = !!m.deletedAt;
   const files = deleted ? [] : (m.attachments ?? []);
@@ -538,7 +542,7 @@ function Bubble({
     const box = root.current?.closest(".tc-msgs")?.getBoundingClientRect();
     if (!menu || !el || !box) return;
     const r = el.getBoundingClientRect();
-    if (menu === "more" && r.bottom > box.bottom - 6 && r.top - r.height - 30 > box.top) el.classList.add("up");
+    if ((menu === "more" || menu === "who") && r.bottom > box.bottom - 6 && r.top - r.height - 30 > box.top) el.classList.add("up");
     if (menu === "react" && r.top < box.top + 6) el.classList.add("down");
     const x = r.left < box.left + 6 ? box.left + 6 - r.left : r.right > box.right - 6 ? box.right - 6 - r.right : 0;
     if (x) el.style.translate = `${x}px 0`;
@@ -678,6 +682,7 @@ function Bubble({
       </div>
 
       {m.reactions.length > 0 && (
+        // As WhatsApp: a reaction opens who reacted, rather than reacting.
         <div className="tc-reacts">
           {m.reactions.map((rx) => (
             <button
@@ -685,14 +690,34 @@ function Bubble({
               type="button"
               className={"tc-react" + (meId && rx.userIds.includes(meId) ? " mine" : "")}
               title={rx.userIds.map((id) => room.members.find((x) => x.id === id)?.name ?? "Someone").join(", ")}
-              disabled={!canAct}
-              onClick={() => onReact(rx.emoji)}
+              aria-haspopup="dialog"
+              aria-expanded={menu === "who" && whoTab === rx.emoji}
+              onClick={() => {
+                const again = menu === "who" && whoTab === rx.emoji;
+                setWhoTab(rx.emoji);
+                setMenu(again ? null : "who");
+              }}
             >
               {rx.emoji}
               {rx.userIds.length > 1 && <span>{rx.userIds.length}</span>}
             </button>
           ))}
         </div>
+      )}
+      {menu === "who" && (
+        <ReactionsList
+          ref={pop}
+          reactions={m.reactions}
+          people={[...room.members, ...people.map((p) => ({ ...p, id: (p as Mentionable & { id?: string }).id ?? "" }))]}
+          meId={meId}
+          tab={whoTab}
+          onTab={setWhoTab}
+          canRemove={canAct}
+          onRemove={(emoji) => {
+            setMenu(null);
+            onReact(emoji);
+          }}
+        />
       )}
 
       {settled && canAct && (
@@ -762,3 +787,62 @@ function Bubble({
     </div>
   );
 }
+
+/**
+ * Who reacted, as WhatsApp shows it when a reaction is tapped: "All" and a tab
+ * per emoji, a row per person, and yours first — click it to take it back.
+ */
+const ReactionsList = forwardRef<
+  HTMLDivElement,
+  {
+    reactions: ChatMessage["reactions"];
+    people: Array<{ id: string; name: string; avatarColor?: string | null; avatarUrl?: string | null }>;
+    meId: string | undefined;
+    tab: string | null;
+    onTab: (emoji: string | null) => void;
+    canRemove: boolean;
+    onRemove: (emoji: string) => void;
+  }
+>(function ReactionsList({ reactions, people, meId, tab, onTab, canRemove, onRemove }, ref) {
+  const all = chatReactors(reactions, people, meId);
+  const rows = tab ? all.filter((r) => r.emoji === tab) : all;
+  return (
+    <div className="tc-reactwho" ref={ref} role="dialog" aria-label="Reactions">
+      <div className="tc-reactwho__tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === null} className={tab === null ? "on" : ""} onClick={() => onTab(null)}>
+          All {all.length}
+        </button>
+        {reactions.map((rx) => (
+          <button key={rx.emoji} type="button" role="tab" aria-selected={tab === rx.emoji} className={tab === rx.emoji ? "on" : ""} onClick={() => onTab(rx.emoji)}>
+            {rx.emoji} {rx.userIds.length}
+          </button>
+        ))}
+      </div>
+      <ul className="tc-reactwho__list">
+        {rows.map((r) => {
+          const body = (
+            <>
+              <Avatar name={r.name} color={r.avatarColor ?? undefined} src={r.avatarUrl ?? undefined} size={30} fontSize={11} />
+              <span className="tc-reactwho__who">
+                <b>{r.mine ? "You" : r.name}</b>
+                {r.mine && canRemove && <small>Click to remove</small>}
+              </span>
+              <span className="tc-reactwho__emoji">{r.emoji}</span>
+            </>
+          );
+          return (
+            <li key={`${r.userId}:${r.emoji}`}>
+              {r.mine && canRemove ? (
+                <button type="button" className="tc-reactwho__row" onClick={() => onRemove(r.emoji)} aria-label={`Remove your ${r.emoji} reaction`}>
+                  {body}
+                </button>
+              ) : (
+                <div className="tc-reactwho__row">{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+});
