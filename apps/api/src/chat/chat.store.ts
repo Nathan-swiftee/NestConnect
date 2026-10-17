@@ -15,10 +15,10 @@ export interface ChatRoomRecord {
 export type ChatRoomFields = Pick<ChatRoomRecord, "kind" | "name" | "emoji" | "teamId" | "directKey" | "createdById">;
 
 /**
- * A member's role in a group — or "observer": an admin or manager who wrote in
- * a chat they aren't in. Their row carries their read marker and mute so the
- * chat can sit in their list with unread and notifications, but it doesn't
- * make them a member (see ChatService.memberIds).
+ * A member's role in a group — or "observer": a row left by an admin or
+ * manager who once wrote in a chat they weren't in, when that was allowed.
+ * It never makes anyone a member (see ChatService.memberIds), and no new
+ * ones are made.
  */
 export type ChatRowRole = ChatMemberRole | "observer";
 

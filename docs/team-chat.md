@@ -35,7 +35,7 @@ deleted: switching back on brings every chat back as it was.
   swipe a message to reply, long-press it for reactions, edit, info and
   delete; tap the header for the group's info (members, mute, pin, rename,
   icon, add people, leave). A push opens the chat, and an @mention in the bell
-  does too. Admins and managers get the same **All chats** eye.
+  does too. Admins get the same **All chats** eye.
 
 ## Kinds of chat
 
@@ -65,37 +65,29 @@ deleted: switching back on brings every chat back as it was.
 | Create a group | — | ✓ | ✓ |
 | Rename, change the icon, add/remove people, make admins | Groups where they're a group admin | Groups where they're a group admin | Any group |
 | Delete someone else's message | Groups where they're a group admin | Groups where they're a group admin | Any chat they're in |
-| Read and write in every chat (the eye) | — | ✓ | ✓ |
+| Read every chat (the eye) — read only | — | — | ✓ |
 | Switch the module on or off | — | — | ✓ |
 
-### Admins and managers overseeing
+### Admins reading other chats
 
-Admins and managers get **All chats** (the eye at the top of the list): every
-chat in the workspace, including direct chats between other people. They can
-write and react in a chat they aren't in without joining it. Nothing is added
-to the members list, and a direct chat stays between its two people. Its
-members are notified as usual. In a direct chat, their messages carry their
-name, so nobody mistakes them for the other person.
+Admins get **All chats** (the eye at the top of the list): every chat in the
+workspace, including direct chats between other people, tagged "Not in it".
+They can **read** a chat they aren't in, and nothing more: no writing,
+reacting, deleting, muting, pinning or Discuss… there, and no box to type in.
+Nobody in the chat is told, it doesn't join their own list, and its members,
+ticks and unread counts are untouched. No banner or notice is shown.
 
-Writing in a chat they aren't in starts **following** it. Following keeps
-the chat in their own list, tagged "Not in it", with unread counts and push
-notifications like any chat of their own. They can mute or pin it, and
-"Remove from my list" stops following it. Writing in it again starts
-following it again.
+Managers can't open a chat they aren't in at all — the same as agents, it
+answers "Chat not found". They still create groups and run the groups where
+they're a group admin.
 
-Following is a `ChatMember` row with role `observer`. The row holds their
-read marker and mute. `memberIds` leaves observer rows out, so following
-never makes them a member: the member list, mentions, read receipts and a
-direct chat's two people stay as they were. Adding them to a group turns
-the row into a real membership.
+Each admin visit is recorded (`ChatAudit`; a re-open within ten minutes
+counts once). The record isn't shown anywhere in the product; `GET
+/chat/rooms/:id/audits` is for admins only.
 
-They can't Discuss a customer conversation into a chat they only oversee.
-Discuss… is for the chats you're in.
-
-A banner says they aren't in the chat. Each visit is still recorded
-(`ChatAudit`; a re-open within ten minutes counts once), but the record isn't
-shown anywhere in the product: there is no "Read by admins" list, and no
-notice in the chat list or info panel.
+Admins and managers used to be able to write in chats they weren't in, which
+"followed" the chat with a `ChatMember` row of role `observer`. Those rows may
+still exist; they are ignored — they never make anyone a member or give access.
 
 ## Messages
 
@@ -261,7 +253,7 @@ keep the two tied together.
 
 - `pnpm check:team-chat` — the switch, team chats following teams, groups and
   their admins, direct chats, replies/edits/deletes/reactions, ticks and unread
-  counts, who's told, admins reading along, pins, deleted teams; files (only
+  counts, who's told, admins reading (read only) and managers kept out, pins, deleted teams; files (only
   this workspace's uploads, described by the server's record), voice notes,
   link cards against a local page and the address checks that refuse
   localhost, private networks, metadata, odd ports and inward redirects;

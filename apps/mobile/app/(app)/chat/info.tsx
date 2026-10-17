@@ -154,7 +154,7 @@ export default function ChatInfo() {
           ) : null}
         </View>
 
-        {r.isMember || r.watching ? (
+        {r.isMember ? (
           <View style={{ backgroundColor: c.surface }} className="mt-2 px-4">
             <SwitchRow label="Mute notifications" hint="No push — an @mention still gets through." on={r.muted} onChange={(v) => prefs.mutate({ muted: v }, { onError: fail })} />
             <SwitchRow label="Pin chat" hint="Keep it at the top of your list." on={r.pinned} onChange={(v) => prefs.mutate({ pinned: v }, { onError: fail })} last />
@@ -214,19 +214,15 @@ export default function ChatInfo() {
             <Touchable
               feel="row"
               onPress={() =>
-                // Following a chat you aren't in: this only takes it off your list.
-                Alert.alert(
-                  r.watching ? `Take “${r.name}” off your list?` : `Leave “${r.name}”?`,
-                  r.watching ? "It's still under All chats, and writing in it again brings it back." : "One of its admins can add you back.",
-                  [
+                Alert.alert(`Leave “${r.name}”?`, "One of its admins can add you back.", [
                   { text: "Cancel", style: "cancel" },
                   {
-                    text: r.watching ? "Remove" : "Leave",
+                    text: "Leave",
                     style: "destructive",
                     onPress: () =>
                       leave.mutate(undefined, {
                         onSuccess: () => {
-                          toast({ text: r.watching ? `“${r.name}” is off your list` : `You left “${r.name}”` });
+                          toast({ text: `You left “${r.name}”` });
                           router.dismissTo("/(app)/(tabs)/chat");
                         },
                         onError: fail,
@@ -240,7 +236,7 @@ export default function ChatInfo() {
             >
               <LogoutIcon size={20} color={c.danger} />
               <Text style={{ color: c.danger }} className="text-lg font-semibold">
-                {r.watching ? "Remove from my list" : "Leave group"}
+                Leave group
               </Text>
             </Touchable>
           </View>

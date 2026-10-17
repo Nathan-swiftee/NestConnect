@@ -121,18 +121,6 @@ export default function Chat() {
         ...(acting.unread
           ? [{ key: "read", label: "Mark as read", onPress: () => void api.readChatRoom(acting.id).then(() => rooms.refetch()) }]
           : []),
-        // A chat they follow without being in it can come off their list.
-        ...(acting.watching
-          ? [
-              {
-                key: "unfollow",
-                label: "Remove from my list",
-                detail: "It's still under All chats",
-                destructive: true,
-                onPress: () => void api.leaveChatRoom(acting.id).then(() => rooms.refetch(), (e) => toast({ text: (e as Error).message })),
-              },
-            ]
-          : []),
       ]
     : [];
 
@@ -171,13 +159,6 @@ export default function Chat() {
         <HeaderButton label="New chat" icon={(p) => <ComposeIcon {...p} />} fill={c.wa} onPress={() => setNewOpen(true)} />
       </TabHeader>
 
-      {oversee ? (
-        <View style={{ backgroundColor: c.amberTint }} className="mx-4 mb-2 rounded-12 px-3 py-2">
-          <Text className="text-xs text-fg">
-            Every chat in the workspace. You can read and write in ones you aren't in.
-          </Text>
-        </View>
-      ) : null}
 
       <View className="px-4 pb-3">
         <View style={{ backgroundColor: c.surface2 }} className="flex-row items-center gap-2 rounded-full px-3.5">
@@ -246,7 +227,7 @@ export default function Chat() {
               onPress={() => openAt(item.roomId, item.message.id)}
             />
           ) : (
-            <Row r={item.room} meId={me?.id} people={mentionables} onPress={() => open(item.room)} onLongPress={() => (item.room.isMember || item.room.watching) && setActing(item.room)} />
+            <Row r={item.room} meId={me?.id} people={mentionables} onPress={() => open(item.room)} onLongPress={() => item.room.isMember && setActing(item.room)} />
           )
         }
         ListEmptyComponent={

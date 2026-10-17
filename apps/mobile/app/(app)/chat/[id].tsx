@@ -49,7 +49,7 @@ import { Touchable } from "../../../src/components/Touchable";
 import { Avatar } from "../../../src/components/Avatar";
 import { mediaSource } from "../../../src/api-config";
 import { haptics } from "../../../src/haptics";
-import { AttachIcon, BackIcon, DetailsIcon, EditIcon, EyeIcon, ReplyIcon, SendIcon, CheckIcon, XIcon } from "../../../src/icons";
+import { AttachIcon, BackIcon, DetailsIcon, EditIcon, ReplyIcon, SendIcon, CheckIcon, XIcon } from "../../../src/icons";
 import { useInsets } from "../../../src/insets";
 import { useTheme } from "../../../src/theme";
 
@@ -81,7 +81,7 @@ export default function ChatScreen() {
   const r = room.data;
   const mentionables: Mentionable[] = useMemo(() => (people.data ?? []).map((m) => m.user), [people.data]);
   const newest = msgs.messages.at(-1);
-  useMarkChatRead(id, newest?.id, !!r?.isMember || !!r?.watching);
+  useMarkChatRead(id, newest?.id, !!r?.isMember);
 
   // Where "unread messages" goes: fixed when the chat opens.
   const [unreadAfter, setUnreadAfter] = useState<string | null | undefined>(undefined);
@@ -176,7 +176,8 @@ export default function ChatScreen() {
       ? chatLastSeen(r.other)
       : membersLine(r.members, me?.id);
   const group = r.kind !== "direct" || r.oversight;
-  const moderator = me?.role === "admin" || r.canManage;
+  // Moderating is for chats you're in: an admin reading one they aren't in can't delete there.
+  const moderator = r.isMember && (me?.role === "admin" || r.canManage);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.surface2 }}>
@@ -213,14 +214,6 @@ export default function ChatScreen() {
           <DetailsIcon size={20} color={c.textMuted} />
         </Touchable>
       </View>
-      {r.oversight ? (
-        <View style={{ backgroundColor: c.amberTint }} className="flex-row items-center gap-2 px-4 py-2">
-          <EyeIcon size={15} color={c.amber} />
-          <Text className="flex-1 text-xs text-fg">
-            {r.archived ? "This team was deleted. Its chat is kept here, read-only." : "You aren’t in this chat. Anything you write is seen by everyone in it, and this visit is recorded."}
-          </Text>
-        </View>
-      ) : null}
 
       <View style={{ flex: 1 }}>
       <FlatList
@@ -335,10 +328,11 @@ export default function ChatScreen() {
             onCancelEdit={() => setEditing(null)}
             onError={fail}
           />
-        ) : (
+        ) : r.oversight ? null : (
+          // An admin reading a chat they aren't in sees no box and no notice.
           <View style={{ backgroundColor: c.surface, borderTopColor: c.border }} className="border-t px-4 py-3">
             <Text className="text-center text-md text-muted">
-              {r.archived ? "This team was deleted, so its chat is read-only." : r.kind === "direct" ? "They're no longer in this workspace." : "You can't send messages here."}
+              {r.kind === "direct" ? "They're no longer in this workspace." : "You can't send messages here."}
             </Text>
           </View>
         )}
