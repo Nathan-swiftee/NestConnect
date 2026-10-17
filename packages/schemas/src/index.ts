@@ -3244,6 +3244,59 @@ export interface PlatformWorkspace {
   conversations: number;
   /** Whether I'm in it already. */
   joined: boolean;
+  /** The platform's own workspace: never suspended, archived or deleted. */
+  platform: boolean;
+  /** Anything but active is frozen: nobody signs in, its channels take nothing
+   *  in and send nothing out. */
+  status: WorkspaceStatus;
+  statusAt: string | null;
+  /** Being deleted: when it's wiped for good (restorable until then). */
+  purgeAt: string | null;
+}
+
+/** active, or frozen: suspended (paused), archived (put away, kept for ever),
+ *  deleting (wiped for good after 30 days). */
+export const workspaceStatusSchema = z.enum(["active", "suspended", "archived", "deleting"]);
+export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
+
+/** How long a deleted workspace can still be restored. */
+export const WORKSPACE_DELETE_GRACE_DAYS = 30;
+
+export const renameWorkspaceInputSchema = z.object({ name: z.string().trim().min(1, "Name the workspace").max(80) });
+export type RenameWorkspaceInput = z.infer<typeof renameWorkspaceInputSchema>;
+
+/** Suspend, archive, delete (in 30 days), or make active again (reactivate,
+ *  unarchive, restore). */
+export const setWorkspaceStatusInputSchema = z.object({ status: workspaceStatusSchema });
+export type SetWorkspaceStatusInput = z.infer<typeof setWorkspaceStatusInputSchema>;
+
+/** Wipe now: the workspace's name, typed out, so it's never a slip. */
+export const deleteWorkspaceNowInputSchema = z.object({ confirmName: z.string() });
+export type DeleteWorkspaceNowInput = z.infer<typeof deleteWorkspaceNowInputSchema>;
+
+/** Someone in a workspace, as the platform's owners manage it from outside. */
+export interface PlatformPerson {
+  user: User;
+  /** Invited, and hasn't set a password yet. */
+  pending: boolean;
+}
+
+export const addPlatformPersonInputSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.string().trim().email("That doesn't look like an email address").max(254),
+  role: roleSchema,
+});
+export type AddPlatformPersonInput = z.infer<typeof addPlatformPersonInputSchema>;
+
+export const setPlatformPersonRoleInputSchema = z.object({ role: roleSchema });
+export type SetPlatformPersonRoleInput = z.infer<typeof setPlatformPersonRoleInputSchema>;
+
+/** What adding someone, or re-sending their invite, came to. */
+export interface PlatformPersonInvite {
+  person: PlatformPerson;
+  /** Already signs in elsewhere: added, and told — no invite. */
+  addedExisting?: boolean;
+  invite?: { url: string; emailed: boolean };
 }
 
 /** A new workspace, and the person who'll run it. */

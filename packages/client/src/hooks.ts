@@ -37,6 +37,9 @@ import {
   type UpdateInboxSignatureInput,
   type UpdateIntegrationSettingsInput,
   type CreateWorkspaceInput,
+  type AddPlatformPersonInput,
+  type WorkspaceStatus,
+  type Role,
   type UpdateNestchatInput,
   type UpdateMyPreferencesInput,
   type UpdatePushPreferencesInput,
@@ -408,6 +411,24 @@ export function useCreateWorkspace() {
     mutationFn: (input: CreateWorkspaceInput) => api.createWorkspace(input),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["platform-workspaces"] }),
   });
+}
+
+export const useWorkspacePeople = (id: string | null) =>
+  useQuery({ queryKey: ["platform-workspaces", id, "people"], queryFn: () => api.workspacePeople(id!), enabled: !!id });
+
+/** Anything that changes one workspace: refresh the list and its people. */
+export function useManageWorkspace() {
+  const qc = useQueryClient();
+  const done = () => qc.invalidateQueries({ queryKey: ["platform-workspaces"] });
+  return {
+    rename: useMutation({ mutationFn: (v: { id: string; name: string }) => api.renameWorkspace(v.id, v.name), onSuccess: done }),
+    setStatus: useMutation({ mutationFn: (v: { id: string; status: WorkspaceStatus }) => api.setWorkspaceStatus(v.id, v.status), onSuccess: done }),
+    deleteNow: useMutation({ mutationFn: (v: { id: string; confirmName: string }) => api.deleteWorkspaceNow(v.id, v.confirmName), onSuccess: done }),
+    addPerson: useMutation({ mutationFn: (v: { id: string; input: AddPlatformPersonInput }) => api.addWorkspacePerson(v.id, v.input), onSuccess: done }),
+    setRole: useMutation({ mutationFn: (v: { id: string; personId: string; role: Role }) => api.setWorkspacePersonRole(v.id, v.personId, v.role), onSuccess: done }),
+    removePerson: useMutation({ mutationFn: (v: { id: string; personId: string }) => api.removeWorkspacePerson(v.id, v.personId), onSuccess: done }),
+    resendInvite: useMutation({ mutationFn: (v: { id: string; personId: string }) => api.resendWorkspaceInvite(v.id, v.personId) }),
+  };
 }
 
 /* ---- integrations (Settings › Setup) ---- */

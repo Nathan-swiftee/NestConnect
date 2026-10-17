@@ -82,13 +82,15 @@ input,textarea{font:inherit}
 .setadd input:not([type="checkbox"]),.setform input:not([type="checkbox"]):not([type="radio"]),
 .addmember input:not([type="checkbox"]),.memrow input:not([type="checkbox"]),
 .connect__creds input:not([type="checkbox"]),.routesel select,
-.ncwfield input[type="text"],.ncwfield__label,.ncwopt input:not([type="checkbox"]),.ncwopt select{
+.ncwfield input[type="text"],.ncwfield__label,.ncwopt input:not([type="checkbox"]),.ncwopt select,
+.wsmanage__row>input,.wsmanage__row>select,.wspeople__row select{
   width:100%;padding:var(--sp-2) var(--sp-3);border:1px solid transparent;border-radius:var(--r-12);
   background:var(--surface-2);color:var(--text);font-size:var(--fs-md);font-weight:500;outline:none;
   box-shadow:inset 0 1px 2px rgba(13,21,18,.05);transition:box-shadow var(--t-base),background var(--t-base),border-color var(--t-base)}
 .field input:focus,.field select:focus,.setadd input:focus,.setform input:focus,
 .addmember input:focus,.memrow input:focus,.connect__creds input:focus,.routesel select:focus,
-.ncwfield__label:focus,.ncwopt input:focus,.ncwopt select:focus{
+.ncwfield__label:focus,.ncwopt input:focus,.ncwopt select:focus,
+.wsmanage__row>input:focus,.wsmanage__row>select:focus,.wspeople__row select:focus{
   border-color:var(--brand);background-color:var(--surface);box-shadow:0 0 0 3px var(--brand-ring)}
 
 /* the shared floating-surface recipe — identical for every temporary surface.
@@ -1883,8 +1885,28 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .setform--flush{border:0;background:transparent;padding:0;gap:var(--sp-3)}
 .setform--flush .setform__foot{padding-bottom:0}
 .dtable--team{--dtable-min:560px}
-.dtable--ws{--dtable-min:600px}
-.dtable--ws .dtable__head,.dtable--ws .dtable__row{grid-template-columns:minmax(200px,2fr) 80px 90px 120px 120px}
+.dtable--ws{--dtable-min:660px}
+.dtable--ws .dtable__head,.dtable--ws .dtable__row{grid-template-columns:minmax(200px,2fr) 80px 90px 120px 170px}
+.wsbadge{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:var(--r-full);font-size:var(--fs-2xs);font-weight:600;vertical-align:1px;background:var(--surface-2);color:var(--text-muted)}
+.wsbadge--suspended{background:var(--amber);color:#fff}
+.wsbadge--deleting{background:var(--danger-tint);color:var(--danger)}
+.wsmanage{width:min(640px,calc(100vw - 32px))}
+.wsmanage__h{font-size:var(--fs-sm);font-weight:650;margin:var(--sp-4) 0 var(--sp-2);display:flex;align-items:center;gap:6px}
+.wsmanage__row{display:flex;gap:var(--sp-2);align-items:flex-end;flex-wrap:wrap}
+.wsmanage__row>input{flex:1;min-width:140px}
+.wsmanage__row>select,.wspeople__row select{width:auto;min-width:118px}
+.wsmanage__row>input,.wsmanage__row>select{height:40px}
+.wsmanage__row>.btn-primary,.wsmanage__row>.btn-ghost{display:inline-flex;align-items:center;gap:6px;height:40px}
+.wsmanage__row svg{width:15px;height:15px}
+.wsmanage__acts{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-2)}
+.wsmanage__wipe{margin-top:var(--sp-3);padding:var(--sp-3);border:1px solid var(--danger);border-radius:var(--r-12);background:var(--danger-tint)}
+.wsmanage__wipe p{font-size:var(--fs-sm);margin:0 0 var(--sp-2)}
+.btn-danger-fill{background:var(--danger)!important;border-color:var(--danger)!important}
+.wspeople{display:flex;flex-direction:column;gap:2px;margin-bottom:var(--sp-2)}
+.wspeople__row{display:flex;align-items:center;gap:var(--sp-2);padding:6px 0;border-bottom:1px solid var(--glass-line)}
+.wspeople__who{flex:1;min-width:0;display:flex;flex-direction:column}
+.wspeople__who b{font-size:var(--fs-sm);font-weight:600}
+.wspeople__who small{font-size:var(--fs-2xs);color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dtable--team .dtable__head,.dtable--team .dtable__row{grid-template-columns:minmax(200px,2fr) 100px 110px 116px}
 .dtable--label{--dtable-min:380px}
 .dtable--label .dtable__head,.dtable--label .dtable__row{grid-template-columns:minmax(220px,1fr) 96px}
@@ -2067,9 +2089,9 @@ select.cfrow__v{appearance:none;-webkit-appearance:none;cursor:pointer}
 .iconpick__btn svg{width:20px;height:20px}
 
 /* selects: match the field system, custom chevron, no OS default look */
-.field select,.setform select,.addmember select,.routesel select,.ncwopt select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
+.field select,.setform select,.addmember select,.routesel select,.ncwopt select,.wsmanage__row>select,.wspeople__row select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23586762' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:16px}
-:root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select,:root[data-theme="dark"] .routesel select,:root[data-theme="dark"] .ncwopt select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E")}
+:root[data-theme="dark"] .wsmanage__row>select,:root[data-theme="dark"] .wspeople__row select,:root[data-theme="dark"] .field select,:root[data-theme="dark"] .setform select,:root[data-theme="dark"] .routesel select,:root[data-theme="dark"] .ncwopt select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2393A29B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6.6 9.4 5.4 5.4 5.4-5.4'/%3E%3C/svg%3E")}
 
 /* settings & customers — an in-app page (fills the area beside the icon rail),
    not a full-screen modal takeover */

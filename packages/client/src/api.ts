@@ -136,6 +136,11 @@ import type {
   PlatformWorkspace,
   CreateWorkspaceInput,
   CreatedWorkspace,
+  PlatformPerson,
+  Role,
+  PlatformPersonInvite,
+  AddPlatformPersonInput,
+  WorkspaceStatus,
   UpdatePushPreferencesInput,
 } from "@ding/schemas";
 import { authHeaders, clientConfig, type UploadFile, type UploadMeta } from "./config";
@@ -286,6 +291,22 @@ export const api = {
   // Platform owners: every workspace, and making a new one with its first admin.
   platformWorkspaces: () => get<PlatformWorkspace[]>("/platform/workspaces"),
   createWorkspace: (input: CreateWorkspaceInput) => post<CreatedWorkspace>("/platform/workspaces", input),
+  // …and each one, managed from outside it.
+  renameWorkspace: (id: string, name: string) => patch<PlatformWorkspace>(`/platform/workspaces/${id}`, { name }),
+  // active | suspended | archived | deleting (wiped in 30 days; "active" restores).
+  setWorkspaceStatus: (id: string, status: WorkspaceStatus) =>
+    post<PlatformWorkspace>(`/platform/workspaces/${id}/status`, { status }),
+  deleteWorkspaceNow: (id: string, confirmName: string) =>
+    post<{ ok: boolean; files: number }>(`/platform/workspaces/${id}/delete-now`, { confirmName }),
+  workspacePeople: (id: string) => get<PlatformPerson[]>(`/platform/workspaces/${id}/people`),
+  addWorkspacePerson: (id: string, input: AddPlatformPersonInput) =>
+    post<PlatformPersonInvite>(`/platform/workspaces/${id}/people`, input),
+  setWorkspacePersonRole: (id: string, personId: string, role: Role) =>
+    patch<PlatformPerson>(`/platform/workspaces/${id}/people/${personId}`, { role }),
+  removeWorkspacePerson: (id: string, personId: string) =>
+    del<{ ok: boolean }>(`/platform/workspaces/${id}/people/${personId}`),
+  resendWorkspaceInvite: (id: string, personId: string) =>
+    post<PlatformPersonInvite>(`/platform/workspaces/${id}/people/${personId}/invite`, {}),
   // workspace
   // Which of a channel's numbers/mailboxes replies go out from when a thread
   // is answered on a channel it didn't start on. `false` clears it.
