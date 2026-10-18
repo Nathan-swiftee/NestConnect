@@ -1330,6 +1330,9 @@ export abstract class Store {
    * leaving the thread to say "Not delivered" about something an admin could
    * have fixed in a minute.
    */
+  /** Texts sent from this channel since `since` that still wait for a delivery
+   *  receipt — what an SMS channel without receipt webhooks asks after. */
+  abstract listAwaitingReceipt(inboxId: string, since: Date, limit?: number): Promise<{ id: string; channelMsgId: string }[]>;
   abstract updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,

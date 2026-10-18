@@ -19,7 +19,7 @@ export const ChannelType = {
   Email: "email",
   NestChat: "nestchat",
 } as const;
-export const channelTypeSchema = z.enum(["whatsapp", "whatsapp_group", "email", "nestchat"]);
+export const channelTypeSchema = z.enum(["whatsapp", "whatsapp_group", "email", "nestchat", "sms"]);
 export type ChannelType = z.infer<typeof channelTypeSchema>;
 
 /**
@@ -99,13 +99,20 @@ export function typingPingMs(channel: ChannelType): number | null {
  * Here rather than in each client because both clients had written it out, and
  * both were wrong in the same way. One list, one place to be right.
  */
-export function replyTargetsFor(conv: {
-  channel: ChannelType;
-  contact: { phone?: string | null; email?: string | null };
-}): ChannelType[] {
+export function replyTargetsFor(
+  conv: {
+    channel: ChannelType;
+    contact: { phone?: string | null; email?: string | null };
+  },
+  /** The channels the workspace has connected. A phone number reaches
+   *  WhatsApp always (as it always has), and SMS only where there's an SMS
+   *  channel to send from — most workspaces have none. */
+  connected?: ChannelType[],
+): ChannelType[] {
   if (conv.channel === "whatsapp_group") return [conv.channel];
   const out: ChannelType[] = [];
   if (conv.contact.phone) out.push("whatsapp");
+  if (conv.contact.phone && connected?.includes("sms")) out.push("sms");
   if (conv.contact.email) out.push("email");
   if (!out.includes(conv.channel)) out.push(conv.channel);
   return out;
@@ -514,6 +521,9 @@ export const REQUIRED_CHANNEL_KEYS: Record<ChannelType, string[]> = {
   // so a NestChat inbox is live the moment it exists (its widget key is minted
   // on creation). An empty requirement list makes isInboxConnected() say so.
   nestchat: [],
+  // The provider config (sms.ts); the secret is optional — some
+  // providers authenticate by account id in the URL alone.
+  sms: ["smsConfig"],
 };
 
 /**
@@ -1762,7 +1772,7 @@ export interface ForwardResult {
 
 /** Reach a customer on a channel — opens their thread there, or starts one. */
 export const reachInputSchema = z.object({
-  channel: z.enum(["whatsapp", "email"]),
+  channel: z.enum(["whatsapp", "email", "sms"]),
   /** Which connected inbox to start from — needed when several of the same
    *  channel are connected. Falls back to the first of that channel when absent. */
   inboxId: z.string().optional(),
@@ -3928,6 +3938,7 @@ export * from "./links";
 export * from "./recipients";
 export * from "./ops";
 export * from "./conversation-log";
+export * from "./sms";
 export * from "./chat";
 
 /**

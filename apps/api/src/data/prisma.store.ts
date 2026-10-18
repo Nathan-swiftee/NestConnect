@@ -3140,6 +3140,16 @@ export class PrismaStore extends Store {
     return changed;
   }
 
+  async listAwaitingReceipt(inboxId: string, since: Date, limit = 50): Promise<{ id: string; channelMsgId: string }[]> {
+    const rows = await this.prisma.message.findMany({
+      where: { inboxId, direction: "out", internal: false, status: "sent", channelMsgId: { not: null }, createdAt: { gte: since } },
+      select: { id: true, channelMsgId: true },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    });
+    return rows.map((r) => ({ id: r.id, channelMsgId: r.channelMsgId! }));
+  }
+
   async updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,

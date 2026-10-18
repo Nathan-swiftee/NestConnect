@@ -16,6 +16,7 @@ enum ChannelType {
   whatsapp_group
   email
   nestchat
+  sms
 }
 
 enum ConversationStatus {

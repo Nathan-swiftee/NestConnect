@@ -137,6 +137,12 @@ import type {
   CreateWorkspaceInput,
   CreatedWorkspace,
   PlatformPerson,
+  SmsChannelSettings,
+  SaveSmsConfigInput,
+  SmsTestResult,
+  TestSmsInput,
+  SuggestedSmsConfig,
+  SuggestSmsConfigInput,
   Role,
   PlatformPersonInvite,
   AddPlatformPersonInput,
@@ -413,6 +419,13 @@ export const api = {
   createUser: (input: CreateUserInput) => post<CreateUserResult>("/settings/people", input),
   updateUser: (id: string, input: UpdateUserInput) => patch<User>(`/settings/people/${id}`, input),
   deleteUser: (id: string) => del<{ ok: boolean }>(`/settings/people/${id}`),
+  // SMS channels: the provider config (any REST API), testing it, and AI
+  // filling it in from pasted docs.
+  smsSettings: (inboxId: string) => get<SmsChannelSettings>(`/channels/sms/${inboxId}/settings`),
+  saveSmsSettings: (inboxId: string, input: SaveSmsConfigInput) => put<SmsChannelSettings>(`/channels/sms/${inboxId}/settings`, input),
+  testSms: (input: TestSmsInput & { inboxId?: string }) => post<SmsTestResult>("/channels/sms/test", input),
+  pollSms: (inboxId: string) => post<{ imported: number; receipts: number }>(`/channels/sms/${inboxId}/poll`, {}),
+  suggestSmsConfig: (input: SuggestSmsConfigInput) => post<SuggestedSmsConfig>("/channels/sms/suggest", input),
   // integrations (Settings › Setup)
   getIntegrations: () => get<IntegrationSettings>("/settings/integrations"),
   updateIntegrations: (input: UpdateIntegrationSettingsInput) =>
@@ -447,7 +460,7 @@ export const api = {
   bulkContacts: (input: BulkContactsInput) => post<BulkContactsResult>("/contacts/bulk", input),
   // Open (or start) this customer's conversation on another channel. An explicit
   // inboxId picks which number/inbox to send from when several are connected.
-  reachContact: (contactId: string, channel: "whatsapp" | "email", inboxId?: string) =>
+  reachContact: (contactId: string, channel: "whatsapp" | "email" | "sms", inboxId?: string) =>
     // `alsoOpenWith`: who has the other open conversation with them that this
     // new one was started beside — a colleague's name, or "the queue".
     post<{ conversationId: string; created: boolean; alsoOpenWith?: string }>(`/contacts/${contactId}/reach`, {

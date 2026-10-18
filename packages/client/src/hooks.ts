@@ -38,6 +38,7 @@ import {
   type UpdateIntegrationSettingsInput,
   type CreateWorkspaceInput,
   type AddPlatformPersonInput,
+  type SaveSmsConfigInput,
   type WorkspaceStatus,
   type Role,
   type UpdateNestchatInput,
@@ -429,6 +430,21 @@ export function useManageWorkspace() {
     removePerson: useMutation({ mutationFn: (v: { id: string; personId: string }) => api.removeWorkspacePerson(v.id, v.personId), onSuccess: done }),
     resendInvite: useMutation({ mutationFn: (v: { id: string; personId: string }) => api.resendWorkspaceInvite(v.id, v.personId) }),
   };
+}
+
+/* ---- SMS channels ---- */
+export const useSmsSettings = (inboxId: string | null) =>
+  useQuery({ queryKey: ["sms-settings", inboxId], queryFn: () => api.smsSettings(inboxId!), enabled: !!inboxId });
+
+export function useSaveSmsSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { inboxId: string; input: SaveSmsConfigInput }) => api.saveSmsSettings(v.inboxId, v.input),
+    onSuccess: (data, v) => {
+      qc.setQueryData(["sms-settings", v.inboxId], data);
+      qc.invalidateQueries({ queryKey: ["inboxes"] });
+    },
+  });
 }
 
 /* ---- integrations (Settings › Setup) ---- */

@@ -2431,6 +2431,18 @@ export class MemoryStore extends Store {
     return changed;
   }
 
+  async listAwaitingReceipt(inboxId: string, since: Date, limit = 50): Promise<{ id: string; channelMsgId: string }[]> {
+    const out: { id: string; channelMsgId: string; at: string }[] = [];
+    for (const rec of this.conversations) {
+      for (const m of rec.messages) {
+        if (m.inboxId === inboxId && m.direction === "out" && !m.internal && m.status === "sent" && m.channelMsgId && m.createdAt >= since.toISOString()) {
+          out.push({ id: m.id, channelMsgId: m.channelMsgId, at: m.createdAt });
+        }
+      }
+    }
+    return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit).map(({ id, channelMsgId }) => ({ id, channelMsgId }));
+  }
+
   async updateMessageStatusByChannelId(
     channelMsgId: string,
     status: MessageStatus,

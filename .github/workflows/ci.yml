@@ -384,6 +384,12 @@ jobs:
       - name: Reactions
         run: pnpm check:reactions
 
+      # SMS through any provider's REST API, described by config: each preset's
+      # requests, polling and webhooks, replies, receipts, duplicates — with the
+      # provider faked at the network seam.
+      - name: SMS
+        run: pnpm check:sms
+
       # The Accounts team's SOPs, added once to Swiftee's workspace: published
       # for the Accounts team, no passwords in them, never added twice.
       - name: Accounts SOPs

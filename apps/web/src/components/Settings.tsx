@@ -11,6 +11,7 @@ import { appSetupGuide, type AppSetupStep } from "../lib/nestchat-app-setup";
 import { WhatsAppPinField, WhatsAppRegistration } from "./WhatsAppRegistration";
 import { PullMissedEmail, ReconnectEmailDialog, signedOutSince, useReconnectEmail } from "./ReconnectEmail";
 import { MacrosPane } from "./MacrosPane";
+import { SmsConfigEditor, SmsProviderPanel, smsDefaults } from "./SmsChannel";
 import { OpsModulesPane } from "./ops/OpsModulesPane";
 import { ChannelSignature, signatureDraftFor, signatureInput, type SignatureDraft } from "./ChannelSignature";
 import type {
@@ -120,7 +121,7 @@ import {
 import { initials, avatarBg } from "../lib/format";
 import { api } from "../lib/api";
 import { loadedSdk, prepareCoexistenceSignup, runCoexistenceSignup } from "../lib/meta-signup";
-import { BUSINESS_APP_FINISH_EVENT, WORKSPACE_DELETE_GRACE_DAYS, type CoexistenceSetup } from "@ding/schemas";
+import { BUSINESS_APP_FINISH_EVENT, WORKSPACE_DELETE_GRACE_DAYS, smsProviderConfigSchema, type CoexistenceSetup } from "@ding/schemas";
 import { TEMPLATE_CATEGORIES, approvalMeta, countVariables } from "./TemplatePicker";
 import {
   BellIcon,
@@ -412,6 +413,15 @@ const CHANNEL_KINDS: ChannelKind[] = [
     handlePlaceholder: "swiftee.co.uk",
     // No credentials: there is no third party to authenticate with. The widget
     // key that identifies this channel is minted for us, not pasted in.
+    fields: [],
+  },
+  {
+    type: "sms",
+    label: "SMS",
+    desc: "Text messages through any SMS provider — DialMyCalls, Twilio, or any other with a REST API.",
+    handleLabel: "Sender number or ID",
+    handlePlaceholder: "+15551234567",
+    // The provider settings have their own editor (SmsChannel.tsx).
     fields: [],
   },
   {
@@ -835,6 +845,7 @@ function ChannelEditor({
           )}
         </div>
       )}
+      {inbox.type === "sms" && <SmsProviderPanel inboxId={inbox.id} onToast={onToast} />}
       {kind && kind.fields.length > 0 && !isGmail && (
         <div className="connect__creds">
           <div className="connect__credhead">Update credentials <em>— leave blank to keep current</em></div>
@@ -925,6 +936,8 @@ function ConnectChannel({
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
   const [cfg, setCfg] = useState<Record<string, string>>({});
+  const [smsCfg, setSmsCfg] = useState(() => smsDefaults());
+  const [smsSecret, setSmsSecret] = useState("");
   /*
    * The two-step verification PIN, kept apart from `cfg` on purpose.
    *
@@ -1055,6 +1068,15 @@ function ConnectChannel({
     for (const f of kind.fields) {
       const val = (cfg[f.key] ?? "").trim();
       if (val) channelConfig[f.key] = val;
+    }
+    if (kind.type === "sms") {
+      const parsed = smsProviderConfigSchema.safeParse(smsCfg);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return onToast(`Check the SMS settings: ${issue?.path.join(".")} — ${issue?.message}`);
+      }
+      channelConfig.smsConfig = JSON.stringify(parsed.data);
+      if (smsSecret) channelConfig.smsSecret = smsSecret;
     }
     create.mutate(
       {
@@ -1191,6 +1213,13 @@ function ConnectChannel({
           <div className="fieldhint" style={{ textAlign: "center" }}>
             — or paste your number’s Phone number ID + Access token from Meta’s API Setup page below —
           </div>
+        </div>
+      )}
+
+      {kind.type === "sms" && (
+        <div className="connect__creds">
+          <div className="connect__credhead">SMS provider</div>
+          <SmsConfigEditor value={smsCfg} onChange={setSmsCfg} secret={smsSecret} onSecret={setSmsSecret} onToast={onToast} />
         </div>
       )}
 
